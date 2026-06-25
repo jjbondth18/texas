@@ -6,9 +6,10 @@ enum LobbyState {
 	PLAY_EXPANDED
 }
 
-@export var background_motion_enabled := false
+@export var background_motion_enabled := true
 
 const BACKGROUND_TEXTURE_PATH := "res://assets/home_lobby/backgrounds/home_background_v1.png"
+const NEON_SWEEP_SHADER_PATH := "res://shaders/neon_sweep.gdshader"
 const NAV_WIDTH := 280.0
 const MAIN_LEFT := 360.0
 const MAIN_RIGHT := 70.0
@@ -82,12 +83,32 @@ func _build_background() -> void:
 	_background_texture.modulate = Color(1.34, 1.30, 1.40, 1.0)
 	_background_texture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_background_root.add_child(_background_texture)
+	
+	# Flowing Fog Shader Layer
+	var flow_rect := ColorRect.new()
+	flow_rect.name = "BackgroundShaderFlow"
+	flow_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	flow_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var flow_mat := ShaderMaterial.new()
+	flow_mat.shader = load("res://shaders/flow_noise_bg.gdshader")
+	flow_mat.set_shader_parameter("deep_color", Color(0, 0, 0, 0)) # transparent base
+	flow_mat.set_shader_parameter("haze_color", Color(0.35, 0.15, 0.55, 0.50)) # purple smoke
+	flow_mat.set_shader_parameter("neon_color", Color(0.82, 0.22, 0.68, 0.45)) # pink smoke
+	flow_mat.set_shader_parameter("speed", 0.003) # extremely slow motion
+	flow_mat.set_shader_parameter("intensity", 0.25)
+	flow_mat.set_shader_parameter("layer_alpha", 0.035) # extremely subtle blend overlay
+	flow_mat.set_shader_parameter("motion_enabled", true)
+	flow_rect.material = flow_mat
+	_background_root.add_child(flow_rect)
+	
 	var center_lift := ColorRect.new()
 	center_lift.name = "BackgroundCenterLift"
 	center_lift.set_anchors_preset(Control.PRESET_FULL_RECT)
 	center_lift.color = Color(0.06, 0.08, 0.18, 0.08)
 	center_lift.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_background_root.add_child(center_lift)
+	
+	_build_particles()
 
 func _build_layout() -> void:
 	_lobby_ui_root = Control.new()
@@ -164,8 +185,14 @@ func _build_center_brand() -> void:
 	_logo_fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_logo_fallback.visible = true
 	_center_brand.add_child(_logo_fallback)
-	_logo_fallback.add_child(_make_logo_label("LogoMain", "TEXAS\nHOLD'EM", 116, Color(0.886, 0.910, 0.941, 1.0), 4, Color(0.616, 0.306, 0.867, 1.0), Color(1.0, 0.0, 0.498, 0.333), Vector2(0, 4), 12, 0.08, 0.78))
-	_logo_fallback.add_child(_make_logo_label("LogoSub", "POKER CLUB", 22, Color(0.886, 0.910, 0.941, 1.0), 2, Color(0.616, 0.306, 0.867, 1.0), Color(1.0, 0.0, 0.498, 0.333), Vector2(0, 3), 6, 0.70, 0.86))
+	var logo_main := _make_logo_label("LogoMain", "TEXAS\nHOLD'EM", 116, Color(0.886, 0.910, 0.941, 1.0), 4, Color(0.616, 0.306, 0.867, 1.0), Color(1.0, 0.0, 0.498, 0.333), Vector2(0, 4), 12, 0.08, 0.78)
+	var sweep_mat := ShaderMaterial.new()
+	sweep_mat.shader = load(NEON_SWEEP_SHADER_PATH)
+	logo_main.material = sweep_mat
+	_logo_fallback.add_child(logo_main)
+	
+	var logo_sub := _make_logo_label("LogoSub", "POKER CLUB", 22, Color(0.886, 0.910, 0.941, 1.0), 2, Color(0.616, 0.306, 0.867, 1.0), Color(1.0, 0.0, 0.498, 0.333), Vector2(0, 3), 6, 0.70, 0.86)
+	_logo_fallback.add_child(logo_sub)
 
 func _make_logo_label(label_name: String, text: String, font_size: int, color: Color, outline_size: int, outline_color: Color, shadow_color: Color, shadow_offset: Vector2, shadow_outline: int, anchor_top: float, anchor_bottom: float) -> Label:
 	var label := Label.new()
@@ -401,3 +428,50 @@ func _arg_value(args: PackedStringArray, key: String, fallback: String) -> Strin
 	if index == -1 or index + 1 >= args.size():
 		return fallback
 	return args[index + 1]
+
+func _build_particles() -> void:
+	var particles := GPUParticles2D.new()
+	particles.name = "LobbyParticles"
+	particles.amount = 16
+	particles.lifetime = 6.0
+	particles.preprocess = 3.0
+	particles.randomness = 0.6
+	particles.position = Vector2(1000, 1090)
+	
+	var p_mat := ParticleProcessMaterial.new()
+	p_mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	p_mat.emission_box_extents = Vector3(700, 10, 1)
+	p_mat.direction = Vector3(0, -1, 0)
+	p_mat.spread = 15.0
+	p_mat.gravity = Vector3(0, -8, 0)
+	p_mat.initial_velocity_min = 4.0
+	p_mat.initial_velocity_max = 10.0
+	p_mat.color = Color(0.8, 0.2, 0.6, 0.22)
+	p_mat.scale_min = 2.0
+	p_mat.scale_max = 4.0
+	
+	var gradient := Gradient.new()
+	gradient.offsets = PackedFloat32Array([0.0, 0.15, 0.85, 1.0])
+	gradient.colors = PackedColorArray([
+		Color(0.8, 0.2, 0.6, 0.0),
+		Color(0.8, 0.2, 0.6, 0.22),
+		Color(0.8, 0.2, 0.6, 0.18),
+		Color(0.8, 0.2, 0.6, 0.0)
+	])
+	var grad_txt := GradientTexture1D.new()
+	grad_txt.gradient = gradient
+	p_mat.color_ramp = grad_txt
+	
+	particles.process_material = p_mat
+	particles.visibility_rect = Rect2(-1000, -1200, 2000, 1300)
+	_background_root.add_child(particles)
+
+# Integration Placeholders
+func update_player_ui(_data: Dictionary) -> void:
+	pass
+
+func update_mode_cards(_data: Array) -> void:
+	pass
+
+func update_daily_bonus(_data: Dictionary) -> void:
+	pass
