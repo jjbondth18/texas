@@ -154,41 +154,33 @@ func _layout() -> void:
 
 	_set_design_rect(_info_panel, Rect2(0, 0, 320, 1000), scale)
 	_set_design_rect(_status_panel, Rect2(2240, 0, 320, 1000), scale)
-	_set_design_rect(_seat_layer, Rect2(320, 0, 1920, 760), scale)
+	_set_design_rect(_seat_layer, Rect2(0, 0, 2560, 1000), scale)
 	_set_design_rect(_dealer_label, Rect2(1150, 60, 260, 40), scale)
 	_set_design_rect(_pot_display, Rect2(1130, 330, 300, 82), scale)
 	_set_design_rect(_community_board, Rect2(960, 430, 640, 122), scale)
 	# Position the local controls container with cards, timer and action bar
-	_set_design_rect(_local_controls_container, Rect2(770, 740, 1020, 240), scale)
+	_set_design_rect(_local_controls_container, Rect2(770, 785, 1020, 215), scale)
 
-	# Ellipse seat positioning with optimized radius and vertical-gap angles
-	var center := Vector2(960, 360)
-	var rx := 660.0
-	var ry := 240.0
 	var normal_seat_size := Vector2(200, 80)
 	var local_seat_size := Vector2(200, 80)
 
-	var seat_angles := {
-		1: deg_to_rad(-65.0),
-		2: deg_to_rad(-35.0),
-		3: deg_to_rad(35.0),
-		4: deg_to_rad(65.0),
-		# 5 is locked at bottom center
-		6: deg_to_rad(115.0),
-		7: deg_to_rad(145.0),
-		8: deg_to_rad(215.0),
-		9: deg_to_rad(245.0)
+	var fixed_positions := {
+		1: Vector2(1650, 190),  # 对应红字 1：右上转角
+		2: Vector2(1880, 310),  # 对应红字 2：右侧中上
+		3: Vector2(1880, 640),  # 对应红字 3：右侧中下
+		4: Vector2(1580, 780),  # 对应红字 4：右下转角
+		5: Vector2(1280, 810),  # 对应红字 5：本地玩家（ You，正下方绝对居中）
+		6: Vector2(980, 780),   # 对应红字 6：左下转角
+		7: Vector2(680, 640),   # 对应红字 7：左侧中下
+		8: Vector2(680, 310),   # 对应红字 8：左侧中上
+		9: Vector2(910, 190)    # 对应红字 9：左上转角
 	}
 
 	for visual_position in range(1, 10):
-		if visual_position == 5:
-			var rect5 := Rect2(Vector2(960, 645) - local_seat_size * 0.5, local_seat_size)
-			_set_design_rect(_seats[visual_position], rect5, scale)
-		else:
-			var angle: float = seat_angles[visual_position]
-			var pos := center + Vector2(cos(angle) * rx, sin(angle) * ry)
-			var rect := Rect2(pos - normal_seat_size * 0.5, normal_seat_size)
-			_set_design_rect(_seats[visual_position], rect, scale)
+		var pos: Vector2 = fixed_positions[visual_position]
+		var size_val := local_seat_size if visual_position == 5 else normal_seat_size
+		var rect := Rect2(pos - size_val * 0.5, size_val)
+		_set_design_rect(_seats[visual_position], rect, scale)
 
 func _set_design_rect(node: Control, rect: Rect2, scale: float) -> void:
 	node.position = rect.position * scale

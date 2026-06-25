@@ -58,6 +58,8 @@ func set_seat_data(data: Dictionary) -> void:
 	if _name_label == null:
 		return
 		
+	_layout_children()
+		
 	var empty := String(seat_data.get("status", "")) == "empty"
 	var is_local := bool(seat_data.get("is_local", false))
 	
@@ -111,28 +113,31 @@ func _make_label(font_size: int, color: Color) -> Label:
 	return label
 
 func _layout_children() -> void:
+	var is_local := bool(seat_data.get("is_local", false)) if seat_data else false
+	var y_offset := -60 if is_local else 0
+
 	# Card backs positioned above the avatar badge
-	_cards_root.position = Vector2(10, -5)
+	_cards_root.position = Vector2(10, -5 + y_offset)
 	_cards_root.size = Vector2(50, 30)
 
 	# Name Label (inside the pill)
-	_name_label.position = Vector2(54, 27)
+	_name_label.position = Vector2(54, 27 + y_offset)
 	_name_label.size = Vector2(136, 18)
 	
 	# Chips Label (Text offset to leave space for gold chip)
-	_chips_label.position = Vector2(68, 43)
+	_chips_label.position = Vector2(68, 43 + y_offset)
 	_chips_label.size = Vector2(122, 16)
 	
 	# Status Label (overlapping name box area if active)
-	_status_label.position = Vector2(54, 7)
+	_status_label.position = Vector2(54, 7 + y_offset)
 	_status_label.size = Vector2(136, 16)
 	
 	# Bet label (Floating below seat)
-	_bet_label.position = Vector2(54, 66)
+	_bet_label.position = Vector2(54, 66 + y_offset)
 	_bet_label.size = Vector2(136, 16)
 	
 	# Role label badge (centered inside the role circle)
-	_role_label.position = Vector2(37, 52)
+	_role_label.position = Vector2(37, 52 + y_offset)
 	_role_label.size = Vector2(18, 18)
 
 func _draw() -> void:
@@ -140,6 +145,7 @@ func _draw() -> void:
 	var folded := String(seat_data.get("status", "")) == "folded"
 	var empty := String(seat_data.get("status", "")) == "empty"
 	var is_local := bool(seat_data.get("is_local", false))
+	var y_offset := -60 if is_local else 0
 
 	# Frosted dark-glass background style for name/chips pill only!
 	var bg_color := Color(0.008, 0.006, 0.015, 0.65)
@@ -174,11 +180,11 @@ func _draw() -> void:
 		style.border_width_bottom = 2
 
 	# Draw the pill behind the name and chips text only!
-	var pill_rect := Rect2(48, 25, 142, 40)
+	var pill_rect := Rect2(48, 25 + y_offset, 142, 40)
 	style.draw(get_canvas_item(), pill_rect)
 	
 	# Draw player avatar circle
-	var avatar_center := Vector2(30, 45)
+	var avatar_center := Vector2(30, 45 + y_offset)
 	var avatar_color := Color(0.18, 0.15, 0.28, 0.8)
 	var avatar_border := Color(0.62, 0.36, 1.0, 0.45)
 	
@@ -209,7 +215,7 @@ func _draw() -> void:
 		draw_circle(avatar_center, 14, Color(avatar_border.r, avatar_border.g, avatar_border.b, 0.25))
 		
 		# Draw gold micro-chip icon next to the chip count
-		var chip_center := Vector2(58, 51)
+		var chip_center := Vector2(58, 51 + y_offset)
 		draw_circle(chip_center, 4.5, Color(1.0, 0.84, 0.0, 0.95))
 		draw_circle(chip_center, 2.5, Color(0.9, 0.45, 0.0, 0.95))
 		draw_circle(chip_center, 1.0, Color(1.0, 1.0, 1.0, 0.95))
