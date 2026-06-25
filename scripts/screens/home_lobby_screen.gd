@@ -44,6 +44,8 @@ var _fade_overlay: ColorRect
 var _bgm_player: AudioStreamPlayer
 
 const MockDataProvider := preload("res://scripts/demo/mock_data_provider.gd")
+const ScreenNavigator := preload("res://scripts/app/screen_navigator.gd")
+const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
 const MODE_IMAGES := {
 	"quick_play": "res://assets/home_lobby/mode_cards/mode_quick_play.png",
 	"room_browser": "res://assets/home_lobby/mode_cards/mode_cash_tables.png",
@@ -60,6 +62,8 @@ const LOGO_EXPANDED_SCALE := Vector2(0.58, 0.58)
 var _cta_button: Button
 var _cta_float_time := 0.0
 var _cta_hover_tween: Tween
+var _toast_label: Label
+var _toast_tween: Tween
 
 func _ready() -> void:
 	# Force standalone windowed mode to bypass Godot editor stretch bugs
@@ -86,7 +90,7 @@ func _ready() -> void:
 	
 	_bgm_player = AudioStreamPlayer.new()
 	_bgm_player.name = "BGMPlayer"
-	var ogg := load("res://assets/music/bgm1.ogg")
+	var ogg = load("res://assets/music/bgm1.ogg") if ResourceLoader.exists("res://assets/music/bgm1.ogg") else AudioStreamOggVorbis.load_from_file(ProjectSettings.globalize_path("res://assets/music/bgm1.ogg"))
 	if ogg:
 		if ogg.has_method("set_loop"):
 			ogg.set_loop(true)
@@ -227,6 +231,7 @@ func _build_layout() -> void:
 	HomeTheme.make_font_settings(_prompt, 14, Color(0.86, 0.90, 1.0, 0.86))
 	_lobby_ui_root.add_child(_prompt)
 	_build_cta_button()
+	_build_toast()
 
 func _build_center_brand() -> void:
 	_center_brand = Control.new()
@@ -373,7 +378,7 @@ func _on_nav_selected(id: String) -> void:
 func _on_play_submenu_selected(id: String) -> void:
 	print("Selected play submenu: %s" % id)
 	if id == "room_browser":
-		set_state(LobbyState.ROOM_BROWSER)
+		_show_coming_soon("ROOM BROWSER")
 
 var _transition_tween: Tween
 
@@ -511,8 +516,21 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 
 func _on_mode_selected(id: String) -> void:
 	print("Selected lobby mode: %s" % id)
-	if id == "room_browser":
-		set_state(LobbyState.ROOM_BROWSER)
+	match id:
+		"quick_play":
+			TableLaunchContext.configure("quick_play", "mock_table_001")
+			ScreenNavigator.open_poker_table(get_tree(), "quick_play", "mock_table_001")
+		"training":
+			TableLaunchContext.configure("training", "mock_training_table_001")
+			ScreenNavigator.open_poker_table(get_tree(), "training", "mock_training_table_001")
+		"room_browser":
+			_show_coming_soon("ROOM BROWSER")
+		"private_table":
+			_show_coming_soon("PRIVATE TABLE")
+		"events":
+			_show_coming_soon("EVENTS")
+		_:
+			_show_coming_soon(id.to_upper())
 
 func set_background_motion_enabled(value: bool) -> void:
 	background_motion_enabled = value
@@ -710,6 +728,41 @@ func _on_join_pressed(room_id: String) -> void:
 	tween.tween_property(_fade_overlay, "color", Color(0.0, 0.0, 0.0, 1.0), 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tween.tween_callback(func() -> void:
 		print("Transition complete. Poker table %s loaded." % room_id)
+		ScreenNavigator.open_poker_table(get_tree(), "quick_play", room_id)
+	)
+
+func _build_toast() -> void:
+	_toast_label = Label.new()
+	_toast_label.name = "ComingSoonToast"
+	_toast_label.anchor_left = 0.5
+	_toast_label.anchor_right = 0.5
+	_toast_label.anchor_top = 1.0
+	_toast_label.anchor_bottom = 1.0
+	_toast_label.offset_left = -180
+	_toast_label.offset_right = 180
+	_toast_label.offset_top = -128
+	_toast_label.offset_bottom = -88
+	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_toast_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_toast_label.modulate.a = 0.0
+	_toast_label.visible = false
+	HomeTheme.make_font_settings(_toast_label, 15, Color(0.96, 0.92, 1.0, 0.96))
+	_lobby_ui_root.add_child(_toast_label)
+
+func _show_coming_soon(label: String) -> void:
+	if _toast_label == null:
+		return
+	_toast_label.text = "%s - Coming Soon" % label
+	_toast_label.visible = true
+	if _toast_tween:
+		_toast_tween.kill()
+	_toast_tween = create_tween()
+	_toast_tween.tween_property(_toast_label, "modulate:a", 1.0, 0.12)
+	_toast_tween.tween_interval(1.75)
+	_toast_tween.tween_property(_toast_label, "modulate:a", 0.0, 0.18)
+	_toast_tween.tween_callback(func() -> void:
+		_toast_label.visible = false
 	)
 
 func _build_room_browser_panel() -> void:

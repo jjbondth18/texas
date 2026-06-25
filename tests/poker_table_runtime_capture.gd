@@ -1,6 +1,7 @@
 extends SceneTree
 
 const PokerTableScene := preload("res://scenes/screens/poker_table_screen.tscn")
+const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
 
 func _init() -> void:
 	call_deferred("_run")
@@ -10,6 +11,7 @@ func _run() -> void:
 	if OS.has_method("get_cmdline_user_args"):
 		args.append_array(OS.get_cmdline_user_args())
 	var phase := "preflop"
+	var launch_mode := "quick_play"
 	var output := "res://docs/screenshots/runtime_poker_table_preflop.png"
 	var phase_index := args.find("--capture-table-phase")
 	if phase_index >= 0 and phase_index + 1 < args.size():
@@ -17,6 +19,10 @@ func _run() -> void:
 	var output_index := args.find("--capture-output")
 	if output_index >= 0 and output_index + 1 < args.size():
 		output = String(args[output_index + 1])
+	var mode_index := args.find("--launch-mode")
+	if mode_index >= 0 and mode_index + 1 < args.size():
+		launch_mode = String(args[mode_index + 1])
+	TableLaunchContext.configure(launch_mode, "mock_training_table_001" if launch_mode == "training" else "mock_table_001")
 
 	root.size = Vector2i(1920, 1080)
 	var scene = PokerTableScene.instantiate()

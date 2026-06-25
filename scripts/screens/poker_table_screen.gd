@@ -9,6 +9,8 @@ const InfoPanelScene := preload("res://scenes/components/table_info_panel.tscn")
 const StatusPanelScene := preload("res://scenes/components/table_status_panel.tscn")
 const PotDisplayScene := preload("res://scenes/components/pot_display.tscn")
 const CardViewScene := preload("res://scenes/components/card_view.tscn")
+const ScreenNavigator := preload("res://scripts/app/screen_navigator.gd")
+const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
 
 const DESIGN_SIZE := Vector2(2560, 1000)
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
@@ -37,7 +39,7 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_ESCAPE:
-				get_tree().quit()
+				_return_home()
 			KEY_1:
 				_load_phase("preflop")
 			KEY_2:
@@ -76,6 +78,7 @@ func _build_scene() -> void:
 
 	_status_panel = StatusPanelScene.instantiate()
 	_status_panel.name = "RightStatusPanel"
+	_status_panel.exit_table_requested.connect(_return_home)
 	_content_root.add_child(_status_panel)
 
 	_seat_layer = Control.new()
@@ -162,6 +165,7 @@ func _set_design_rect(node: Control, rect: Rect2, scale: float) -> void:
 
 func _load_phase(phase: String) -> void:
 	snapshot = MockTableSimulation.get_phase_snapshot(phase)
+	_apply_launch_context(snapshot)
 	_refresh()
 
 func _refresh() -> void:
@@ -229,3 +233,36 @@ func _capture_and_quit() -> void:
 	var image := get_viewport().get_texture().get_image()
 	image.save_png(_capture_output)
 	get_tree().quit()
+
+func _return_home() -> void:
+	ScreenNavigator.return_home(get_tree())
+
+func _apply_launch_context(target_snapshot: Dictionary) -> void:
+	if TableLaunchContext.is_training or TableLaunchContext.launch_mode == "training":
+		target_snapshot["table_id"] = TableLaunchContext.table_id
+		target_snapshot["table_name"] = "Training Table"
+		target_snapshot["connection_status"] = "OFFLINE TRAINING"
+		var history: Array = Array(target_snapshot.get("hand_history", [])).duplicate()
+		history.insert(0, "Training hint: use Call/Raise to observe mock pot updates")
+		target_snapshot["hand_history"] = history
+		var messages: Array = Array(target_snapshot.get("system_messages", [])).duplicate()
+		messages.insert(0, "Training Mode: AI opponents, no network authority")
+		target_snapshot["system_messages"] = messages
+		var seats: Array = Array(target_snapshot.get("seats", [])).duplicate(true)
+		for i in seats.size():
+			var seat := Dictionary(seats[i]).duplicate(true)
+			if not bool(seat.get("is_local", false)) and String(seat.get("status", "")) != "empty":
+				seat["player_name"] = "AI Seat %d" % int(seat.get("seat_index", 0))
+			seats[i] = seat
+		target_snapshot["seats"] = seats
+		target_snapshot["local_player"] = _find_local_player(seats)
+	else:
+		target_snapshot["table_id"] = TableLaunchContext.table_id
+		target_snapshot["connection_status"] = "Mock online table"
+
+func _find_local_player(seats: Array) -> Dictionary:
+	for seat in seats:
+		var data := Dictionary(seat)
+		if bool(data.get("is_local", false)):
+			return data
+	return {}
