@@ -1,0 +1,40 @@
+[gd_scene load_steps=2 format=3]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_currency"]
+bg_color = Color(0.025, 0.032, 0.07, 0.88)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.77, 0.24, 0.72)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
+
+[node name="CurrencyPill" type="PanelContainer"]
+custom_minimum_size = Vector2(142, 44)
+theme_override_styles/panel = SubResource("StyleBoxFlat_currency")
+
+[node name="HBoxContainer" type="HBoxContainer" parent="."]
+layout_mode = 2
+
+[node name="Accent" type="ColorRect" parent="HBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(8, 8)
+color = Color(1, 0.77, 0.24, 1)
+
+[node name="Texts" type="VBoxContainer" parent="HBoxContainer"]
+layout_mode = 2
+
+[node name="Label" type="Label" parent="HBoxContainer/Texts"]
+layout_mode = 2
+text = "CHIPS"
+
+[node name="Value" type="Label" parent="HBoxContainer/Texts"]
+layout_mode = 2
+text = "25,750"

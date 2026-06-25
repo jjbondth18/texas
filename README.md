@@ -1,0 +1,76 @@
+# Neon Texas Hold'em Lobby
+
+Godot 4.x Home/Lobby vertical slice for a premium desktop-first Steam Texas Hold'em game prototype.
+
+This slice is UI-only. It does not implement networking, Steam API, poker gameplay, store backend, payment, or a real economy.
+
+## Run In Godot
+
+1. Open `C:\Users\jjbon\Documents\texas` in Godot 4.x.
+2. Run the project.
+3. Main scene: `res://scenes/screens/home_lobby_screen.tscn`.
+
+The project is configured for a 1920x1080 desktop-first 16:9 lobby.
+
+## State Controls
+
+- Default launch state is collapsed cinematic home.
+- Click `PLAY` in the left navigation rail to open the Play expanded state.
+- Click `HOME` to return to the collapsed state.
+- Press `Esc` while expanded to collapse.
+- Click a mode card to print `Selected lobby mode: <id>` in the Godot output.
+- Other navigation items currently print a Coming Soon message only.
+
+## Implemented Motion
+
+- Slow shader-based background flow.
+- Subtle Logo breathing pulse.
+- Left nav hover and active indicator.
+- PLAY submenu fade-in.
+- Play panel fade and slide reveal.
+- Mode card stagger reveal.
+- Mode card hover lift, scale, border glow, and shadow.
+- Mode card press compression and rebound.
+- Daily Bonus slide-in.
+- Subtle foreground chip/card drift.
+
+## Screenshots
+
+- `docs/screenshots/collapsed_home.png`
+- `docs/screenshots/play_expanded.png`
+
+Important: these two PNG files are static visual references generated in this environment. They are not real Godot runtime screenshots.
+
+Godot was not available on PATH in this environment, so real engine screenshots and runtime validation still need to be captured from the Godot editor.
+
+## Audit
+
+See `docs/home_lobby_audit.md` for the full audit against the complete project start pack and visual reference.
+
+## Placeholder Assets
+
+- Logo: Godot text and procedural spade/glow placeholder.
+- Background: procedural atmosphere layer plus shader flow.
+- Mode cards: procedural placeholder art for cards, chips, trophy, table, and club badge.
+- Top avatar and icons: simple UI placeholders.
+- Foreground chips/cards: procedural drawings, not final PNG assets.
+
+## Key Files
+
+- `scenes/screens/home_lobby_screen.tscn`
+- `scenes/components/top_bar.tscn`
+- `scenes/components/left_nav_rail.tscn`
+- `scenes/components/nav_item.tscn`
+- `scenes/components/mode_card.tscn`
+- `scenes/components/daily_bonus_bar.tscn`
+- `scripts/screens/home_lobby_screen.gd`
+- `scripts/components/top_bar.gd`
+- `scripts/components/left_nav_rail.gd`
+- `scripts/components/nav_item.gd`
+- `scripts/components/mode_card.gd`
+- `scripts/components/daily_bonus_bar.gd`
+- `scripts/motion/motion_manager.gd`
+- `scripts/data/mock_home_data.gd`
+- `scripts/theme/home_theme.gd`
+- `shaders/flow_noise_bg.gdshader`
+- `shaders/neon_soft_glow.gdshader`
