@@ -15,6 +15,7 @@ const MAIN_RIGHT := 70.0
 
 var current_state: LobbyState = LobbyState.COLLAPSED
 var _background_root: Control
+var _background_texture: TextureRect
 var _lobby_ui_root: Control
 var _left_nav: LeftNavRail
 var _top_bar: TopBar
@@ -27,6 +28,7 @@ var _daily_bonus: Control
 var _mode_cards: Array[ModeCard] = []
 var _foreground_decor: TextureRect
 var _expanded := false
+var _bg_breath_tween: Tween
 
 func _ready() -> void:
 	# Force standalone windowed mode to bypass Godot editor stretch bugs
@@ -71,15 +73,15 @@ func _build_background() -> void:
 	_background_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_background_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_background_root)
-	var base := TextureRect.new()
-	base.name = "BackgroundTexture"
-	base.set_anchors_preset(Control.PRESET_FULL_RECT)
-	base.texture = load(BACKGROUND_TEXTURE_PATH)
-	base.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	base.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	base.modulate = Color(1.34, 1.30, 1.40, 1.0)
-	base.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_background_root.add_child(base)
+	_background_texture = TextureRect.new()
+	_background_texture.name = "BackgroundTexture"
+	_background_texture.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_background_texture.texture = load(BACKGROUND_TEXTURE_PATH)
+	_background_texture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_background_texture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_background_texture.modulate = Color(1.34, 1.30, 1.40, 1.0)
+	_background_texture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_background_root.add_child(_background_texture)
 	var center_lift := ColorRect.new()
 	center_lift.name = "BackgroundCenterLift"
 	center_lift.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -274,12 +276,27 @@ func _on_play_submenu_selected(id: String) -> void:
 
 var _transition_tween: Tween
 
+func _start_bg_breathing() -> void:
+	if _bg_breath_tween:
+		_bg_breath_tween.kill()
+	if not _background_texture:
+		return
+	_bg_breath_tween = create_tween().set_loops()
+	_bg_breath_tween.tween_property(_background_texture, "modulate", Color(1.18, 1.15, 1.25, 1.0), 3.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_bg_breath_tween.tween_property(_background_texture, "modulate", Color(1.34, 1.30, 1.40, 1.0), 3.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+func _stop_bg_breathing() -> void:
+	if _bg_breath_tween:
+		_bg_breath_tween.kill()
+		_bg_breath_tween = null
+
 func _set_expanded(value: bool, immediate: bool = false) -> void:
 	_expanded = value
 	
 	var logo_target := 0.15 if value else 1.0
 	var prompt_target := 0.0 if value else 1.0
 	var panel_target := 1.0 if value else 0.0
+	var bg_target := Color(0.48, 0.45, 0.52, 1.0) if value else Color(1.34, 1.30, 1.40, 1.0)
 	
 	if _transition_tween:
 		_transition_tween.kill()
@@ -291,11 +308,17 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 		_prompt.visible = not value
 		_play_panel.modulate.a = panel_target
 		_play_panel.visible = value
+		_stop_bg_breathing()
+		if _background_texture:
+			_background_texture.modulate = bg_target
+		if not value:
+			_start_bg_breathing()
 		return
 		
 	_transition_tween = create_tween().set_parallel(true)
 	
 	if value:
+		_stop_bg_breathing()
 		_play_panel.visible = true
 		_play_panel.modulate.a = 0.0
 		_transition_tween.tween_property(_play_panel, "modulate:a", 1.0, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
@@ -303,6 +326,8 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 		_center_brand.visible = true
 		_transition_tween.tween_property(_center_brand, "modulate:a", 0.15, 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		_transition_tween.tween_property(_prompt, "modulate:a", 0.0, 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		if _background_texture:
+			_transition_tween.tween_property(_background_texture, "modulate", bg_target, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		
 		_transition_tween.chain().tween_callback(func() -> void:
 			_prompt.visible = false
@@ -316,9 +341,12 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 		_transition_tween.tween_property(_prompt, "modulate:a", 1.0, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		
 		_transition_tween.tween_property(_play_panel, "modulate:a", 0.0, 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		if _background_texture:
+			_transition_tween.tween_property(_background_texture, "modulate", bg_target, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		
 		_transition_tween.chain().tween_callback(func() -> void:
 			_play_panel.visible = false
+			_start_bg_breathing()
 		)
 
 func _on_mode_selected(id: String) -> void:
