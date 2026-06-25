@@ -12,7 +12,7 @@ func _ready() -> void:
 	# 暗玻璃背景 StyleBoxFlat
 	var style := HomeTheme.make_panel_style(
 		Color(0.008, 0.006, 0.015, 0.76),
-		Color(0.62, 0.36, 1.0, 0.24),
+		Color(1.0, 0.0, 0.5, 0.55), # Neon Magenta border
 		12,
 		1
 	)
@@ -56,37 +56,44 @@ func _ready() -> void:
 		exit_table_requested.emit()
 	)
 	vbox.add_child(_exit_button)
-
+ 
 func set_status(snapshot: Dictionary) -> void:
 	if _text == null:
 		return
-	var local := Dictionary(snapshot.get("local_player", {}))
 	var seats := Array(snapshot.get("seats", []))
-	var occupied := 0
-	for seat in seats:
-		if String(Dictionary(seat).get("status", "")) != "empty":
-			occupied += 1
-	var lines := [
-		"[b]TABLE STATUS[/b]",
-		"Name: %s" % String(snapshot.get("table_name", "")),
-		"ID: %s" % String(snapshot.get("table_id", "")),
-		"Phase: %s" % String(snapshot.get("phase", "")),
-		"Blinds: %s" % String(snapshot.get("blinds_text", "")),
-		"Players: %d / 9" % occupied,
-		"Local Chips: %s" % int(local.get("chips", 0)),
-		"",
-		"[b]CONNECTION[/b]",
-		String(snapshot.get("connection_status", "Mock local")),
-		"",
-		"[b]OPPONENT ACTIONS[/b]"
-	]
+	var active_players := []
+	for seat_data in seats:
+		var seat := Dictionary(seat_data)
+		if String(seat.get("status", "")) != "empty":
+			active_players.append(seat)
+			
+	# Sort leaderboard by chips descending
+	active_players.sort_custom(func(a, b): return int(a.get("chips", 0)) > int(b.get("chips", 0)))
 	
+	var lines := []
+	lines.append("[center][color=#ff0080][b]LEADERBOARD[/b][/color][/center]")
+	var rank := 1
+	for player in active_players:
+		var name_str := String(player.get("player_name", ""))
+		var chips := int(player.get("chips", 0))
+		var is_local := bool(player.get("is_local", false))
+		var color_tag := "[color=#00c8ff]" if is_local else "[color=#ffffff]"
+		lines.append(" %d. %s%s[/color]: [color=#ffdd70]%d[/color]" % [rank, color_tag, name_str, chips])
+		rank += 1
+		
+	lines.append("")
+	lines.append("[center][color=#9b5cff][b]LIVE STATS[/b][/color][/center]")
+	lines.append(" VPIP: [color=#00c8ff]24.5%[/color]  PFR: [color=#ff0080]18.2%[/color]")
+	lines.append(" 3-Bet: [color=#00ff80]6.8%[/color]  AF: [color=#ffdd70]2.1[/color]")
+	lines.append(" Win Rate: [color=#ff8000]54.2%[/color]")
+	
+	lines.append("")
+	lines.append("[center][color=#00ff80][b]OPPONENT ACTIONS[/b][/color][/center]")
 	for seat_data in seats:
 		var seat := Dictionary(seat_data)
 		var status_str := String(seat.get("status", ""))
 		if status_str != "empty":
 			var name_str := String(seat.get("player_name", ""))
-			var chips := int(seat.get("chips", 0))
 			var is_turn := bool(seat.get("is_turn", false))
 			var last_action := String(seat.get("last_action", ""))
 			var is_local := bool(seat.get("is_local", false))
@@ -104,7 +111,7 @@ func set_status(snapshot: Dictionary) -> void:
 				indicator = "  "
 				
 			var role := " (YOU)" if is_local else ""
-			var line := "%s%s%s: %d%s" % [indicator, name_str, role, chips, action_suffix]
+			var line := "%s%s%s%s" % [indicator, name_str, role, action_suffix]
 			if is_turn:
 				line = "[b]%s[/b]" % line
 			lines.append(line)

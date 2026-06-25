@@ -41,6 +41,9 @@ func _update() -> void:
 		return
 	if is_mini_back:
 		_label.visible = false
+	var current_height := custom_minimum_size.y
+	var font_size := int(current_height * 0.24)
+	_label.add_theme_font_size_override("font_size", font_size)
 	var face_up := bool(card_data.get("face_up", false))
 	if not face_up:
 		_label.text = "◆"

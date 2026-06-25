@@ -11,6 +11,7 @@ const PotDisplayScene := preload("res://scenes/components/pot_display.tscn")
 const CardViewScene := preload("res://scenes/components/card_view.tscn")
 const ScreenNavigator := preload("res://scripts/app/screen_navigator.gd")
 const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
+const RoomInfoPanelScene := preload("res://scripts/components/table_room_info_panel.gd")
 
 const DESIGN_SIZE := Vector2(2560, 1000)
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
@@ -23,6 +24,7 @@ var _community_board
 var _pot_display
 var _action_bar
 var _info_panel
+var _room_info_panel: PanelContainer
 var _status_panel
 var _timer_label: Label
 var _dealer_label: Label
@@ -81,6 +83,10 @@ func _build_scene() -> void:
 	_info_panel = InfoPanelScene.instantiate()
 	_info_panel.name = "LeftInfoPanel"
 	_content_root.add_child(_info_panel)
+
+	_room_info_panel = RoomInfoPanelScene.new()
+	_room_info_panel.name = "LeftRoomInfoPanel"
+	_content_root.add_child(_room_info_panel)
 
 	_status_panel = StatusPanelScene.instantiate()
 	_status_panel.name = "RightStatusPanel"
@@ -154,12 +160,13 @@ func _layout() -> void:
 	_content_root.position = (size - content_size) * 0.5
 	_content_root.size = content_size
 
-	_set_design_rect(_info_panel, Rect2(0, 0, 320, 1000), scale)
+	_set_design_rect(_room_info_panel, Rect2(0, 0, 320, 220), scale)
+	_set_design_rect(_info_panel, Rect2(0, 240, 320, 760), scale)
 	_set_design_rect(_status_panel, Rect2(2240, 0, 320, 1000), scale)
 	_set_design_rect(_seat_layer, Rect2(0, 0, 2560, 1000), scale)
 	_set_design_rect(_dealer_label, Rect2(1150, 60, 260, 40), scale)
 	_set_design_rect(_pot_display, Rect2(1130, 330, 300, 82), scale)
-	_set_design_rect(_community_board, Rect2(960, 430, 640, 122), scale)
+	_set_design_rect(_community_board, Rect2(880, 430, 800, 140), scale)
 	# Position the local controls container with cards, timer and action bar
 	_set_design_rect(_local_controls_container, Rect2(770, 785, 1020, 215), scale)
 
@@ -207,6 +214,11 @@ func _refresh() -> void:
 	_pot_display.set_pot(snapshot.get("pot_data", snapshot.get("pot", 0)))
 	_action_bar.set_actions(Array(snapshot.get("available_actions", [])))
 	_info_panel.set_info(Array(snapshot.get("hand_history", [])), Array(snapshot.get("system_messages", [])))
+	if _room_info_panel:
+		_room_info_panel.set_room_info(
+			snapshot.get("table_id", "mock_table_001"),
+			snapshot.get("blinds_text", "25/50")
+		)
 	_status_panel.set_status(snapshot)
 	_timer_label.text = "TURN TIMER  %ds" % int(snapshot.get("turn_seconds", 15))
 	var local := Dictionary(snapshot.get("local_player", {}))

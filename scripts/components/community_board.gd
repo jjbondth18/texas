@@ -15,7 +15,7 @@ func _ready() -> void:
 	add_child(_cards_root)
 	for i in range(5):
 		var card = CardViewScene.instantiate()
-		card.custom_minimum_size = Vector2(74, 104)
+		card.custom_minimum_size = Vector2(96, 136)
 		_cards_root.add_child(card)
 		_slots.append(card)
 	set_cards([])
