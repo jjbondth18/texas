@@ -7,7 +7,8 @@ enum LobbyState {
 	REPLAY,
 	STORE,
 	PROFILE,
-	SETTINGS
+	SETTINGS,
+	ROOM_BROWSER
 }
 
 @export var background_motion_enabled := true
@@ -28,6 +29,7 @@ var _center_brand: Control
 var _logo_fallback: Control
 var _prompt: Label
 var _play_panel: PanelContainer
+var _room_browser_panel: PanelContainer
 var _replay_panel: PanelContainer
 var _store_panel: PanelContainer
 var _profile_panel: PanelContainer
@@ -38,6 +40,7 @@ var _mode_cards: Array[ModeCard] = []
 var _foreground_decor: TextureRect
 var _expanded := false
 var _bg_breath_tween: Tween
+var _fade_overlay: ColorRect
 
 const MockDataProvider := preload("res://scripts/demo/mock_data_provider.gd")
 const MODE_IMAGES := {
@@ -66,10 +69,19 @@ func _ready() -> void:
 	_build_foreground()
 	_build_layout()
 	_build_play_panel()
+	_build_room_browser_panel()
 	_build_replay_panel()
 	_build_store_panel()
 	_build_profile_panel()
 	_build_settings_panel()
+	
+	_fade_overlay = ColorRect.new()
+	_fade_overlay.name = "FadeOverlay"
+	_fade_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fade_overlay.color = Color(0, 0, 0, 0)
+	_fade_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fade_overlay.visible = false
+	add_child(_fade_overlay)
 	
 	var lobby_vm := MockDataProvider.get_lobby_view_model()
 	_top_bar.configure(lobby_vm["player"])
@@ -82,7 +94,7 @@ func set_state(new_state: LobbyState, animated: bool = true) -> void:
 	var nav_id := "home"
 	match current_state:
 		LobbyState.COLLAPSED: nav_id = "home"
-		LobbyState.PLAY_EXPANDED: nav_id = "play"
+		LobbyState.PLAY_EXPANDED, LobbyState.ROOM_BROWSER: nav_id = "play"
 		LobbyState.REPLAY: nav_id = "replay"
 		LobbyState.STORE: nav_id = "store"
 		LobbyState.PROFILE: nav_id = "profile"
@@ -344,6 +356,8 @@ func _on_nav_selected(id: String) -> void:
 
 func _on_play_submenu_selected(id: String) -> void:
 	print("Selected play submenu: %s" % id)
+	if id == "room_browser":
+		set_state(LobbyState.ROOM_BROWSER)
 
 var _transition_tween: Tween
 
@@ -368,6 +382,7 @@ func _get_panel_for_state(state: LobbyState) -> PanelContainer:
 		LobbyState.STORE: return _store_panel
 		LobbyState.PROFILE: return _profile_panel
 		LobbyState.SETTINGS: return _settings_panel
+		LobbyState.ROOM_BROWSER: return _room_browser_panel
 		_: return null
 
 func _set_expanded(value: bool, immediate: bool = false) -> void:
@@ -380,7 +395,7 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 	var logo_scale := LOGO_EXPANDED_SCALE if value else LOGO_COLLAPSED_SCALE
 	
 	var active_panel := _get_panel_for_state(current_state)
-	var all_panels := [_play_panel, _replay_panel, _store_panel, _profile_panel, _settings_panel]
+	var all_panels := [_play_panel, _replay_panel, _store_panel, _profile_panel, _settings_panel, _room_browser_panel]
 	
 	if _transition_tween:
 		_transition_tween.kill()
@@ -480,6 +495,8 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 
 func _on_mode_selected(id: String) -> void:
 	print("Selected lobby mode: %s" % id)
+	if id == "room_browser":
+		set_state(LobbyState.ROOM_BROWSER)
 
 func set_background_motion_enabled(value: bool) -> void:
 	background_motion_enabled = value
@@ -515,6 +532,8 @@ func _handle_runtime_capture_args() -> void:
 		set_state(LobbyState.PROFILE, false)
 	elif state == "settings":
 		set_state(LobbyState.SETTINGS, false)
+	elif state == "room_browser":
+		set_state(LobbyState.ROOM_BROWSER, false)
 	else:
 		set_state(LobbyState.COLLAPSED, false)
 	var hover_index := _arg_value(args, "--capture-lobby-hover-index", "")
@@ -664,6 +683,164 @@ func _process(delta: float) -> void:
 			_cta_button.modulate.a = alpha
 		else:
 			_cta_button.modulate.a = 1.0
+
+func _on_join_pressed(room_id: String) -> void:
+	print("Loading Poker Table: %s..." % room_id)
+	_fade_overlay.visible = true
+	_fade_overlay.color = Color(0, 0, 0, 0)
+	_fade_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_stop_bg_breathing()
+	var tween := create_tween()
+	tween.tween_property(_fade_overlay, "color", Color(0.0, 0.0, 0.0, 1.0), 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_callback(func() -> void:
+		print("Transition complete. Poker table %s loaded." % room_id)
+	)
+
+func _build_room_browser_panel() -> void:
+	_room_browser_panel = PanelContainer.new()
+	_room_browser_panel.name = "RoomBrowserPanel"
+	_room_browser_panel.anchor_left = 0.0
+	_room_browser_panel.anchor_top = 0.32
+	_room_browser_panel.anchor_right = 1.0
+	_room_browser_panel.anchor_bottom = 0.91
+	_room_browser_panel.offset_left = MAIN_LEFT
+	_room_browser_panel.offset_right = -MAIN_RIGHT
+	_room_browser_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	_room_browser_panel.custom_minimum_size = Vector2(0, 580)
+	_room_browser_panel.visible = false
+	_room_browser_panel.modulate.a = 0.0
+	_room_browser_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.016, 0.72), Color(0.62, 0.36, 1.0, 0.28), 8, 1))
+	_lobby_ui_root.add_child(_room_browser_panel)
+	
+	var content := VBoxContainer.new()
+	content.name = "RoomBrowserContent"
+	content.add_theme_constant_override("separation", 20)
+	_room_browser_panel.add_child(content)
+	
+	var title_box := VBoxContainer.new()
+	content.add_child(title_box)
+	var title := Label.new()
+	title.text = "ROOM BROWSER"
+	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
+	title_box.add_child(title)
+	var sub := Label.new()
+	sub.text = "CHOOSE A NEON TABLE AND JOIN THE GAME"
+	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
+	title_box.add_child(sub)
+	
+	var list_container := PanelContainer.new()
+	list_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	list_container.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.012, 0.50), Color(0.2, 0.24, 0.38, 0.25), 8, 1))
+	content.add_child(list_container)
+	
+	var list_vbox := VBoxContainer.new()
+	list_vbox.add_theme_constant_override("separation", 8)
+	list_container.add_child(list_vbox)
+	
+	var header_hbox := HBoxContainer.new()
+	header_hbox.custom_minimum_size = Vector2(0, 40)
+	header_hbox.add_theme_constant_override("separation", 10)
+	
+	var header_pad := MarginContainer.new()
+	header_pad.add_theme_constant_override("margin_left", 20)
+	header_pad.add_theme_constant_override("margin_right", 20)
+	header_pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header_pad.add_child(header_hbox)
+	list_vbox.add_child(header_pad)
+	
+	var col_widths := [320, 200, 200, 260, 160]
+	var headers := ["ROOM NAME", "BLINDS", "PLAYERS", "BUY-IN LIMITS", ""]
+	
+	for i in range(headers.size()):
+		var lbl := Label.new()
+		lbl.text = headers[i]
+		lbl.custom_minimum_size = Vector2(col_widths[i], 0)
+		HomeTheme.make_font_settings(lbl, 13, HomeTheme.PURPLE)
+		header_hbox.add_child(lbl)
+		
+	var sep := ColorRect.new()
+	sep.custom_minimum_size = Vector2(0, 1)
+	sep.color = Color(0.62, 0.36, 1.0, 0.18)
+	list_vbox.add_child(sep)
+	
+	var rooms := MockDataProvider.get_mock_rooms()
+	for room in rooms:
+		var row_panel := PanelContainer.new()
+		row_panel.custom_minimum_size = Vector2(0, 64)
+		row_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.008, 0.010, 0.024, 0.30), Color(0.62, 0.36, 1.0, 0.12), 6, 1))
+		list_vbox.add_child(row_panel)
+		
+		var row_margin := MarginContainer.new()
+		row_margin.add_theme_constant_override("margin_left", 20)
+		row_margin.add_theme_constant_override("margin_right", 20)
+		row_panel.add_child(row_margin)
+		
+		var row_hbox := HBoxContainer.new()
+		row_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+		row_hbox.add_theme_constant_override("separation", 10)
+		row_margin.add_child(row_hbox)
+		
+		var name_lbl := Label.new()
+		name_lbl.text = room["name"]
+		name_lbl.custom_minimum_size = Vector2(col_widths[0], 0)
+		HomeTheme.make_font_settings(name_lbl, 15, Color(1, 1, 1, 0.95))
+		row_hbox.add_child(name_lbl)
+		
+		var blinds_lbl := Label.new()
+		blinds_lbl.text = "%d / %d" % [room["small_blind"], room["big_blind"]]
+		blinds_lbl.custom_minimum_size = Vector2(col_widths[1], 0)
+		HomeTheme.make_font_settings(blinds_lbl, 14, Color(0.85, 0.90, 1.0))
+		row_hbox.add_child(blinds_lbl)
+		
+		var players_lbl := Label.new()
+		players_lbl.text = "%d / %d" % [room["players"], room["max_players"]]
+		players_lbl.custom_minimum_size = Vector2(col_widths[2], 0)
+		HomeTheme.make_font_settings(players_lbl, 14, Color(0.85, 0.90, 1.0))
+		row_hbox.add_child(players_lbl)
+		
+		var buyin_lbl := Label.new()
+		buyin_lbl.text = "%d - %d Chips" % [room["buy_in_min"], room["buy_in_max"]]
+		buyin_lbl.custom_minimum_size = Vector2(col_widths[3], 0)
+		HomeTheme.make_font_settings(buyin_lbl, 14, Color(0.85, 0.90, 1.0))
+		row_hbox.add_child(buyin_lbl)
+		
+		var btn_container := CenterContainer.new()
+		btn_container.custom_minimum_size = Vector2(col_widths[4], 0)
+		row_hbox.add_child(btn_container)
+		
+		var join_btn := Button.new()
+		join_btn.text = "JOIN"
+		join_btn.custom_minimum_size = Vector2(100, 36)
+		join_btn.focus_mode = Control.FOCUS_NONE
+		join_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		
+		var style_normal := HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.60), Color(1.0, 0.0, 0.5, 0.80), 18)
+		style_normal.shadow_color = Color(1.0, 0.0, 0.5, 0.25)
+		style_normal.shadow_size = 6
+		
+		var style_hover := HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.80), Color(1.0, 0.0, 0.5, 1.0), 18)
+		style_hover.shadow_color = Color(1.0, 0.0, 0.5, 0.60)
+		style_hover.shadow_size = 14
+		
+		join_btn.add_theme_stylebox_override("normal", style_normal)
+		join_btn.add_theme_stylebox_override("hover", style_hover)
+		join_btn.add_theme_stylebox_override("pressed", style_hover)
+		join_btn.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
+		join_btn.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
+		join_btn.add_theme_font_size_override("font_size", 13)
+		
+		join_btn.mouse_entered.connect(func() -> void:
+			var btn_tween := create_tween()
+			btn_tween.tween_property(join_btn, "scale", Vector2(1.06, 1.06), 0.12).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		)
+		join_btn.mouse_exited.connect(func() -> void:
+			var btn_tween := create_tween()
+			btn_tween.tween_property(join_btn, "scale", Vector2(1.0, 1.0), 0.12).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		)
+		
+		var r_id := String(room["room_id"])
+		join_btn.pressed.connect(func() -> void: _on_join_pressed(r_id))
+		btn_container.add_child(join_btn)
 
 func _build_replay_panel() -> void:
 	_replay_panel = PanelContainer.new()
