@@ -31,6 +31,14 @@ var _foreground_decor: TextureRect
 var _expanded := false
 var _bg_breath_tween: Tween
 
+const LOGO_COLLAPSED_Y := 275.0
+const LOGO_EXPANDED_Y := 20.0
+const LOGO_COLLAPSED_SCALE := Vector2(1.0, 1.0)
+const LOGO_EXPANDED_SCALE := Vector2(0.58, 0.58)
+
+var _cta_button: Button
+var _cta_float_time := 0.0
+
 func _ready() -> void:
 	# Force standalone windowed mode to bypass Godot editor stretch bugs
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
@@ -160,6 +168,7 @@ func _build_layout() -> void:
 	_prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	HomeTheme.make_font_settings(_prompt, 14, Color(0.86, 0.90, 1.0, 0.86))
 	_lobby_ui_root.add_child(_prompt)
+	_build_cta_button()
 
 func _build_center_brand() -> void:
 	_center_brand = Control.new()
@@ -320,21 +329,29 @@ func _stop_bg_breathing() -> void:
 func _set_expanded(value: bool, immediate: bool = false) -> void:
 	_expanded = value
 	
-	var logo_target := 0.15 if value else 1.0
 	var prompt_target := 0.0 if value else 1.0
 	var panel_target := 1.0 if value else 0.0
 	var bg_target := Color(0.48, 0.45, 0.52, 1.0) if value else Color(1.34, 1.30, 1.40, 1.0)
+	
+	var logo_pos_y := LOGO_EXPANDED_Y if value else LOGO_COLLAPSED_Y
+	var logo_scale := LOGO_EXPANDED_SCALE if value else LOGO_COLLAPSED_SCALE
 	
 	if _transition_tween:
 		_transition_tween.kill()
 		
 	if immediate:
-		_center_brand.modulate.a = logo_target
+		_center_brand.position.y = logo_pos_y
+		_center_brand.scale = logo_scale
+		_center_brand.modulate.a = 1.0
 		_center_brand.visible = true
 		_prompt.modulate.a = prompt_target
 		_prompt.visible = not value
 		_play_panel.modulate.a = panel_target
 		_play_panel.visible = value
+		if _cta_button:
+			_cta_button.visible = not value
+			_cta_button.disabled = value
+			_cta_button.modulate.a = 0.0 if value else 1.0
 		_stop_bg_breathing()
 		if _background_texture:
 			_background_texture.modulate = bg_target
@@ -350,22 +367,42 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 		_play_panel.modulate.a = 0.0
 		_transition_tween.tween_property(_play_panel, "modulate:a", 1.0, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		
-		_center_brand.visible = true
-		_transition_tween.tween_property(_center_brand, "modulate:a", 0.15, 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		# Animate logo spatial transformation in 0.4s
+		_transition_tween.tween_property(_center_brand, "position:y", logo_pos_y, 0.4).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_transition_tween.tween_property(_center_brand, "scale", logo_scale, 0.4).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_transition_tween.tween_property(_center_brand, "modulate:a", 1.0, 0.4).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		
 		_transition_tween.tween_property(_prompt, "modulate:a", 0.0, 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		
+		if _cta_button:
+			_cta_button.disabled = true
+			_transition_tween.tween_property(_cta_button, "modulate:a", 0.0, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			
 		if _background_texture:
 			_transition_tween.tween_property(_background_texture, "modulate", bg_target, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		
 		_transition_tween.chain().tween_callback(func() -> void:
 			_prompt.visible = false
+			if _cta_button:
+				_cta_button.visible = false
 		)
 	else:
 		_center_brand.visible = true
 		_prompt.visible = true
 		_prompt.modulate.a = 0.0
 		
-		_transition_tween.tween_property(_center_brand, "modulate:a", 1.0, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		if _cta_button:
+			_cta_button.visible = true
+			_cta_button.modulate.a = 0.0
+		
+		# Animate logo spatial transformation in 0.4s
+		_transition_tween.tween_property(_center_brand, "position:y", logo_pos_y, 0.4).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_transition_tween.tween_property(_center_brand, "scale", logo_scale, 0.4).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		_transition_tween.tween_property(_center_brand, "modulate:a", 1.0, 0.4).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		
 		_transition_tween.tween_property(_prompt, "modulate:a", 1.0, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		if _cta_button:
+			_transition_tween.tween_property(_cta_button, "modulate:a", 1.0, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		
 		_transition_tween.tween_property(_play_panel, "modulate:a", 0.0, 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		if _background_texture:
@@ -373,6 +410,8 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 		
 		_transition_tween.chain().tween_callback(func() -> void:
 			_play_panel.visible = false
+			if _cta_button:
+				_cta_button.disabled = false
 			_start_bg_breathing()
 		)
 
@@ -475,3 +514,60 @@ func update_mode_cards(_data: Array) -> void:
 
 func update_daily_bonus(_data: Dictionary) -> void:
 	pass
+
+func _build_cta_button() -> void:
+	_cta_button = Button.new()
+	_cta_button.name = "LobbyCTAButton"
+	_cta_button.text = "→  CLICK PLAY TO START"
+	
+	# Layout / Anchors
+	_cta_button.anchor_left = 0.5
+	_cta_button.anchor_top = 0.5
+	_cta_button.anchor_right = 0.5
+	_cta_button.anchor_bottom = 0.5
+	
+	# Size and Position
+	_cta_button.custom_minimum_size = Vector2(320, 56)
+	_cta_button.offset_left = -160
+	_cta_button.offset_top = 220
+	_cta_button.offset_right = 160
+	_cta_button.offset_bottom = 276
+	_cta_button.pivot_offset = Vector2(160, 28)
+	
+	# Font override
+	_cta_button.add_theme_font_size_override("font_size", 16)
+	_cta_button.add_theme_color_override("font_color", Color(1.0, 0.65, 0.90, 0.78))
+	_cta_button.add_theme_color_override("font_hover_color", Color(1.0, 0.85, 0.98, 1.0))
+	_cta_button.add_theme_color_override("font_pressed_color", Color(1.0, 0.90, 1.0, 1.0))
+	
+	# Styleboxes
+	var style_normal := HomeTheme.make_button_style(Color(0.008, 0.010, 0.024, 0.35), Color(1.0, 0.28, 0.78, 0.25), 28)
+	var style_hover := HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.65), Color(1.0, 0.28, 0.78, 0.90), 28)
+	style_hover.shadow_color = Color(1.0, 0.28, 0.78, 0.30)
+	style_hover.shadow_size = 14
+	var style_pressed := HomeTheme.make_button_style(Color(0.12, 0.02, 0.08, 0.60), Color(1.0, 0.28, 0.78, 1.0), 28)
+	
+	_cta_button.add_theme_stylebox_override("normal", style_normal)
+	_cta_button.add_theme_stylebox_override("hover", style_hover)
+	_cta_button.add_theme_stylebox_override("pressed", style_pressed)
+	_cta_button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	
+	_cta_button.pressed.connect(func() -> void:
+		set_state(LobbyState.PLAY_EXPANDED)
+	)
+	
+	_lobby_ui_root.add_child(_cta_button)
+
+func _process(delta: float) -> void:
+	if not _expanded and _cta_button and _cta_button.visible:
+		_cta_float_time += delta
+		var float_offset := sin(_cta_float_time * 2.2) * 6.0
+		_cta_button.offset_top = 220.0 + float_offset
+		_cta_button.offset_bottom = 276.0 + float_offset
+		
+		if not _cta_button.is_hovered():
+			var alpha := 0.75 + sin(_cta_float_time * 1.8) * 0.25
+			_cta_button.modulate.a = alpha
+		else:
+			_cta_button.modulate.a = 1.0
+
