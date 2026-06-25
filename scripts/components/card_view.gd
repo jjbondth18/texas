@@ -4,12 +4,21 @@ class_name CardView
 var card_data := {"rank": "", "suit": "", "face_up": false}
 var selected := false
 var _label: Label
+var _texture_rect: TextureRect
 
 var is_mini_back := false
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(64, 88)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	_texture_rect = TextureRect.new()
+	_texture_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_texture_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_texture_rect)
+	
 	_label = Label.new()
 	_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -24,6 +33,8 @@ func set_as_mini_back(value: bool) -> void:
 		_label.visible = not is_mini_back
 	if is_mini_back:
 		custom_minimum_size = Vector2(20, 28)
+		if _texture_rect != null:
+			_texture_rect.visible = false
 	else:
 		custom_minimum_size = Vector2(64, 88)
 	_update()
@@ -37,22 +48,54 @@ func set_selected(value: bool) -> void:
 	_update()
 
 func _update() -> void:
-	if _label == null:
+	if _label == null or _texture_rect == null:
 		return
 	if is_mini_back:
 		_label.visible = false
+		_texture_rect.visible = false
+		queue_redraw()
+		return
+		
 	var current_height := custom_minimum_size.y
 	var font_size := int(current_height * 0.24)
 	_label.add_theme_font_size_override("font_size", font_size)
 	var face_up := bool(card_data.get("face_up", false))
+	
 	if not face_up:
+		_label.visible = true
+		_texture_rect.visible = false
 		_label.text = "◆"
 		_label.add_theme_color_override("font_color", Color(0.7, 0.78, 1.0))
 	else:
+		_label.visible = false
+		_texture_rect.visible = true
+		
 		var suit := String(card_data.get("suit", ""))
-		var symbol := _suit_symbol(suit)
-		_label.text = "%s\n%s" % [String(card_data.get("rank", "")), symbol]
-		_label.add_theme_color_override("font_color", _suit_color(suit))
+		var rank := String(card_data.get("rank", ""))
+		if rank == "T":
+			rank = "10"
+		var folder := ""
+		var prefix := ""
+		match suit:
+			"clubs":
+				folder = "club"
+				prefix = "cardClubs_"
+			"diamonds":
+				folder = "diamond"
+				prefix = "cardDiamonds_"
+			"hearts":
+				folder = "heart"
+				prefix = "cardHearts_"
+			"spades":
+				folder = "spade"
+				prefix = "cardSpades_"
+		
+		if folder != "" and rank != "":
+			var path := "res://assets/card/%s/%s%s.png" % [folder, prefix, rank]
+			if ResourceLoader.exists(path):
+				_texture_rect.texture = load(path)
+			else:
+				push_error("Card asset path not found: %s" % path)
 	queue_redraw()
 
 func _draw() -> void:
@@ -63,9 +106,12 @@ func _draw() -> void:
 		draw_rect(rect, Color(0.62, 0.36, 1.0, 0.65), false, 1.0)
 	else:
 		var face_up := bool(card_data.get("face_up", false))
-		var fill := Color(0.92, 0.94, 1.0, 0.96) if face_up else Color(0.08, 0.09, 0.18, 0.98)
-		draw_rect(rect, fill, true)
-		draw_rect(rect, Color(0.8, 0.88, 1.0, 0.55 if not selected else 0.95), false, 2.0)
+		if face_up:
+			draw_rect(rect, Color(0.8, 0.88, 1.0, 0.55 if not selected else 0.95), false, 2.0)
+		else:
+			var fill := Color(0.08, 0.09, 0.18, 0.98)
+			draw_rect(rect, fill, true)
+			draw_rect(rect, Color(0.8, 0.88, 1.0, 0.55 if not selected else 0.95), false, 2.0)
 
 func _suit_symbol(suit: String) -> String:
 	match suit:
@@ -84,3 +130,4 @@ func _suit_color(suit: String) -> Color:
 	if suit in ["hearts", "diamonds"]:
 		return Color(0.86, 0.1, 0.28)
 	return Color(0.05, 0.07, 0.12)
+
