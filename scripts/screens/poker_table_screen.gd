@@ -90,6 +90,7 @@ func _build_scene() -> void:
 	_seat_layer = Control.new()
 	_seat_layer.name = "SeatLayer"
 	_seat_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_seat_layer.z_index = 1
 	_content_root.add_child(_seat_layer)
 	for i in range(1, 10):
 		var seat = PokerSeatScene.instantiate()
@@ -115,6 +116,7 @@ func _build_scene() -> void:
 	_local_controls_container.name = "LocalControlsContainer"
 	_local_controls_container.add_theme_constant_override("separation", 6)
 	_local_controls_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_local_controls_container.z_index = 5
 	_content_root.add_child(_local_controls_container)
 
 	_local_cards_root = HBoxContainer.new()
@@ -162,24 +164,28 @@ func _layout() -> void:
 	_set_design_rect(_local_controls_container, Rect2(770, 785, 1020, 215), scale)
 
 	var normal_seat_size := Vector2(200, 80)
-	var local_seat_size := Vector2(200, 80)
+	var local_seat_size := Vector2(200, 150)
 
 	var fixed_positions := {
-		1: Vector2(1650, 190),  # 对应红字 1：右上转角
-		2: Vector2(1880, 310),  # 对应红字 2：右侧中上
-		3: Vector2(1880, 640),  # 对应红字 3：右侧中下
-		4: Vector2(1580, 780),  # 对应红字 4：右下转角
-		5: Vector2(1280, 810),  # 对应红字 5：本地玩家（ You，正下方绝对居中）
-		6: Vector2(980, 780),   # 对应红字 6：左下转角
-		7: Vector2(680, 640),   # 对应红字 7：左侧中下
-		8: Vector2(680, 310),   # 对应红字 8：左侧中上
-		9: Vector2(910, 190)    # 对应红字 9：左上转角
+		1: Vector2(1620, 190),  # 1号位：右上转角
+		2: Vector2(1920, 310),  # 2号位：右侧上沿
+		3: Vector2(2150, 520),  # 3号位：右侧正中！无条件往右边推到底，拉开大跨度！
+		4: Vector2(1880, 750),  # 4号位：右下转角！彻底从5号和3号的夹缝里解放出来！
+		5: Vector2(1280, 840),  # 5号位：本地玩家 You！死死压在底线正中央！
+		6: Vector2(680, 750),   # 6号位：左下转角！与4号位严格镜像对齐！
+		7: Vector2(410, 520),   # 7号位：左侧正中！无条件往左边推到底！
+		8: Vector2(640, 310),   # 8号位：左侧上沿！与2号位严格中线镜像！
+		9: Vector2(940, 190)    # 9号位：左上转角！与1号位严格镜像！
 	}
 
 	for visual_position in range(1, 10):
 		var pos: Vector2 = fixed_positions[visual_position]
 		var size_val := local_seat_size if visual_position == 5 else normal_seat_size
-		var rect := Rect2(pos - size_val * 0.5, size_val)
+		var rect: Rect2
+		if visual_position == 5:
+			rect = Rect2(pos - Vector2(100, 60), size_val)
+		else:
+			rect = Rect2(pos - size_val * 0.5, size_val)
 		_set_design_rect(_seats[visual_position], rect, scale)
 
 func _set_design_rect(node: Control, rect: Rect2, scale: float) -> void:
