@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bbjipr1d68a65"
-path="res://.godot/imported/a_high_resolution_graphic_logo_on_a_transparent_c_2_batch_2.png-a7e0501f4e335038f79dd5d1851a4185.ctex"
+uid="uid://cut8telvwtg2b"
+path="res://.godot/imported/runtime_play_expanded_hover.png-1f90d74d091331edd628768b227b49f8.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/home_lobby/logo/rejected/a_high_resolution_graphic_logo_on_a_transparent_c_2_batch_2.png"
-dest_files=["res://.godot/imported/a_high_resolution_graphic_logo_on_a_transparent_c_2_batch_2.png-a7e0501f4e335038f79dd5d1851a4185.ctex"]
+source_file="res://docs/screenshots/runtime_play_expanded_hover.png"
+dest_files=["res://.godot/imported/runtime_play_expanded_hover.png-1f90d74d091331edd628768b227b49f8.ctex"]
 
 [params]
 

@@ -3,11 +3,16 @@ class_name DailyBonusBar
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(0, 96)
-	add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.01, 0.012, 0.03, 0.48), Color(0.48, 0.4, 0.86, 0.24), 8, 1))
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.016, 0.65), Color(0.2, 0.24, 0.38, 0.25), 8, 1))
 	var row := HBoxContainer.new()
+	row.name = "DailyBonusRow"
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", 12)
 	add_child(row)
 	var copy_box := VBoxContainer.new()
+	copy_box.name = "DailyBonusCopyBox"
+	copy_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	copy_box.custom_minimum_size = Vector2(220, 1)
 	row.add_child(copy_box)
 	var title := Label.new()
@@ -34,7 +39,7 @@ func _bonus_cell(bonus: Dictionary) -> PanelContainer:
 	var day := Label.new()
 	day.text = bonus["day"]
 	day.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	HomeTheme.make_font_settings(day, 11, HomeTheme.TEXT if bonus.get("active", false) else HomeTheme.MUTED)
+	HomeTheme.make_font_settings(day, 11, HomeTheme.PINK if bonus.get("active", false) else HomeTheme.MUTED)
 	box.add_child(day)
 	var mark := Label.new()
 	mark.text = "OK" if bonus.get("claimed", false) else ("*" if bonus.get("active", false) else "-")
@@ -51,8 +56,8 @@ func _bonus_cell(bonus: Dictionary) -> PanelContainer:
 	return cell
 
 func _cell_style(active: bool, hovered: bool) -> StyleBoxFlat:
-	var border := HomeTheme.PINK if active else (HomeTheme.CYAN if hovered else Color(0.42, 0.44, 0.7, 0.24))
-	var bg := Color(0.035, 0.022, 0.07, 0.72) if active else Color(0.016, 0.02, 0.048, 0.58)
+	var border := HomeTheme.PINK if active else (HomeTheme.CYAN if hovered else Color(0.2, 0.22, 0.35, 0.25))
+	var bg := Color(0.025, 0.015, 0.04, 0.8) if active else Color(0.008, 0.01, 0.025, 0.6)
 	if hovered:
 		bg = bg.lightened(0.08)
 	var style := HomeTheme.make_panel_style(bg, border, 7, 1)
@@ -60,6 +65,6 @@ func _cell_style(active: bool, hovered: bool) -> StyleBoxFlat:
 	style.content_margin_right = 8
 	style.content_margin_top = 6
 	style.content_margin_bottom = 6
-	style.shadow_color = Color(border.r, border.g, border.b, 0.18 if active or hovered else 0.0)
+	style.shadow_color = Color(border.r, border.g, border.b, 0.20 if active or hovered else 0.0)
 	style.shadow_size = 12 if active or hovered else 0
 	return style

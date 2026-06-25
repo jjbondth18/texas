@@ -14,7 +14,7 @@ var _accent: ColorRect
 var _visual_base_position := Vector2.ZERO
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(238, 360)
+	custom_minimum_size = Vector2(240, 360)
 	size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -72,10 +72,19 @@ func _capture_visual_base() -> void:
 	_visual_base_position = _visual.position
 	_visual.pivot_offset = _visual.size * 0.5
 
+var _hover_tween: Tween
+
 func _hover(value: bool) -> void:
 	_visual.add_theme_stylebox_override("panel", _style(value))
-	_visual.position = _visual_base_position
-	_visual.scale = Vector2.ONE
+	if _hover_tween:
+		_hover_tween.kill()
+	
+	_hover_tween = create_tween().set_parallel(true)
+	var target_scale := Vector2(1.025, 1.025) if value else Vector2.ONE
+	var target_modulate := Color(1.05, 1.05, 1.05, 1.0) if value else Color.WHITE
+	
+	_hover_tween.tween_property(_visual, "scale", target_scale, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_hover_tween.tween_property(_visual, "modulate", target_modulate, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 func _on_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -89,16 +98,16 @@ func _draw() -> void:
 func _style(hovered: bool) -> StyleBoxFlat:
 	var border := Color(HomeTheme.PINK.r, HomeTheme.PINK.g, HomeTheme.PINK.b, 0.38) if _featured else Color(0.46, 0.54, 0.78, 0.24)
 	if hovered:
-		border = HomeTheme.PINK if _featured else HomeTheme.CYAN
+		border = HomeTheme.PINK
 	var bg := Color(0.014, 0.017, 0.04, 0.76)
 	if hovered:
 		bg = Color(0.022, 0.026, 0.058, 0.84)
 	if _featured and not hovered:
 		bg = Color(0.026, 0.016, 0.054, 0.80)
 	var style := HomeTheme.make_panel_style(bg, border, 8, 1)
-	style.shadow_color = Color(border.r, border.g, border.b, 0.13 if hovered else (0.07 if _featured else 0.0))
-	style.shadow_size = 12 if hovered else (8 if _featured else 0)
-	style.shadow_offset = Vector2(0, 6)
+	style.shadow_color = Color(HomeTheme.PINK.r, HomeTheme.PINK.g, HomeTheme.PINK.b, 0.28 if hovered else (0.07 if _featured else 0.0))
+	style.shadow_size = 14 if hovered else (8 if _featured else 0)
+	style.shadow_offset = Vector2(0, 4)
 	return style
 
 func set_visual_reveal_offset(offset_y: float) -> void:
