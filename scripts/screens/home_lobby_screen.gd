@@ -38,6 +38,7 @@ const LOGO_EXPANDED_SCALE := Vector2(0.58, 0.58)
 
 var _cta_button: Button
 var _cta_float_time := 0.0
+var _cta_hover_tween: Tween
 
 func _ready() -> void:
 	# Force standalone windowed mode to bypass Godot editor stretch bugs
@@ -104,7 +105,7 @@ func _build_background() -> void:
 	flow_mat.set_shader_parameter("neon_color", Color(0.82, 0.22, 0.68, 0.45)) # pink smoke
 	flow_mat.set_shader_parameter("speed", 0.003) # extremely slow motion
 	flow_mat.set_shader_parameter("intensity", 0.25)
-	flow_mat.set_shader_parameter("layer_alpha", 0.035) # extremely subtle blend overlay
+	flow_mat.set_shader_parameter("layer_alpha", 0.18) # prominent neon smoke overlay
 	flow_mat.set_shader_parameter("motion_enabled", true)
 	flow_rect.material = flow_mat
 	_background_root.add_child(flow_rect)
@@ -471,31 +472,33 @@ func _arg_value(args: PackedStringArray, key: String, fallback: String) -> Strin
 func _build_particles() -> void:
 	var particles := GPUParticles2D.new()
 	particles.name = "LobbyParticles"
-	particles.amount = 16
+	particles.amount = 45
 	particles.lifetime = 6.0
 	particles.preprocess = 3.0
-	particles.randomness = 0.6
+	particles.randomness = 0.5
 	particles.position = Vector2(1000, 1090)
 	
 	var p_mat := ParticleProcessMaterial.new()
 	p_mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
 	p_mat.emission_box_extents = Vector3(700, 10, 1)
 	p_mat.direction = Vector3(0, -1, 0)
-	p_mat.spread = 15.0
-	p_mat.gravity = Vector3(0, -8, 0)
-	p_mat.initial_velocity_min = 4.0
-	p_mat.initial_velocity_max = 10.0
-	p_mat.color = Color(0.8, 0.2, 0.6, 0.22)
+	p_mat.spread = 18.0
+	p_mat.gravity = Vector3(0, -12, 0)
+	p_mat.initial_velocity_min = 6.0
+	p_mat.initial_velocity_max = 16.0
+	p_mat.color = Color(1.0, 1.0, 1.0, 1.0)
 	p_mat.scale_min = 2.0
-	p_mat.scale_max = 4.0
+	p_mat.scale_max = 5.0
 	
 	var gradient := Gradient.new()
-	gradient.offsets = PackedFloat32Array([0.0, 0.15, 0.85, 1.0])
+	gradient.offsets = PackedFloat32Array([0.0, 0.15, 0.50, 0.60, 0.85, 1.0])
 	gradient.colors = PackedColorArray([
-		Color(0.8, 0.2, 0.6, 0.0),
-		Color(0.8, 0.2, 0.6, 0.22),
-		Color(0.8, 0.2, 0.6, 0.18),
-		Color(0.8, 0.2, 0.6, 0.0)
+		Color(1.0, 0.28, 0.78, 0.0),   # Neon Pink Fade In
+		Color(1.0, 0.28, 0.78, 0.75),  # Neon Pink Full Glow
+		Color(1.0, 0.28, 0.78, 0.65),  # Neon Pink Glow
+		Color(0.25, 0.78, 1.0, 0.75),  # Neon Blue/Cyan Glow
+		Color(0.25, 0.78, 1.0, 0.60),  # Neon Blue/Cyan
+		Color(0.25, 0.78, 1.0, 0.0)    # Neon Blue Fade Out
 	])
 	var grad_txt := GradientTexture1D.new()
 	grad_txt.gradient = gradient
@@ -536,21 +539,42 @@ func _build_cta_button() -> void:
 	
 	# Font override
 	_cta_button.add_theme_font_size_override("font_size", 16)
-	_cta_button.add_theme_color_override("font_color", Color(1.0, 0.65, 0.90, 0.78))
-	_cta_button.add_theme_color_override("font_hover_color", Color(1.0, 0.85, 0.98, 1.0))
-	_cta_button.add_theme_color_override("font_pressed_color", Color(1.0, 0.90, 1.0, 1.0))
+	_cta_button.add_theme_color_override("font_color", Color(1.0, 0.65, 0.90, 0.85))
+	_cta_button.add_theme_color_override("font_hover_color", Color(1.0, 0.90, 0.98, 1.0))
+	_cta_button.add_theme_color_override("font_pressed_color", Color(1.0, 0.95, 1.0, 1.0))
 	
 	# Styleboxes
-	var style_normal := HomeTheme.make_button_style(Color(0.008, 0.010, 0.024, 0.35), Color(1.0, 0.28, 0.78, 0.25), 28)
-	var style_hover := HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.65), Color(1.0, 0.28, 0.78, 0.90), 28)
-	style_hover.shadow_color = Color(1.0, 0.28, 0.78, 0.30)
-	style_hover.shadow_size = 14
-	var style_pressed := HomeTheme.make_button_style(Color(0.12, 0.02, 0.08, 0.60), Color(1.0, 0.28, 0.78, 1.0), 28)
+	var style_normal := HomeTheme.make_button_style(Color(0.008, 0.010, 0.024, 0.35), Color(1.0, 0.0, 0.5, 0.8), 28)
+	style_normal.set_border_width_all(2)
+	style_normal.shadow_color = Color(1.0, 0.0, 0.5, 0.25)
+	style_normal.shadow_size = 8
+	
+	var style_hover := HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.65), Color(1.0, 0.0, 0.5, 1.0), 28)
+	style_hover.set_border_width_all(2)
+	style_hover.shadow_color = Color(1.0, 0.0, 0.5, 0.50)
+	style_hover.shadow_size = 18
+	
+	var style_pressed := HomeTheme.make_button_style(Color(0.12, 0.02, 0.08, 0.60), Color(1.0, 0.0, 0.5, 1.0), 28)
+	style_pressed.set_border_width_all(2)
 	
 	_cta_button.add_theme_stylebox_override("normal", style_normal)
 	_cta_button.add_theme_stylebox_override("hover", style_hover)
 	_cta_button.add_theme_stylebox_override("pressed", style_pressed)
 	_cta_button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	
+	# Hover Tweening
+	_cta_button.mouse_entered.connect(func() -> void:
+		if _cta_hover_tween:
+			_cta_hover_tween.kill()
+		_cta_hover_tween = create_tween()
+		_cta_hover_tween.tween_property(_cta_button, "scale", Vector2(1.05, 1.05), 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	)
+	_cta_button.mouse_exited.connect(func() -> void:
+		if _cta_hover_tween:
+			_cta_hover_tween.kill()
+		_cta_hover_tween = create_tween()
+		_cta_hover_tween.tween_property(_cta_button, "scale", Vector2(1.0, 1.0), 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	)
 	
 	_cta_button.pressed.connect(func() -> void:
 		set_state(LobbyState.PLAY_EXPANDED)
@@ -570,4 +594,3 @@ func _process(delta: float) -> void:
 			_cta_button.modulate.a = alpha
 		else:
 			_cta_button.modulate.a = 1.0
-
