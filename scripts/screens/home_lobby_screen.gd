@@ -1,22 +1,18 @@
 extends Control
 class_name HomeLobbyScreen
 
-@export var background_motion_enabled := true
+@export var background_motion_enabled := false
 
 const BACKGROUND_TEXTURE_PATH := "res://assets/home_lobby/backgrounds/home_background_v1.png"
-const LOGO_TEXTURE_PATH := "res://assets/a_high_resolution_graphic_logo_on_a_transparent_c_2_batch_2.png"
 const NAV_WIDTH := 280.0
 const MAIN_LEFT := 360.0
 const MAIN_RIGHT := 70.0
 
-var _background_material: ShaderMaterial
 var _background_root: Control
 var _lobby_ui_root: Control
 var _left_nav: LeftNavRail
 var _top_bar: TopBar
 var _center_brand: Control
-var _logo_glow: Control
-var _logo_image: TextureRect
 var _logo_fallback: Control
 var _prompt: Label
 var _play_panel: PanelContainer
@@ -25,61 +21,6 @@ var _daily_bonus: Control
 var _mode_cards: Array[ModeCard] = []
 var _foreground_decor: TextureRect
 var _expanded := false
-
-class BackgroundFlowLayer:
-	extends Control
-
-	var phase := 0.0:
-		set(value):
-			phase = value
-			queue_redraw()
-
-	func _ready() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var tween := create_tween()
-		tween.set_loops()
-		tween.tween_property(self, "phase", 1.0, 18.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		tween.tween_property(self, "phase", 0.0, 18.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-
-	func _draw() -> void:
-		var y_mid := size.y * (0.40 + sin(phase * TAU) * 0.026)
-		var blue := Color(0.34, 0.50, 1.0, 0.20)
-		var violet := Color(0.62, 0.32, 1.0, 0.17)
-		var pink := Color(1.0, 0.22, 0.72, 0.18)
-		for i in range(5):
-			var t := float(i) / 4.0
-			var y := y_mid + (t - 0.5) * 150.0
-			var start := Vector2(size.x * 0.18, y + sin(phase * TAU + t * 3.0) * 28.0)
-			var end := Vector2(size.x * 0.86, y - 52.0 + cos(phase * TAU + t * 2.0) * 34.0)
-			var color := blue.lerp(pink, t).lerp(violet, 0.22)
-			draw_line(start, end, color, 3.0)
-			draw_line(start + Vector2(0, 7), end + Vector2(0, 5), Color(color.r, color.g, color.b, color.a * 0.34), 8.0)
-		draw_circle(Vector2(size.x * (0.55 + phase * 0.08), y_mid - 18.0), 260.0, Color(0.25, 0.20, 0.62, 0.075))
-
-class BackgroundLiftLayer:
-	extends Control
-
-	func _ready() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	func _draw() -> void:
-		draw_circle(Vector2(size.x * 0.53, size.y * 0.46), size.y * 0.34, Color(0.08, 0.11, 0.28, 0.14))
-		draw_circle(Vector2(size.x * 0.76, size.y * 0.34), size.y * 0.27, Color(0.20, 0.07, 0.24, 0.12))
-		draw_circle(Vector2(size.x * 0.50, size.y * 0.78), size.y * 0.30, Color(0.14, 0.06, 0.17, 0.08))
-
-class PokerLogo:
-	extends Control
-
-	func _ready() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	func _draw() -> void:
-		var center := size * 0.5
-		draw_circle(center, 250, Color(0.06, 0.08, 0.20, 0.18))
-		draw_circle(center + Vector2(-80, 16), 220, Color(0.20, 0.12, 0.50, 0.10))
-		draw_circle(center + Vector2(120, 24), 240, Color(0.52, 0.07, 0.36, 0.11))
-		draw_arc(center, 262, PI * 0.10, PI * 0.92, 96, Color(0.55, 0.82, 1.0, 0.20), 2.0)
-		draw_arc(center, 292, PI * 1.05, PI * 1.78, 96, Color(1.0, 0.28, 0.78, 0.16), 2.0)
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -90,9 +31,6 @@ func _ready() -> void:
 	_top_bar.configure(MockHomeData.player())
 	_left_nav.set_active("home")
 	_set_expanded(false, true)
-	MotionManager.pulse_canvas_item(_center_brand, 4.4, 0.86, 1.0)
-	MotionManager.pulse_canvas_item(_logo_glow, 4.8, 0.50, 0.86)
-	MotionManager.drift(_foreground_decor, Vector2(0, -5), 12.0)
 	_handle_runtime_capture_args()
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -116,34 +54,15 @@ func _build_background() -> void:
 	base.texture = load(BACKGROUND_TEXTURE_PATH)
 	base.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	base.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	base.modulate = Color(1.0, 1.0, 1.0, 1.0)
+	base.modulate = Color(1.34, 1.30, 1.40, 1.0)
 	base.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_background_root.add_child(base)
-	var lift := BackgroundLiftLayer.new()
-	lift.name = "BackgroundLiftLayer"
-	lift.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_background_root.add_child(lift)
-	var shade := ColorRect.new()
-	shade.name = "BackgroundShade"
-	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	shade.color = Color(0.0, 0.0, 0.0, 0.10)
-	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_background_root.add_child(shade)
-	var neon_flow := BackgroundFlowLayer.new()
-	neon_flow.name = "BackgroundFlowLayer"
-	neon_flow.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_background_root.add_child(neon_flow)
-	var flow := ColorRect.new()
-	flow.name = "BackgroundShaderFlow"
-	flow.set_anchors_preset(Control.PRESET_FULL_RECT)
-	flow.modulate.a = 1.0
-	flow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_background_material = ShaderMaterial.new()
-	_background_material.shader = preload("res://shaders/flow_noise_bg.gdshader")
-	_background_material.set_shader_parameter("motion_enabled", background_motion_enabled)
-	_background_material.set_shader_parameter("layer_alpha", 0.045)
-	flow.material = _background_material
-	_background_root.add_child(flow)
+	var center_lift := ColorRect.new()
+	center_lift.name = "BackgroundCenterLift"
+	center_lift.set_anchors_preset(Control.PRESET_FULL_RECT)
+	center_lift.color = Color(0.06, 0.08, 0.18, 0.08)
+	center_lift.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_background_root.add_child(center_lift)
 
 func _build_layout() -> void:
 	_lobby_ui_root = Control.new()
@@ -204,25 +123,6 @@ func _build_center_brand() -> void:
 	_center_brand.pivot_offset = Vector2(470, 225)
 	_lobby_ui_root.add_child(_center_brand)
 
-	_logo_glow = PokerLogo.new()
-	_logo_glow.name = "LogoGlow"
-	_logo_glow.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_logo_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_center_brand.add_child(_logo_glow)
-
-	_logo_image = TextureRect.new()
-	_logo_image.name = "LogoImage"
-	_logo_image.anchor_left = 0.05
-	_logo_image.anchor_top = 0.02
-	_logo_image.anchor_right = 0.95
-	_logo_image.anchor_bottom = 0.88
-	_logo_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_logo_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_logo_image.texture = load(LOGO_TEXTURE_PATH)
-	_logo_image.visible = false
-	_logo_image.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_center_brand.add_child(_logo_image)
-
 	_logo_fallback = Control.new()
 	_logo_fallback.name = "LogoTextFallback"
 	_logo_fallback.anchor_left = 0.0
@@ -232,11 +132,11 @@ func _build_center_brand() -> void:
 	_logo_fallback.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_logo_fallback.visible = true
 	_center_brand.add_child(_logo_fallback)
-	_logo_fallback.add_child(_make_logo_label("LogoMainGlowPink", "TEXAS\nHOLD'EM", 116, Color(1.0, 0.23, 0.78, 0.30), 18, Vector2(4, 5), 0.08, 0.78))
-	_logo_fallback.add_child(_make_logo_label("LogoMainGlowCyan", "TEXAS\nHOLD'EM", 116, Color(0.42, 0.74, 1.0, 0.24), 18, Vector2(-4, 2), 0.08, 0.78))
-	_logo_fallback.add_child(_make_logo_label("LogoMain", "TEXAS\nHOLD'EM", 116, Color(0.94, 0.95, 1.0, 1.0), 8, Vector2.ZERO, 0.08, 0.78))
-	_logo_fallback.add_child(_make_logo_label("LogoSubGlow", "POKER CLUB", 22, Color(1.0, 0.28, 0.78, 0.58), 8, Vector2(0, 2), 0.70, 0.86))
-	_logo_fallback.add_child(_make_logo_label("LogoSub", "POKER CLUB", 22, HomeTheme.CYAN, 3, Vector2.ZERO, 0.70, 0.86))
+	_logo_fallback.add_child(_make_logo_label("LogoMainShadow", "TEXAS\nHOLD'EM", 116, Color(0.0, 0.0, 0.03, 0.72), 0, Vector2(5, 7), 0.08, 0.78))
+	_logo_fallback.add_child(_make_logo_label("LogoMainGlow", "TEXAS\nHOLD'EM", 116, Color(0.72, 0.82, 1.0, 0.22), 10, Vector2(0, 1), 0.08, 0.78))
+	_logo_fallback.add_child(_make_logo_label("LogoMain", "TEXAS\nHOLD'EM", 116, Color(0.93, 0.95, 1.0, 1.0), 3, Vector2.ZERO, 0.08, 0.78))
+	_logo_fallback.add_child(_make_logo_label("LogoSubShadow", "POKER CLUB", 22, Color(0.0, 0.0, 0.04, 0.76), 0, Vector2(2, 3), 0.70, 0.86))
+	_logo_fallback.add_child(_make_logo_label("LogoSub", "POKER CLUB", 22, Color(0.74, 0.86, 1.0, 1.0), 2, Vector2.ZERO, 0.70, 0.86))
 
 func _make_logo_label(label_name: String, text: String, font_size: int, color: Color, outline_size: int, offset: Vector2, anchor_top: float, anchor_bottom: float) -> Label:
 	var label := Label.new()
@@ -269,7 +169,7 @@ func _build_play_panel() -> void:
 	_play_panel.offset_left = MAIN_LEFT
 	_play_panel.offset_right = -MAIN_RIGHT
 	_play_panel.mouse_filter = Control.MOUSE_FILTER_PASS
-	_play_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.016, 0.14), Color(0.2, 0.28, 0.6, 0.0), 8, 0))
+	_play_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.016, 0.0), Color(0.2, 0.28, 0.6, 0.0), 8, 0))
 	_lobby_ui_root.add_child(_play_panel)
 	var content := VBoxContainer.new()
 	content.name = "PlayContent"
@@ -376,54 +276,31 @@ func _on_play_submenu_selected(id: String) -> void:
 func _set_expanded(value: bool, immediate: bool = false) -> void:
 	_expanded = value
 	_play_panel.visible = true
-	var logo_target := 0.18 if value else 1.0
-	var glow_target := 0.22 if value else 1.0
-	var foreground_target := 0.08 if value else 0.0
+	var logo_target := 0.0 if value else 1.0
+	var foreground_target := 0.0
 	var panel_target := 1.0 if value else 0.0
-	var panel_left := MAIN_LEFT if value else MAIN_LEFT + 34.0
 	if immediate:
 		_center_brand.modulate.a = logo_target
-		_logo_glow.modulate.a = glow_target
 		_prompt.modulate.a = 0.0 if value else 1.0
 		_foreground_decor.modulate.a = foreground_target
 		_play_panel.modulate.a = panel_target
-		_play_panel.offset_left = panel_left
+		_play_panel.offset_left = MAIN_LEFT
 		_play_panel.visible = value
 		return
-	if value:
-		_play_panel.modulate.a = 0.0
-		_play_panel.offset_left = MAIN_LEFT + 34.0
-	var tween := create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(_center_brand, "modulate:a", logo_target, 0.22)
-	tween.tween_property(_logo_glow, "modulate:a", glow_target, 0.22)
-	tween.tween_property(_prompt, "modulate:a", 0.0 if value else 1.0, 0.18)
-	tween.tween_property(_foreground_decor, "modulate:a", foreground_target, 0.22)
-	tween.tween_property(_play_panel, "modulate:a", panel_target, 0.22)
-	tween.tween_property(_play_panel, "offset_left", panel_left, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	if not value:
-		tween.chain().tween_callback(func() -> void: _play_panel.visible = false)
-	else:
-		if _daily_bonus:
-			_daily_bonus.modulate.a = 0.0
-			_daily_bonus.position.y += 10
-			var daily_tween := create_tween()
-			daily_tween.set_parallel(true)
-			daily_tween.tween_interval(0.22)
-			daily_tween.chain().tween_property(_daily_bonus, "modulate:a", 1.0, 0.18)
-			daily_tween.parallel().tween_property(_daily_bonus, "position:y", _daily_bonus.position.y - 10, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		for i in range(_mode_cards.size()):
-			var card := _mode_cards[i]
-			card.modulate.a = 1.0
-			card.tween_visual_reveal(0.04 * float(i))
+	_center_brand.modulate.a = logo_target
+	_prompt.modulate.a = 0.0 if value else 1.0
+	_foreground_decor.modulate.a = foreground_target
+	_play_panel.modulate.a = panel_target
+	_play_panel.offset_left = MAIN_LEFT
+	_play_panel.visible = value
+	for card in _mode_cards:
+		card.modulate.a = 1.0
 
 func _on_mode_selected(id: String) -> void:
 	print("Selected lobby mode: %s" % id)
 
 func set_background_motion_enabled(value: bool) -> void:
 	background_motion_enabled = value
-	if _background_material:
-		_background_material.set_shader_parameter("motion_enabled", value)
 
 func _quit_game() -> void:
 	get_tree().quit()

@@ -3,6 +3,8 @@ class_name NavItem
 
 signal nav_selected(id: String)
 
+const DEBUG_SHOW_HIT_RECTS := false
+
 @export var item_id := ""
 @export var label_text := "ITEM"
 
@@ -60,6 +62,11 @@ func _refresh_visuals() -> void:
 		var target := 1.0 if active else (0.55 if _hovered else 0.0)
 		var tween := create_tween()
 		tween.tween_property(_indicator, "modulate:a", target, 0.14).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	queue_redraw()
+
+func _draw() -> void:
+	if DEBUG_SHOW_HIT_RECTS:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.0, 0.8, 1.0, 0.18), false, 1.0)
 
 func _style(color: Color) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()

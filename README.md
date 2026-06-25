@@ -30,34 +30,40 @@ The project is configured for a 1920x1080 desktop-first 16:9 lobby.
 - Click a mode card to print `Selected lobby mode: <id>` in the Godot output.
 - Other navigation items currently print a Coming Soon message only.
 
-## Implemented Motion
+## Current Interaction Baseline
 
-- Slow shader-based background flow.
-- Subtle Logo breathing pulse.
-- Left nav hover and active indicator.
-- PLAY submenu fade-in.
-- Play panel fade and slide reveal.
-- Mode card stagger reveal.
-- Mode card hover lift, scale, border glow, and shadow.
-- Mode card press compression and rebound.
+Task 1G intentionally disables non-essential motion so the Home Lobby can settle into a clean static quality baseline.
+
+Currently retained:
+
+- Left nav hover/active highlight.
+- Click `PLAY` / `HOME` state switching.
+- Mode card hover border/soft shadow highlight.
+
+Currently disabled:
+
+- Background flow shader and unstable neon FX layers.
+- Logo breathing, scaling, pulse, and procedural circle/geometry backplate.
+- Play panel slide/stagger reveal.
+- Mode card hover lift/scale and press squash.
 - Daily Bonus slide-in.
-- Subtle foreground chip/card drift.
+- Foreground chip/card drift.
 
-## Task 1E Home Lobby Lockdown
+## Task 1G Static Lobby Quality Reset
 
-Task 1E locks the lobby to the user-approved background and runtime layout rules:
+Task 1G resets the lobby to a static, readable, desktop-first Home screen:
 
 - Full-screen locked background: `res://assets/home_lobby/backgrounds/home_background_v1.png`
 - Mode card illustrations: `res://assets/home_lobby/mode_cards/*.png`
-- Bottom decor strip: `res://assets/home_lobby/foreground/foreground_decor_strip.png`
+- Rejected checker-background Logo PNG: `res://assets/home_lobby/logo/rejected/a_high_resolution_graphic_logo_on_a_transparent_c_2_batch_2.png`
 
-The project no longer generates, swaps, or guesses replacement lobby backgrounds. The v1 background is rendered full-screen with aspect-cover behavior and only light non-interactive glow/shader layers above it.
+The project does not generate, swap, or guess replacement lobby backgrounds. The v1 background is rendered full-screen with aspect-cover behavior and brightened in Godot through `TextureRect.modulate` so the smoke, table surface, and chips remain visible.
 
 Default launch state is collapsed and shows only the background, left main menu, top bar, central brand, and bottom prompt. Mode cards, Daily Bonus, Welcome Pack, and the Play submenu are hidden until `PLAY` is clicked.
 
-The left nav, top bar, transition text Logo, card titles/subtitles, Daily Bonus, and interactions are still rendered by Godot UI components. `LogoImage` remains in the scene as a replaceable container, but the current runtime Logo is the layered Godot text version because the supplied logo PNG contains a visible checker background.
+The left nav, top bar, static transition text Logo, card titles/subtitles, Daily Bonus, and interactions are still rendered by Godot UI components. The rejected Logo PNG is not used at runtime because it contains a visible checker background.
 
-See `docs/task_1e_home_lobby_lockdown.md`, `docs/home_lobby_asset_integration.md`, and `assets/home_lobby/README_ASSETS.md`.
+See `docs/task_1g_static_lobby_quality_reset.md`, `docs/home_lobby_asset_integration.md`, and `assets/home_lobby/README_ASSETS.md`.
 
 ## Task 1D Runtime Fixes
 
@@ -71,16 +77,9 @@ C:\godot\Godot_v4.6.2-stable_win64.exe
 
 See `docs/task_1d_runtime_interaction_neon_polish.md`.
 
-## Task 1E Runtime Fixes
+## Task 1G Runtime Fixes
 
-Task 1E keeps the same stable `CardVisual` hover model, locks the lobby to `home_background_v1.png`, sets decorative layers to ignore mouse input, converts the Play submenu into real buttons, adds a visible Welcome Pack card only in expanded state, and regenerates real Godot runtime screenshots.
-
-Visible neon effects currently implemented:
-
-- Background purple/blue/magenta flow glow.
-- Layered Logo glow pulse.
-- Left menu hover/active highlight.
-- Mode card hover glow, lift, and press rebound.
+Task 1G keeps the stable `CardVisual` hover model, but removes the card lift/scale motion. It locks the lobby to `home_background_v1.png`, removes the ghostly Logo backplate, disables background flow/pulse/drift motion, converts the runtime Logo to a static Godot text transition version, and regenerates real Godot runtime screenshots.
 
 ## Screenshots
 
@@ -107,12 +106,12 @@ See `docs/home_lobby_audit.md` for the full audit against the complete project s
 
 ## Placeholder Assets
 
-- Logo: Godot text and procedural spade/glow placeholder.
-- Logo container: `LogoImage` is present for later replacement, but hidden in runtime because the current supplied PNG includes a checker background.
-- Background: locked user-provided `home_background_v1.png` plus subtle shader flow.
+- Logo: static Godot text transition version with deep shadow and a very light fixed glow.
+- Rejected Logo PNG: moved to `assets/home_lobby/logo/rejected/` because it is not truly transparent in runtime.
+- Background: locked user-provided `home_background_v1.png`, brightened in Godot, with motion FX disabled.
 - Mode cards: user-provided rectangular card illustrations with Godot-rendered text.
 - Top avatar and icons: simple UI placeholders.
-- Foreground decor strip: user-provided rectangular image, hidden in collapsed and very low opacity in expanded.
+- Foreground decor strip: user-provided rectangular image, currently hidden for the static quality baseline.
 
 ## Key Files
 

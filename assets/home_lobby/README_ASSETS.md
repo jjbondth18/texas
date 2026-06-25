@@ -6,7 +6,7 @@ All files in this folder are user-provided rectangular assets for the Home/Lobby
 
 - `backgrounds/home_background_v1.png`
   - Source: user-provided asset.
-  - Use: locked full-screen Home Lobby atmospheric background for Task 1E.
+  - Use: locked full-screen Home Lobby atmospheric background for Task 1G.
   - Status: approved Home Lobby background. Do not replace during the lobby lockdown pass.
 
 - `backgrounds/home_background.png`
@@ -47,6 +47,12 @@ All files in this folder are user-provided rectangular assets for the Home/Lobby
   - Source: user-provided asset.
   - Use: low-opacity bottom foreground decor layer.
   - Status: current production placeholder, replaceable later.
+
+## Rejected Logo
+
+- `logo/rejected/a_high_resolution_graphic_logo_on_a_transparent_c_2_batch_2.png`
+  - Source: user-provided/generated logo candidate.
+  - Status: rejected for runtime because the checker background is visible. It is kept only as reference and is not loaded by the Home Lobby.
 
 ## How To Replace
 
