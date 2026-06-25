@@ -45,7 +45,7 @@
 
 ## 只是静态参考的内容
 
-- `docs/screenshots/collapsed_home.png` 和 `docs/screenshots/play_expanded.png` 是本环境生成的静态视觉参考图，不是真实 Godot 运行截图。
+- `docs/screenshots/static_collapsed_home.png` 和 `docs/screenshots/static_play_expanded.png` 是本环境生成的静态视觉参考图，不是真实 Godot 运行截图。
 - 当前环境没有可用的 Godot 可执行文件，因此还未完成真实运行截图、真实 hover 截图或运行时无报错验证。
 
 ## 本轮二次修正

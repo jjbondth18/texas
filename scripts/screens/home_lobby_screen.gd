@@ -51,6 +51,7 @@ func _ready() -> void:
 	_set_expanded(false, true)
 	MotionManager.pulse_canvas_item(_logo, 4.2, 0.78, 1.0)
 	MotionManager.drift(_foreground_decor, Vector2(0, -5), 12.0)
+	_handle_runtime_capture_args()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel") and _expanded:
@@ -127,6 +128,8 @@ func _build_layout() -> void:
 	title.add_theme_font_size_override("font_size", 96)
 	title.add_theme_color_override("font_color", HomeTheme.TEXT)
 	title.add_theme_color_override("font_shadow_color", Color(1.0, 0.28, 0.78, 0.38))
+	title.add_theme_color_override("font_outline_color", Color(0.42, 0.55, 1.0, 0.28))
+	title.add_theme_constant_override("outline_size", 3)
 	title.add_theme_constant_override("shadow_offset_x", 0)
 	title.add_theme_constant_override("shadow_offset_y", 0)
 	_brand.add_child(title)
@@ -197,13 +200,13 @@ func _build_foreground() -> void:
 	_foreground_decor.anchor_right = 1.0
 	_foreground_decor.anchor_bottom = 1.0
 	_foreground_decor.offset_left = 180
-	_foreground_decor.offset_top = -210
+	_foreground_decor.offset_top = -190
 	_foreground_decor.offset_right = 0
 	_foreground_decor.offset_bottom = 10
 	_foreground_decor.texture = preload("res://assets/home_lobby/foreground/foreground_decor_strip.png")
 	_foreground_decor.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_foreground_decor.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	_foreground_decor.modulate = Color(1, 1, 1, 0.42)
+	_foreground_decor.modulate = Color(1, 1, 1, 0.0)
 	_foreground_decor.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_foreground_decor)
 
@@ -219,14 +222,16 @@ func _on_nav_selected(id: String) -> void:
 func _set_expanded(value: bool, immediate: bool = false) -> void:
 	_expanded = value
 	_play_panel.visible = true
-	var logo_target := 0.38 if value else 1.0
-	var brand_target := 0.28 if value else 1.0
+	var logo_target := 0.22 if value else 1.0
+	var brand_target := 0.20 if value else 1.0
+	var foreground_target := 0.16 if value else 0.0
 	var panel_target := 1.0 if value else 0.0
 	var panel_x := 0.0 if value else 32.0
 	if immediate:
 		_logo.modulate.a = logo_target
 		_brand.modulate.a = brand_target
 		_prompt.modulate.a = 0.0 if value else 1.0
+		_foreground_decor.modulate.a = foreground_target
 		_play_panel.modulate.a = panel_target
 		_play_panel.position.x = panel_x
 		_play_panel.visible = value
@@ -239,6 +244,7 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 	tween.tween_property(_logo, "modulate:a", logo_target, 0.22)
 	tween.tween_property(_brand, "modulate:a", brand_target, 0.22)
 	tween.tween_property(_prompt, "modulate:a", 0.0 if value else 1.0, 0.18)
+	tween.tween_property(_foreground_decor, "modulate:a", foreground_target, 0.22)
 	tween.tween_property(_play_panel, "modulate:a", panel_target, 0.22)
 	tween.tween_property(_play_panel, "position:x", panel_x, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	if not value:
@@ -269,3 +275,32 @@ func set_background_motion_enabled(value: bool) -> void:
 	background_motion_enabled = value
 	if _background_material:
 		_background_material.set_shader_parameter("motion_enabled", value)
+
+func _handle_runtime_capture_args() -> void:
+	var args := OS.get_cmdline_user_args()
+	if not args.has("--capture-lobby-state"):
+		return
+	var state := _arg_value(args, "--capture-lobby-state", "collapsed")
+	var output := _arg_value(args, "--capture-lobby-output", "")
+	if state == "expanded":
+		_left_nav.set_active("play")
+		_set_expanded(true, true)
+	else:
+		_left_nav.set_active("home")
+		_set_expanded(false, true)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if output != "":
+		var image := get_viewport().get_texture().get_image()
+		var path := ProjectSettings.globalize_path(output) if output.begins_with("res://") else output
+		var err := image.save_png(path)
+		if err != OK:
+			push_error("Failed to save Home Lobby runtime screenshot: %s" % output)
+	get_tree().quit()
+
+func _arg_value(args: PackedStringArray, key: String, fallback: String) -> String:
+	var index := args.find(key)
+	if index == -1 or index + 1 >= args.size():
+		return fallback
+	return args[index + 1]

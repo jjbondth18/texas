@@ -10,6 +10,12 @@ This slice is UI-only. It does not implement networking, Steam API, poker gamepl
 2. Run the project.
 3. Main scene: `res://scenes/screens/home_lobby_screen.tscn`.
 
+Known local executable:
+
+```powershell
+& "C:\godot\Godot_v4.6.2-stable_win64.exe" --path "C:\Users\jjbon\Documents\texas" --scene "res://scenes/screens/home_lobby_screen.tscn"
+```
+
 The project is configured for a 1920x1080 desktop-first 16:9 lobby.
 
 ## State Controls
@@ -48,12 +54,22 @@ See `docs/home_lobby_asset_integration.md` and `assets/home_lobby/README_ASSETS.
 
 ## Screenshots
 
-- `docs/screenshots/collapsed_home.png`
-- `docs/screenshots/play_expanded.png`
+- Static reference: `docs/screenshots/static_collapsed_home.png`
+- Static reference: `docs/screenshots/static_play_expanded.png`
+- Runtime target: `docs/screenshots/runtime_collapsed_home.png`
+- Runtime target: `docs/screenshots/runtime_play_expanded.png`
 
-Important: these two PNG files are static visual references generated in this environment. They are not real Godot runtime screenshots.
+The static reference files are not real Godot runtime screenshots.
 
-Godot was not available on PATH in this environment, so real engine screenshots and runtime validation still need to be captured from the Godot editor.
+This Codex environment was able to locate `C:\godot\Godot_v4.6.2-stable_win64.exe`, but external executable execution was blocked by the approval/usage layer before Godot could run. To generate real runtime screenshots locally, run:
+
+```powershell
+& "C:\godot\Godot_v4.6.2-stable_win64.exe" --headless --path "C:\Users\jjbon\Documents\texas" --scene "res://scenes/screens/home_lobby_screen.tscn" -- --capture-lobby-state collapsed --capture-lobby-output "res://docs/screenshots/runtime_collapsed_home.png"
+
+& "C:\godot\Godot_v4.6.2-stable_win64.exe" --headless --path "C:\Users\jjbon\Documents\texas" --scene "res://scenes/screens/home_lobby_screen.tscn" -- --capture-lobby-state expanded --capture-lobby-output "res://docs/screenshots/runtime_play_expanded.png"
+```
+
+If headless capture fails on the local GPU/driver, run the scene normally, click `PLAY` for the expanded state, and use the Godot editor or OS screenshot tool to save the two runtime screenshots at the paths above.
 
 ## Audit
 
