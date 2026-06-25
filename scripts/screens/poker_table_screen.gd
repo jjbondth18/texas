@@ -31,6 +31,11 @@ var _capture_output := ""
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	
+	var args := _all_cmdline_args()
+	if args.has("--training") or args.has("--table-training"):
+		TableLaunchContext.configure("training", "mock_table_001")
+		
 	_build_scene()
 	_load_phase(_phase_from_args())
 	_apply_capture_args()
@@ -145,19 +150,34 @@ func _layout() -> void:
 	_set_design_rect(_action_bar, Rect2(770, 900, 1020, 64), scale)
 	_set_design_rect(_timer_label, Rect2(1130, 840, 300, 42), scale)
 
-	var seat_rects := {
-		1: Rect2(1630, 90, 240, 130),
-		2: Rect2(1760, 260, 240, 130),
-		3: Rect2(1760, 480, 240, 130),
-		4: Rect2(1600, 640, 250, 130),
-		5: Rect2(840, 628, 300, 140),
-		6: Rect2(390, 640, 250, 130),
-		7: Rect2(560, 480, 240, 130),
-		8: Rect2(560, 260, 240, 130),
-		9: Rect2(690, 90, 240, 130),
+	# Ellipse seat positioning
+	var center := Vector2(960, 360)
+	var rx := 660.0
+	var ry := 220.0
+	var normal_seat_size := Vector2(220, 126)
+	var local_seat_size := Vector2(280, 136)
+
+	var seat_angles := {
+		1: deg_to_rad(-60.0),
+		2: deg_to_rad(-15.0),
+		3: deg_to_rad(20.0),
+		4: deg_to_rad(55.0),
+		# 5 is locked at bottom center
+		6: deg_to_rad(125.0),
+		7: deg_to_rad(160.0),
+		8: deg_to_rad(195.0),
+		9: deg_to_rad(240.0)
 	}
-	for visual_position in seat_rects.keys():
-		_set_design_rect(_seats[visual_position], seat_rects[visual_position], scale)
+
+	for visual_position in range(1, 10):
+		if visual_position == 5:
+			var rect5 := Rect2(Vector2(960, 645) - local_seat_size * 0.5, local_seat_size)
+			_set_design_rect(_seats[visual_position], rect5, scale)
+		else:
+			var angle: float = seat_angles[visual_position]
+			var pos := center + Vector2(cos(angle) * rx, sin(angle) * ry)
+			var rect := Rect2(pos - normal_seat_size * 0.5, normal_seat_size)
+			_set_design_rect(_seats[visual_position], rect, scale)
 
 func _set_design_rect(node: Control, rect: Rect2, scale: float) -> void:
 	node.position = rect.position * scale
