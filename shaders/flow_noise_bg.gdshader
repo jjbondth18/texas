@@ -5,6 +5,7 @@ uniform vec4 haze_color : source_color = vec4(0.18, 0.28, 0.75, 1.0);
 uniform vec4 neon_color : source_color = vec4(1.0, 0.18, 0.62, 1.0);
 uniform float speed = 0.012;
 uniform float intensity = 0.22;
+uniform float layer_alpha = 0.14;
 uniform bool motion_enabled = true;
 
 float hash(vec2 p) {
@@ -25,5 +26,5 @@ void fragment() {
 	float band = smoothstep(0.35, 0.92, sin((uv.x + uv.y * 0.6 + t) * 8.0) * 0.5 + 0.5);
 	vec4 color = mix(deep_color, haze_color, n * intensity);
 	color = mix(color, neon_color, band * n * 0.055);
-	COLOR = color;
+	COLOR = vec4(color.rgb, layer_alpha);
 }

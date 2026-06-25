@@ -23,7 +23,10 @@ The project is configured for a 1920x1080 desktop-first 16:9 lobby.
 - Default launch state is collapsed cinematic home.
 - Click `PLAY` in the left navigation rail to open the Play expanded state.
 - Click `HOME` to return to the collapsed state.
-- Press `Esc` while expanded to collapse.
+- Press `Esc` to close the running development window.
+- Click `EXIT` in the top bar to close the running development window.
+- Press `Alt+Enter` to toggle windowed/fullscreen mode.
+- `Alt+F4` also closes the window.
 - Click a mode card to print `Selected lobby mode: <id>` in the Godot output.
 - Other navigation items currently print a Coming Soon message only.
 
@@ -61,15 +64,15 @@ See `docs/home_lobby_asset_integration.md` and `assets/home_lobby/README_ASSETS.
 
 The static reference files are not real Godot runtime screenshots.
 
-This Codex environment was able to locate `C:\godot\Godot_v4.6.2-stable_win64.exe`, but external executable execution was blocked by the approval/usage layer before Godot could run. To generate real runtime screenshots locally, run:
+Runtime screenshots have been generated with the real Godot executable in non-headless mode. To regenerate them locally, run:
 
 ```powershell
-& "C:\godot\Godot_v4.6.2-stable_win64.exe" --headless --path "C:\Users\jjbon\Documents\texas" --scene "res://scenes/screens/home_lobby_screen.tscn" -- --capture-lobby-state collapsed --capture-lobby-output "res://docs/screenshots/runtime_collapsed_home.png"
+& "C:\godot\Godot_v4.6.2-stable_win64.exe" --path "C:\Users\jjbon\Documents\texas" --scene "res://scenes/screens/home_lobby_screen.tscn" --capture-lobby-state collapsed --capture-lobby-output "C:\Users\jjbon\Documents\texas\docs\screenshots\runtime_collapsed_home.png"
 
-& "C:\godot\Godot_v4.6.2-stable_win64.exe" --headless --path "C:\Users\jjbon\Documents\texas" --scene "res://scenes/screens/home_lobby_screen.tscn" -- --capture-lobby-state expanded --capture-lobby-output "res://docs/screenshots/runtime_play_expanded.png"
+& "C:\godot\Godot_v4.6.2-stable_win64.exe" --path "C:\Users\jjbon\Documents\texas" --scene "res://scenes/screens/home_lobby_screen.tscn" --capture-lobby-state expanded --capture-lobby-output "C:\Users\jjbon\Documents\texas\docs\screenshots\runtime_play_expanded.png"
 ```
 
-If headless capture fails on the local GPU/driver, run the scene normally, click `PLAY` for the expanded state, and use the Godot editor or OS screenshot tool to save the two runtime screenshots at the paths above.
+Do not use `--headless` for screenshot capture. Godot's headless dummy renderer cannot provide a viewport texture for this scene. If automatic capture fails, run the scene normally, click `PLAY` for the expanded state, and use the OS screenshot tool to save the two runtime screenshots at the paths above.
 
 ## Audit
 
@@ -78,10 +81,10 @@ See `docs/home_lobby_audit.md` for the full audit against the complete project s
 ## Placeholder Assets
 
 - Logo: Godot text and procedural spade/glow placeholder.
-- Background: procedural atmosphere layer plus shader flow.
-- Mode cards: procedural placeholder art for cards, chips, trophy, table, and club badge.
+- Background: user-provided rectangular lobby background plus subtle shader flow.
+- Mode cards: user-provided rectangular card illustrations with Godot-rendered text.
 - Top avatar and icons: simple UI placeholders.
-- Foreground chips/cards: procedural drawings, not final PNG assets.
+- Foreground decor strip: user-provided rectangular image, hidden in collapsed and very low opacity in expanded.
 
 ## Key Files
 

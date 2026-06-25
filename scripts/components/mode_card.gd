@@ -14,6 +14,8 @@ var _base_position := Vector2.ZERO
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(238, 360)
+	size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	pivot_offset = custom_minimum_size * 0.5
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	add_theme_stylebox_override("panel", HomeTheme.make_panel_style(HomeTheme.CARD, HomeTheme.STROKE, 8, 1))

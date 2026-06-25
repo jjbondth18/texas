@@ -11,7 +11,7 @@ var _hovered := false
 var _indicator: ColorRect
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(156, 50)
+	custom_minimum_size = Vector2(246, 50)
 	text = label_text
 	flat = true
 	focus_mode = Control.FOCUS_NONE

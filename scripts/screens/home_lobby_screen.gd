@@ -23,9 +23,9 @@ class PokerLogo:
 
 	func _draw() -> void:
 		var center := size * 0.5
-		draw_circle(center, 152, Color(0.02, 0.025, 0.06, 0.48))
-		draw_arc(center, 154, 0.0, TAU, 120, Color(0.52, 0.78, 1.0, 0.34), 2.5)
-		draw_arc(center, 178, PI * 0.08, PI * 1.42, 120, Color(1.0, 0.28, 0.78, 0.22), 2.0)
+		draw_circle(center, 152, Color(0.02, 0.025, 0.06, 0.22))
+		draw_arc(center, 154, 0.0, TAU, 120, Color(0.52, 0.78, 1.0, 0.18), 2.0)
+		draw_arc(center, 178, PI * 0.08, PI * 1.42, 120, Color(1.0, 0.28, 0.78, 0.12), 1.5)
 		var spade := PackedVector2Array([
 			center + Vector2(0, -90),
 			center + Vector2(72, -12),
@@ -34,11 +34,11 @@ class PokerLogo:
 			center + Vector2(-34, 58),
 			center + Vector2(-72, -12),
 		])
-		draw_colored_polygon(spade, Color(0.055, 0.075, 0.16, 0.96))
+		draw_colored_polygon(spade, Color(0.055, 0.075, 0.16, 0.32))
 		var outline := PackedVector2Array(spade)
 		outline.append(spade[0])
-		draw_polyline(outline, Color(0.3, 0.86, 1.0, 0.78), 3.0)
-		draw_circle(center + Vector2(0, -8), 24, Color(1.0, 0.28, 0.78, 0.48))
+		draw_polyline(outline, Color(0.3, 0.86, 1.0, 0.32), 2.0)
+		draw_circle(center + Vector2(0, -8), 24, Color(1.0, 0.28, 0.78, 0.18))
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -54,9 +54,13 @@ func _ready() -> void:
 	_handle_runtime_capture_args()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("ui_cancel") and _expanded:
-		_left_nav.set_active("home")
-		_set_expanded(false)
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.alt_pressed and event.keycode == KEY_ENTER:
+			_toggle_window_mode()
+			get_viewport().set_input_as_handled()
+			return
+	if event.is_action_pressed("ui_cancel"):
+		get_tree().quit()
 
 func _build_background() -> void:
 	var base := TextureRect.new()
@@ -68,33 +72,35 @@ func _build_background() -> void:
 	add_child(base)
 	var shade := ColorRect.new()
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	shade.color = Color(0.0, 0.0, 0.0, 0.20)
+	shade.color = Color(0.0, 0.0, 0.0, 0.02)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(shade)
 	var flow := ColorRect.new()
 	flow.set_anchors_preset(Control.PRESET_FULL_RECT)
-	flow.modulate.a = 0.36
+	flow.modulate.a = 1.0
 	flow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_background_material = ShaderMaterial.new()
 	_background_material.shader = preload("res://shaders/flow_noise_bg.gdshader")
 	_background_material.set_shader_parameter("motion_enabled", background_motion_enabled)
+	_background_material.set_shader_parameter("layer_alpha", 0.04)
 	flow.material = _background_material
 	add_child(flow)
 
 func _build_layout() -> void:
 	_left_nav = preload("res://scenes/components/left_nav_rail.tscn").instantiate() as LeftNavRail
 	_left_nav.anchor_bottom = 1.0
-	_left_nav.offset_right = 184
+	_left_nav.offset_right = 280
 	_left_nav.nav_selected.connect(_on_nav_selected)
 	add_child(_left_nav)
 
 	_top_bar = preload("res://scenes/components/top_bar.tscn").instantiate() as TopBar
 	_top_bar.anchor_left = 0.0
 	_top_bar.anchor_right = 1.0
-	_top_bar.offset_left = 210
+	_top_bar.offset_left = 320
 	_top_bar.offset_right = -24
 	_top_bar.offset_top = 18
 	_top_bar.offset_bottom = 82
+	_top_bar.exit_requested.connect(_quit_game)
 	add_child(_top_bar)
 
 	_logo = PokerLogo.new()
@@ -150,15 +156,17 @@ func _build_layout() -> void:
 	_prompt.offset_right = 220
 	_prompt.offset_bottom = -40
 	_prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	HomeTheme.make_font_settings(_prompt, 13, Color(0.72, 0.78, 0.94, 0.62))
+	HomeTheme.make_font_settings(_prompt, 14, Color(0.78, 0.84, 1.0, 0.78))
 	add_child(_prompt)
 
 func _build_play_panel() -> void:
 	_play_panel = PanelContainer.new()
-	_play_panel.anchor_left = 0.18
-	_play_panel.anchor_top = 0.34
-	_play_panel.anchor_right = 0.96
-	_play_panel.anchor_bottom = 0.92
+	_play_panel.anchor_left = 0.0
+	_play_panel.anchor_top = 0.32
+	_play_panel.anchor_right = 1.0
+	_play_panel.anchor_bottom = 0.91
+	_play_panel.offset_left = 360
+	_play_panel.offset_right = -80
 	_play_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.016, 0.14), Color(0.2, 0.28, 0.6, 0.0), 8, 0))
 	add_child(_play_panel)
 	var content := VBoxContainer.new()
@@ -171,7 +179,7 @@ func _build_play_panel() -> void:
 	header.add_child(title_box)
 	var title := Label.new()
 	title.text = "CHOOSE YOUR ROOM"
-	HomeTheme.make_font_settings(title, 18, Color(0.86, 0.88, 1.0, 0.82))
+	HomeTheme.make_font_settings(title, 20, Color(0.9, 0.92, 1.0, 0.9))
 	title_box.add_child(title)
 	var sub := Label.new()
 	sub.text = "Prototype modes use mock data only."
@@ -179,7 +187,8 @@ func _build_play_panel() -> void:
 	title_box.add_child(sub)
 
 	var card_row := HBoxContainer.new()
-	card_row.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	card_row.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	card_row.custom_minimum_size = Vector2(1, 380)
 	card_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	card_row.add_theme_constant_override("separation", 24)
 	content.add_child(card_row)
@@ -222,23 +231,23 @@ func _on_nav_selected(id: String) -> void:
 func _set_expanded(value: bool, immediate: bool = false) -> void:
 	_expanded = value
 	_play_panel.visible = true
-	var logo_target := 0.22 if value else 1.0
-	var brand_target := 0.20 if value else 1.0
-	var foreground_target := 0.16 if value else 0.0
+	var logo_target := 0.14 if value else 1.0
+	var brand_target := 0.16 if value else 1.0
+	var foreground_target := 0.10 if value else 0.0
 	var panel_target := 1.0 if value else 0.0
-	var panel_x := 0.0 if value else 32.0
+	var panel_left := 360.0 if value else 392.0
 	if immediate:
 		_logo.modulate.a = logo_target
 		_brand.modulate.a = brand_target
 		_prompt.modulate.a = 0.0 if value else 1.0
 		_foreground_decor.modulate.a = foreground_target
 		_play_panel.modulate.a = panel_target
-		_play_panel.position.x = panel_x
+		_play_panel.offset_left = panel_left
 		_play_panel.visible = value
 		return
 	if value:
 		_play_panel.modulate.a = 0.0
-		_play_panel.position.x = 32.0
+		_play_panel.offset_left = 392.0
 	var tween := create_tween()
 	tween.set_parallel(true)
 	tween.tween_property(_logo, "modulate:a", logo_target, 0.22)
@@ -246,7 +255,7 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 	tween.tween_property(_prompt, "modulate:a", 0.0 if value else 1.0, 0.18)
 	tween.tween_property(_foreground_decor, "modulate:a", foreground_target, 0.22)
 	tween.tween_property(_play_panel, "modulate:a", panel_target, 0.22)
-	tween.tween_property(_play_panel, "position:x", panel_x, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(_play_panel, "offset_left", panel_left, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	if not value:
 		tween.chain().tween_callback(func() -> void: _play_panel.visible = false)
 	else:
@@ -276,8 +285,20 @@ func set_background_motion_enabled(value: bool) -> void:
 	if _background_material:
 		_background_material.set_shader_parameter("motion_enabled", value)
 
+func _quit_game() -> void:
+	get_tree().quit()
+
+func _toggle_window_mode() -> void:
+	var mode := DisplayServer.window_get_mode()
+	if mode == DisplayServer.WINDOW_MODE_WINDOWED:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+
 func _handle_runtime_capture_args() -> void:
 	var args := OS.get_cmdline_user_args()
+	if not args.has("--capture-lobby-state"):
+		args = OS.get_cmdline_args()
 	if not args.has("--capture-lobby-state"):
 		return
 	var state := _arg_value(args, "--capture-lobby-state", "collapsed")

@@ -18,7 +18,7 @@ var _play_submenu: VBoxContainer
 var active_id := "home"
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(184, 0)
+	custom_minimum_size = Vector2(280, 0)
 	add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.018, 0.82), Color(0.36, 0.42, 0.7, 0.16), 0, 0))
 	_list = VBoxContainer.new()
 	_list.add_theme_constant_override("separation", 12)
@@ -66,7 +66,7 @@ func _build_play_submenu() -> void:
 	for label_text in ["QUICK PLAY", "CASH TABLES", "TOURNAMENTS", "PRIVATE TABLE", "CLUB GAMES"]:
 		var label := Label.new()
 		label.text = label_text
-		label.custom_minimum_size = Vector2(130, 24)
+		label.custom_minimum_size = Vector2(190, 24)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		label.add_theme_font_size_override("font_size", 12)
 		label.add_theme_color_override("font_color", HomeTheme.MUTED)

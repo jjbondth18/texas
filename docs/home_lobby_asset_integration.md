@@ -68,4 +68,4 @@ The following remain Godot components, not baked images:
 - `docs/screenshots/static_collapsed_home.png`
 - `docs/screenshots/static_play_expanded.png`
 
-These are static visual references generated outside the Godot runtime. Task 1B confirmed the Godot executable path, but this environment's approval/usage layer blocked launching it, so these are not real Godot runtime screenshots.
+These are static visual references generated outside the Godot runtime. Real runtime screenshots are now stored separately as `runtime_collapsed_home.png` and `runtime_play_expanded.png`.

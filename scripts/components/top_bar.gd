@@ -1,6 +1,8 @@
 extends PanelContainer
 class_name TopBar
 
+signal exit_requested
+
 var _name_label: Label
 var _level_label: Label
 var _xp_bar: ProgressBar
@@ -46,6 +48,10 @@ func _ready() -> void:
 	_premium_label = _currency_pill(row, "GEMS", HomeTheme.PINK)
 	for text in ["+", "FR", "MSG", "SET"]:
 		row.add_child(_top_icon(text))
+	var exit_button := _top_icon("EXIT")
+	exit_button.custom_minimum_size = Vector2(58, 40)
+	exit_button.pressed.connect(func() -> void: exit_requested.emit())
+	row.add_child(exit_button)
 
 func configure(player: Dictionary) -> void:
 	if not is_node_ready():

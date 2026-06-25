@@ -40,15 +40,15 @@ docs/screenshots/static_play_expanded.png
 
 ## Manual / Local Capture Commands
 
-Run these locally from PowerShell:
+Task 1C updated capture to use non-headless rendering. Run these locally from PowerShell:
 
 ```powershell
-& "C:\godot\Godot_v4.6.2-stable_win64.exe" --headless --path "C:\Users\jjbon\Documents\texas" --scene "res://scenes/screens/home_lobby_screen.tscn" -- --capture-lobby-state collapsed --capture-lobby-output "res://docs/screenshots/runtime_collapsed_home.png"
+& "C:\godot\Godot_v4.6.2-stable_win64.exe" --path "C:\Users\jjbon\Documents\texas" --scene "res://scenes/screens/home_lobby_screen.tscn" --capture-lobby-state collapsed --capture-lobby-output "C:\Users\jjbon\Documents\texas\docs\screenshots\runtime_collapsed_home.png"
 
-& "C:\godot\Godot_v4.6.2-stable_win64.exe" --headless --path "C:\Users\jjbon\Documents\texas" --scene "res://scenes/screens/home_lobby_screen.tscn" -- --capture-lobby-state expanded --capture-lobby-output "res://docs/screenshots/runtime_play_expanded.png"
+& "C:\godot\Godot_v4.6.2-stable_win64.exe" --path "C:\Users\jjbon\Documents\texas" --scene "res://scenes/screens/home_lobby_screen.tscn" --capture-lobby-state expanded --capture-lobby-output "C:\Users\jjbon\Documents\texas\docs\screenshots\runtime_play_expanded.png"
 ```
 
-If headless capture does not work, open the project normally, run `res://scenes/screens/home_lobby_screen.tscn`, capture the default state, click `PLAY`, and capture the expanded state.
+Headless capture does not work for this scene because the dummy renderer cannot provide a readable viewport texture. If automatic capture fails, open the project normally, run `res://scenes/screens/home_lobby_screen.tscn`, capture the default state, click `PLAY`, and capture the expanded state.
 
 ## Visual Fixes In Task 1B
 
@@ -68,4 +68,4 @@ If headless capture does not work, open the project normally, run `res://scenes/
 - Background shader flow: implemented in code.
 - Foreground drift: implemented in code, only visible when the strip is visible in expanded state.
 
-Because Godot launch was blocked in this environment, the visible runtime strength of these motions still needs local confirmation.
+Task 1C later generated real runtime screenshots with the provided Godot executable in non-headless mode. Headless capture is not suitable because the dummy renderer does not provide a readable viewport texture.
