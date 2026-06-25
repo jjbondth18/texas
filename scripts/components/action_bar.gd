@@ -31,28 +31,46 @@ func set_actions(new_actions: Array) -> void:
 		button.focus_mode = Control.FOCUS_NONE
 		
 		var bg_color := Color(0.008, 0.010, 0.024, 0.45)
-		var border_color := Color(0.62, 0.36, 1.0, 0.60)
+		var border_color := Color(1.0, 0.0, 0.5, 0.30) # Default 0.3 pink neon border
+		var shadow_color_normal := Color(1.0, 0.0, 0.5, 0.15)
+		var shadow_size_normal := 5
+		var shadow_color_hover := Color(1.0, 0.0, 0.5, 0.50)
+		var shadow_size_hover := 12
 		
-		if action_id == "fold":
-			border_color = Color(0.45, 0.45, 0.52, 0.40)
-		elif action_id in ["check", "call", "all_in"]:
-			border_color = Color(1.0, 0.0, 0.5, 0.85)
-		elif action_id in ["bet", "raise"]:
-			border_color = Color(0.0, 0.75, 1.0, 0.80)
-			
+		if not button.disabled:
+			if action_id == "fold":
+				border_color = Color(1.0, 0.0, 0.5, 0.30)
+				shadow_color_normal = Color(1.0, 0.0, 0.5, 0.10)
+				shadow_size_normal = 4
+				shadow_color_hover = Color(1.0, 0.0, 0.5, 0.40)
+				shadow_size_hover = 10
+			elif action_id in ["check", "call", "all_in"]:
+				border_color = Color(1.0, 0.0, 0.5, 0.85)
+				shadow_color_normal = Color(1.0, 0.0, 0.5, 0.25)
+				shadow_size_normal = 6
+				shadow_color_hover = Color(1.0, 0.0, 0.5, 0.65)
+				shadow_size_hover = 14
+			elif action_id in ["bet", "raise"]:
+				border_color = Color(0.0, 0.75, 1.0, 0.80)
+				shadow_color_normal = Color(0.0, 0.75, 1.0, 0.20)
+				shadow_size_normal = 6
+				shadow_color_hover = Color(0.0, 0.75, 1.0, 0.60)
+				shadow_size_hover = 14
+				
 		var style_normal := HomeTheme.make_button_style(bg_color, border_color, 24)
-		if action_id in ["check", "call", "all_in"] and not button.disabled:
-			style_normal.shadow_color = Color(1.0, 0.0, 0.5, 0.20)
-			style_normal.shadow_size = 6
+		if not button.disabled:
+			style_normal.shadow_color = shadow_color_normal
+			style_normal.shadow_size = shadow_size_normal
 			
 		var border_hover := border_color
-		border_hover.a = 1.0
+		if not button.disabled:
+			border_hover.a = 1.0
 		var style_hover := HomeTheme.make_button_style(bg_color + Color(0.01, 0.01, 0.02, 0.2), border_hover, 24)
-		if action_id in ["check", "call", "all_in"] and not button.disabled:
-			style_hover.shadow_color = Color(1.0, 0.0, 0.5, 0.55)
-			style_hover.shadow_size = 14
+		if not button.disabled:
+			style_hover.shadow_color = shadow_color_hover
+			style_hover.shadow_size = shadow_size_hover
 		
-		var style_disabled := HomeTheme.make_button_style(Color(0.004, 0.005, 0.01, 0.20), Color(border_color.r, border_color.g, border_color.b, 0.15), 24)
+		var style_disabled := HomeTheme.make_button_style(Color(0.008, 0.006, 0.015, 0.30), Color(1.0, 0.0, 0.5, 0.30), 24)
 		
 		button.add_theme_stylebox_override("normal", style_normal)
 		button.add_theme_stylebox_override("hover", style_hover)

@@ -27,6 +27,7 @@ var _status_panel
 var _timer_label: Label
 var _dealer_label: Label
 var _local_cards_root: HBoxContainer
+var _local_controls_container: VBoxContainer
 var _capture_output := ""
 
 func _ready() -> void:
@@ -110,26 +111,37 @@ func _build_scene() -> void:
 	_community_board = CommunityBoardScene.instantiate()
 	_content_root.add_child(_community_board)
 
+	_local_controls_container = VBoxContainer.new()
+	_local_controls_container.name = "LocalControlsContainer"
+	_local_controls_container.add_theme_constant_override("separation", 6)
+	_local_controls_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_content_root.add_child(_local_controls_container)
+
 	_local_cards_root = HBoxContainer.new()
 	_local_cards_root.name = "LocalHoleCards"
 	_local_cards_root.alignment = BoxContainer.ALIGNMENT_CENTER
 	_local_cards_root.add_theme_constant_override("separation", 14)
-	_content_root.add_child(_local_cards_root)
+	_local_cards_root.custom_minimum_size = Vector2(380, 108)
+	_local_cards_root.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_local_controls_container.add_child(_local_cards_root)
 	for i in range(2):
 		var card = CardViewScene.instantiate()
 		card.custom_minimum_size = Vector2(78, 108)
 		_local_cards_root.add_child(card)
-
-	_action_bar = ActionBarScene.instantiate()
-	_action_bar.action_pressed.connect(_on_action_pressed)
-	_content_root.add_child(_action_bar)
 
 	_timer_label = Label.new()
 	_timer_label.name = "TurnTimer"
 	_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_timer_label.add_theme_font_size_override("font_size", 24)
 	_timer_label.add_theme_color_override("font_color", Color(0.65, 0.95, 1.0))
-	_content_root.add_child(_timer_label)
+	_timer_label.custom_minimum_size = Vector2(300, 30)
+	_timer_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_local_controls_container.add_child(_timer_label)
+
+	_action_bar = ActionBarScene.instantiate()
+	_action_bar.action_pressed.connect(_on_action_pressed)
+	_action_bar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_local_controls_container.add_child(_action_bar)
 	_layout()
 
 func _layout() -> void:
@@ -146,27 +158,26 @@ func _layout() -> void:
 	_set_design_rect(_dealer_label, Rect2(1150, 60, 260, 40), scale)
 	_set_design_rect(_pot_display, Rect2(1130, 330, 300, 82), scale)
 	_set_design_rect(_community_board, Rect2(960, 430, 640, 122), scale)
-	_set_design_rect(_local_cards_root, Rect2(1090, 776, 380, 116), scale)
-	_set_design_rect(_action_bar, Rect2(770, 900, 1020, 64), scale)
-	_set_design_rect(_timer_label, Rect2(1130, 840, 300, 42), scale)
+	# Position the local controls container with cards, timer and action bar
+	_set_design_rect(_local_controls_container, Rect2(770, 740, 1020, 240), scale)
 
-	# Ellipse seat positioning
+	# Ellipse seat positioning with optimized radius and vertical-gap angles
 	var center := Vector2(960, 360)
 	var rx := 660.0
-	var ry := 220.0
+	var ry := 240.0
 	var normal_seat_size := Vector2(220, 126)
 	var local_seat_size := Vector2(280, 136)
 
 	var seat_angles := {
-		1: deg_to_rad(-60.0),
-		2: deg_to_rad(-15.0),
-		3: deg_to_rad(20.0),
-		4: deg_to_rad(55.0),
+		1: deg_to_rad(-65.0),
+		2: deg_to_rad(-35.0),
+		3: deg_to_rad(35.0),
+		4: deg_to_rad(65.0),
 		# 5 is locked at bottom center
-		6: deg_to_rad(125.0),
-		7: deg_to_rad(160.0),
-		8: deg_to_rad(195.0),
-		9: deg_to_rad(240.0)
+		6: deg_to_rad(115.0),
+		7: deg_to_rad(145.0),
+		8: deg_to_rad(215.0),
+		9: deg_to_rad(245.0)
 	}
 
 	for visual_position in range(1, 10):
