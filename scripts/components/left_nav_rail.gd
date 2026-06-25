@@ -2,6 +2,7 @@ extends PanelContainer
 class_name LeftNavRail
 
 signal nav_selected(id: String)
+signal play_submenu_selected(id: String)
 
 const ITEMS := [
 	{ "id": "home", "title": "HOME" },
@@ -60,19 +61,36 @@ func _on_item_selected(id: String) -> void:
 
 func _build_play_submenu() -> void:
 	_play_submenu = VBoxContainer.new()
+	_play_submenu.name = "PlaySubmenu"
 	_play_submenu.visible = false
 	_play_submenu.add_theme_constant_override("separation", 8)
 	_list.add_child(_play_submenu)
-	for label_text in ["QUICK PLAY", "CASH TABLES", "TOURNAMENTS", "PRIVATE TABLE", "CLUB GAMES"]:
-		var label := Label.new()
-		label.text = label_text
-		label.custom_minimum_size = Vector2(190, 24)
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		label.add_theme_font_size_override("font_size", 12)
-		label.add_theme_color_override("font_color", HomeTheme.MUTED)
-		label.add_theme_constant_override("outline_size", 0)
-		label.set("theme_override_constants/line_spacing", 1)
+	for mode_data in MockHomeData.MODES:
+		var button := Button.new()
+		button.text = mode_data["title"]
+		button.flat = true
+		button.focus_mode = Control.FOCUS_NONE
+		button.custom_minimum_size = Vector2(190, 24)
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.add_theme_font_size_override("font_size", 12)
+		button.add_theme_color_override("font_color", HomeTheme.MUTED)
+		button.add_theme_color_override("font_hover_color", Color(1.0, 0.58, 0.88, 1.0))
+		button.add_theme_color_override("font_pressed_color", HomeTheme.PINK)
+		button.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+		button.add_theme_stylebox_override("hover", _submenu_hover_style())
+		button.add_theme_stylebox_override("pressed", _submenu_hover_style())
+		button.pressed.connect(func() -> void: play_submenu_selected.emit(mode_data["id"]))
 		var indent := MarginContainer.new()
 		indent.add_theme_constant_override("margin_left", 42)
-		indent.add_child(label)
+		indent.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		indent.add_child(button)
 		_play_submenu.add_child(indent)
+
+func _submenu_hover_style() -> StyleBoxFlat:
+	var style := HomeTheme.make_panel_style(Color(0.12, 0.036, 0.13, 0.42), Color(1.0, 0.28, 0.78, 0.24), 4, 0)
+	style.content_margin_left = 8
+	style.content_margin_right = 8
+	style.content_margin_top = 2
+	style.content_margin_bottom = 2
+	return style

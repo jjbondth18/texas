@@ -4,10 +4,15 @@ All files in this folder are user-provided rectangular assets for the Home/Lobby
 
 ## Background
 
-- `backgrounds/home_background.png`
+- `backgrounds/home_background_v1.png`
   - Source: user-provided asset.
-  - Use: full-screen Home Lobby atmospheric background.
-  - Status: current production placeholder, replaceable later.
+  - Use: locked full-screen Home Lobby atmospheric background for Task 1E.
+  - Status: approved Home Lobby background. Do not replace during the lobby lockdown pass.
+
+- `backgrounds/home_background.png`
+  - Source: earlier user-provided asset.
+  - Use: retained for history/fallback only.
+  - Status: not used by the locked Task 1E Home Lobby.
 
 ## Mode Cards
 

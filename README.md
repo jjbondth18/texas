@@ -43,17 +43,21 @@ The project is configured for a 1920x1080 desktop-first 16:9 lobby.
 - Daily Bonus slide-in.
 - Subtle foreground chip/card drift.
 
-## Task 1A Asset Integration
+## Task 1E Home Lobby Lockdown
 
-This project now uses user-provided rectangular lobby assets:
+Task 1E locks the lobby to the user-approved background and runtime layout rules:
 
-- Full-screen background: `res://assets/home_lobby/backgrounds/home_background.png`
+- Full-screen locked background: `res://assets/home_lobby/backgrounds/home_background_v1.png`
 - Mode card illustrations: `res://assets/home_lobby/mode_cards/*.png`
 - Bottom decor strip: `res://assets/home_lobby/foreground/foreground_decor_strip.png`
 
-The left nav, top bar, logo text, card titles/subtitles, Daily Bonus, and interactions are still rendered by Godot UI components.
+The project no longer generates, swaps, or guesses replacement lobby backgrounds. The v1 background is rendered full-screen with aspect-cover behavior and only light non-interactive glow/shader layers above it.
 
-See `docs/home_lobby_asset_integration.md` and `assets/home_lobby/README_ASSETS.md`.
+Default launch state is collapsed and shows only the background, left main menu, top bar, central brand, and bottom prompt. Mode cards, Daily Bonus, Welcome Pack, and the Play submenu are hidden until `PLAY` is clicked.
+
+The left nav, top bar, transition text Logo, card titles/subtitles, Daily Bonus, and interactions are still rendered by Godot UI components. `LogoImage` remains in the scene as a replaceable container, but the current runtime Logo is the layered Godot text version because the supplied logo PNG contains a visible checker background.
+
+See `docs/task_1e_home_lobby_lockdown.md`, `docs/home_lobby_asset_integration.md`, and `assets/home_lobby/README_ASSETS.md`.
 
 ## Task 1D Runtime Fixes
 
@@ -66,6 +70,17 @@ C:\godot\Godot_v4.6.2-stable_win64.exe
 ```
 
 See `docs/task_1d_runtime_interaction_neon_polish.md`.
+
+## Task 1E Runtime Fixes
+
+Task 1E keeps the same stable `CardVisual` hover model, locks the lobby to `home_background_v1.png`, sets decorative layers to ignore mouse input, converts the Play submenu into real buttons, adds a visible Welcome Pack card only in expanded state, and regenerates real Godot runtime screenshots.
+
+Visible neon effects currently implemented:
+
+- Background purple/blue/magenta flow glow.
+- Layered Logo glow pulse.
+- Left menu hover/active highlight.
+- Mode card hover glow, lift, and press rebound.
 
 ## Screenshots
 
@@ -93,7 +108,8 @@ See `docs/home_lobby_audit.md` for the full audit against the complete project s
 ## Placeholder Assets
 
 - Logo: Godot text and procedural spade/glow placeholder.
-- Background: user-provided rectangular lobby background plus subtle shader flow.
+- Logo container: `LogoImage` is present for later replacement, but hidden in runtime because the current supplied PNG includes a checker background.
+- Background: locked user-provided `home_background_v1.png` plus subtle shader flow.
 - Mode cards: user-provided rectangular card illustrations with Godot-rendered text.
 - Top avatar and icons: simple UI placeholders.
 - Foreground decor strip: user-provided rectangular image, hidden in collapsed and very low opacity in expanded.
