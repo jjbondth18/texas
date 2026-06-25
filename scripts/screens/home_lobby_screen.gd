@@ -205,34 +205,21 @@ func _build_play_panel() -> void:
 	_play_panel.custom_minimum_size = Vector2(0, 580)
 	_play_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.016, 0.0), Color(0.2, 0.28, 0.6, 0.0), 8, 0))
 	_lobby_ui_root.add_child(_play_panel)
+	
 	var content := VBoxContainer.new()
-	content.name = "PlayContent"
+	content.name = "ContentColumn"
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	content.custom_minimum_size = Vector2(1320, 0)
 	content.add_theme_constant_override("separation", 22)
 	_play_panel.add_child(content)
-	var header := HBoxContainer.new()
-	header.name = "PlayHeader"
-	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.add_child(header)
-	var title_box := VBoxContainer.new()
-	title_box.name = "PlayTitleBox"
-	title_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(title_box)
+	
 	var title := Label.new()
-	title.name = "PlayTitle"
+	title.name = "ChooseRoomTitle"
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	title.text = "CHOOSE YOUR ROOM"
 	HomeTheme.make_font_settings(title, 20, Color(0.9, 0.92, 1.0, 0.9))
-	title_box.add_child(title)
-	var sub := Label.new()
-	sub.name = "PlaySubtitle"
-	sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	sub.text = "Prototype modes use mock data only."
-	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
-	title_box.add_child(sub)
+	content.add_child(title)
 
 	var card_row := HBoxContainer.new()
 	card_row.name = "ModeCardRow"
@@ -249,45 +236,11 @@ func _build_play_panel() -> void:
 		_mode_cards.append(card)
 		card_row.add_child(card)
 
-	var bottom_row := HBoxContainer.new()
-	bottom_row.name = "ExpandedBottomRow"
-	bottom_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	bottom_row.add_theme_constant_override("separation", 18)
-	content.add_child(bottom_row)
-	_welcome_pack = _build_welcome_pack_card()
-	bottom_row.add_child(_welcome_pack)
 	_daily_bonus = preload("res://scenes/components/daily_bonus_bar.tscn").instantiate()
 	_daily_bonus.name = "DailyBonusBar"
 	_daily_bonus.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bottom_row.add_child(_daily_bonus)
+	content.add_child(_daily_bonus)
 
-func _build_welcome_pack_card() -> PanelContainer:
-	var card := PanelContainer.new()
-	card.name = "WelcomePackCard"
-	card.custom_minimum_size = Vector2(230, 96)
-	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	card.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.016, 0.018, 0.048, 0.56), Color(0.74, 0.48, 1.0, 0.28), 8, 1))
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	card.add_child(row)
-	var chip := ColorRect.new()
-	chip.custom_minimum_size = Vector2(48, 64)
-	chip.color = Color(0.42, 0.26, 0.82, 0.70)
-	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_child(chip)
-	var copy := VBoxContainer.new()
-	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(copy)
-	var title := Label.new()
-	title.text = "WELCOME PACK"
-	HomeTheme.make_font_settings(title, 14, Color(0.86, 0.78, 1.0, 0.95))
-	copy.add_child(title)
-	var body := Label.new()
-	body.text = "Claim your free chips."
-	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	HomeTheme.make_font_settings(body, 11, Color(0.72, 0.76, 0.92, 0.82))
-	copy.add_child(body)
-	return card
 
 func _build_foreground() -> void:
 	_foreground_decor = TextureRect.new()

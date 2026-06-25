@@ -6,12 +6,14 @@ signal mode_selected(id: String)
 var mode_id := ""
 var _featured := false
 var _image_path := ""
-var _visual: PanelContainer
-var _image: TextureRect
-var _title: Label
-var _subtitle: Label
-var _accent: ColorRect
-var _visual_base_position := Vector2.ZERO
+
+var _hover_wrapper: Control
+var _glass_panel: PanelContainer
+var _illustration: TextureRect
+var _title_label: Label
+var _subtitle_label: Label
+
+var _hover_tween: Tween
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(240, 360)
@@ -19,40 +21,55 @@ func _ready() -> void:
 	size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-	_visual = PanelContainer.new()
-	_visual.name = "CardVisual"
-	_visual.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_visual.pivot_offset = custom_minimum_size * 0.5
-	_visual.add_theme_stylebox_override("panel", _style(false))
-	add_child(_visual)
+	
+	_hover_wrapper = Control.new()
+	_hover_wrapper.name = "HoverWrapper"
+	_hover_wrapper.custom_minimum_size = Vector2(240, 360)
+	_hover_wrapper.size = Vector2(240, 360)
+	_hover_wrapper.pivot_offset = Vector2(120, 180)
+	_hover_wrapper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_hover_wrapper)
+	
+	_glass_panel = PanelContainer.new()
+	_glass_panel.name = "DarkGlassPanel"
+	_glass_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_glass_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_glass_panel.add_theme_stylebox_override("panel", _style(false))
+	_hover_wrapper.add_child(_glass_panel)
+	
 	var box := VBoxContainer.new()
+	box.name = "CardBox"
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_theme_constant_override("separation", 10)
-	_visual.add_child(box)
-	_accent = ColorRect.new()
-	_accent.color = HomeTheme.PINK
-	_accent.custom_minimum_size = Vector2(1, 3)
-	box.add_child(_accent)
-	_image = TextureRect.new()
-	_image.custom_minimum_size = Vector2(1, 214)
-	_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	_image.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(_image)
-	_title = Label.new()
-	_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	HomeTheme.make_font_settings(_title, 24)
-	box.add_child(_title)
-	_subtitle = Label.new()
-	_subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	HomeTheme.make_font_settings(_subtitle, 13, HomeTheme.TEXT)
-	box.add_child(_subtitle)
+	_glass_panel.add_child(box)
+	
+	_illustration = TextureRect.new()
+	_illustration.name = "Illustration"
+	_illustration.custom_minimum_size = Vector2(1, 214)
+	_illustration.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_illustration.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_illustration.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(_illustration)
+	
+	_title_label = Label.new()
+	_title_label.name = "TitleLabel"
+	_title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	HomeTheme.make_font_settings(_title_label, 24)
+	box.add_child(_title_label)
+	
+	_subtitle_label = Label.new()
+	_subtitle_label.name = "SubtitleLabel"
+	_subtitle_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_subtitle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_subtitle_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	HomeTheme.make_font_settings(_subtitle_label, 13, HomeTheme.TEXT)
+	box.add_child(_subtitle_label)
+	
 	mouse_entered.connect(_hover.bind(true))
 	mouse_exited.connect(_hover.bind(false))
 	gui_input.connect(_on_gui_input)
-	call_deferred("_capture_visual_base")
 
 func configure(data: Dictionary) -> void:
 	mode_id = data["id"]
@@ -60,22 +77,15 @@ func configure(data: Dictionary) -> void:
 	_image_path = data.get("image", "")
 	if not is_node_ready():
 		await ready
-	_title.text = data["title"]
-	_subtitle.text = data["subtitle"]
-	_accent.color = HomeTheme.PINK if _featured else HomeTheme.CYAN
+	_title_label.text = data["title"]
+	_subtitle_label.text = data["subtitle"]
 	if _image_path != "":
-		_image.texture = load(_image_path)
-	_visual.add_theme_stylebox_override("panel", _style(false))
+		_illustration.texture = load(_image_path)
+	_glass_panel.add_theme_stylebox_override("panel", _style(false))
 	queue_redraw()
 
-func _capture_visual_base() -> void:
-	_visual_base_position = _visual.position
-	_visual.pivot_offset = _visual.size * 0.5
-
-var _hover_tween: Tween
-
 func _hover(value: bool) -> void:
-	_visual.add_theme_stylebox_override("panel", _style(value))
+	_glass_panel.add_theme_stylebox_override("panel", _style(value))
 	if _hover_tween:
 		_hover_tween.kill()
 	
@@ -83,8 +93,8 @@ func _hover(value: bool) -> void:
 	var target_scale := Vector2(1.025, 1.025) if value else Vector2.ONE
 	var target_modulate := Color(1.05, 1.05, 1.05, 1.0) if value else Color.WHITE
 	
-	_hover_tween.tween_property(_visual, "scale", target_scale, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	_hover_tween.tween_property(_visual, "modulate", target_modulate, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_hover_tween.tween_property(_hover_wrapper, "scale", target_scale, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_hover_tween.tween_property(_hover_wrapper, "modulate", target_modulate, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 func _on_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -113,13 +123,13 @@ func _style(hovered: bool) -> StyleBoxFlat:
 func set_visual_reveal_offset(offset_y: float) -> void:
 	if not is_node_ready():
 		await ready
-	_visual.position = _visual_base_position + Vector2(0, offset_y)
+	_hover_wrapper.position = Vector2(0, offset_y)
 
 func tween_visual_reveal(delay: float) -> Tween:
-	_visual.modulate.a = 1.0
-	_visual.position = _visual_base_position
-	_visual.scale = Vector2.ONE
-	var tween := _visual.create_tween()
+	_hover_wrapper.modulate.a = 1.0
+	_hover_wrapper.position = Vector2.ZERO
+	_hover_wrapper.scale = Vector2.ONE
+	var tween := _hover_wrapper.create_tween()
 	return tween
 
 func set_hover_preview(value: bool) -> void:
