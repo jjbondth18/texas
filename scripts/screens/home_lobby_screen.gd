@@ -15,6 +15,42 @@ var _mode_cards: Array[ModeCard] = []
 var _foreground_decor: TextureRect
 var _expanded := false
 
+class BackgroundFlowLayer:
+	extends Control
+
+	var phase := 0.0:
+		set(value):
+			phase = value
+			queue_redraw()
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var tween := create_tween()
+		tween.set_loops()
+		tween.tween_property(self, "phase", 1.0, 18.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tween.tween_property(self, "phase", 0.0, 18.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+	func _draw() -> void:
+		var y_mid := size.y * (0.42 + sin(phase * TAU) * 0.025)
+		var blue := Color(0.28, 0.45, 1.0, 0.12)
+		var pink := Color(1.0, 0.22, 0.72, 0.10)
+		for i in range(4):
+			var t := float(i) / 3.0
+			var y := y_mid + (t - 0.5) * 130.0
+			draw_line(Vector2(size.x * 0.22, y + sin(phase * TAU + t * 3.0) * 22.0), Vector2(size.x * 0.82, y - 50.0 + cos(phase * TAU + t * 2.0) * 30.0), blue.lerp(pink, t), 2.4)
+		draw_circle(Vector2(size.x * (0.58 + phase * 0.08), y_mid - 30.0), 220.0, Color(0.25, 0.20, 0.62, 0.045))
+
+class BackgroundLiftLayer:
+	extends Control
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		draw_circle(Vector2(size.x * 0.53, size.y * 0.46), size.y * 0.36, Color(0.08, 0.11, 0.28, 0.24))
+		draw_circle(Vector2(size.x * 0.76, size.y * 0.34), size.y * 0.27, Color(0.20, 0.07, 0.24, 0.19))
+		draw_circle(Vector2(size.x * 0.50, size.y * 0.78), size.y * 0.32, Color(0.14, 0.06, 0.17, 0.15))
+
 class PokerLogo:
 	extends Control
 
@@ -68,13 +104,20 @@ func _build_background() -> void:
 	base.texture = preload("res://assets/home_lobby/backgrounds/home_background.png")
 	base.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	base.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	base.modulate = Color(1.22, 1.18, 1.26, 1.0)
 	base.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(base)
+	var lift := BackgroundLiftLayer.new()
+	lift.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(lift)
 	var shade := ColorRect.new()
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	shade.color = Color(0.0, 0.0, 0.0, 0.02)
+	shade.color = Color(0.0, 0.0, 0.0, 0.0)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(shade)
+	var neon_flow := BackgroundFlowLayer.new()
+	neon_flow.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(neon_flow)
 	var flow := ColorRect.new()
 	flow.set_anchors_preset(Control.PRESET_FULL_RECT)
 	flow.modulate.a = 1.0
@@ -82,7 +125,7 @@ func _build_background() -> void:
 	_background_material = ShaderMaterial.new()
 	_background_material.shader = preload("res://shaders/flow_noise_bg.gdshader")
 	_background_material.set_shader_parameter("motion_enabled", background_motion_enabled)
-	_background_material.set_shader_parameter("layer_alpha", 0.04)
+	_background_material.set_shader_parameter("layer_alpha", 0.03)
 	flow.material = _background_material
 	add_child(flow)
 
@@ -269,13 +312,8 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 			daily_tween.parallel().tween_property(_daily_bonus, "position:y", _daily_bonus.position.y - 10, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		for i in range(_mode_cards.size()):
 			var card := _mode_cards[i]
-			card.modulate.a = 0.0
-			card.position.y += 14
-			var card_tween := create_tween()
-			card_tween.set_parallel(true)
-			card_tween.tween_interval(0.04 * float(i))
-			card_tween.chain().tween_property(card, "modulate:a", 1.0, 0.14)
-			card_tween.parallel().tween_property(card, "position:y", card.position.y - 14, 0.18).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			card.modulate.a = 1.0
+			card.tween_visual_reveal(0.04 * float(i))
 
 func _on_mode_selected(id: String) -> void:
 	print("Selected lobby mode: %s" % id)
@@ -309,6 +347,11 @@ func _handle_runtime_capture_args() -> void:
 	else:
 		_left_nav.set_active("home")
 		_set_expanded(false, true)
+	var hover_index := _arg_value(args, "--capture-lobby-hover-index", "")
+	if hover_index.is_valid_int():
+		var index := hover_index.to_int()
+		if index >= 0 and index < _mode_cards.size():
+			_mode_cards[index].set_hover_preview(true)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	await get_tree().process_frame

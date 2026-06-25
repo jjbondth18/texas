@@ -55,6 +55,18 @@ The left nav, top bar, logo text, card titles/subtitles, Daily Bonus, and intera
 
 See `docs/home_lobby_asset_integration.md` and `assets/home_lobby/README_ASSETS.md`.
 
+## Task 1D Runtime Fixes
+
+Task 1D fixed the runtime ModeCard hover jump by moving all hover/press/reveal motion to an internal `CardVisual` wrapper. The outer `ModeCard` remains controlled by the layout container, so hover no longer changes card layout position.
+
+Task 1D also brightened the lobby background, added a subtle `BackgroundFlowLayer` / lift layer, polished neon card borders, and regenerated real runtime screenshots with:
+
+```text
+C:\godot\Godot_v4.6.2-stable_win64.exe
+```
+
+See `docs/task_1d_runtime_interaction_neon_polish.md`.
+
 ## Screenshots
 
 - Static reference: `docs/screenshots/static_collapsed_home.png`

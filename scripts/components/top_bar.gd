@@ -66,7 +66,10 @@ func configure(player: Dictionary) -> void:
 func _currency_pill(parent: Container, title: String, color: Color) -> Label:
 	var pill := PanelContainer.new()
 	pill.custom_minimum_size = Vector2(132, 40)
-	pill.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.02, 0.023, 0.052, 0.72), color.darkened(0.2), 20, 1))
+	pill.mouse_filter = Control.MOUSE_FILTER_PASS
+	pill.add_theme_stylebox_override("panel", _currency_style(color, false))
+	pill.mouse_entered.connect(func() -> void: pill.add_theme_stylebox_override("panel", _currency_style(color, true)))
+	pill.mouse_exited.connect(func() -> void: pill.add_theme_stylebox_override("panel", _currency_style(color, false)))
 	parent.add_child(pill)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
@@ -85,6 +88,14 @@ func _currency_pill(parent: Container, title: String, color: Color) -> Label:
 	HomeTheme.make_font_settings(value, 15, HomeTheme.TEXT)
 	text_box.add_child(value)
 	return value
+
+func _currency_style(color: Color, hovered: bool) -> StyleBoxFlat:
+	var bg := Color(0.02, 0.023, 0.052, 0.72 if not hovered else 0.86)
+	var border := color.darkened(0.2) if not hovered else color
+	var style := HomeTheme.make_panel_style(bg, border, 20, 1)
+	style.shadow_color = Color(color.r, color.g, color.b, 0.18 if hovered else 0.04)
+	style.shadow_size = 12 if hovered else 4
+	return style
 
 func _top_icon(text: String) -> Button:
 	var button := Button.new()

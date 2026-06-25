@@ -6,22 +6,29 @@ signal mode_selected(id: String)
 var mode_id := ""
 var _featured := false
 var _image_path := ""
+var _visual: PanelContainer
 var _image: TextureRect
 var _title: Label
 var _subtitle: Label
 var _accent: ColorRect
-var _base_position := Vector2.ZERO
+var _visual_base_position := Vector2.ZERO
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(238, 360)
 	size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	pivot_offset = custom_minimum_size * 0.5
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	add_theme_stylebox_override("panel", HomeTheme.make_panel_style(HomeTheme.CARD, HomeTheme.STROKE, 8, 1))
+	add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	_visual = PanelContainer.new()
+	_visual.name = "CardVisual"
+	_visual.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_visual.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_visual.pivot_offset = custom_minimum_size * 0.5
+	_visual.add_theme_stylebox_override("panel", _style(false))
+	add_child(_visual)
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 10)
-	add_child(box)
+	_visual.add_child(box)
 	_accent = ColorRect.new()
 	_accent.color = HomeTheme.PINK
 	_accent.custom_minimum_size = Vector2(1, 3)
@@ -45,7 +52,7 @@ func _ready() -> void:
 	mouse_entered.connect(_hover.bind(true))
 	mouse_exited.connect(_hover.bind(false))
 	gui_input.connect(_on_gui_input)
-	call_deferred("_capture_base")
+	call_deferred("_capture_visual_base")
 
 func configure(data: Dictionary) -> void:
 	mode_id = data["id"]
@@ -58,26 +65,27 @@ func configure(data: Dictionary) -> void:
 	_accent.color = HomeTheme.PINK if _featured else HomeTheme.CYAN
 	if _image_path != "":
 		_image.texture = load(_image_path)
-	add_theme_stylebox_override("panel", _style(false))
+	_visual.add_theme_stylebox_override("panel", _style(false))
 	queue_redraw()
 
-func _capture_base() -> void:
-	_base_position = position
+func _capture_visual_base() -> void:
+	_visual_base_position = _visual.position
+	_visual.pivot_offset = _visual.size * 0.5
 
 func _hover(value: bool) -> void:
-	var target_pos := _base_position + Vector2(0, -6 if value else 0)
+	var target_pos := _visual_base_position + Vector2(0, -6 if value else 0)
 	var target_scale := Vector2.ONE * (1.025 if value else 1.0)
-	add_theme_stylebox_override("panel", _style(value))
-	var tween := create_tween()
+	_visual.add_theme_stylebox_override("panel", _style(value))
+	var tween := _visual.create_tween()
 	tween.set_parallel(true)
-	tween.tween_property(self, "position", target_pos, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tween.tween_property(self, "scale", target_scale, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(_visual, "position", target_pos, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(_visual, "scale", target_scale, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 
 func _on_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		var tween := create_tween()
-		tween.tween_property(self, "scale", Vector2.ONE * 0.98, 0.06)
-		tween.tween_property(self, "scale", Vector2.ONE * 1.025, 0.11).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		var tween := _visual.create_tween()
+		tween.tween_property(_visual, "scale", Vector2.ONE * 0.98, 0.06)
+		tween.tween_property(_visual, "scale", Vector2.ONE * 1.018, 0.11).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		mode_selected.emit(mode_id)
 
 func _draw() -> void:
@@ -86,14 +94,34 @@ func _draw() -> void:
 	draw_line(Vector2(26, 252), Vector2(size.x - 26, 252), Color(glow.r, glow.g, glow.b, 0.24), 1.0)
 
 func _style(hovered: bool) -> StyleBoxFlat:
-	var border := HomeTheme.PINK if _featured else HomeTheme.STROKE
+	var border := Color(HomeTheme.PINK.r, HomeTheme.PINK.g, HomeTheme.PINK.b, 0.38) if _featured else Color(0.46, 0.54, 0.78, 0.24)
 	if hovered:
 		border = HomeTheme.PINK if _featured else HomeTheme.CYAN
-	var bg := HomeTheme.CARD_HOVER if hovered else HomeTheme.CARD
+	var bg := Color(0.014, 0.017, 0.04, 0.76)
+	if hovered:
+		bg = Color(0.028, 0.032, 0.072, 0.88)
 	if _featured and not hovered:
-		bg = Color(0.035, 0.022, 0.07, 0.86)
+		bg = Color(0.026, 0.016, 0.054, 0.80)
 	var style := HomeTheme.make_panel_style(bg, border, 8, 1)
-	style.shadow_color = Color(border.r, border.g, border.b, 0.22 if hovered or _featured else 0.08)
-	style.shadow_size = 18 if hovered or _featured else 10
+	style.shadow_color = Color(border.r, border.g, border.b, 0.24 if hovered else (0.12 if _featured else 0.04))
+	style.shadow_size = 20 if hovered else (14 if _featured else 8)
 	style.shadow_offset = Vector2(0, 6)
 	return style
+
+func set_visual_reveal_offset(offset_y: float) -> void:
+	if not is_node_ready():
+		await ready
+	_visual.position = _visual_base_position + Vector2(0, offset_y)
+
+func tween_visual_reveal(delay: float) -> Tween:
+	_visual.modulate.a = 0.0
+	_visual.position = _visual_base_position + Vector2(0, 14)
+	var tween := _visual.create_tween()
+	tween.set_parallel(true)
+	tween.tween_interval(delay)
+	tween.chain().tween_property(_visual, "modulate:a", 1.0, 0.18)
+	tween.parallel().tween_property(_visual, "position", _visual_base_position, 0.22).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	return tween
+
+func set_hover_preview(value: bool) -> void:
+	_hover(value)
