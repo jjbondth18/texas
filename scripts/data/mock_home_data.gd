@@ -9,11 +9,11 @@ const CHIPS := 25750
 const PREMIUM_CURRENCY := 1250
 
 const MODES := [
-	{ "id": "quick_play", "title": "QUICK PLAY", "subtitle": "Jump in now\nNo waiting", "featured": true },
-	{ "id": "cash_tables", "title": "CASH TABLES", "subtitle": "Choose your stakes\nSit & play", "featured": false },
-	{ "id": "tournaments", "title": "TOURNAMENTS", "subtitle": "Compete & win\nBig prizes", "featured": false },
-	{ "id": "private_table", "title": "PRIVATE TABLE", "subtitle": "Invite your friends\nPlay together", "featured": false },
-	{ "id": "club_games", "title": "CLUB GAMES", "subtitle": "Join a club\nPlay & earn", "featured": false },
+	{ "id": "quick_play", "title": "QUICK PLAY", "subtitle": "Jump in now\nNo waiting", "featured": true, "image": "res://assets/home_lobby/mode_cards/mode_quick_play.png" },
+	{ "id": "cash_tables", "title": "CASH TABLES", "subtitle": "Choose your stakes\nSit & play", "featured": false, "image": "res://assets/home_lobby/mode_cards/mode_cash_tables.png" },
+	{ "id": "tournaments", "title": "TOURNAMENTS", "subtitle": "Compete & win\nBig prizes", "featured": false, "image": "res://assets/home_lobby/mode_cards/mode_tournaments.png" },
+	{ "id": "private_table", "title": "PRIVATE TABLE", "subtitle": "Invite your friends\nPlay together", "featured": false, "image": "res://assets/home_lobby/mode_cards/mode_private_table.png" },
+	{ "id": "club_games", "title": "CLUB GAMES", "subtitle": "Join a club\nPlay & earn", "featured": false, "image": "res://assets/home_lobby/mode_cards/mode_club_games.png" },
 ]
 
 const DAILY_BONUS := [

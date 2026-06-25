@@ -34,6 +34,18 @@ The project is configured for a 1920x1080 desktop-first 16:9 lobby.
 - Daily Bonus slide-in.
 - Subtle foreground chip/card drift.
 
+## Task 1A Asset Integration
+
+This project now uses user-provided rectangular lobby assets:
+
+- Full-screen background: `res://assets/home_lobby/backgrounds/home_background.png`
+- Mode card illustrations: `res://assets/home_lobby/mode_cards/*.png`
+- Bottom decor strip: `res://assets/home_lobby/foreground/foreground_decor_strip.png`
+
+The left nav, top bar, logo text, card titles/subtitles, Daily Bonus, and interactions are still rendered by Godot UI components.
+
+See `docs/home_lobby_asset_integration.md` and `assets/home_lobby/README_ASSETS.md`.
+
 ## Screenshots
 
 - `docs/screenshots/collapsed_home.png`

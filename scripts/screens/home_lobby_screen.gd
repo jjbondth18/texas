@@ -12,24 +12,8 @@ var _prompt: Label
 var _play_panel: PanelContainer
 var _daily_bonus: Control
 var _mode_cards: Array[ModeCard] = []
-var _foreground: Control
+var _foreground_decor: TextureRect
 var _expanded := false
-
-class AtmosphereLayer:
-	extends Control
-
-	func _ready() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	func _draw() -> void:
-		var rect := Rect2(Vector2.ZERO, size)
-		draw_rect(rect, HomeTheme.BG, true)
-		draw_circle(Vector2(size.x * 0.58, size.y * 0.42), size.y * 0.46, Color(0.07, 0.09, 0.22, 0.25))
-		draw_circle(Vector2(size.x * 0.78, size.y * 0.28), size.y * 0.28, Color(0.42, 0.14, 0.46, 0.12))
-		draw_circle(Vector2(size.x * 0.34, size.y * 0.30), size.y * 0.28, Color(0.16, 0.18, 0.58, 0.12))
-		draw_line(Vector2(size.x * 0.18, size.y * 0.72), Vector2(size.x * 0.88, size.y * 0.58), Color(0.34, 0.66, 1.0, 0.10), 2.0)
-		draw_line(Vector2(size.x * 0.24, size.y * 0.24), Vector2(size.x * 0.82, size.y * 0.20), Color(1.0, 0.28, 0.78, 0.08), 1.5)
-		draw_rect(rect, Color(0, 0, 0, 0.22), false, 1.0)
 
 class PokerLogo:
 	extends Control
@@ -56,37 +40,17 @@ class PokerLogo:
 		draw_polyline(outline, Color(0.3, 0.86, 1.0, 0.78), 3.0)
 		draw_circle(center + Vector2(0, -8), 24, Color(1.0, 0.28, 0.78, 0.48))
 
-class ForegroundLayer:
-	extends Control
-
-	func _ready() -> void:
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-	func _draw() -> void:
-		var chip_origin := Vector2(size.x * 0.81, size.y * 0.80)
-		for i in range(3):
-			var p := chip_origin + Vector2(i * 34, sin(float(i)) * 6.0)
-			draw_circle(p, 42, Color(0.02, 0.022, 0.05, 0.68))
-			draw_arc(p, 42, 0, TAU, 56, Color(0.52, 0.78, 1.0, 0.22), 3.0)
-			draw_arc(p, 27, 0, TAU, 56, Color(1.0, 0.28, 0.78, 0.16), 2.0)
-		var card_rect := Rect2(Vector2(size.x * 0.24, size.y * 0.82), Vector2(120, 164))
-		draw_set_transform(card_rect.position + card_rect.size * 0.5, -0.18, Vector2.ONE)
-		draw_rect(Rect2(-card_rect.size * 0.5, card_rect.size), Color(0.86, 0.9, 1.0, 0.09), true)
-		draw_rect(Rect2(-card_rect.size * 0.5, card_rect.size), Color(0.52, 0.78, 1.0, 0.16), false, 2.0)
-		draw_circle(Vector2.ZERO, 14, Color(1.0, 0.28, 0.78, 0.28))
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	_build_background()
+	_build_foreground()
 	_build_layout()
 	_build_play_panel()
-	_build_foreground()
 	_top_bar.configure(MockHomeData.player())
 	_left_nav.set_active("home")
 	_set_expanded(false, true)
 	MotionManager.pulse_canvas_item(_logo, 4.2, 0.78, 1.0)
-	MotionManager.drift(_foreground, Vector2(0, -8), 8.0)
+	MotionManager.drift(_foreground_decor, Vector2(0, -5), 12.0)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel") and _expanded:
@@ -94,11 +58,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		_set_expanded(false)
 
 func _build_background() -> void:
-	var base := AtmosphereLayer.new()
+	var base := TextureRect.new()
 	base.set_anchors_preset(Control.PRESET_FULL_RECT)
+	base.texture = preload("res://assets/home_lobby/backgrounds/home_background.png")
+	base.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	base.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	base.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(base)
+	var shade := ColorRect.new()
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.0, 0.0, 0.0, 0.20)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(shade)
 	var flow := ColorRect.new()
 	flow.set_anchors_preset(Control.PRESET_FULL_RECT)
+	flow.modulate.a = 0.36
 	flow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_background_material = ShaderMaterial.new()
 	_background_material.shader = preload("res://shaders/flow_noise_bg.gdshader")
@@ -217,9 +191,21 @@ func _build_play_panel() -> void:
 	content.add_child(_daily_bonus)
 
 func _build_foreground() -> void:
-	_foreground = ForegroundLayer.new()
-	_foreground.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(_foreground)
+	_foreground_decor = TextureRect.new()
+	_foreground_decor.anchor_left = 0.0
+	_foreground_decor.anchor_top = 1.0
+	_foreground_decor.anchor_right = 1.0
+	_foreground_decor.anchor_bottom = 1.0
+	_foreground_decor.offset_left = 180
+	_foreground_decor.offset_top = -210
+	_foreground_decor.offset_right = 0
+	_foreground_decor.offset_bottom = 10
+	_foreground_decor.texture = preload("res://assets/home_lobby/foreground/foreground_decor_strip.png")
+	_foreground_decor.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_foreground_decor.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	_foreground_decor.modulate = Color(1, 1, 1, 0.42)
+	_foreground_decor.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_foreground_decor)
 
 func _on_nav_selected(id: String) -> void:
 	if id == "play":
