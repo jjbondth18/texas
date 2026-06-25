@@ -3,7 +3,7 @@ class_name NavItem
 
 signal nav_selected(id: String)
 
-const DEBUG_SHOW_HIT_RECTS := false
+var debug_show_hit_rects := false
 
 @export var item_id := ""
 @export var label_text := "ITEM"
@@ -75,6 +75,10 @@ func _refresh_visuals() -> void:
 		tween.tween_property(_indicator, "modulate:a", target, 0.14).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	queue_redraw()
 
+func _draw() -> void:
+	if debug_show_hit_rects:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(1.0, 0.0, 0.0, 0.25), true)
+		draw_rect(Rect2(Vector2.ZERO, size), Color(1.0, 0.0, 0.0, 0.8), false, 2.0)
 
 func _style(color: Color) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()

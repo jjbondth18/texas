@@ -18,6 +18,8 @@ var _items: Dictionary = {}
 var _play_submenu: VBoxContainer
 var active_id := "home"
 
+const DEBUG_SHOW_HIT_RECTS := false
+
 func _ready() -> void:
 	custom_minimum_size = Vector2(280, 0)
 	var style := StyleBoxEmpty.new()
@@ -81,6 +83,7 @@ func _ready() -> void:
 	for item_data in ITEMS:
 		var item := preload("res://scenes/components/nav_item.tscn").instantiate() as NavItem
 		item.setup(item_data["id"], item_data["title"])
+		item.debug_show_hit_rects = DEBUG_SHOW_HIT_RECTS
 		item.nav_selected.connect(_on_item_selected)
 		_items[item_data["id"]] = item
 		_list.add_child(item)
@@ -99,6 +102,12 @@ func _ready() -> void:
 	HomeTheme.make_font_settings(version, 11, Color(0.45, 0.54, 0.74, 0.55))
 	_list.add_child(version)
 	set_active(active_id)
+	queue_redraw()
+
+func _draw() -> void:
+	if DEBUG_SHOW_HIT_RECTS:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.0, 0.0, 1.0, 0.15), true)
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.0, 0.0, 1.0, 0.7), false, 2.0)
 
 func set_active(id: String) -> void:
 	active_id = id
