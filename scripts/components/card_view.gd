@@ -5,6 +5,8 @@ var card_data := {"rank": "", "suit": "", "face_up": false}
 var selected := false
 var _label: Label
 
+var is_mini_back := false
+
 func _ready() -> void:
 	custom_minimum_size = Vector2(64, 88)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -14,6 +16,16 @@ func _ready() -> void:
 	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_label.add_theme_font_size_override("font_size", 20)
 	add_child(_label)
+	_update()
+
+func set_as_mini_back(value: bool) -> void:
+	is_mini_back = value
+	if _label != null:
+		_label.visible = not is_mini_back
+	if is_mini_back:
+		custom_minimum_size = Vector2(20, 28)
+	else:
+		custom_minimum_size = Vector2(64, 88)
 	_update()
 
 func set_card(data: Dictionary) -> void:
@@ -27,6 +39,8 @@ func set_selected(value: bool) -> void:
 func _update() -> void:
 	if _label == null:
 		return
+	if is_mini_back:
+		_label.visible = false
 	var face_up := bool(card_data.get("face_up", false))
 	if not face_up:
 		_label.text = "◆"
@@ -40,10 +54,15 @@ func _update() -> void:
 
 func _draw() -> void:
 	var rect := Rect2(Vector2.ZERO, size)
-	var face_up := bool(card_data.get("face_up", false))
-	var fill := Color(0.92, 0.94, 1.0, 0.96) if face_up else Color(0.08, 0.09, 0.18, 0.98)
-	draw_rect(rect, fill, true)
-	draw_rect(rect, Color(0.8, 0.88, 1.0, 0.55 if not selected else 0.95), false, 2.0)
+	if is_mini_back:
+		var fill := Color(0.04, 0.03, 0.07, 0.95)
+		draw_rect(rect, fill, true)
+		draw_rect(rect, Color(0.62, 0.36, 1.0, 0.65), false, 1.0)
+	else:
+		var face_up := bool(card_data.get("face_up", false))
+		var fill := Color(0.92, 0.94, 1.0, 0.96) if face_up else Color(0.08, 0.09, 0.18, 0.98)
+		draw_rect(rect, fill, true)
+		draw_rect(rect, Color(0.8, 0.88, 1.0, 0.55 if not selected else 0.95), false, 2.0)
 
 func _suit_symbol(suit: String) -> String:
 	match suit:

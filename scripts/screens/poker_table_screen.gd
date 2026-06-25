@@ -165,8 +165,8 @@ func _layout() -> void:
 	var center := Vector2(960, 360)
 	var rx := 660.0
 	var ry := 240.0
-	var normal_seat_size := Vector2(220, 126)
-	var local_seat_size := Vector2(280, 136)
+	var normal_seat_size := Vector2(200, 80)
+	var local_seat_size := Vector2(200, 80)
 
 	var seat_angles := {
 		1: deg_to_rad(-65.0),

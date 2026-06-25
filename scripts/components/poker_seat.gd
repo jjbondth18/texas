@@ -8,25 +8,42 @@ var _name_label: Label
 var _chips_label: Label
 var _bet_label: Label
 var _status_label: Label
-var _markers_label: Label
+var _role_label: Label
 var _cards_root: HBoxContainer
 
 func _ready() -> void:
-	mouse_filter = Control.MOUSE_FILTER_STOP
-	custom_minimum_size = Vector2(220, 126)
-	_name_label = _make_label(15, Color.WHITE)
-	_chips_label = _make_label(13, Color(1.0, 0.86, 0.42))
-	_bet_label = _make_label(12, Color(0.68, 0.95, 1.0))
-	_status_label = _make_label(12, Color(0.72, 0.76, 0.9))
-	_markers_label = _make_label(11, Color(1.0, 0.4, 0.78))
+	mouse_filter = Control.MOUSE_FILTER_PASS
+	custom_minimum_size = Vector2(200, 80)
+	
+	_name_label = _make_label(12, Color.WHITE)
+	_name_label.name = "PlayerName"
+	
+	_chips_label = _make_label(11, Color(1.0, 0.86, 0.42))
+	_chips_label.name = "ChipsCount"
+	
+	_bet_label = _make_label(11, Color(0.68, 0.95, 1.0))
+	_bet_label.name = "BetAmount"
+	
+	_status_label = _make_label(10, Color(0.72, 0.76, 0.9))
+	_status_label.name = "PlayerStatus"
+	
+	_role_label = _make_label(9, Color.WHITE)
+	_role_label.name = "RoleBadgeText"
+	_role_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_role_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	
 	_cards_root = HBoxContainer.new()
+	_cards_root.name = "HoleCards"
 	_cards_root.alignment = BoxContainer.ALIGNMENT_BEGIN
-	_cards_root.add_theme_constant_override("separation", 6)
+	_cards_root.add_theme_constant_override("separation", 2)
+	_cards_root.modulate.a = 0.4
 	add_child(_cards_root)
+	
 	for i in range(2):
 		var card = CardViewScene.instantiate()
-		card.custom_minimum_size = Vector2(38, 52)
+		card.set_as_mini_back(true)
 		_cards_root.add_child(card)
+		
 	_layout_children()
 	set_seat_data({})
 
@@ -40,36 +57,46 @@ func set_seat_data(data: Dictionary) -> void:
 	seat_data = data.duplicate(true)
 	if _name_label == null:
 		return
-	_name_label.text = String(seat_data.get("player_name", "Empty Seat"))
-	
+		
 	var empty := String(seat_data.get("status", "")) == "empty"
 	var is_local := bool(seat_data.get("is_local", false))
 	
+	_name_label.text = String(seat_data.get("player_name", "Empty Seat")) if not empty else "EMPTY"
+	
 	_chips_label.visible = not empty
-	_chips_label.text = "CHIPS %s" % int(seat_data.get("chips", 0))
+	_chips_label.text = "%d" % int(seat_data.get("chips", 0))
+	
 	_bet_label.visible = not empty and int(seat_data.get("current_bet", 0)) > 0
-	_bet_label.text = "BET %s" % int(seat_data.get("current_bet", 0))
-	_status_label.visible = not empty and String(seat_data.get("status", "")) != "playing"
-	_status_label.text = String(seat_data.get("status", "empty")).to_upper()
+	_bet_label.text = "BET %d" % int(seat_data.get("current_bet", 0))
+	
+	_status_label.visible = not empty and String(seat_data.get("status", "")) not in ["playing", "active"]
+	_status_label.text = String(seat_data.get("status", "")).to_upper()
+	
 	_cards_root.visible = not empty and not is_local
 	
-	var markers: Array[String] = []
-	if bool(seat_data.get("is_dealer", false)):
-		markers.append("D")
-	if bool(seat_data.get("is_small_blind", false)):
-		markers.append("SB")
-	if bool(seat_data.get("is_big_blind", false)):
-		markers.append("BB")
-	if bool(seat_data.get("is_local", false)):
-		markers.append("YOU")
-	_markers_label.text = " ".join(markers)
-	
+	# Role label setup
+	if empty:
+		_role_label.visible = false
+	else:
+		if bool(seat_data.get("is_dealer", false)):
+			_role_label.text = "D"
+			_role_label.visible = true
+		elif bool(seat_data.get("is_small_blind", false)):
+			_role_label.text = "SB"
+			_role_label.visible = true
+		elif bool(seat_data.get("is_big_blind", false)):
+			_role_label.text = "BB"
+			_role_label.visible = true
+		else:
+			_role_label.visible = false
+			
 	var cards := Array(seat_data.get("cards", []))
 	for i in range(_cards_root.get_child_count()):
 		var card = _cards_root.get_child(i)
 		if i < cards.size():
 			card.visible = true
 			card.set_card(Dictionary(cards[i]))
+			card.set_as_mini_back(true)
 		else:
 			card.visible = false
 			
@@ -84,41 +111,29 @@ func _make_label(font_size: int, color: Color) -> Label:
 	return label
 
 func _layout_children() -> void:
-	_name_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	_name_label.offset_left = 68
-	_name_label.offset_right = -8
-	_name_label.offset_top = 8
-	_name_label.offset_bottom = 26
+	# Card backs positioned above the avatar badge
+	_cards_root.position = Vector2(10, -5)
+	_cards_root.size = Vector2(50, 30)
+
+	# Name Label (inside the pill)
+	_name_label.position = Vector2(54, 27)
+	_name_label.size = Vector2(136, 18)
 	
-	_markers_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	_markers_label.offset_left = 68
-	_markers_label.offset_right = -8
-	_markers_label.offset_top = 26
-	_markers_label.offset_bottom = 42
+	# Chips Label (Text offset to leave space for gold chip)
+	_chips_label.position = Vector2(68, 43)
+	_chips_label.size = Vector2(122, 16)
 	
-	_cards_root.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	_cards_root.offset_left = 68
-	_cards_root.offset_right = -8
-	_cards_root.offset_top = 44
-	_cards_root.offset_bottom = 96
+	# Status Label (overlapping name box area if active)
+	_status_label.position = Vector2(54, 7)
+	_status_label.size = Vector2(136, 16)
 	
-	_chips_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	_chips_label.offset_left = 42
-	_chips_label.offset_right = -8
-	_chips_label.offset_top = -24
-	_chips_label.offset_bottom = -6
+	# Bet label (Floating below seat)
+	_bet_label.position = Vector2(54, 66)
+	_bet_label.size = Vector2(136, 16)
 	
-	_bet_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	_bet_label.offset_left = 68
-	_bet_label.offset_right = -8
-	_bet_label.offset_top = -42
-	_bet_label.offset_bottom = -24
-	
-	_status_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	_status_label.offset_left = 68
-	_status_label.offset_right = -8
-	_status_label.offset_top = -60
-	_status_label.offset_bottom = -42
+	# Role label badge (centered inside the role circle)
+	_role_label.position = Vector2(37, 52)
+	_role_label.size = Vector2(18, 18)
 
 func _draw() -> void:
 	var is_turn := bool(seat_data.get("is_turn", false))
@@ -126,18 +141,18 @@ func _draw() -> void:
 	var empty := String(seat_data.get("status", "")) == "empty"
 	var is_local := bool(seat_data.get("is_local", false))
 
-	# Frosted dark-glass background style
-	var bg_color := Color(0.015, 0.01, 0.025, 0.65)
+	# Frosted dark-glass background style for name/chips pill only!
+	var bg_color := Color(0.008, 0.006, 0.015, 0.65)
 	var border_color := Color(0.62, 0.36, 1.0, 0.24)
 	
 	if is_local:
 		border_color = Color(0.0, 0.75, 1.0, 0.45)
 	
 	if empty:
-		bg_color = Color(0.01, 0.008, 0.012, 0.30)
+		bg_color = Color(0.005, 0.004, 0.008, 0.30)
 		border_color = Color(0.2, 0.24, 0.38, 0.12)
 	elif folded:
-		bg_color = Color(0.005, 0.005, 0.008, 0.50)
+		bg_color = Color(0.002, 0.002, 0.004, 0.50)
 		border_color = Color(0.1, 0.1, 0.12, 0.15)
 		
 	if is_turn and not empty:
@@ -147,21 +162,23 @@ func _draw() -> void:
 	style.bg_color = bg_color
 	style.border_color = border_color
 	style.set_border_width_all(2 if is_turn else 1)
-	style.set_corner_radius_all(14)
+	style.set_corner_radius_all(6) # Pill rounded corners
 	
 	if is_turn and not empty:
 		var pulse := (sin(Time.get_ticks_msec() * 0.006) + 1.0) * 0.5
 		style.shadow_color = Color(1.0, 0.0, 0.5, 0.2 + pulse * 0.35)
 		style.shadow_size = int(6 + pulse * 8)
-		style.border_width_left = 3
-		style.border_width_top = 3
-		style.border_width_right = 3
-		style.border_width_bottom = 3
+		style.border_width_left = 2
+		style.border_width_top = 2
+		style.border_width_right = 2
+		style.border_width_bottom = 2
 
-	style.draw(get_canvas_item(), Rect2(Vector2.ZERO, size))
+	# Draw the pill behind the name and chips text only!
+	var pill_rect := Rect2(48, 25, 142, 40)
+	style.draw(get_canvas_item(), pill_rect)
 	
 	# Draw player avatar circle
-	var avatar_center := Vector2(34, 42)
+	var avatar_center := Vector2(30, 45)
 	var avatar_color := Color(0.18, 0.15, 0.28, 0.8)
 	var avatar_border := Color(0.62, 0.36, 1.0, 0.45)
 	
@@ -175,20 +192,38 @@ func _draw() -> void:
 		avatar_color = Color(0.08, 0.18, 0.28, 0.8)
 		avatar_border = Color(0.0, 0.75, 1.0, 0.60)
 		
-	draw_circle(avatar_center, 22, avatar_color)
-	draw_arc(avatar_center, 22, 0, TAU, 32, avatar_border, 1.5, true)
+	if is_turn and not empty:
+		avatar_border = Color(1.0, 0.0, 0.5, 1.0)
+		
+	draw_circle(avatar_center, 24, avatar_color)
+	
+	# Breathing neon outline ring on active turn
+	if is_turn and not empty:
+		var pulse := (sin(Time.get_ticks_msec() * 0.006) + 1.0) * 0.5
+		var outer_border := Color(1.0, 0.0, 0.5, 0.7 + pulse * 0.3)
+		draw_arc(avatar_center, 25.5, 0, TAU, 32, outer_border, 2.0, true)
+	else:
+		draw_arc(avatar_center, 24, 0, TAU, 32, avatar_border, 1.0, true)
 	
 	if not empty:
 		draw_circle(avatar_center, 14, Color(avatar_border.r, avatar_border.g, avatar_border.b, 0.25))
 		
-		# Draw gold micro-chip icon
-		var chip_center := Vector2(28, size.y - 15)
-		draw_circle(chip_center, 6.5, Color(1.0, 0.84, 0.0, 0.95))
-		draw_circle(chip_center, 4, Color(0.9, 0.45, 0.0, 0.95))
-		draw_circle(chip_center, 1.5, Color(1.0, 1.0, 1.0, 0.95))
+		# Draw gold micro-chip icon next to the chip count
+		var chip_center := Vector2(58, 51)
+		draw_circle(chip_center, 4.5, Color(1.0, 0.84, 0.0, 0.95))
+		draw_circle(chip_center, 2.5, Color(0.9, 0.45, 0.0, 0.95))
+		draw_circle(chip_center, 1.0, Color(1.0, 1.0, 1.0, 0.95))
+
+	# Draw role badge (D, SB, BB) circle background
+	if _role_label.visible and not empty:
+		var badge_center := avatar_center + Vector2(16, 16)
+		var badge_color := Color(1, 0.84, 0.0) if _role_label.text == "D" else Color(1.0, 0.0, 0.5)
+		var badge_border := Color(1, 1, 1, 0.8)
+		draw_circle(badge_center, 9, badge_color)
+		draw_arc(badge_center, 9, 0, TAU, 16, badge_border, 1.0, true)
 
 	if folded:
 		var overlay := StyleBoxFlat.new()
 		overlay.bg_color = Color(0.0, 0.0, 0.0, 0.55)
-		overlay.set_corner_radius_all(14)
-		overlay.draw(get_canvas_item(), Rect2(Vector2.ZERO, size))
+		overlay.set_corner_radius_all(6)
+		overlay.draw(get_canvas_item(), pill_rect)
