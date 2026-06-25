@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/components/pot_display.gd" id="1"]
+
+[node name="PotDisplay" type="Control"]
+custom_minimum_size = Vector2(300, 82)
+layout_mode = 3
+script = ExtResource("1")

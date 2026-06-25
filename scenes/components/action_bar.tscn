@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/components/action_bar.gd" id="1"]
+
+[node name="ActionBar" type="Control"]
+custom_minimum_size = Vector2(1020, 64)
+layout_mode = 3
+script = ExtResource("1")

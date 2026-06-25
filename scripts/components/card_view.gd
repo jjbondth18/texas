@@ -1,0 +1,64 @@
+extends Control
+class_name CardView
+
+var card_data := {"rank": "", "suit": "", "face_up": false}
+var selected := false
+var _label: Label
+
+func _ready() -> void:
+	custom_minimum_size = Vector2(64, 88)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_label = Label.new()
+	_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_label.add_theme_font_size_override("font_size", 20)
+	add_child(_label)
+	_update()
+
+func set_card(data: Dictionary) -> void:
+	card_data = data.duplicate(true)
+	_update()
+
+func set_selected(value: bool) -> void:
+	selected = value
+	_update()
+
+func _update() -> void:
+	if _label == null:
+		return
+	var face_up := bool(card_data.get("face_up", false))
+	if not face_up:
+		_label.text = "◆"
+		_label.add_theme_color_override("font_color", Color(0.7, 0.78, 1.0))
+	else:
+		var suit := String(card_data.get("suit", ""))
+		var symbol := _suit_symbol(suit)
+		_label.text = "%s\n%s" % [String(card_data.get("rank", "")), symbol]
+		_label.add_theme_color_override("font_color", _suit_color(suit))
+	queue_redraw()
+
+func _draw() -> void:
+	var rect := Rect2(Vector2.ZERO, size)
+	var face_up := bool(card_data.get("face_up", false))
+	var fill := Color(0.92, 0.94, 1.0, 0.96) if face_up else Color(0.08, 0.09, 0.18, 0.98)
+	draw_rect(rect, fill, true)
+	draw_rect(rect, Color(0.8, 0.88, 1.0, 0.55 if not selected else 0.95), false, 2.0)
+
+func _suit_symbol(suit: String) -> String:
+	match suit:
+		"clubs":
+			return "♣"
+		"diamonds":
+			return "♦"
+		"hearts":
+			return "♥"
+		"spades":
+			return "♠"
+		_:
+			return "?"
+
+func _suit_color(suit: String) -> Color:
+	if suit in ["hearts", "diamonds"]:
+		return Color(0.86, 0.1, 0.28)
+	return Color(0.05, 0.07, 0.12)
