@@ -38,6 +38,7 @@ scripts/app/lobby_view_model.gd
       "id": "quick_play",
       "title": "QUICK PLAY",
       "subtitle": "Jump into a table instantly",
+      "image": "res://assets/home_lobby/mode_cards/mode_quick_play.png",
       "route": "quick_play",
       "enabled": true
     }
@@ -69,6 +70,7 @@ Exactly five PLAY mode cards are provided for the current contract: `quick_play`
 - `id`: stable mode id.
 - `title`: frontend display title.
 - `subtitle`: short frontend display subtitle.
+- `image`: rectangular illustration path.
 - `route`: route id frontend should emit when selected.
 - `enabled`: whether the frontend should allow selection.
 

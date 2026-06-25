@@ -9,6 +9,10 @@ const TableStateScript := preload("res://scripts/data/table_state.gd")
 const LobbyViewModelScript := preload("res://scripts/app/lobby_view_model.gd")
 const RoomBrowserViewModelScript := preload("res://scripts/app/room_browser_view_model.gd")
 const TableViewModelScript := preload("res://scripts/app/table_view_model.gd")
+const ReplayViewModelScript := preload("res://scripts/app/replay_view_model.gd")
+const StoreViewModelScript := preload("res://scripts/app/store_view_model.gd")
+const ProfileViewModelScript := preload("res://scripts/app/profile_view_model.gd")
+const SettingsViewModelScript := preload("res://scripts/app/settings_view_model.gd")
 
 const AVATAR_PLACEHOLDER := "res://assets/home_lobby/profile/avatar_placeholder.png"
 
@@ -43,6 +47,18 @@ static func get_table_view_model() -> Dictionary:
 	table.available_actions = []
 	return TableViewModelScript.new(table).to_dict()
 
+static func get_replay_view_model() -> Dictionary:
+	return ReplayViewModelScript.new().to_dict()
+
+static func get_store_view_model() -> Dictionary:
+	return StoreViewModelScript.new().to_dict()
+
+static func get_profile_view_model() -> Dictionary:
+	return ProfileViewModelScript.new().to_dict()
+
+static func get_settings_view_model() -> Dictionary:
+	return SettingsViewModelScript.new().to_dict()
+
 static func _mock_player_profile():
 	return PlayerProfileScript.new(
 		"Luna0581",
@@ -56,41 +72,11 @@ static func _mock_player_profile():
 
 static func _mock_lobby_modes() -> Array:
 	return [
-		{
-			"id": "quick_play",
-			"title": "QUICK PLAY",
-			"subtitle": "Jump into a table instantly",
-			"route": "quick_play",
-			"enabled": true,
-		},
-		{
-			"id": "room_browser",
-			"title": "ROOM BROWSER",
-			"subtitle": "Choose a table from the lobby",
-			"route": "room_browser",
-			"enabled": true,
-		},
-		{
-			"id": "private_table",
-			"title": "PRIVATE TABLE",
-			"subtitle": "Create or join a room with friends",
-			"route": "private_table",
-			"enabled": true,
-		},
-		{
-			"id": "training",
-			"title": "TRAINING",
-			"subtitle": "Practice against AI and learn safely",
-			"route": "training",
-			"enabled": true,
-		},
-		{
-			"id": "events",
-			"title": "EVENTS",
-			"subtitle": "Limited-time tables and special rules",
-			"route": "events",
-			"enabled": true,
-		},
+		LobbyModeScript.new("quick_play", "QUICK PLAY", "Jump into a table instantly", "res://assets/home_lobby/mode_cards/mode_quick_play.png", true, "quick_play"),
+		LobbyModeScript.new("room_browser", "ROOM BROWSER", "Choose a table from the lobby", "res://assets/home_lobby/mode_cards/mode_cash_tables.png", true, "room_browser"),
+		LobbyModeScript.new("private_table", "PRIVATE TABLE", "Create or join a room with friends", "res://assets/home_lobby/mode_cards/mode_private_table.png", true, "private_table"),
+		LobbyModeScript.new("training", "TRAINING", "Practice against AI and learn safely", "res://assets/home_lobby/mode_cards/mode_tournaments.png", true, "training"),
+		LobbyModeScript.new("events", "EVENTS", "Limited-time tables and special rules", "res://assets/home_lobby/mode_cards/mode_club_games.png", true, "events"),
 	]
 
 static func _mock_main_nav_items() -> Array[Dictionary]:

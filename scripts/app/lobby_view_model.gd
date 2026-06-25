@@ -12,17 +12,14 @@ var daily_bonus
 
 func _init(profile = null, lobby_modes: Array = [], bonus_state = null, nav_items: Array = []) -> void:
 	player = profile if profile != null else PlayerProfileScript.new()
-	main_nav = nav_items.duplicate(true)
+	main_nav = nav_items.duplicate()
 	modes = lobby_modes.duplicate()
 	daily_bonus = bonus_state if bonus_state != null else DailyBonusStateScript.new()
 
 func to_dict() -> Dictionary:
 	var mode_data: Array[Dictionary] = []
 	for mode in modes:
-		if mode is Dictionary:
-			mode_data.append(Dictionary(mode).duplicate(true))
-		else:
-			mode_data.append(mode.to_dict())
+		mode_data.append(mode.to_dict())
 	return {
 		"player": player.to_lobby_dict(),
 		"main_nav": main_nav.duplicate(true),

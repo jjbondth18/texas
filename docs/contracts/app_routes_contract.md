@@ -11,7 +11,7 @@
 - `profile`
 - `settings`
 
-`club` and generic `tournaments` are deprecated as Home Lobby main navigation items.
+`club` and generic `tournaments` are no longer main navigation routes. If they return, they should live under `events` or another feature-specific route.
 
 ## PLAY Mode Routes
 
@@ -21,10 +21,45 @@
 - `training`
 - `events`
 
-## Compatibility / System Routes
+## Replay Routes
 
-- `exit`
+- `replay`
+- `replay_detail`
+- `replay_analysis`
+
+## Store Routes
+
+- `store`
+- `store_chips`
+- `store_replay_pro`
+- `store_cosmetics`
+- `store_membership`
+
+## Profile Routes
+
+- `profile`
+- `profile_stats`
+- `profile_cosmetics`
+- `profile_achievements`
+
+## Settings Routes
+
+- `settings`
+- `settings_graphics`
+- `settings_audio`
+- `settings_controls`
+- `settings_language`
+- `settings_motion`
+
+## Table / System Routes
+
 - `table`
+- `exit`
+
+## Deprecated Compatibility Routes
+
+These are retained for old mock callers only and must not appear in primary Home Lobby navigation:
+
 - `club`
 - `tournaments`
 - `cash_tables`
@@ -37,6 +72,11 @@
 - `AppRoutes.is_known_route(route_id: String) -> bool`
 - `AppRoutes.is_main_nav_route(route_id: String) -> bool`
 - `AppRoutes.is_mode_route(route_id: String) -> bool`
+- `AppRoutes.is_play_mode_route(route_id: String) -> bool`
+- `AppRoutes.is_replay_route(route_id: String) -> bool`
+- `AppRoutes.is_store_route(route_id: String) -> bool`
+- `AppRoutes.is_profile_route(route_id: String) -> bool`
+- `AppRoutes.is_settings_route(route_id: String) -> bool`
 - `AppRoutes.is_system_route(route_id: String) -> bool`
 
 Frontend buttons should emit route ids from this contract instead of inventing local strings.

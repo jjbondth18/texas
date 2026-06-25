@@ -3,7 +3,11 @@ class_name HomeLobbyScreen
 
 enum LobbyState {
 	COLLAPSED,
-	PLAY_EXPANDED
+	PLAY_EXPANDED,
+	REPLAY,
+	STORE,
+	PROFILE,
+	SETTINGS
 }
 
 @export var background_motion_enabled := true
@@ -24,12 +28,25 @@ var _center_brand: Control
 var _logo_fallback: Control
 var _prompt: Label
 var _play_panel: PanelContainer
+var _replay_panel: PanelContainer
+var _store_panel: PanelContainer
+var _profile_panel: PanelContainer
+var _settings_panel: PanelContainer
 var _welcome_pack: PanelContainer
 var _daily_bonus: Control
 var _mode_cards: Array[ModeCard] = []
 var _foreground_decor: TextureRect
 var _expanded := false
 var _bg_breath_tween: Tween
+
+const MockDataProvider := preload("res://scripts/demo/mock_data_provider.gd")
+const MODE_IMAGES := {
+	"quick_play": "res://assets/home_lobby/mode_cards/mode_quick_play.png",
+	"room_browser": "res://assets/home_lobby/mode_cards/mode_cash_tables.png",
+	"private_table": "res://assets/home_lobby/mode_cards/mode_private_table.png",
+	"training": "res://assets/home_lobby/mode_cards/mode_club_games.png",
+	"events": "res://assets/home_lobby/mode_cards/mode_tournaments.png"
+}
 
 const LOGO_COLLAPSED_Y := 275.0
 const LOGO_EXPANDED_Y := 20.0
@@ -49,20 +66,32 @@ func _ready() -> void:
 	_build_foreground()
 	_build_layout()
 	_build_play_panel()
-	_top_bar.configure(MockHomeData.player())
+	_build_replay_panel()
+	_build_store_panel()
+	_build_profile_panel()
+	_build_settings_panel()
+	
+	var lobby_vm := MockDataProvider.get_lobby_view_model()
+	_top_bar.configure(lobby_vm["player"])
 	set_state(LobbyState.COLLAPSED, false)
 	_handle_runtime_capture_args()
 
 func set_state(new_state: LobbyState, animated: bool = true) -> void:
 	current_state = new_state
 	
-	if current_state == LobbyState.COLLAPSED:
-		if _left_nav.active_id == "play":
-			_left_nav.set_active("home")
-	elif current_state == LobbyState.PLAY_EXPANDED:
-		_left_nav.set_active("play")
+	var nav_id := "home"
+	match current_state:
+		LobbyState.COLLAPSED: nav_id = "home"
+		LobbyState.PLAY_EXPANDED: nav_id = "play"
+		LobbyState.REPLAY: nav_id = "replay"
+		LobbyState.STORE: nav_id = "store"
+		LobbyState.PROFILE: nav_id = "profile"
+		LobbyState.SETTINGS: nav_id = "settings"
+	
+	if _left_nav:
+		_left_nav.set_active(nav_id)
 		
-	_set_expanded(current_state == LobbyState.PLAY_EXPANDED, not animated)
+	_set_expanded(current_state != LobbyState.COLLAPSED, not animated)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -71,7 +100,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 	if event.is_action_pressed("ui_cancel"):
-		if current_state == LobbyState.PLAY_EXPANDED:
+		if current_state != LobbyState.COLLAPSED:
 			set_state(LobbyState.COLLAPSED)
 		else:
 			get_tree().quit()
@@ -268,9 +297,12 @@ func _build_play_panel() -> void:
 	card_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	card_row.add_theme_constant_override("separation", 30)
 	content.add_child(card_row)
-	for mode_data in MockHomeData.MODES:
+	var lobby_vm := MockDataProvider.get_lobby_view_model()
+	for mode_data in lobby_vm["modes"]:
 		var card := preload("res://scenes/components/mode_card.tscn").instantiate() as ModeCard
-		card.configure(mode_data)
+		var data_with_img := Dictionary(mode_data).duplicate()
+		data_with_img["image"] = MODE_IMAGES.get(data_with_img["id"], "")
+		card.configure(data_with_img)
 		card.mode_selected.connect(_on_mode_selected)
 		_mode_cards.append(card)
 		card_row.add_child(card)
@@ -300,13 +332,15 @@ func _build_foreground() -> void:
 	add_child(_foreground_decor)
 
 func _on_nav_selected(id: String) -> void:
-	if id == "play":
-		set_state(LobbyState.PLAY_EXPANDED)
-	else:
-		set_state(LobbyState.COLLAPSED)
-		_left_nav.set_active(id)
-		if id != "home":
-			print("%s is coming soon." % id.capitalize())
+	match id:
+		"home": set_state(LobbyState.COLLAPSED)
+		"play": set_state(LobbyState.PLAY_EXPANDED)
+		"replay": set_state(LobbyState.REPLAY)
+		"store": set_state(LobbyState.STORE)
+		"profile": set_state(LobbyState.PROFILE)
+		"settings": set_state(LobbyState.SETTINGS)
+		_:
+			set_state(LobbyState.COLLAPSED)
 
 func _on_play_submenu_selected(id: String) -> void:
 	print("Selected play submenu: %s" % id)
@@ -327,15 +361,26 @@ func _stop_bg_breathing() -> void:
 		_bg_breath_tween.kill()
 		_bg_breath_tween = null
 
+func _get_panel_for_state(state: LobbyState) -> PanelContainer:
+	match state:
+		LobbyState.PLAY_EXPANDED: return _play_panel
+		LobbyState.REPLAY: return _replay_panel
+		LobbyState.STORE: return _store_panel
+		LobbyState.PROFILE: return _profile_panel
+		LobbyState.SETTINGS: return _settings_panel
+		_: return null
+
 func _set_expanded(value: bool, immediate: bool = false) -> void:
 	_expanded = value
 	
 	var prompt_target := 0.0 if value else 1.0
-	var panel_target := 1.0 if value else 0.0
 	var bg_target := Color(0.48, 0.45, 0.52, 1.0) if value else Color(1.34, 1.30, 1.40, 1.0)
 	
 	var logo_pos_y := LOGO_EXPANDED_Y if value else LOGO_COLLAPSED_Y
 	var logo_scale := LOGO_EXPANDED_SCALE if value else LOGO_COLLAPSED_SCALE
+	
+	var active_panel := _get_panel_for_state(current_state)
+	var all_panels := [_play_panel, _replay_panel, _store_panel, _profile_panel, _settings_panel]
 	
 	if _transition_tween:
 		_transition_tween.kill()
@@ -347,12 +392,15 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 		_center_brand.visible = true
 		_prompt.modulate.a = prompt_target
 		_prompt.visible = not value
-		_play_panel.modulate.a = panel_target
-		_play_panel.visible = value
+		for p in all_panels:
+			if p:
+				p.visible = (value and p == active_panel)
+				p.modulate.a = 1.0 if (value and p == active_panel) else 0.0
 		if _cta_button:
 			_cta_button.visible = not value
 			_cta_button.disabled = value
 			_cta_button.modulate.a = 0.0 if value else 1.0
+			_cta_button.scale = Vector2.ONE
 		_stop_bg_breathing()
 		if _background_texture:
 			_background_texture.modulate = bg_target
@@ -364,9 +412,14 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 	
 	if value:
 		_stop_bg_breathing()
-		_play_panel.visible = true
-		_play_panel.modulate.a = 0.0
-		_transition_tween.tween_property(_play_panel, "modulate:a", 1.0, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		for p in all_panels:
+			if p:
+				if p == active_panel:
+					p.visible = true
+					p.modulate.a = 0.0
+					_transition_tween.tween_property(p, "modulate:a", 1.0, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+				else:
+					_transition_tween.tween_property(p, "modulate:a", 0.0, 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		
 		# Animate logo spatial transformation in 0.4s
 		_transition_tween.tween_property(_center_brand, "position:y", logo_pos_y, 0.4).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
@@ -386,6 +439,9 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 			_prompt.visible = false
 			if _cta_button:
 				_cta_button.visible = false
+			for p in all_panels:
+				if p and p != active_panel:
+					p.visible = false
 		)
 	else:
 		_center_brand.visible = true
@@ -395,6 +451,7 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 		if _cta_button:
 			_cta_button.visible = true
 			_cta_button.modulate.a = 0.0
+			_cta_button.scale = Vector2.ONE
 		
 		# Animate logo spatial transformation in 0.4s
 		_transition_tween.tween_property(_center_brand, "position:y", logo_pos_y, 0.4).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
@@ -405,12 +462,17 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 		if _cta_button:
 			_transition_tween.tween_property(_cta_button, "modulate:a", 1.0, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		
-		_transition_tween.tween_property(_play_panel, "modulate:a", 0.0, 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		for p in all_panels:
+			if p:
+				_transition_tween.tween_property(p, "modulate:a", 0.0, 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+				
 		if _background_texture:
 			_transition_tween.tween_property(_background_texture, "modulate", bg_target, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		
 		_transition_tween.chain().tween_callback(func() -> void:
-			_play_panel.visible = false
+			for p in all_panels:
+				if p:
+					p.visible = false
 			if _cta_button:
 				_cta_button.disabled = false
 			_start_bg_breathing()
@@ -443,8 +505,16 @@ func _handle_runtime_capture_args() -> void:
 		return
 	var state := _arg_value(args, "--capture-lobby-state", "collapsed")
 	var output := _arg_value(args, "--capture-lobby-output", "")
-	if state == "expanded":
+	if state == "expanded" or state == "play":
 		set_state(LobbyState.PLAY_EXPANDED, false)
+	elif state == "replay":
+		set_state(LobbyState.REPLAY, false)
+	elif state == "store":
+		set_state(LobbyState.STORE, false)
+	elif state == "profile":
+		set_state(LobbyState.PROFILE, false)
+	elif state == "settings":
+		set_state(LobbyState.SETTINGS, false)
 	else:
 		set_state(LobbyState.COLLAPSED, false)
 	var hover_index := _arg_value(args, "--capture-lobby-hover-index", "")
@@ -594,3 +664,468 @@ func _process(delta: float) -> void:
 			_cta_button.modulate.a = alpha
 		else:
 			_cta_button.modulate.a = 1.0
+
+func _build_replay_panel() -> void:
+	_replay_panel = PanelContainer.new()
+	_replay_panel.name = "ReplayPanel"
+	_replay_panel.anchor_left = 0.0
+	_replay_panel.anchor_top = 0.32
+	_replay_panel.anchor_right = 1.0
+	_replay_panel.anchor_bottom = 0.91
+	_replay_panel.offset_left = MAIN_LEFT
+	_replay_panel.offset_right = -MAIN_RIGHT
+	_replay_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	_replay_panel.custom_minimum_size = Vector2(0, 580)
+	_replay_panel.visible = false
+	_replay_panel.modulate.a = 0.0
+	_replay_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.016, 0.72), Color(1.0, 0.28, 0.78, 0.28), 8, 1))
+	_lobby_ui_root.add_child(_replay_panel)
+	
+	var main_vbox := VBoxContainer.new()
+	main_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	main_vbox.add_theme_constant_override("separation", 15)
+	_replay_panel.add_child(main_vbox)
+	
+	# Header
+	var header := HBoxContainer.new()
+	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	main_vbox.add_child(header)
+	
+	var title_box := VBoxContainer.new()
+	title_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	header.add_child(title_box)
+	
+	var title := Label.new()
+	title.text = "REPLAY ROOM"
+	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
+	title_box.add_child(title)
+	
+	var sub := Label.new()
+	sub.text = "HAND REVIEW & PERFORMANCE ANALYSIS"
+	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
+	title_box.add_child(sub)
+	
+	var content_hbox := HBoxContainer.new()
+	content_hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content_hbox.add_theme_constant_override("separation", 24)
+	main_vbox.add_child(content_hbox)
+	
+	# Left: Hand list
+	var list_panel := PanelContainer.new()
+	list_panel.custom_minimum_size = Vector2(400, 0)
+	list_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	list_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.012, 0.50), Color(0.2, 0.24, 0.38, 0.25), 8, 1))
+	content_hbox.add_child(list_panel)
+	
+	var list_scroll := ScrollContainer.new()
+	list_scroll.mouse_filter = Control.MOUSE_FILTER_PASS
+	list_panel.add_child(list_scroll)
+	
+	var list_vbox := VBoxContainer.new()
+	list_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	list_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list_vbox.add_theme_constant_override("separation", 10)
+	list_scroll.add_child(list_vbox)
+	
+	var mock_hands := [
+		{"id": "#1482", "mode": "Quick Play", "result": "+3,450 Chips", "win": true, "time": "2 mins ago"},
+		{"id": "#1481", "mode": "Cash Table", "result": "-1,250 Chips", "win": false, "time": "12 mins ago"},
+		{"id": "#1480", "mode": "Private Table", "result": "+800 Chips", "win": true, "time": "45 mins ago"},
+		{"id": "#1479", "mode": "Quick Play", "result": "+450 Chips", "win": true, "time": "1 hour ago"},
+		{"id": "#1478", "mode": "Training", "result": "+1,200 Chips", "win": true, "time": "2 hours ago"}
+	]
+	
+	for hand in mock_hands:
+		var item := PanelContainer.new()
+		item.custom_minimum_size = Vector2(0, 72)
+		item.mouse_filter = Control.MOUSE_FILTER_PASS
+		item.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.012, 0.016, 0.035, 0.65), Color(0.3, 0.35, 0.55, 0.15), 6, 1))
+		var item_hbox := HBoxContainer.new()
+		item_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+		item_hbox.add_theme_constant_override("separation", 10)
+		item.add_child(item_hbox)
+		
+		var icon_rect := ColorRect.new()
+		icon_rect.custom_minimum_size = Vector2(40, 40)
+		icon_rect.color = Color(0.18, 0.22, 0.38, 0.45)
+		item_hbox.add_child(icon_rect)
+		
+		var desc_vbox := VBoxContainer.new()
+		desc_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		item_hbox.add_child(desc_vbox)
+		
+		var item_title := Label.new()
+		item_title.text = "Hand " + hand["id"] + " (" + hand["mode"] + ")"
+		HomeTheme.make_font_settings(item_title, 13, Color(0.9, 0.92, 0.98))
+		desc_vbox.add_child(item_title)
+		
+		var item_time := Label.new()
+		item_time.text = hand["time"]
+		HomeTheme.make_font_settings(item_time, 11, HomeTheme.MUTED)
+		desc_vbox.add_child(item_time)
+		
+		var item_res := Label.new()
+		item_res.text = hand["result"]
+		HomeTheme.make_font_settings(item_res, 13, Color(0.2, 0.8, 0.3) if hand["win"] else HomeTheme.PINK)
+		item_hbox.add_child(item_res)
+		
+		list_vbox.add_child(item)
+		
+	# Right: Hand Preview & Premium Lock Module
+	var right_vbox := VBoxContainer.new()
+	right_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	right_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right_vbox.add_theme_constant_override("separation", 16)
+	content_hbox.add_child(right_vbox)
+	
+	# Preview Box
+	var prev_box := PanelContainer.new()
+	prev_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	prev_box.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.012, 0.50), Color(0.2, 0.24, 0.38, 0.25), 8, 1))
+	var prev_vbox := VBoxContainer.new()
+	prev_vbox.add_theme_constant_override("separation", 12)
+	prev_box.add_child(prev_vbox)
+	
+	var prev_title := Label.new()
+	prev_title.text = "HAND REVIEW — HAND #1482"
+	HomeTheme.make_font_settings(prev_title, 16, HomeTheme.CYAN)
+	prev_vbox.add_child(prev_title)
+	
+	var cards_hbox := HBoxContainer.new()
+	cards_hbox.add_theme_constant_override("separation", 15)
+	prev_vbox.add_child(cards_hbox)
+	
+	var cards_desc := Label.new()
+	cards_desc.text = "Hero Pocket: [A♠, K♥]  |  Board: [Q♦, J♥, 10♣, 7♠, 2♣]"
+	HomeTheme.make_font_settings(cards_desc, 13, Color(0.85, 0.90, 1.0))
+	cards_hbox.add_child(cards_desc)
+	
+	var showdown_desc := Label.new()
+	showdown_desc.text = "Showdown: Hero wins pot of 3,450 Chips with Straight (Ace High)."
+	HomeTheme.make_font_settings(showdown_desc, 13, Color(0.72, 0.76, 0.92))
+	prev_vbox.add_child(showdown_desc)
+	
+	right_vbox.add_child(prev_box)
+	
+	# Equity Timeline Premium Lock Box
+	var equity_box := PanelContainer.new()
+	equity_box.custom_minimum_size = Vector2(0, 200)
+	equity_box.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.014, 0.008, 0.022, 0.85), Color(1.0, 0.0, 0.5, 0.35), 8, 1.5))
+	var eq_vbox := VBoxContainer.new()
+	eq_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	eq_vbox.add_theme_constant_override("separation", 10)
+	equity_box.add_child(eq_vbox)
+	
+	var eq_title := Label.new()
+	eq_title.text = "🔒 STREET-BY-STREET EQUITY TIMELINE"
+	HomeTheme.make_font_settings(eq_title, 15, HomeTheme.PINK)
+	eq_vbox.add_child(eq_title)
+	
+	var eq_lock_desc := Label.new()
+	eq_lock_desc.text = "Unlock Replay Pro to view street-by-street win probability graphs, range charts, and premium GTO analysis."
+	eq_lock_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	eq_lock_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(eq_lock_desc, 12, HomeTheme.MUTED)
+	eq_vbox.add_child(eq_lock_desc)
+	
+	var upgrade_btn := Button.new()
+	upgrade_btn.text = "UPGRADE TO REPLAY PRO"
+	upgrade_btn.custom_minimum_size = Vector2(240, 36)
+	upgrade_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	upgrade_btn.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.016, 0.018, 0.048, 0.56), Color(1.0, 0.0, 0.5, 0.80), 18))
+	upgrade_btn.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
+	upgrade_btn.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
+	upgrade_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	eq_vbox.add_child(upgrade_btn)
+	
+	right_vbox.add_child(equity_box)
+
+func _build_store_panel() -> void:
+	_store_panel = PanelContainer.new()
+	_store_panel.name = "StorePanel"
+	_store_panel.anchor_left = 0.0
+	_store_panel.anchor_top = 0.32
+	_store_panel.anchor_right = 1.0
+	_store_panel.anchor_bottom = 0.91
+	_store_panel.offset_left = MAIN_LEFT
+	_store_panel.offset_right = -MAIN_RIGHT
+	_store_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	_store_panel.custom_minimum_size = Vector2(0, 580)
+	_store_panel.visible = false
+	_store_panel.modulate.a = 0.0
+	_store_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.016, 0.72), Color(0.52, 0.78, 1.0, 0.28), 8, 1))
+	_lobby_ui_root.add_child(_store_panel)
+	
+	var main_vbox := VBoxContainer.new()
+	main_vbox.add_theme_constant_override("separation", 20)
+	_store_panel.add_child(main_vbox)
+	
+	# Header
+	var title_box := VBoxContainer.new()
+	main_vbox.add_child(title_box)
+	var title := Label.new()
+	title.text = "POKER CLUB STORE"
+	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
+	title_box.add_child(title)
+	var sub := Label.new()
+	sub.text = "GET CHIPS, PREMIUM ACCESS & EXCLUSIVE COSMETICS"
+	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
+	title_box.add_child(sub)
+	
+	# Tabs
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 15)
+	main_vbox.add_child(tabs)
+	var tab_names := ["CHIPS", "REPLAY PRO", "COSMETICS", "MEMBERSHIP"]
+	for tab_name in tab_names:
+		var tab_btn := Button.new()
+		tab_btn.text = tab_name
+		tab_btn.custom_minimum_size = Vector2(140, 36)
+		tab_btn.flat = true
+		tab_btn.add_theme_stylebox_override("normal", HomeTheme.make_panel_style(Color(0.1, 0.12, 0.22, 0.25), Color(0.3, 0.35, 0.55, 0.15), 6, 1))
+		tab_btn.add_theme_color_override("font_color", Color(0.85, 0.90, 1.0))
+		tabs.add_child(tab_btn)
+		
+	# Grid Content
+	var grid := HBoxContainer.new()
+	grid.add_theme_constant_override("separation", 24)
+	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	main_vbox.add_child(grid)
+	
+	# Offer 1: Chips
+	var card1 := PanelContainer.new()
+	card1.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card1.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.012, 0.016, 0.035, 0.65), Color(0.2, 0.24, 0.38, 0.25), 8, 1))
+	var c1_vbox := VBoxContainer.new()
+	c1_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	c1_vbox.add_theme_constant_override("separation", 12)
+	card1.add_child(c1_vbox)
+	var c1_title := Label.new()
+	c1_title.text = "STARTER CHIPS PACK"
+	HomeTheme.make_font_settings(c1_title, 15, HomeTheme.CYAN)
+	c1_vbox.add_child(c1_title)
+	var c1_desc := Label.new()
+	c1_desc.text = "10,000 Chips + 100 Bonus Gems"
+	c1_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HomeTheme.make_font_settings(c1_desc, 12, HomeTheme.TEXT)
+	c1_vbox.add_child(c1_desc)
+	var c1_btn := Button.new()
+	c1_btn.text = "$4.99"
+	c1_btn.custom_minimum_size = Vector2(120, 32)
+	c1_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	c1_btn.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.08, 0.22, 0.38, 0.60), Color(0.52, 0.78, 1.0, 0.8), 16))
+	c1_vbox.add_child(c1_btn)
+	grid.add_child(card1)
+	
+	# Offer 2: Replay Pro
+	var card2 := PanelContainer.new()
+	card2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card2.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.014, 0.008, 0.022, 0.85), Color(1.0, 0.0, 0.5, 0.45), 8, 1.5))
+	var c2_vbox := VBoxContainer.new()
+	c2_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	c2_vbox.add_theme_constant_override("separation", 12)
+	card2.add_child(c2_vbox)
+	var c2_title := Label.new()
+	c2_title.text = "REPLAY PRO MONTHLY"
+	HomeTheme.make_font_settings(c2_title, 15, HomeTheme.PINK)
+	c2_vbox.add_child(c2_title)
+	var c2_desc := Label.new()
+	c2_desc.text = "Unlock street equity timeline\n& GTO hand advisor"
+	c2_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HomeTheme.make_font_settings(c2_desc, 12, HomeTheme.TEXT)
+	c2_vbox.add_child(c2_desc)
+	var c2_btn := Button.new()
+	c2_btn.text = "$9.99 / mo"
+	c2_btn.custom_minimum_size = Vector2(120, 32)
+	c2_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	c2_btn.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.60), Color(1.0, 0.0, 0.5, 0.8), 16))
+	c2_vbox.add_child(c2_btn)
+	grid.add_child(card2)
+
+func _build_profile_panel() -> void:
+	_profile_panel = PanelContainer.new()
+	_profile_panel.name = "ProfilePanel"
+	_profile_panel.anchor_left = 0.0
+	_profile_panel.anchor_top = 0.32
+	_profile_panel.anchor_right = 1.0
+	_profile_panel.anchor_bottom = 0.91
+	_profile_panel.offset_left = MAIN_LEFT
+	_profile_panel.offset_right = -MAIN_RIGHT
+	_profile_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	_profile_panel.custom_minimum_size = Vector2(0, 580)
+	_profile_panel.visible = false
+	_profile_panel.modulate.a = 0.0
+	_profile_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.016, 0.72), Color(0.62, 0.36, 1.0, 0.28), 8, 1))
+	_lobby_ui_root.add_child(_profile_panel)
+	
+	var main_vbox := VBoxContainer.new()
+	main_vbox.add_theme_constant_override("separation", 20)
+	_profile_panel.add_child(main_vbox)
+	
+	# Header
+	var title_box := VBoxContainer.new()
+	main_vbox.add_child(title_box)
+	var title := Label.new()
+	title.text = "PLAYER PROFILE"
+	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
+	title_box.add_child(title)
+	var sub := Label.new()
+	sub.text = "STATISTICS & UNLOCKED ACHIEVEMENTS"
+	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
+	title_box.add_child(sub)
+	
+	# Card Body
+	var body_hbox := HBoxContainer.new()
+	body_hbox.add_theme_constant_override("separation", 24)
+	body_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	main_vbox.add_child(body_hbox)
+	
+	# Left: Player Card info
+	var card_info := PanelContainer.new()
+	card_info.custom_minimum_size = Vector2(380, 0)
+	card_info.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.012, 0.50), Color(0.2, 0.24, 0.38, 0.25), 8, 1))
+	var c_vbox := VBoxContainer.new()
+	c_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	c_vbox.add_theme_constant_override("separation", 16)
+	card_info.add_child(c_vbox)
+	
+	var avatar := ColorRect.new()
+	avatar.custom_minimum_size = Vector2(80, 80)
+	avatar.color = Color(0.42, 0.26, 0.82, 0.65)
+	avatar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	c_vbox.add_child(avatar)
+	
+	var name_label := Label.new()
+	name_label.text = "Luna0581"
+	HomeTheme.make_font_settings(name_label, 18, Color(1, 1, 1, 0.95))
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	c_vbox.add_child(name_label)
+	
+	var lvl_label := Label.new()
+	lvl_label.text = "Level 24  |  XP 875 / 1500"
+	HomeTheme.make_font_settings(lvl_label, 12, HomeTheme.MUTED)
+	lvl_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	c_vbox.add_child(lvl_label)
+	
+	body_hbox.add_child(card_info)
+	
+	# Right: Stats overview
+	var right_panel := PanelContainer.new()
+	right_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.012, 0.50), Color(0.2, 0.24, 0.38, 0.25), 8, 1))
+	var r_vbox := VBoxContainer.new()
+	r_vbox.add_theme_constant_override("separation", 12)
+	right_panel.add_child(r_vbox)
+	
+	var s_title := Label.new()
+	s_title.text = "OVERVIEW & STATS"
+	HomeTheme.make_font_settings(s_title, 16, HomeTheme.PURPLE)
+	r_vbox.add_child(s_title)
+	
+	var stats_list := [
+		"Hands Played: 1,420",
+		"Win Rate: 54.2%",
+		"Biggest Pot Won: 42,500 Chips",
+		"Preflop Aggression: 32%"
+	]
+	for stat in stats_list:
+		var s_lbl := Label.new()
+		s_lbl.text = stat
+		HomeTheme.make_font_settings(s_lbl, 13, Color(0.85, 0.90, 1.0))
+		r_vbox.add_child(s_lbl)
+		
+	var ach_title := Label.new()
+	ach_title.text = "ACHIEVEMENTS"
+	HomeTheme.make_font_settings(ach_title, 16, HomeTheme.PURPLE)
+	r_vbox.add_child(ach_title)
+	
+	var achievements := [
+		"🏆 First Blood: Win a hand in Quick Play (Unlocked)",
+		"🏆 Showdown Master: Win with a Royal Flush (Locked)"
+	]
+	for ach in achievements:
+		var a_lbl := Label.new()
+		a_lbl.text = ach
+		HomeTheme.make_font_settings(a_lbl, 12, Color(0.72, 0.76, 0.92))
+		r_vbox.add_child(a_lbl)
+		
+	body_hbox.add_child(right_panel)
+
+func _build_settings_panel() -> void:
+	_settings_panel = PanelContainer.new()
+	_settings_panel.name = "SettingsPanel"
+	_settings_panel.anchor_left = 0.0
+	_settings_panel.anchor_top = 0.32
+	_settings_panel.anchor_right = 1.0
+	_settings_panel.anchor_bottom = 0.91
+	_settings_panel.offset_left = MAIN_LEFT
+	_settings_panel.offset_right = -MAIN_RIGHT
+	_settings_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	_settings_panel.custom_minimum_size = Vector2(0, 580)
+	_settings_panel.visible = false
+	_settings_panel.modulate.a = 0.0
+	_settings_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.016, 0.72), Color(0.62, 0.36, 1.0, 0.28), 8, 1))
+	_lobby_ui_root.add_child(_settings_panel)
+	
+	var main_vbox := VBoxContainer.new()
+	main_vbox.add_theme_constant_override("separation", 20)
+	_settings_panel.add_child(main_vbox)
+	
+	# Header
+	var title_box := VBoxContainer.new()
+	main_vbox.add_child(title_box)
+	var title := Label.new()
+	title.text = "SETTINGS"
+	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
+	title_box.add_child(title)
+	var sub := Label.new()
+	sub.text = "CONFIGURE PERFORMANCE, GRAPHICS & MOTION"
+	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
+	title_box.add_child(sub)
+	
+	# Body
+	var body_panel := PanelContainer.new()
+	body_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.012, 0.50), Color(0.2, 0.24, 0.38, 0.25), 8, 1))
+	main_vbox.add_child(body_panel)
+	
+	var grid := VBoxContainer.new()
+	grid.add_theme_constant_override("separation", 24)
+	grid.alignment = BoxContainer.ALIGNMENT_CENTER
+	body_panel.add_child(grid)
+	
+	# Settings Option 1: Motion Intensity
+	var motion_hbox := HBoxContainer.new()
+	motion_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	motion_hbox.add_theme_constant_override("separation", 30)
+	grid.add_child(motion_hbox)
+	
+	var motion_lbl := Label.new()
+	motion_lbl.text = "MOTION INTENSITY"
+	HomeTheme.make_font_settings(motion_lbl, 15, Color(1, 1, 1, 0.9))
+	motion_hbox.add_child(motion_lbl)
+	
+	var btn_hbox := HBoxContainer.new()
+	btn_hbox.add_theme_constant_override("separation", 10)
+	motion_hbox.add_child(btn_hbox)
+	
+	var intensities := ["LOW", "MEDIUM", "HIGH"]
+	for intens in intensities:
+		var btn := Button.new()
+		btn.text = intens
+		btn.custom_minimum_size = Vector2(100, 36)
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		btn.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.008, 0.010, 0.024, 0.35), Color(0.62, 0.36, 1.0, 0.5), 18))
+		btn.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.65), Color(0.62, 0.36, 1.0, 1.0), 18))
+		btn_hbox.add_child(btn)
+		
+		# Connect to dynamically toggle motion based on selection
+		btn.pressed.connect(func() -> void:
+			if intens == "LOW":
+				set_background_motion_enabled(false)
+			else:
+				set_background_motion_enabled(true)
+			print("Motion Intensity set to %s" % intens)
+		)

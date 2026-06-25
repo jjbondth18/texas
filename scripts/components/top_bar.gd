@@ -56,12 +56,30 @@ func _ready() -> void:
 func configure(player: Dictionary) -> void:
 	if not is_node_ready():
 		await ready
-	_name_label.text = player["player_name"]
-	_level_label.text = "LEVEL %s  |  %s / %s XP" % [player["level"], player["xp_current"], player["xp_max"]]
-	_xp_bar.max_value = player["xp_max"]
-	_xp_bar.value = player["xp_current"]
-	_chips_label.text = "%s" % _format_number(player["chips"])
-	_premium_label.text = "%s" % _format_number(player["premium_currency"])
+	_name_label.text = player.get("name", player.get("player_name", ""))
+	
+	var xp_txt := String(player.get("xp_text", ""))
+	var xp_current := 0
+	var xp_max := 1
+	if xp_txt != "":
+		var xp_parts := xp_txt.split(" ")
+		if xp_parts.size() >= 3:
+			xp_current = xp_parts[0].to_int()
+			xp_max = xp_parts[2].to_int()
+	else:
+		xp_current = int(player.get("xp_current", 0))
+		xp_max = int(player.get("xp_max", 1))
+		xp_txt = "%d / %d XP" % [xp_current, xp_max]
+		
+	_level_label.text = "LEVEL %s  |  %s" % [player.get("level", 1), xp_txt]
+	_xp_bar.max_value = max(xp_max, 1)
+	_xp_bar.value = xp_current
+	
+	var chips_val = player.get("chips", 0)
+	_chips_label.text = "%s" % _format_number(chips_val)
+	
+	var premium_val = player.get("gems", player.get("premium_currency", 0))
+	_premium_label.text = "%s" % _format_number(premium_val)
 
 func _currency_pill(parent: Container, title: String, color: Color) -> Label:
 	var pill := PanelContainer.new()

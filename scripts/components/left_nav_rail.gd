@@ -7,10 +7,10 @@ signal play_submenu_selected(id: String)
 const ITEMS := [
 	{ "id": "home", "title": "HOME" },
 	{ "id": "play", "title": "PLAY" },
-	{ "id": "club", "title": "CLUB" },
-	{ "id": "tournaments", "title": "TOURNAMENTS" },
+	{ "id": "replay", "title": "REPLAY" },
 	{ "id": "store", "title": "STORE" },
 	{ "id": "profile", "title": "PROFILE" },
+	{ "id": "settings", "title": "SETTINGS" },
 ]
 
 var _list: VBoxContainer
@@ -128,13 +128,15 @@ func _on_item_selected(id: String) -> void:
 	nav_selected.emit(id)
 
 func _build_play_submenu() -> void:
+	var MockDataProviderScript := preload("res://scripts/demo/mock_data_provider.gd")
+	var lobby_vm := MockDataProviderScript.get_lobby_view_model()
 	_play_submenu = VBoxContainer.new()
 	_play_submenu.name = "PlaySubmenu"
 	_play_submenu.visible = false
 	_play_submenu.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_play_submenu.add_theme_constant_override("separation", 8)
 	_list.add_child(_play_submenu)
-	for mode_data in MockHomeData.MODES:
+	for mode_data in lobby_vm["modes"]:
 		var button := Button.new()
 		button.text = mode_data["title"]
 		button.flat = true
