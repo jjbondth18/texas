@@ -41,6 +41,7 @@ var _foreground_decor: TextureRect
 var _expanded := false
 var _bg_breath_tween: Tween
 var _fade_overlay: ColorRect
+var _bgm_player: AudioStreamPlayer
 
 const MockDataProvider := preload("res://scripts/demo/mock_data_provider.gd")
 const MODE_IMAGES := {
@@ -82,6 +83,21 @@ func _ready() -> void:
 	_fade_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_fade_overlay.visible = false
 	add_child(_fade_overlay)
+	
+	_bgm_player = AudioStreamPlayer.new()
+	_bgm_player.name = "BGMPlayer"
+	var ogg := load("res://assets/music/bgm1.ogg")
+	if ogg:
+		if ogg.has_method("set_loop"):
+			ogg.set_loop(true)
+		elif "loop" in ogg:
+			ogg.loop = true
+		_bgm_player.stream = ogg
+	_bgm_player.finished.connect(func() -> void:
+		_bgm_player.play()
+	)
+	add_child(_bgm_player)
+	_bgm_player.play()
 	
 	var lobby_vm := MockDataProvider.get_lobby_view_model()
 	_top_bar.configure(lobby_vm["player"])
