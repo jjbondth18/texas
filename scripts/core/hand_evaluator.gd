@@ -150,7 +150,10 @@ static func _contains_royal(cards: Array[String]) -> bool:
 	return ranks.has("A") and ranks.has("K") and ranks.has("Q") and ranks.has("J") and ranks.has("T")
 
 static func _top_cards(cards: Array[String], count: int) -> Array[String]:
-	return cards.slice(0, min(count, cards.size()))
+	var result: Array[String] = []
+	for code in cards.slice(0, min(count, cards.size())):
+		result.append(String(code))
+	return result
 
 static func _top_cards_excluding(cards: Array[String], excluded_ranks: Array, count: int) -> Array[String]:
 	var result: Array[String] = []
@@ -175,13 +178,17 @@ static func _top_flush_cards(cards: Array[String], count: int) -> Array[String]:
 	for code in cards:
 		var suit := code.substr(1, 1)
 		if not by_suit.has(suit):
-			by_suit[suit] = []
+			var arr: Array[String] = []
+			by_suit[suit] = arr
 		by_suit[suit].append(code)
 	for suit in by_suit:
-		var suited: Array = by_suit[suit]
+		var suited: Array[String] = by_suit[suit]
 		if suited.size() >= count:
-			return suited.slice(0, count)
-	return []
+			var res: Array[String] = []
+			res.assign(suited.slice(0, count))
+			return res
+	var empty: Array[String] = []
+	return empty
 
 static func _rank_value_from_code(code: String) -> int:
 	return int(RANK_VALUES.get(code.substr(0, 1), 0))
