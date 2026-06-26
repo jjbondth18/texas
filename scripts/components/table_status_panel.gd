@@ -54,7 +54,7 @@ func _ready() -> void:
 	
 	_rows_container = VBoxContainer.new()
 	_rows_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_rows_container.add_theme_constant_override("separation", 10)
+	_rows_container.add_theme_constant_override("separation", 16) # Locked separation 16
 	scroll.add_child(_rows_container)
 	
 	_exit_button = Button.new()
@@ -141,14 +141,13 @@ class PlayerRowPill extends Control:
 	
 	func _init(data: Dictionary) -> void:
 		player_data = data
-		custom_minimum_size = Vector2(0, 78) # Outer layout height
+		custom_minimum_size = Vector2(0, 80) # Locked outer height 80
 		size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		
 		# Inner Card is the actual visual container that slides
 		inner_card = PanelContainer.new()
-		inner_card.custom_minimum_size = Vector2(0, 74)
+		inner_card.custom_minimum_size = Vector2(0, 80) # Locked inner height 80
 		inner_card.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		inner_card.pivot_offset = Vector2(140, 37) # Center pivot for scaling
 		add_child(inner_card)
 		
 		style_box = StyleBoxFlat.new()
@@ -157,12 +156,12 @@ class PlayerRowPill extends Control:
 		style_box.anti_aliasing = true
 		inner_card.add_theme_stylebox_override("panel", style_box)
 		
-		# Margins inside the card
+		# Margins inside the card (content margins 10)
 		var margin := MarginContainer.new()
-		margin.add_theme_constant_override("margin_left", 12)
-		margin.add_theme_constant_override("margin_right", 12)
-		margin.add_theme_constant_override("margin_top", 8)
-		margin.add_theme_constant_override("margin_bottom", 8)
+		margin.add_theme_constant_override("margin_left", 10)
+		margin.add_theme_constant_override("margin_right", 10)
+		margin.add_theme_constant_override("margin_top", 10)
+		margin.add_theme_constant_override("margin_bottom", 10)
 		inner_card.add_child(margin)
 		
 		var hbox := HBoxContainer.new()
@@ -264,27 +263,24 @@ class PlayerRowPill extends Control:
 			
 		chips_label.text = _format_chips(chips)
 		
-		# Animate turn offsets (-30px and 1.15x scale)
+		# Animate turn offsets (-20px, no scaling)
 		if is_turn != _is_turn or force_snap:
 			_is_turn = is_turn
-			var target_x: float = -30.0 if is_turn else 0.0
-			var target_scale := Vector2(1.15, 1.15) if is_turn else Vector2(1.0, 1.0)
+			var target_x: float = -20.0 if is_turn else 0.0
 			
 			if force_snap:
 				inner_card.position.x = target_x
-				inner_card.scale = target_scale
 			else:
 				var duration := 0.2 if is_turn else 0.15
-				var tween := create_tween().set_parallel(true)
+				var tween := create_tween()
 				tween.tween_property(inner_card, "position:x", target_x, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-				tween.tween_property(inner_card, "scale", target_scale, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 				
 		# Update dots visibility
 		dots_hbox.visible = is_turn
 		
 		# Configure borders & styling
 		if is_local:
-			# Seat 5: Permanent Saturated Neon Magenta Border
+			# Seat 5: Permanent Saturated Neon Magenta Border (No pulsing)
 			style_box.border_color = Color(1.0, 0.0, 0.5, 0.95)
 			style_box.set_border_width_all(2)
 		else:
@@ -292,36 +288,33 @@ class PlayerRowPill extends Control:
 			style_box.border_color = Color(0, 0, 0, 0)
 			
 		if is_fold:
-			# Folded players: Gray out, 0.3 alpha, slide back to 0, scale 1.0
+			# Folded players: Gray out, 0.3 alpha, slide back to 0
 			_is_fold = true
 			modulate = Color(1, 1, 1, 0.3)
 			avatar_rect.modulate = Color(0.4, 0.4, 0.4, 1.0)
 			action_label.text = "FOLD"
 			action_label.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
+			action_label.visible = true
 			style_box.bg_color = Color(0.12, 0.1, 0.18, 0.35)
 			
-			if inner_card.position.x != 0.0 or inner_card.scale != Vector2.ONE:
-				var tween := create_tween().set_parallel(true)
+			if inner_card.position.x != 0.0:
+				var tween := create_tween()
 				tween.tween_property(inner_card, "position:x", 0.0, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-				tween.tween_property(inner_card, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		else:
 			_is_fold = false
 			modulate = Color.WHITE
 			avatar_rect.modulate = Color.WHITE
-			style_box.bg_color = Color(0.12, 0.1, 0.18, 0.6) # Dark purple-gray 60% opacity
+			
+			if is_local:
+				style_box.bg_color = Color(0.18, 0.15, 0.25, 0.7) # Brighter purple-gray for YOU
+			else:
+				style_box.bg_color = Color(0.12, 0.1, 0.18, 0.6) # Stable balanced background
 			
 			if is_turn:
-				if is_local:
-					action_label.text = "YOUR TURN"
-					action_label.add_theme_color_override("font_color", Color(0.65, 0.95, 0.0))
-				else:
-					if last_action != "":
-						action_label.text = last_action.to_upper()
-						action_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5))
-					else:
-						action_label.text = "THINKING"
-						action_label.add_theme_color_override("font_color", Color(0.4, 0.8, 1.0))
+				# Show marquee dots, hide turn text
+				action_label.visible = false
 			else:
+				action_label.visible = true
 				if last_action != "":
 					action_label.text = last_action.to_upper()
 					action_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5)) # Action pink
@@ -341,9 +334,9 @@ class PlayerRowPill extends Control:
 			style_box.border_color = Color(1.0, 0.0, 0.5, 0.95)
 			style_box.set_border_width_all(2)
 				
-		# Dots Sequential Blink Marquee (1 -> 2 -> 3 -> off) at 500ms slow intervals
+		# Dots Sequential Blink Marquee (1 -> 2 -> 3 -> off) at 1.0s slow intervals
 		if is_turn:
-			var t := Time.get_ticks_msec() / 500.0
+			var t := Time.get_ticks_msec() / 1000.0
 			var idx := int(t) % 4
 			dot1.modulate.a = 1.0 if idx == 0 else 0.2
 			dot2.modulate.a = 1.0 if idx == 1 else 0.2
