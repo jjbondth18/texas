@@ -30,16 +30,23 @@ var _max_button: Button
 var _raise_value_label: Label
 
 func _ready() -> void:
-	# Build the action bar layout
+	# Build the action bar layout inside an HBoxContainer
 	var main_hbox := HBoxContainer.new()
-	main_hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	main_hbox.add_theme_constant_override("separation", 0) # Exact spacing is handled by segment minimum sizes
 	add_child(main_hbox)
+	
+	# Connect to resized signal to keep main_hbox perfectly sized to fit Control bounds
+	resized.connect(func():
+		main_hbox.size = size
+		main_hbox.position = Vector2.ZERO
+	)
+	main_hbox.size = size
+	main_hbox.position = Vector2.ZERO
 	
 	# 🛑 1. 左段：数据舱无条件收紧 (Squeeze Left Panel to Width 500)
 	var left_panel := PanelContainer.new()
 	left_panel.name = "LeftStatsPanel"
-	left_panel.custom_minimum_size = Vector2(500, 200)
+	left_panel.custom_minimum_size = Vector2(500, 180)
 	left_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	left_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	
@@ -50,8 +57,8 @@ func _ready() -> void:
 	lp_style.set_border_width_all(1)
 	lp_style.content_margin_left = 15
 	lp_style.content_margin_right = 15
-	lp_style.content_margin_top = 15
-	lp_style.content_margin_bottom = 15
+	lp_style.content_margin_top = 10
+	lp_style.content_margin_bottom = 10
 	left_panel.add_theme_stylebox_override("panel", lp_style)
 	main_hbox.add_child(left_panel)
 	
@@ -87,6 +94,7 @@ func _ready() -> void:
 	chips_label.add_theme_font_size_override("font_size", 16)
 	chips_label.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42)) # Gold
 	
+	# Apply SystemFont to make it bold
 	var bold_font := SystemFont.new()
 	bold_font.font_names = PackedStringArray(["sans-serif", "Segoe UI", "Arial"])
 	bold_font.font_weight = 700
@@ -105,7 +113,7 @@ func _ready() -> void:
 	# 🛑 2. 中段：卡牌与计时专用独立舱 (Center Panel Width 500)
 	var center_panel := PanelContainer.new()
 	center_panel.name = "CenterCardsPanel"
-	center_panel.custom_minimum_size = Vector2(500, 200)
+	center_panel.custom_minimum_size = Vector2(500, 180)
 	center_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	center_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	
@@ -149,15 +157,20 @@ func _ready() -> void:
 	# 🛑 3. 右段：加注与按钮控制台 (Right Panel Width 1000 — 强制左移避让)
 	var right_panel := MarginContainer.new()
 	right_panel.name = "RightPanel"
-	right_panel.custom_minimum_size = Vector2(1000, 200)
+	right_panel.custom_minimum_size = Vector2(1000, 180)
 	right_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	right_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	
+	# Explicitly clear other margins to prevent theme leakage
+	right_panel.add_theme_constant_override("margin_left", 0)
+	right_panel.add_theme_constant_override("margin_top", 0)
+	right_panel.add_theme_constant_override("margin_bottom", 0)
 	# 绝对安全隔离带：右侧留白 132 像素
 	right_panel.add_theme_constant_override("margin_right", 132)
 	main_hbox.add_child(right_panel)
 	
 	var right_hbox := HBoxContainer.new()
-	right_hbox.add_theme_constant_override("separation", 12)
+	right_hbox.add_theme_constant_override("separation", 10)
 	right_hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	right_hbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	right_panel.add_child(right_hbox)
@@ -165,7 +178,7 @@ func _ready() -> void:
 	# FOLD button
 	_fold_button = Button.new()
 	_fold_button.text = "FOLD"
-	_fold_button.custom_minimum_size = Vector2(140, 64)
+	_fold_button.custom_minimum_size = Vector2(130, 64)
 	_fold_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_fold_button.focus_mode = Control.FOCUS_NONE
 	_style_action_button(_fold_button, Color(0.45, 0.45, 0.52)) # Muted Gray-Violet
@@ -174,7 +187,7 @@ func _ready() -> void:
 	# CHECK/CALL button
 	_check_call_button = Button.new()
 	_check_call_button.text = "CHECK"
-	_check_call_button.custom_minimum_size = Vector2(140, 64)
+	_check_call_button.custom_minimum_size = Vector2(130, 64)
 	_check_call_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_check_call_button.focus_mode = Control.FOCUS_NONE
 	_style_action_button(_check_call_button, Color(1.0, 0.0, 0.5)) # Neon Magenta
@@ -183,67 +196,64 @@ func _ready() -> void:
 	# RAISE button
 	_raise_confirm_button = Button.new()
 	_raise_confirm_button.text = "RAISE"
-	_raise_confirm_button.custom_minimum_size = Vector2(140, 64)
+	_raise_confirm_button.custom_minimum_size = Vector2(130, 64)
 	_raise_confirm_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_raise_confirm_button.focus_mode = Control.FOCUS_NONE
 	_style_action_button(_raise_confirm_button, Color(0.0, 0.75, 1.0)) # Bright Neon Cyan
 	right_hbox.add_child(_raise_confirm_button)
 	
-	# Slider Area (VBox)
-	var slider_vbox := VBoxContainer.new()
-	slider_vbox.custom_minimum_size = Vector2(300, 64)
-	slider_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	slider_vbox.add_theme_constant_override("separation", 2)
-	right_hbox.add_child(slider_vbox)
+	# minus button
+	_minus_button = Button.new()
+	_minus_button.text = "-"
+	_minus_button.custom_minimum_size = Vector2(32, 32)
+	_minus_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_minus_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_minus_button.focus_mode = Control.FOCUS_NONE
+	_style_adjust_button(_minus_button)
+	right_hbox.add_child(_minus_button)
 	
-	# Large Raise Value Label
+	# Slider Area (HSlider directly as sibling)
+	_h_slider = HSlider.new()
+	_h_slider.custom_minimum_size = Vector2(260, 32)
+	_h_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_h_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_h_slider.focus_mode = Control.FOCUS_NONE
+	_style_h_slider(_h_slider)
+	right_hbox.add_child(_h_slider)
+	
+	# Large Raise Value Label (as child of _h_slider)
 	_raise_value_label = Label.new()
 	_raise_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_raise_value_label.add_theme_font_size_override("font_size", 16)
 	_raise_value_label.add_theme_color_override("font_color", Color(0.0, 0.9, 1.0)) # Cyan glow
 	_raise_value_label.text = "100"
 	_raise_value_label.add_theme_font_override("font", bold_font)
-	slider_vbox.add_child(_raise_value_label)
+	_h_slider.add_child(_raise_value_label)
+	_raise_value_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_raise_value_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_raise_value_label.offset_top = -25
+	_raise_value_label.offset_bottom = 0
 	
-	# Slider HBox
-	var slider_hbox := HBoxContainer.new()
-	slider_hbox.add_theme_constant_override("separation", 8)
-	slider_hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	slider_vbox.add_child(slider_hbox)
-	
-	_minus_button = Button.new()
-	_minus_button.text = "-"
-	_minus_button.custom_minimum_size = Vector2(36, 36)
-	_minus_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_minus_button.focus_mode = Control.FOCUS_NONE
-	_style_adjust_button(_minus_button)
-	slider_hbox.add_child(_minus_button)
-	
-	_h_slider = HSlider.new()
-	_h_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_h_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_h_slider.focus_mode = Control.FOCUS_NONE
-	_style_h_slider(_h_slider)
-	slider_hbox.add_child(_h_slider)
-	
+	# plus button
 	_plus_button = Button.new()
 	_plus_button.text = "+"
-	_plus_button.custom_minimum_size = Vector2(36, 36)
+	_plus_button.custom_minimum_size = Vector2(32, 32)
+	_plus_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_plus_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_plus_button.focus_mode = Control.FOCUS_NONE
 	_style_adjust_button(_plus_button)
-	slider_hbox.add_child(_plus_button)
+	right_hbox.add_child(_plus_button)
 	
 	# Quick multipliers
 	var quick_vbox := VBoxContainer.new()
-	quick_vbox.custom_minimum_size = Vector2(100, 64)
+	quick_vbox.custom_minimum_size = Vector2(90, 64)
 	quick_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	quick_vbox.add_theme_constant_override("separation", 6)
 	right_hbox.add_child(quick_vbox)
 	
 	_pot_25_button = Button.new()
 	_pot_25_button.text = "2.5x POT"
-	_pot_25_button.custom_minimum_size = Vector2(100, 28)
+	_pot_25_button.custom_minimum_size = Vector2(90, 28)
 	_pot_25_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_pot_25_button.focus_mode = Control.FOCUS_NONE
 	_style_quick_button(_pot_25_button)
@@ -251,7 +261,7 @@ func _ready() -> void:
 	
 	_max_button = Button.new()
 	_max_button.text = "MAX"
-	_max_button.custom_minimum_size = Vector2(100, 28)
+	_max_button.custom_minimum_size = Vector2(90, 28)
 	_max_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_max_button.focus_mode = Control.FOCUS_NONE
 	_style_quick_button(_max_button)
@@ -436,11 +446,20 @@ func _style_quick_button(btn: Button) -> void:
 func _style_h_slider(slider: HSlider) -> void:
 	# Track
 	var track_style := StyleBoxFlat.new()
-	track_style.bg_color = Color(0.08, 0.06, 0.12, 0.9)
-	track_style.set_corner_radius_all(4)
-	track_style.content_margin_top = 8
-	track_style.content_margin_bottom = 8
+	track_style.bg_color = Color(0.25, 0.2, 0.35, 0.6) # Clearly visible dark purple
+	track_style.set_corner_radius_all(3)
+	track_style.content_margin_top = 3
+	track_style.content_margin_bottom = 3
 	slider.add_theme_stylebox_override("slider", track_style)
+	
+	# Active Grabber Area
+	var active_style := StyleBoxFlat.new()
+	active_style.bg_color = Color(0.0, 0.75, 1.0) # Bright neon cyan
+	active_style.set_corner_radius_all(3)
+	active_style.content_margin_top = 3
+	active_style.content_margin_bottom = 3
+	slider.add_theme_stylebox_override("grabber_area", active_style)
+	slider.add_theme_stylebox_override("grabber_area_highlight", active_style)
 	
 	# Grabber Texture Circle
 	var image := Image.create(16, 16, false, Image.FORMAT_RGBA8)

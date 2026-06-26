@@ -28,7 +28,7 @@ var _room_info_panel: PanelContainer
 var _status_panel
 
 # Three-compartment Bottom Console
-var _bottom_console: PanelContainer
+var _bottom_console: Control
 var _chips_label_left: Label
 var _profit_label_left: Label
 var _winrate_label_left: Label
@@ -124,17 +124,11 @@ func _build_scene() -> void:
 	_community_board = CommunityBoardScene.instantiate()
 	_content_root.add_child(_community_board)
 
-	# --- Epic Three-compartment Bottom Console ---
-	_bottom_console = PanelContainer.new()
+	_bottom_console = Control.new()
 	_bottom_console.name = "BottomConsoleContainer"
-	var empty_style := StyleBoxEmpty.new()
-	_bottom_console.add_theme_stylebox_override("panel", empty_style)
-	_content_root.add_child(_bottom_console)
+	add_child(_bottom_console)
 	
 	_action_bar = ActionBarScene.instantiate()
-	_action_bar.custom_minimum_size = Vector2(2000, 200)
-	_action_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_action_bar.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_action_bar.action_pressed.connect(_on_action_pressed)
 	_bottom_console.add_child(_action_bar)
 	
@@ -163,8 +157,14 @@ func _layout() -> void:
 	_set_design_rect(_pot_display, Rect2(1130, 330, 300, 82), scale)
 	_set_design_rect(_community_board, Rect2(880, 430, 800, 140), scale)
 	
-	# Position the bottom console spanning Y=760 to Y=980
-	_set_design_rect(_bottom_console, Rect2(320, 760, 2000, 220), scale)
+	# Anchoring _bottom_console to the screen bottom using PRESET_BOTTOM_WIDE
+	_bottom_console.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	_bottom_console.offset_top = -180 * scale
+	_bottom_console.offset_bottom = 0
+	if _action_bar:
+		_action_bar.scale = Vector2(scale, scale)
+		_action_bar.size = Vector2(2000, 180)
+		_action_bar.position = Vector2(_content_root.position.x + 320 * scale, 0)
 
 	var normal_seat_size := Vector2(140, 110)
 	var local_seat_size := Vector2(140, 110)
@@ -174,7 +174,7 @@ func _layout() -> void:
 		2: Vector2(1920, 310),  # 2号位：right side
 		3: Vector2(2150, 520),  # 3号位：right center
 		4: Vector2(1880, 750),  # 4号位：right bottom
-		5: Vector2(1280, 840),  # 5号位：local Seat 5 (will be hidden)
+		5: Vector2(1280, 760),  # 5号位：local Seat 5 (moved up to Y=760 to avoid bottom console)
 		6: Vector2(680, 750),   # 6号位：left bottom
 		7: Vector2(410, 520),   # 7号位：left center
 		8: Vector2(640, 310),   # 8号位：left side
@@ -202,8 +202,6 @@ func _refresh() -> void:
 		var visual_position := int(data.get("visual_position", data.get("seat_index", 0)))
 		if _seats.has(visual_position):
 			_seats[visual_position].set_seat_data(data)
-			if visual_position == 5:
-				_seats[visual_position].visible = false # Physically hide Seat 5 on table
 				
 	_community_board.set_cards(Array(snapshot.get("community_cards", [])))
 	
