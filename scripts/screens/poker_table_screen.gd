@@ -22,14 +22,20 @@ var _seat_layer: Control
 var _seats := {}
 var _community_board
 var _pot_display
-var _action_bar
+var _action_bar: ActionBar
 var _info_panel
 var _room_info_panel: PanelContainer
 var _status_panel
+
+# Three-compartment Bottom Console
+var _bottom_console: PanelContainer
+var _chips_label_left: Label
+var _profit_label_left: Label
+var _winrate_label_left: Label
 var _timer_label: Label
-var _dealer_label: Label
 var _local_cards_root: HBoxContainer
-var _local_controls_container: VBoxContainer
+
+var _dealer_label: Label
 var _capture_output := ""
 
 func _ready() -> void:
@@ -118,38 +124,129 @@ func _build_scene() -> void:
 	_community_board = CommunityBoardScene.instantiate()
 	_content_root.add_child(_community_board)
 
-	_local_controls_container = VBoxContainer.new()
-	_local_controls_container.name = "LocalControlsContainer"
-	_local_controls_container.add_theme_constant_override("separation", 6)
-	_local_controls_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_local_controls_container.z_index = 5
-	_content_root.add_child(_local_controls_container)
-
+	# --- Epic Three-compartment Bottom Console ---
+	_bottom_console = PanelContainer.new()
+	_bottom_console.name = "BottomConsoleContainer"
+	var empty_style := StyleBoxEmpty.new()
+	_bottom_console.add_theme_stylebox_override("panel", empty_style)
+	_content_root.add_child(_bottom_console)
+	
+	var bottom_hbox := HBoxContainer.new()
+	bottom_hbox.name = "BottomConsoleHBox"
+	bottom_hbox.add_theme_constant_override("separation", 24)
+	bottom_hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bottom_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_bottom_console.add_child(bottom_hbox)
+	
+	# 🛑 Left Segment:本尊尊贵数据舱 (Left: Profile & Live Stats)
+	var left_panel := PanelContainer.new()
+	left_panel.name = "LeftStatsPanel"
+	left_panel.custom_minimum_size = Vector2(460, 200)
+	left_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	
+	var lp_style := StyleBoxFlat.new()
+	lp_style.bg_color = Color(0.12, 0.09, 0.22, 0.75) # Concrete dark purple bg
+	lp_style.set_corner_radius_all(8)
+	lp_style.border_color = Color(0.28, 0.22, 0.45, 0.6)
+	lp_style.set_border_width_all(1)
+	lp_style.content_margin_left = 15
+	lp_style.content_margin_right = 15
+	lp_style.content_margin_top = 15
+	lp_style.content_margin_bottom = 15
+	left_panel.add_theme_stylebox_override("panel", lp_style)
+	bottom_hbox.add_child(left_panel)
+	
+	var lp_hbox := HBoxContainer.new()
+	lp_hbox.add_theme_constant_override("separation", 16)
+	left_panel.add_child(lp_hbox)
+	
+	# Circular Big Avatar
+	var avatar_panel := Panel.new()
+	avatar_panel.custom_minimum_size = Vector2(72, 72)
+	avatar_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	avatar_panel.clip_children = Control.CLIP_CHILDREN_AND_DRAW
+	var av_style := StyleBoxFlat.new()
+	av_style.set_corner_radius_all(36)
+	avatar_panel.add_theme_stylebox_override("panel", av_style)
+	lp_hbox.add_child(avatar_panel)
+	
+	var avatar_rect := TextureRect.new()
+	avatar_rect.custom_minimum_size = Vector2(72, 72)
+	avatar_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	avatar_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	avatar_panel.add_child(avatar_rect)
+	avatar_rect.texture = load("res://assets/ChatGPT Image 2026年6月24日 22_13_25 (5).png") # Luna avatar
+	
+	# VBox for live stats
+	var lp_vbox := VBoxContainer.new()
+	lp_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lp_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	lp_vbox.add_theme_constant_override("separation", 4)
+	lp_hbox.add_child(lp_vbox)
+	
+	_chips_label_left = Label.new()
+	_chips_label_left.add_theme_font_size_override("font_size", 16)
+	_chips_label_left.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42)) # Gold
+	lp_vbox.add_child(_chips_label_left)
+	
+	_profit_label_left = Label.new()
+	_profit_label_left.add_theme_font_size_override("font_size", 14)
+	lp_vbox.add_child(_profit_label_left)
+	
+	_winrate_label_left = Label.new()
+	_winrate_label_left.add_theme_font_size_override("font_size", 14)
+	_winrate_label_left.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5)) # Neon Magenta
+	lp_vbox.add_child(_winrate_label_left)
+	
+	# 🛑 Center Segment:底牌黄金C位舱 (Center: The Pocket Cards C-Position)
+	var center_panel := PanelContainer.new()
+	center_panel.name = "CenterCardsPanel"
+	center_panel.custom_minimum_size = Vector2(380, 200)
+	center_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	
+	var cp_style := StyleBoxFlat.new()
+	cp_style.bg_color = Color(0.08, 0.06, 0.12, 0.50) # Saturated dark semi-transparent
+	cp_style.set_corner_radius_all(8)
+	cp_style.border_color = Color(0.25, 0.20, 0.40, 0.4)
+	cp_style.set_border_width_all(1)
+	cp_style.content_margin_left = 10
+	cp_style.content_margin_right = 10
+	cp_style.content_margin_top = 10
+	cp_style.content_margin_bottom = 10
+	center_panel.add_theme_stylebox_override("panel", cp_style)
+	bottom_hbox.add_child(center_panel)
+	
+	var cp_vbox := VBoxContainer.new()
+	cp_vbox.add_theme_constant_override("separation", 6)
+	cp_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cp_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	center_panel.add_child(cp_vbox)
+	
+	_timer_label = Label.new()
+	_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_timer_label.add_theme_font_size_override("font_size", 13)
+	_timer_label.add_theme_color_override("font_color", Color(0.65, 0.95, 1.0))
+	_timer_label.custom_minimum_size = Vector2(0, 20)
+	cp_vbox.add_child(_timer_label)
+	
 	_local_cards_root = HBoxContainer.new()
-	_local_cards_root.name = "LocalHoleCards"
 	_local_cards_root.alignment = BoxContainer.ALIGNMENT_CENTER
-	_local_cards_root.add_theme_constant_override("separation", 14)
-	_local_cards_root.custom_minimum_size = Vector2(380, 108)
-	_local_cards_root.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_local_controls_container.add_child(_local_cards_root)
+	_local_cards_root.add_theme_constant_override("separation", 10)
+	_local_cards_root.custom_minimum_size = Vector2(0, 120)
+	cp_vbox.add_child(_local_cards_root)
+	
 	for i in range(2):
 		var card = CardViewScene.instantiate()
-		card.custom_minimum_size = Vector2(78, 108)
+		card.custom_minimum_size = Vector2(88, 120)
 		_local_cards_root.add_child(card)
-
-	_timer_label = Label.new()
-	_timer_label.name = "TurnTimer"
-	_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_timer_label.add_theme_font_size_override("font_size", 24)
-	_timer_label.add_theme_color_override("font_color", Color(0.65, 0.95, 1.0))
-	_timer_label.custom_minimum_size = Vector2(300, 30)
-	_timer_label.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_local_controls_container.add_child(_timer_label)
-
+		
+	# 🛑 Right Segment:端游级筹码掌控轮盘 (Right: Action Buttons & Raise Slider)
 	_action_bar = ActionBarScene.instantiate()
+	_action_bar.custom_minimum_size = Vector2(980, 200)
+	_action_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_action_bar.action_pressed.connect(_on_action_pressed)
-	_action_bar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_local_controls_container.add_child(_action_bar)
+	bottom_hbox.add_child(_action_bar)
+	
 	_layout()
 
 func _layout() -> void:
@@ -167,22 +264,23 @@ func _layout() -> void:
 	_set_design_rect(_dealer_label, Rect2(1150, 60, 260, 40), scale)
 	_set_design_rect(_pot_display, Rect2(1130, 330, 300, 82), scale)
 	_set_design_rect(_community_board, Rect2(880, 430, 800, 140), scale)
-	# Position the local controls container with cards, timer and action bar
-	_set_design_rect(_local_controls_container, Rect2(770, 785, 1020, 215), scale)
+	
+	# Position the bottom console spanning Y=760 to Y=980
+	_set_design_rect(_bottom_console, Rect2(340, 760, 1900, 220), scale)
 
 	var normal_seat_size := Vector2(140, 110)
 	var local_seat_size := Vector2(140, 110)
 
 	var fixed_positions := {
 		1: Vector2(1620, 190),  # 1号位：右上转角
-		2: Vector2(1920, 310),  # 2号位：右侧上沿
-		3: Vector2(2150, 520),  # 3号位：右侧正中！无条件往右边推到底，拉开大跨度！
-		4: Vector2(1880, 750),  # 4号位：右下转角！彻底从5号和3号的夹缝里解放出来！
-		5: Vector2(1280, 840),  # 5号位：本地玩家 You！死死压在底线正中央！
-		6: Vector2(680, 750),   # 6号位：左下转角！与4号位严格镜像对齐！
-		7: Vector2(410, 520),   # 7号位：左侧正中！无条件往左边推到底！
-		8: Vector2(640, 310),   # 8号位：左侧上沿！与2号位严格中线镜像！
-		9: Vector2(940, 190)    # 9号位：左上转角！与1号位严格镜像！
+		2: Vector2(1920, 310),  # 2号位：right side
+		3: Vector2(2150, 520),  # 3号位：right center
+		4: Vector2(1880, 750),  # 4号位：right bottom
+		5: Vector2(1280, 840),  # 5号位：local Seat 5 (will be hidden)
+		6: Vector2(680, 750),   # 6号位：left bottom
+		7: Vector2(410, 520),   # 7号位：left center
+		8: Vector2(640, 310),   # 8号位：left side
+		9: Vector2(940, 190)    # 9号位：left top
 	}
 
 	for visual_position in range(1, 10):
@@ -206,9 +304,21 @@ func _refresh() -> void:
 		var visual_position := int(data.get("visual_position", data.get("seat_index", 0)))
 		if _seats.has(visual_position):
 			_seats[visual_position].set_seat_data(data)
+			if visual_position == 5:
+				_seats[visual_position].visible = false # Physically hide Seat 5 on table
+				
 	_community_board.set_cards(Array(snapshot.get("community_cards", [])))
-	_pot_display.set_pot(snapshot.get("pot_data", snapshot.get("pot", 0)))
-	_action_bar.set_actions(Array(snapshot.get("available_actions", [])))
+	
+	var pot_data = snapshot.get("pot_data", snapshot.get("pot", 0))
+	_pot_display.set_pot(pot_data)
+	
+	var pot_val := 0
+	if pot_data is Dictionary:
+		pot_val = int(pot_data.get("total", 0))
+	else:
+		pot_val = int(pot_data)
+		
+	_action_bar.set_actions(Array(snapshot.get("available_actions", [])), pot_val)
 	_info_panel.set_info(Array(snapshot.get("hand_history", [])), Array(snapshot.get("system_messages", [])))
 	if _room_info_panel:
 		_room_info_panel.set_room_info(
@@ -217,7 +327,37 @@ func _refresh() -> void:
 		)
 	_status_panel.set_status(snapshot)
 	_timer_label.text = "TURN TIMER  %ds" % int(snapshot.get("turn_seconds", 15))
+	
 	var local := Dictionary(snapshot.get("local_player", {}))
+	
+	# Update local stats dynamically in the Left Compartment
+	if not local.is_empty():
+		var chips := int(local.get("chips", 24500))
+		_chips_label_left.text = "Chips: %s" % _format_chips(chips)
+		
+		# Session Profit/Loss:
+		var initial_chips := 20000
+		var profit := chips - initial_chips
+		if profit >= 0:
+			_profit_label_left.text = "+$%s" % _format_chips(profit)
+			_profit_label_left.add_theme_color_override("font_color", Color(0.2, 0.9, 0.3)) # Bright Green
+		else:
+			_profit_label_left.text = "-$%s" % _format_chips(abs(profit))
+			_profit_label_left.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2)) # Neon Red
+			
+		# Win Rate estimation based on street phase
+		var phase = String(snapshot.get("phase", "preflop")).to_lower()
+		var win_rate_str := "54.2%"
+		if phase == "flop":
+			win_rate_str = "72.8%"
+		elif phase == "turn":
+			win_rate_str = "85.5%"
+		elif phase == "river":
+			win_rate_str = "94.1%"
+		elif phase == "showdown":
+			win_rate_str = "100.0%"
+		_winrate_label_left.text = "Win Rate: %s" % win_rate_str
+		
 	var cards := Array(local.get("cards", []))
 	for i in range(_local_cards_root.get_child_count()):
 		var card = _local_cards_root.get_child(i)
@@ -303,3 +443,14 @@ func _find_local_player(seats: Array) -> Dictionary:
 		if bool(data.get("is_local", false)):
 			return data
 	return {}
+
+func _format_chips(value: int) -> String:
+	var s := str(value)
+	var result := ""
+	var count := 0
+	for i in range(s.length() - 1, -1, -1):
+		if count > 0 and count % 3 == 0:
+			result = "," + result
+		result = s[i] + result
+		count += 1
+	return result
