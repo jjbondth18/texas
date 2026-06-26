@@ -163,7 +163,7 @@ func _layout() -> void:
 	_bottom_console.offset_bottom = 0
 	if _action_bar:
 		_action_bar.scale = Vector2(scale, scale)
-		_action_bar.size = Vector2(2000, 180)
+		_action_bar.size = Vector2(1882, 180)
 		_action_bar.position = Vector2(_content_root.position.x + 320 * scale, 0)
 
 	var normal_seat_size := Vector2(140, 110)

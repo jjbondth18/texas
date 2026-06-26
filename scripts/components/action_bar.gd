@@ -32,7 +32,7 @@ var _raise_value_label: Label
 func _ready() -> void:
 	# Build the action bar layout inside an HBoxContainer
 	var main_hbox := HBoxContainer.new()
-	main_hbox.add_theme_constant_override("separation", 0) # Exact spacing is handled by segment minimum sizes
+	main_hbox.add_theme_constant_override("separation", 16) # 16px separation between boxes
 	add_child(main_hbox)
 	
 	# Connect to resized signal to keep main_hbox perfectly sized to fit Control bounds
@@ -43,17 +43,17 @@ func _ready() -> void:
 	main_hbox.size = size
 	main_hbox.position = Vector2.ZERO
 	
-	# 🛑 1. 左段：数据舱无条件收紧 (Squeeze Left Panel to Width 500)
+	# 🛑 1. 左段：数据舱无条件收紧 (Squeeze Left Panel to Width 420)
 	var left_panel := PanelContainer.new()
 	left_panel.name = "LeftStatsPanel"
-	left_panel.custom_minimum_size = Vector2(500, 180)
+	left_panel.custom_minimum_size = Vector2(420, 180)
 	left_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	left_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	
 	var lp_style := StyleBoxFlat.new()
-	lp_style.bg_color = Color(0.12, 0.09, 0.22, 0.85) # Saturated dark purple bg
+	lp_style.bg_color = Color(0.10, 0.07, 0.18, 0.85) # Dark purple-black bg
 	lp_style.set_corner_radius_all(8)
-	lp_style.border_color = Color(0.28, 0.22, 0.45, 0.6)
+	lp_style.border_color = Color(0.35, 0.28, 0.55, 0.7) # Clear high-light dark purple-gray border
 	lp_style.set_border_width_all(1)
 	lp_style.content_margin_left = 15
 	lp_style.content_margin_right = 15
@@ -110,17 +110,17 @@ func _ready() -> void:
 	winrate_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5)) # Neon Magenta
 	lp_vbox.add_child(winrate_label)
 	
-	# 🛑 2. 中段：卡牌与计时专用独立舱 (Center Panel Width 500)
+	# 🛑 2. 中段：卡牌与计时专用独立舱 (Center Panel Width 480)
 	var center_panel := PanelContainer.new()
 	center_panel.name = "CenterCardsPanel"
-	center_panel.custom_minimum_size = Vector2(500, 180)
+	center_panel.custom_minimum_size = Vector2(480, 180)
 	center_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	center_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	
 	var cp_style := StyleBoxFlat.new()
-	cp_style.bg_color = Color(0.12, 0.09, 0.22, 0.85) # Saturated dark purple bg
+	cp_style.bg_color = Color(0.10, 0.07, 0.18, 0.85) # Dark purple-black bg
 	cp_style.set_corner_radius_all(8)
-	cp_style.border_color = Color(0.28, 0.22, 0.45, 0.6)
+	cp_style.border_color = Color(0.35, 0.28, 0.55, 0.7) # Clear high-light dark purple-gray border
 	cp_style.set_border_width_all(1)
 	cp_style.content_margin_left = 10
 	cp_style.content_margin_right = 10
@@ -129,11 +129,17 @@ func _ready() -> void:
 	center_panel.add_theme_stylebox_override("panel", cp_style)
 	main_hbox.add_child(center_panel)
 	
+	# CenterContainer wrapper for perfect vertical/horizontal alignment of cards & timer
+	var center_cc := CenterContainer.new()
+	center_cc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center_cc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	center_panel.add_child(center_cc)
+	
 	var cp_vbox := VBoxContainer.new()
 	cp_vbox.add_theme_constant_override("separation", 6)
 	cp_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cp_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	center_panel.add_child(cp_vbox)
+	center_cc.add_child(cp_vbox)
 	
 	timer_label = Label.new()
 	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -154,17 +160,17 @@ func _ready() -> void:
 		card.custom_minimum_size = Vector2(88, 120)
 		local_cards_root.add_child(card)
 
-	# 🛑 3. 右段：加注与按钮控制台 (Right Panel Width 1000 — 强制左移避让)
+	# 🛑 3. 右段：加注与按钮控制台 (Right Panel Width 950 — 强制左移避让)
 	var right_panel := PanelContainer.new()
 	right_panel.name = "RightPanel"
-	right_panel.custom_minimum_size = Vector2(1000, 180)
+	right_panel.custom_minimum_size = Vector2(950, 180)
 	right_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	right_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	
 	var rp_style := StyleBoxFlat.new()
-	rp_style.bg_color = Color(0.12, 0.09, 0.22, 0.85) # Saturated dark purple bg
+	rp_style.bg_color = Color(0.10, 0.07, 0.18, 0.85) # Dark purple-black bg
 	rp_style.set_corner_radius_all(8)
-	rp_style.border_color = Color(0.28, 0.22, 0.45, 0.6)
+	rp_style.border_color = Color(0.35, 0.28, 0.55, 0.7) # Clear high-light dark purple-gray border
 	rp_style.set_border_width_all(1)
 	rp_style.content_margin_left = 15
 	rp_style.content_margin_right = 120 # 120px physical moat
@@ -182,7 +188,7 @@ func _ready() -> void:
 	# FOLD button
 	_fold_button = Button.new()
 	_fold_button.text = "FOLD"
-	_fold_button.custom_minimum_size = Vector2(130, 64)
+	_fold_button.custom_minimum_size = Vector2(120, 64)
 	_fold_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_fold_button.focus_mode = Control.FOCUS_NONE
 	_style_action_button(_fold_button, Color(0.45, 0.45, 0.52)) # Muted Gray-Violet
@@ -191,7 +197,7 @@ func _ready() -> void:
 	# CHECK/CALL button
 	_check_call_button = Button.new()
 	_check_call_button.text = "CHECK"
-	_check_call_button.custom_minimum_size = Vector2(130, 64)
+	_check_call_button.custom_minimum_size = Vector2(120, 64)
 	_check_call_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_check_call_button.focus_mode = Control.FOCUS_NONE
 	_style_action_button(_check_call_button, Color(1.0, 0.0, 0.5)) # Neon Magenta
@@ -200,7 +206,7 @@ func _ready() -> void:
 	# RAISE button
 	_raise_confirm_button = Button.new()
 	_raise_confirm_button.text = "RAISE"
-	_raise_confirm_button.custom_minimum_size = Vector2(130, 64)
+	_raise_confirm_button.custom_minimum_size = Vector2(120, 64)
 	_raise_confirm_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_raise_confirm_button.focus_mode = Control.FOCUS_NONE
 	_style_action_button(_raise_confirm_button, Color(0.0, 0.75, 1.0)) # Bright Neon Cyan
@@ -218,7 +224,7 @@ func _ready() -> void:
 	
 	# Slider Area (HSlider directly as sibling)
 	_h_slider = HSlider.new()
-	_h_slider.custom_minimum_size = Vector2(260, 32)
+	_h_slider.custom_minimum_size = Vector2(220, 32)
 	_h_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_h_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_h_slider.focus_mode = Control.FOCUS_NONE
@@ -250,14 +256,14 @@ func _ready() -> void:
 	
 	# Quick multipliers
 	var quick_vbox := VBoxContainer.new()
-	quick_vbox.custom_minimum_size = Vector2(90, 64)
+	quick_vbox.custom_minimum_size = Vector2(80, 64)
 	quick_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	quick_vbox.add_theme_constant_override("separation", 6)
 	right_hbox.add_child(quick_vbox)
 	
 	_pot_25_button = Button.new()
 	_pot_25_button.text = "2.5x POT"
-	_pot_25_button.custom_minimum_size = Vector2(90, 28)
+	_pot_25_button.custom_minimum_size = Vector2(80, 28)
 	_pot_25_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_pot_25_button.focus_mode = Control.FOCUS_NONE
 	_style_quick_button(_pot_25_button)
@@ -265,7 +271,7 @@ func _ready() -> void:
 	
 	_max_button = Button.new()
 	_max_button.text = "MAX"
-	_max_button.custom_minimum_size = Vector2(90, 28)
+	_max_button.custom_minimum_size = Vector2(80, 28)
 	_max_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_max_button.focus_mode = Control.FOCUS_NONE
 	_style_quick_button(_max_button)
