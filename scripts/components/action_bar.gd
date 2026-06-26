@@ -10,6 +10,15 @@ var _fold_action: Dictionary
 var _check_call_action: Dictionary
 var _raise_action: Dictionary
 
+# Public properties for Three-Compartment console references
+var chips_label: Label
+var profit_label: Label
+var winrate_label: Label
+
+var timer_label: Label
+var local_cards_root: HBoxContainer
+
+# Right segment controls
 var _fold_button: Button
 var _check_call_button: Button
 var _raise_confirm_button: Button
@@ -18,56 +27,187 @@ var _plus_button: Button
 var _h_slider: HSlider
 var _pot_25_button: Button
 var _max_button: Button
+var _raise_value_label: Label
 
 func _ready() -> void:
 	# Build the action bar layout
 	var main_hbox := HBoxContainer.new()
 	main_hbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	main_hbox.add_theme_constant_override("separation", 24)
+	main_hbox.add_theme_constant_override("separation", 0) # Exact spacing is handled by segment minimum sizes
 	add_child(main_hbox)
 	
-	# Left Compartment: Basic Actions (FOLD, CHECK/CALL)
-	var basic_hbox := HBoxContainer.new()
-	basic_hbox.add_theme_constant_override("separation", 14)
-	basic_hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	basic_hbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	main_hbox.add_child(basic_hbox)
+	# 🛑 1. 左段：数据舱无条件收紧 (Squeeze Left Panel to Width 500)
+	var left_panel := PanelContainer.new()
+	left_panel.name = "LeftStatsPanel"
+	left_panel.custom_minimum_size = Vector2(500, 200)
+	left_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	left_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	
+	var lp_style := StyleBoxFlat.new()
+	lp_style.bg_color = Color(0.12, 0.09, 0.22, 0.75) # Concrete dark purple bg
+	lp_style.set_corner_radius_all(8)
+	lp_style.border_color = Color(0.28, 0.22, 0.45, 0.6)
+	lp_style.set_border_width_all(1)
+	lp_style.content_margin_left = 15
+	lp_style.content_margin_right = 15
+	lp_style.content_margin_top = 15
+	lp_style.content_margin_bottom = 15
+	left_panel.add_theme_stylebox_override("panel", lp_style)
+	main_hbox.add_child(left_panel)
+	
+	var lp_hbox := HBoxContainer.new()
+	lp_hbox.add_theme_constant_override("separation", 16)
+	left_panel.add_child(lp_hbox)
+	
+	# Circular Big Avatar
+	var avatar_panel := Panel.new()
+	avatar_panel.custom_minimum_size = Vector2(72, 72)
+	avatar_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	avatar_panel.clip_children = Control.CLIP_CHILDREN_AND_DRAW
+	var av_style := StyleBoxFlat.new()
+	av_style.set_corner_radius_all(36)
+	avatar_panel.add_theme_stylebox_override("panel", av_style)
+	lp_hbox.add_child(avatar_panel)
+	
+	var avatar_rect := TextureRect.new()
+	avatar_rect.custom_minimum_size = Vector2(72, 72)
+	avatar_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	avatar_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	avatar_panel.add_child(avatar_rect)
+	avatar_rect.texture = load("res://assets/ChatGPT Image 2026年6月24日 22_13_25 (5).png") # Luna avatar
+	
+	# VBox for live stats
+	var lp_vbox := VBoxContainer.new()
+	lp_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lp_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	lp_vbox.add_theme_constant_override("separation", 4)
+	lp_hbox.add_child(lp_vbox)
+	
+	chips_label = Label.new()
+	chips_label.add_theme_font_size_override("font_size", 16)
+	chips_label.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42)) # Gold
+	
+	var bold_font := SystemFont.new()
+	bold_font.font_names = PackedStringArray(["sans-serif", "Segoe UI", "Arial"])
+	bold_font.font_weight = 700
+	chips_label.add_theme_font_override("font", bold_font)
+	lp_vbox.add_child(chips_label)
+	
+	profit_label = Label.new()
+	profit_label.add_theme_font_size_override("font_size", 14)
+	lp_vbox.add_child(profit_label)
+	
+	winrate_label = Label.new()
+	winrate_label.add_theme_font_size_override("font_size", 14)
+	winrate_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5)) # Neon Magenta
+	lp_vbox.add_child(winrate_label)
+	
+	# 🛑 2. 中段：卡牌与计时专用独立舱 (Center Panel Width 500)
+	var center_panel := PanelContainer.new()
+	center_panel.name = "CenterCardsPanel"
+	center_panel.custom_minimum_size = Vector2(500, 200)
+	center_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	center_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	
+	var cp_style := StyleBoxFlat.new()
+	cp_style.bg_color = Color(0.08, 0.06, 0.12, 0.50) # Saturated dark semi-transparent
+	cp_style.set_corner_radius_all(8)
+	cp_style.border_color = Color(0.25, 0.20, 0.40, 0.4)
+	cp_style.set_border_width_all(1)
+	cp_style.content_margin_left = 10
+	cp_style.content_margin_right = 10
+	cp_style.content_margin_top = 10
+	cp_style.content_margin_bottom = 10
+	center_panel.add_theme_stylebox_override("panel", cp_style)
+	main_hbox.add_child(center_panel)
+	
+	var cp_vbox := VBoxContainer.new()
+	cp_vbox.add_theme_constant_override("separation", 6)
+	cp_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cp_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	center_panel.add_child(cp_vbox)
+	
+	timer_label = Label.new()
+	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	timer_label.add_theme_font_size_override("font_size", 13)
+	timer_label.add_theme_color_override("font_color", Color(0.65, 0.95, 1.0))
+	timer_label.custom_minimum_size = Vector2(0, 20)
+	cp_vbox.add_child(timer_label)
+	
+	local_cards_root = HBoxContainer.new()
+	local_cards_root.alignment = BoxContainer.ALIGNMENT_CENTER
+	local_cards_root.add_theme_constant_override("separation", 10)
+	local_cards_root.custom_minimum_size = Vector2(0, 120)
+	cp_vbox.add_child(local_cards_root)
+	
+	var CardViewScene = load("res://scenes/components/card_view.tscn")
+	for i in range(2):
+		var card = CardViewScene.instantiate()
+		card.custom_minimum_size = Vector2(88, 120)
+		local_cards_root.add_child(card)
+
+	# 🛑 3. 右段：加注与按钮控制台 (Right Panel Width 1000 — 强制左移避让)
+	var right_panel := MarginContainer.new()
+	right_panel.name = "RightPanel"
+	right_panel.custom_minimum_size = Vector2(1000, 200)
+	right_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	right_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	# 绝对安全隔离带：右侧留白 132 像素
+	right_panel.add_theme_constant_override("margin_right", 132)
+	main_hbox.add_child(right_panel)
+	
+	var right_hbox := HBoxContainer.new()
+	right_hbox.add_theme_constant_override("separation", 12)
+	right_hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right_hbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	right_panel.add_child(right_hbox)
+	
+	# FOLD button
 	_fold_button = Button.new()
 	_fold_button.text = "FOLD"
-	_fold_button.custom_minimum_size = Vector2(130, 64)
+	_fold_button.custom_minimum_size = Vector2(140, 64)
 	_fold_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_fold_button.focus_mode = Control.FOCUS_NONE
-	basic_hbox.add_child(_fold_button)
+	_style_action_button(_fold_button, Color(0.45, 0.45, 0.52)) # Muted Gray-Violet
+	right_hbox.add_child(_fold_button)
 	
+	# CHECK/CALL button
 	_check_call_button = Button.new()
 	_check_call_button.text = "CHECK"
-	_check_call_button.custom_minimum_size = Vector2(150, 64)
+	_check_call_button.custom_minimum_size = Vector2(140, 64)
 	_check_call_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_check_call_button.focus_mode = Control.FOCUS_NONE
-	basic_hbox.add_child(_check_call_button)
-	
-	# Style basic buttons with premium neon
-	_style_action_button(_fold_button, Color(0.45, 0.45, 0.52)) # Muted Gray-Violet
 	_style_action_button(_check_call_button, Color(1.0, 0.0, 0.5)) # Neon Magenta
+	right_hbox.add_child(_check_call_button)
 	
-	# Middle Compartment: Raise Slider Area
-	var slider_vbox := VBoxContainer.new()
-	slider_vbox.add_theme_constant_override("separation", 10)
-	slider_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	slider_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	main_hbox.add_child(slider_vbox)
-	
+	# RAISE button
 	_raise_confirm_button = Button.new()
 	_raise_confirm_button.text = "RAISE"
-	_raise_confirm_button.custom_minimum_size = Vector2(240, 52)
+	_raise_confirm_button.custom_minimum_size = Vector2(140, 64)
 	_raise_confirm_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_raise_confirm_button.focus_mode = Control.FOCUS_NONE
 	_style_action_button(_raise_confirm_button, Color(0.0, 0.75, 1.0)) # Bright Neon Cyan
-	slider_vbox.add_child(_raise_confirm_button)
+	right_hbox.add_child(_raise_confirm_button)
 	
+	# Slider Area (VBox)
+	var slider_vbox := VBoxContainer.new()
+	slider_vbox.custom_minimum_size = Vector2(300, 64)
+	slider_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	slider_vbox.add_theme_constant_override("separation", 2)
+	right_hbox.add_child(slider_vbox)
+	
+	# Large Raise Value Label
+	_raise_value_label = Label.new()
+	_raise_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_raise_value_label.add_theme_font_size_override("font_size", 16)
+	_raise_value_label.add_theme_color_override("font_color", Color(0.0, 0.9, 1.0)) # Cyan glow
+	_raise_value_label.text = "100"
+	_raise_value_label.add_theme_font_override("font", bold_font)
+	slider_vbox.add_child(_raise_value_label)
+	
+	# Slider HBox
 	var slider_hbox := HBoxContainer.new()
-	slider_hbox.add_theme_constant_override("separation", 10)
+	slider_hbox.add_theme_constant_override("separation", 8)
 	slider_hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	slider_vbox.add_child(slider_hbox)
 	
@@ -94,16 +234,16 @@ func _ready() -> void:
 	_style_adjust_button(_plus_button)
 	slider_hbox.add_child(_plus_button)
 	
-	# Right Compartment: Quick Raise Multipliers
+	# Quick multipliers
 	var quick_vbox := VBoxContainer.new()
-	quick_vbox.add_theme_constant_override("separation", 8)
-	quick_vbox.custom_minimum_size = Vector2(110, 0)
+	quick_vbox.custom_minimum_size = Vector2(100, 64)
 	quick_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	main_hbox.add_child(quick_vbox)
+	quick_vbox.add_theme_constant_override("separation", 6)
+	right_hbox.add_child(quick_vbox)
 	
 	_pot_25_button = Button.new()
 	_pot_25_button.text = "2.5x POT"
-	_pot_25_button.custom_minimum_size = Vector2(110, 36)
+	_pot_25_button.custom_minimum_size = Vector2(100, 28)
 	_pot_25_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_pot_25_button.focus_mode = Control.FOCUS_NONE
 	_style_quick_button(_pot_25_button)
@@ -111,7 +251,7 @@ func _ready() -> void:
 	
 	_max_button = Button.new()
 	_max_button.text = "MAX"
-	_max_button.custom_minimum_size = Vector2(110, 36)
+	_max_button.custom_minimum_size = Vector2(100, 28)
 	_max_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_max_button.focus_mode = Control.FOCUS_NONE
 	_style_quick_button(_max_button)
@@ -200,7 +340,8 @@ func set_actions(new_actions: Array, current_pot: int = 0) -> void:
 		_h_slider.value = min_amt
 		
 		var action_id = String(_raise_action.get("id", "raise")).to_upper()
-		_raise_confirm_button.text = "%s %d" % [action_id, min_amt]
+		_raise_confirm_button.text = action_id
+		_raise_value_label.text = _format_chips(min_amt)
 	else:
 		_raise_confirm_button.disabled = true
 		_minus_button.disabled = true
@@ -209,12 +350,12 @@ func set_actions(new_actions: Array, current_pot: int = 0) -> void:
 		_pot_25_button.disabled = true
 		_max_button.disabled = true
 		_raise_confirm_button.text = "RAISE"
+		_raise_value_label.text = "0"
 
 func _on_slider_value_changed(val: float) -> void:
 	var rounded_val = int(val)
 	if not _raise_action.is_empty():
-		var action_id = String(_raise_action.get("id", "raise")).to_upper()
-		_raise_confirm_button.text = "%s %d" % [action_id, rounded_val]
+		_raise_value_label.text = _format_chips(rounded_val)
 
 func _on_raise_confirm_pressed() -> void:
 	if not _raise_action.is_empty():
@@ -315,3 +456,14 @@ func _style_h_slider(slider: HSlider) -> void:
 	var texture := ImageTexture.create_from_image(image)
 	slider.add_theme_icon_override("grabber", texture)
 	slider.add_theme_icon_override("grabber_highlight", texture)
+
+func _format_chips(value: int) -> String:
+	var s := str(value)
+	var result := ""
+	var count := 0
+	for i in range(s.length() - 1, -1, -1):
+		if count > 0 and count % 3 == 0:
+			result = "," + result
+		result = s[i] + result
+		count += 1
+	return result

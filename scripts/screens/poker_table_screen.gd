@@ -131,121 +131,19 @@ func _build_scene() -> void:
 	_bottom_console.add_theme_stylebox_override("panel", empty_style)
 	_content_root.add_child(_bottom_console)
 	
-	var bottom_hbox := HBoxContainer.new()
-	bottom_hbox.name = "BottomConsoleHBox"
-	bottom_hbox.add_theme_constant_override("separation", 24)
-	bottom_hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bottom_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_bottom_console.add_child(bottom_hbox)
-	
-	# 🛑 Left Segment:本尊尊贵数据舱 (Left: Profile & Live Stats)
-	var left_panel := PanelContainer.new()
-	left_panel.name = "LeftStatsPanel"
-	left_panel.custom_minimum_size = Vector2(460, 200)
-	left_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	
-	var lp_style := StyleBoxFlat.new()
-	lp_style.bg_color = Color(0.12, 0.09, 0.22, 0.75) # Concrete dark purple bg
-	lp_style.set_corner_radius_all(8)
-	lp_style.border_color = Color(0.28, 0.22, 0.45, 0.6)
-	lp_style.set_border_width_all(1)
-	lp_style.content_margin_left = 15
-	lp_style.content_margin_right = 15
-	lp_style.content_margin_top = 15
-	lp_style.content_margin_bottom = 15
-	left_panel.add_theme_stylebox_override("panel", lp_style)
-	bottom_hbox.add_child(left_panel)
-	
-	var lp_hbox := HBoxContainer.new()
-	lp_hbox.add_theme_constant_override("separation", 16)
-	left_panel.add_child(lp_hbox)
-	
-	# Circular Big Avatar
-	var avatar_panel := Panel.new()
-	avatar_panel.custom_minimum_size = Vector2(72, 72)
-	avatar_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	avatar_panel.clip_children = Control.CLIP_CHILDREN_AND_DRAW
-	var av_style := StyleBoxFlat.new()
-	av_style.set_corner_radius_all(36)
-	avatar_panel.add_theme_stylebox_override("panel", av_style)
-	lp_hbox.add_child(avatar_panel)
-	
-	var avatar_rect := TextureRect.new()
-	avatar_rect.custom_minimum_size = Vector2(72, 72)
-	avatar_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	avatar_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	avatar_panel.add_child(avatar_rect)
-	avatar_rect.texture = load("res://assets/ChatGPT Image 2026年6月24日 22_13_25 (5).png") # Luna avatar
-	
-	# VBox for live stats
-	var lp_vbox := VBoxContainer.new()
-	lp_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lp_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	lp_vbox.add_theme_constant_override("separation", 4)
-	lp_hbox.add_child(lp_vbox)
-	
-	_chips_label_left = Label.new()
-	_chips_label_left.add_theme_font_size_override("font_size", 16)
-	_chips_label_left.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42)) # Gold
-	lp_vbox.add_child(_chips_label_left)
-	
-	_profit_label_left = Label.new()
-	_profit_label_left.add_theme_font_size_override("font_size", 14)
-	lp_vbox.add_child(_profit_label_left)
-	
-	_winrate_label_left = Label.new()
-	_winrate_label_left.add_theme_font_size_override("font_size", 14)
-	_winrate_label_left.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5)) # Neon Magenta
-	lp_vbox.add_child(_winrate_label_left)
-	
-	# 🛑 Center Segment:底牌黄金C位舱 (Center: The Pocket Cards C-Position)
-	var center_panel := PanelContainer.new()
-	center_panel.name = "CenterCardsPanel"
-	center_panel.custom_minimum_size = Vector2(380, 200)
-	center_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	
-	var cp_style := StyleBoxFlat.new()
-	cp_style.bg_color = Color(0.08, 0.06, 0.12, 0.50) # Saturated dark semi-transparent
-	cp_style.set_corner_radius_all(8)
-	cp_style.border_color = Color(0.25, 0.20, 0.40, 0.4)
-	cp_style.set_border_width_all(1)
-	cp_style.content_margin_left = 10
-	cp_style.content_margin_right = 10
-	cp_style.content_margin_top = 10
-	cp_style.content_margin_bottom = 10
-	center_panel.add_theme_stylebox_override("panel", cp_style)
-	bottom_hbox.add_child(center_panel)
-	
-	var cp_vbox := VBoxContainer.new()
-	cp_vbox.add_theme_constant_override("separation", 6)
-	cp_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cp_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	center_panel.add_child(cp_vbox)
-	
-	_timer_label = Label.new()
-	_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_timer_label.add_theme_font_size_override("font_size", 13)
-	_timer_label.add_theme_color_override("font_color", Color(0.65, 0.95, 1.0))
-	_timer_label.custom_minimum_size = Vector2(0, 20)
-	cp_vbox.add_child(_timer_label)
-	
-	_local_cards_root = HBoxContainer.new()
-	_local_cards_root.alignment = BoxContainer.ALIGNMENT_CENTER
-	_local_cards_root.add_theme_constant_override("separation", 10)
-	_local_cards_root.custom_minimum_size = Vector2(0, 120)
-	cp_vbox.add_child(_local_cards_root)
-	
-	for i in range(2):
-		var card = CardViewScene.instantiate()
-		card.custom_minimum_size = Vector2(88, 120)
-		_local_cards_root.add_child(card)
-		
-	# 🛑 Right Segment:端游级筹码掌控轮盘 (Right: Action Buttons & Raise Slider)
 	_action_bar = ActionBarScene.instantiate()
-	_action_bar.custom_minimum_size = Vector2(980, 200)
-	_action_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_action_bar.custom_minimum_size = Vector2(2000, 200)
+	_action_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_action_bar.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_action_bar.action_pressed.connect(_on_action_pressed)
-	bottom_hbox.add_child(_action_bar)
+	_bottom_console.add_child(_action_bar)
+	
+	# Wire up variables from _action_bar to keep existing logic working without change
+	_chips_label_left = _action_bar.chips_label
+	_profit_label_left = _action_bar.profit_label
+	_winrate_label_left = _action_bar.winrate_label
+	_timer_label = _action_bar.timer_label
+	_local_cards_root = _action_bar.local_cards_root
 	
 	_layout()
 
@@ -266,7 +164,7 @@ func _layout() -> void:
 	_set_design_rect(_community_board, Rect2(880, 430, 800, 140), scale)
 	
 	# Position the bottom console spanning Y=760 to Y=980
-	_set_design_rect(_bottom_console, Rect2(340, 760, 1900, 220), scale)
+	_set_design_rect(_bottom_console, Rect2(320, 760, 2000, 220), scale)
 
 	var normal_seat_size := Vector2(140, 110)
 	var local_seat_size := Vector2(140, 110)
