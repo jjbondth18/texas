@@ -64,6 +64,8 @@ func _ready() -> void:
 	
 	var lp_hbox := HBoxContainer.new()
 	lp_hbox.add_theme_constant_override("separation", 16)
+	lp_hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lp_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	left_panel.add_child(lp_hbox)
 	
 	# Circular Big Avatar
@@ -137,7 +139,7 @@ func _ready() -> void:
 	
 	var cp_vbox := VBoxContainer.new()
 	cp_vbox.add_theme_constant_override("separation", 6)
-	cp_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cp_vbox.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	cp_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	center_cc.add_child(cp_vbox)
 	
@@ -152,6 +154,8 @@ func _ready() -> void:
 	local_cards_root.alignment = BoxContainer.ALIGNMENT_CENTER
 	local_cards_root.add_theme_constant_override("separation", 10)
 	local_cards_root.custom_minimum_size = Vector2(0, 120)
+	local_cards_root.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	local_cards_root.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	cp_vbox.add_child(local_cards_root)
 	
 	var CardViewScene = load("res://scenes/components/card_view.tscn")
@@ -182,7 +186,7 @@ func _ready() -> void:
 	var right_hbox := HBoxContainer.new()
 	right_hbox.add_theme_constant_override("separation", 10)
 	right_hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right_hbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	right_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	right_panel.add_child(right_hbox)
 	
 	# FOLD button
