@@ -134,7 +134,7 @@ static func _mock_table_seats() -> Array[Dictionary]:
 		seats.append({
 			"seat_index": i,
 			"player_id": "player_%03d" % i,
-			"player_name": "Luna0581" if i == LOCAL_SEAT_INDEX else "Seat %d" % i,
+			"player_name": "Luna0581" if i == LOCAL_SEAT_INDEX else ("XProGamer_Texas_999" if i == 4 else "Seat %d" % i),
 			"chips": 24500 if i == LOCAL_SEAT_INDEX else 12000 + i * 850,
 			"status": "empty" if i == 8 else "active",
 			"is_local": i == LOCAL_SEAT_INDEX,

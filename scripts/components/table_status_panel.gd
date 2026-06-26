@@ -128,6 +128,7 @@ class PlayerRowPill extends PanelContainer:
 	var avatar_panel: Panel
 	var name_label: Label
 	var chips_label: Label
+	var you_badge: PanelContainer
 	
 	# Turn dots
 	var dots_hbox: HBoxContainer
@@ -187,10 +188,44 @@ class PlayerRowPill extends PanelContainer:
 		vbox.add_theme_constant_override("separation", 2)
 		hbox.add_child(vbox)
 		
+		# Name row HBox to support name on left and YOU badge on right
+		var name_row := HBoxContainer.new()
+		name_row.add_theme_constant_override("separation", 6)
+		name_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		vbox.add_child(name_row)
+		
 		name_label = Label.new()
 		name_label.add_theme_font_size_override("font_size", 13)
 		name_label.add_theme_color_override("font_color", Color.WHITE)
-		vbox.add_child(name_label)
+		name_label.clip_text = true
+		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_row.add_child(name_label)
+		
+		# Isolated "YOU" Badge PanelContainer
+		you_badge = PanelContainer.new()
+		you_badge.name = "YouBadge"
+		you_badge.visible = false
+		you_badge.size_flags_horizontal = Control.SIZE_SHRINK_END
+		you_badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		
+		var yb_style := StyleBoxFlat.new()
+		yb_style.bg_color = Color(1.0, 0.0, 0.5) # Neon Magenta
+		yb_style.set_corner_radius_all(4)
+		yb_style.content_margin_left = 5
+		yb_style.content_margin_right = 5
+		yb_style.content_margin_top = 1
+		yb_style.content_margin_bottom = 2
+		you_badge.add_theme_stylebox_override("panel", yb_style)
+		
+		var yb_label := Label.new()
+		yb_label.text = "YOU"
+		yb_label.add_theme_font_size_override("font_size", 9)
+		yb_label.add_theme_color_override("font_color", Color.WHITE)
+		yb_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		yb_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		you_badge.add_child(yb_label)
+		name_row.add_child(you_badge)
 		
 		# HBox for flashing dots marquee underneath name
 		dots_hbox = HBoxContainer.new()
@@ -254,9 +289,8 @@ class PlayerRowPill extends PanelContainer:
 			avatar_rect.texture = load(av_paths[av_idx])
 			
 		name_label.text = name_str
-		if is_local:
-			name_label.text += " (YOU)"
-			
+		you_badge.visible = is_local
+		
 		chips_label.text = _format_chips(chips)
 		
 		# Determine target visual styling
@@ -272,7 +306,7 @@ class PlayerRowPill extends PanelContainer:
 			action_label.text = "FOLD"
 			action_label.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
 			action_label.visible = true
-			target_bg = Color(0.08, 0.08, 0.08, 0.60) # Folded: Color(0.08, 0.08, 0.08, 0.60)
+			target_bg = Color(0.08, 0.08, 0.08, 0.60)
 			target_border = Color(0.2, 0.2, 0.2, 0.3)
 			target_border_width = 1
 		else:
@@ -285,14 +319,14 @@ class PlayerRowPill extends PanelContainer:
 				target_border = Color(1.0, 0.0, 0.5, 0.95) # Local: Neon Magenta Outline
 				target_border_width = 2
 			else:
-				target_bg = Color(0.12, 0.09, 0.22, 0.75) # Active: Color(0.12, 0.09, 0.22, 0.75)
-				target_border = Color(0.28, 0.22, 0.45, 0.6) # Active: Color(0.28, 0.22, 0.45, 0.6)
+				target_bg = Color(0.12, 0.09, 0.22, 0.75)
+				target_border = Color(0.28, 0.22, 0.45, 0.6)
 				target_border_width = 1
 				
 			if is_turn:
 				action_label.visible = false
 				target_x = -20.0 # Slide left 20px
-				target_bg = Color(0.22, 0.14, 0.45, 0.90) # Turn: Color(0.22, 0.14, 0.45, 0.90)
+				target_bg = Color(0.22, 0.14, 0.45, 0.90)
 				target_border = Color(0.0, 1.0, 0.7, 0.9) # Turn: Neon Cyan/Green Outline
 				target_border_width = 1
 			else:
