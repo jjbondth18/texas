@@ -51,7 +51,7 @@ func _ready() -> void:
 	left_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	
 	var lp_style := StyleBoxFlat.new()
-	lp_style.bg_color = Color(0.12, 0.09, 0.22, 0.75) # Concrete dark purple bg
+	lp_style.bg_color = Color(0.12, 0.09, 0.22, 0.85) # Saturated dark purple bg
 	lp_style.set_corner_radius_all(8)
 	lp_style.border_color = Color(0.28, 0.22, 0.45, 0.6)
 	lp_style.set_border_width_all(1)
@@ -118,9 +118,9 @@ func _ready() -> void:
 	center_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	
 	var cp_style := StyleBoxFlat.new()
-	cp_style.bg_color = Color(0.08, 0.06, 0.12, 0.50) # Saturated dark semi-transparent
+	cp_style.bg_color = Color(0.12, 0.09, 0.22, 0.85) # Saturated dark purple bg
 	cp_style.set_corner_radius_all(8)
-	cp_style.border_color = Color(0.25, 0.20, 0.40, 0.4)
+	cp_style.border_color = Color(0.28, 0.22, 0.45, 0.6)
 	cp_style.set_border_width_all(1)
 	cp_style.content_margin_left = 10
 	cp_style.content_margin_right = 10
@@ -155,18 +155,22 @@ func _ready() -> void:
 		local_cards_root.add_child(card)
 
 	# 🛑 3. 右段：加注与按钮控制台 (Right Panel Width 1000 — 强制左移避让)
-	var right_panel := MarginContainer.new()
+	var right_panel := PanelContainer.new()
 	right_panel.name = "RightPanel"
 	right_panel.custom_minimum_size = Vector2(1000, 180)
 	right_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	right_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	
-	# Explicitly clear other margins to prevent theme leakage
-	right_panel.add_theme_constant_override("margin_left", 0)
-	right_panel.add_theme_constant_override("margin_top", 0)
-	right_panel.add_theme_constant_override("margin_bottom", 0)
-	# 绝对安全隔离带：右侧留白 132 像素
-	right_panel.add_theme_constant_override("margin_right", 132)
+	var rp_style := StyleBoxFlat.new()
+	rp_style.bg_color = Color(0.12, 0.09, 0.22, 0.85) # Saturated dark purple bg
+	rp_style.set_corner_radius_all(8)
+	rp_style.border_color = Color(0.28, 0.22, 0.45, 0.6)
+	rp_style.set_border_width_all(1)
+	rp_style.content_margin_left = 15
+	rp_style.content_margin_right = 120 # 120px physical moat
+	rp_style.content_margin_top = 10
+	rp_style.content_margin_bottom = 10
+	right_panel.add_theme_stylebox_override("panel", rp_style)
 	main_hbox.add_child(right_panel)
 	
 	var right_hbox := HBoxContainer.new()
