@@ -16,7 +16,7 @@ func _ready() -> void:
 	
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 20)
-	margin.add_theme_constant_override("margin_right", 20)
+	margin.add_theme_constant_override("margin_right", 5) #贴右边缘 20 像素以避让
 	margin.add_theme_constant_override("margin_top", 24)
 	margin.add_theme_constant_override("margin_bottom", 24)
 	add_child(margin)
@@ -132,9 +132,9 @@ class PlayerRowPill extends PanelContainer:
 	
 	func _init(data: Dictionary) -> void:
 		player_data = data
-		custom_minimum_size = Vector2(280, 85)
+		custom_minimum_size = Vector2(240, 85) # Squeezed width from 280 to 240
 		size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		pivot_offset = Vector2(140, 42.5) # Center pivot for 280x85 card
+		pivot_offset = Vector2(120, 42.5) # Center pivot for 240x85 card
 		
 		style_box = StyleBoxFlat.new()
 		style_box.corner_detail = 8
@@ -263,7 +263,7 @@ class PlayerRowPill extends PanelContainer:
 			action_label.text = "FOLD"
 			action_label.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
 			action_label.visible = true
-			target_bg = Color(0.08, 0.08, 0.08, 0.3)
+			target_bg = Color(0.05, 0.05, 0.05, 0.35) # Color(0.05, 0.05, 0.05, 0.35)
 		else:
 			_is_fold = false
 			modulate = Color.WHITE
@@ -272,13 +272,13 @@ class PlayerRowPill extends PanelContainer:
 			if is_local:
 				target_bg = Color(0.16, 0.12, 0.25, 0.7)
 			else:
-				target_bg = Color(0.12, 0.1, 0.18, 0.6)
+				target_bg = Color(0.12, 0.08, 0.20, 0.75) # Color(0.12, 0.08, 0.20, 0.75)
 				
 			if is_turn:
 				action_label.visible = false
 				target_x = -30.0
 				target_scale = Vector2(1.15, 1.15)
-				target_bg = Color(0.24, 0.12, 0.36, 0.85) # High saturation bright violet
+				target_bg = Color(0.20, 0.12, 0.35, 0.90) # Color(0.20, 0.12, 0.35, 0.90)
 			else:
 				action_label.visible = true
 				if last_action != "":
