@@ -13,7 +13,7 @@ var _cards_root: HBoxContainer
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
-	custom_minimum_size = Vector2(200, 80)
+	custom_minimum_size = Vector2(140, 110)
 	
 	_name_label = _make_label(12, Color.WHITE)
 	_name_label.name = "PlayerName"
@@ -34,7 +34,7 @@ func _ready() -> void:
 	
 	_cards_root = HBoxContainer.new()
 	_cards_root.name = "HoleCards"
-	_cards_root.alignment = BoxContainer.ALIGNMENT_BEGIN
+	_cards_root.alignment = BoxContainer.ALIGNMENT_CENTER
 	_cards_root.add_theme_constant_override("separation", 2)
 	_cards_root.modulate.a = 0.4
 	add_child(_cards_root)
@@ -106,60 +106,37 @@ func set_seat_data(data: Dictionary) -> void:
 
 func _make_label(font_size: int, color: Color) -> Label:
 	var label := Label.new()
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_color", color)
 	add_child(label)
 	return label
 
 func _layout_children() -> void:
-	var is_local := bool(seat_data.get("is_local", false)) if seat_data else false
-	
-	if is_local:
-		_cards_root.position = Vector2(75, 5)
-		_cards_root.size = Vector2(50, 30)
+	_cards_root.position = Vector2(45, 2)
+	_cards_root.size = Vector2(50, 30)
 
-		_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_name_label.position = Vector2(30, 90)
-		_name_label.size = Vector2(140, 18)
+	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_name_label.position = Vector2(10, 60)
+	_name_label.size = Vector2(120, 18)
 
-		_chips_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_chips_label.position = Vector2(30, 106)
-		_chips_label.size = Vector2(140, 16)
+	_chips_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_chips_label.position = Vector2(10, 78)
+	_chips_label.size = Vector2(120, 16)
 
-		_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_status_label.position = Vector2(30, 70)
-		_status_label.size = Vector2(140, 16)
+	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_status_label.position = Vector2(10, 42)
+	_status_label.size = Vector2(120, 16)
 
-		_bet_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		_bet_label.position = Vector2(30, 129)
-		_bet_label.size = Vector2(140, 16)
+	_bet_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_bet_label.position = Vector2(10, 102)
+	_bet_label.size = Vector2(120, 16)
 
-		_role_label.position = Vector2(107, 67)
-		_role_label.size = Vector2(18, 18)
-	else:
-		_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		_chips_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		_bet_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-
-		_cards_root.position = Vector2(10, -5)
-		_cards_root.size = Vector2(50, 30)
-
-		_name_label.position = Vector2(54, 27)
-		_name_label.size = Vector2(136, 18)
-		
-		_chips_label.position = Vector2(68, 43)
-		_chips_label.size = Vector2(122, 16)
-		
-		_status_label.position = Vector2(54, 7)
-		_status_label.size = Vector2(136, 16)
-		
-		_bet_label.position = Vector2(54, 66)
-		_bet_label.size = Vector2(136, 16)
-		
-		_role_label.position = Vector2(37, 52)
-		_role_label.size = Vector2(18, 18)
+	# Role badge centered on the top-right of the avatar
+	var avatar_center := Vector2(70, 32)
+	var badge_center := avatar_center + Vector2(16, 16)
+	_role_label.position = badge_center - Vector2(9, 9)
+	_role_label.size = Vector2(18, 18)
 
 func _draw() -> void:
 	var is_turn := bool(seat_data.get("is_turn", false))
@@ -200,14 +177,8 @@ func _draw() -> void:
 		style.border_width_bottom = 2
 
 	# Draw the pill behind the name and chips text only!
-	var pill_rect: Rect2
-	var avatar_center: Vector2
-	if is_local:
-		pill_rect = Rect2(29, 88, 142, 40)
-		avatar_center = Vector2(100, 60)
-	else:
-		pill_rect = Rect2(48, 25, 142, 40)
-		avatar_center = Vector2(30, 45)
+	var pill_rect := Rect2(10, 58, 120, 44)
+	var avatar_center := Vector2(70, 32)
 		
 	style.draw(get_canvas_item(), pill_rect)
 	
@@ -242,11 +213,7 @@ func _draw() -> void:
 		draw_circle(avatar_center, 14, Color(avatar_border.r, avatar_border.g, avatar_border.b, 0.25))
 		
 		# Draw gold micro-chip icon next to the chip count
-		var chip_center: Vector2
-		if is_local:
-			chip_center = Vector2(62, 114)
-		else:
-			chip_center = Vector2(58, 51)
+		var chip_center := Vector2(30, 86)
 		draw_circle(chip_center, 4.5, Color(1.0, 0.84, 0.0, 0.95))
 		draw_circle(chip_center, 2.5, Color(0.9, 0.45, 0.0, 0.95))
 		draw_circle(chip_center, 1.0, Color(1.0, 1.0, 1.0, 0.95))

@@ -170,8 +170,8 @@ func _layout() -> void:
 	# Position the local controls container with cards, timer and action bar
 	_set_design_rect(_local_controls_container, Rect2(770, 785, 1020, 215), scale)
 
-	var normal_seat_size := Vector2(200, 80)
-	var local_seat_size := Vector2(200, 150)
+	var normal_seat_size := Vector2(140, 110)
+	var local_seat_size := Vector2(140, 110)
 
 	var fixed_positions := {
 		1: Vector2(1620, 190),  # 1号位：右上转角
@@ -188,11 +188,7 @@ func _layout() -> void:
 	for visual_position in range(1, 10):
 		var pos: Vector2 = fixed_positions[visual_position]
 		var size_val := local_seat_size if visual_position == 5 else normal_seat_size
-		var rect: Rect2
-		if visual_position == 5:
-			rect = Rect2(pos - Vector2(100, 60), size_val)
-		else:
-			rect = Rect2(pos - size_val * 0.5, size_val)
+		var rect := Rect2(pos - size_val * 0.5, size_val)
 		_set_design_rect(_seats[visual_position], rect, scale)
 
 func _set_design_rect(node: Control, rect: Rect2, scale: float) -> void:

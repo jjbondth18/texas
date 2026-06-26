@@ -134,6 +134,7 @@ class PlayerRowPill extends PanelContainer:
 		player_data = data
 		custom_minimum_size = Vector2(280, 85)
 		size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		pivot_offset = Vector2(140, 42.5) # Center pivot for 280x85 card
 		
 		style_box = StyleBoxFlat.new()
 		style_box.corner_detail = 8
@@ -250,69 +251,71 @@ class PlayerRowPill extends PanelContainer:
 			
 		chips_label.text = _format_chips(chips)
 		
-		# Animate turn offsets (-20px, no scaling)
-		if is_turn != _is_turn or force_snap:
-			_is_turn = is_turn
-			var target_x: float = -20.0 if is_turn else 0.0
-			
-			if force_snap:
-				position.x = target_x
-			else:
-				var duration := 0.2 if is_turn else 0.15
-				if _tween:
-					_tween.kill()
-				_tween = create_tween()
-				_tween.tween_property(self, "position:x", target_x, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-				
-		# Update dots visibility
-		dots_hbox.visible = is_turn
+		# Determine target visual styling
+		var target_x: float = 0.0
+		var target_scale := Vector2(1.0, 1.0)
+		var target_bg: Color
 		
-		# Configure borders & styling
-		if is_local:
-			# Seat 5: Permanent Saturated Neon Magenta Border (No pulsing)
-			style_box.border_color = Color(1.0, 0.0, 0.5, 0.95)
-			style_box.set_border_width_all(2)
-		else:
-			style_box.set_border_width_all(0)
-			style_box.border_color = Color(0, 0, 0, 0)
-			
 		if is_fold:
-			# Folded players: Gray out, 0.3 alpha, slide back to 0
 			_is_fold = true
 			modulate = Color(1, 1, 1, 0.3)
 			avatar_rect.modulate = Color(0.4, 0.4, 0.4, 1.0)
 			action_label.text = "FOLD"
 			action_label.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
 			action_label.visible = true
-			style_box.bg_color = Color(0.12, 0.1, 0.18, 0.35)
-			
-			if position.x != 0.0:
-				if _tween:
-					_tween.kill()
-				_tween = create_tween()
-				_tween.tween_property(self, "position:x", 0.0, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			target_bg = Color(0.08, 0.08, 0.08, 0.3)
 		else:
 			_is_fold = false
 			modulate = Color.WHITE
 			avatar_rect.modulate = Color.WHITE
 			
 			if is_local:
-				style_box.bg_color = Color(0.18, 0.15, 0.25, 0.7) # Brighter purple-gray for YOU
+				target_bg = Color(0.16, 0.12, 0.25, 0.7)
 			else:
-				style_box.bg_color = Color(0.12, 0.1, 0.18, 0.6) # Stable balanced background
-			
+				target_bg = Color(0.12, 0.1, 0.18, 0.6)
+				
 			if is_turn:
-				# Show marquee dots, hide turn text
 				action_label.visible = false
+				target_x = -30.0
+				target_scale = Vector2(1.15, 1.15)
+				target_bg = Color(0.24, 0.12, 0.36, 0.85) # High saturation bright violet
 			else:
 				action_label.visible = true
 				if last_action != "":
 					action_label.text = last_action.to_upper()
-					action_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5)) # Action pink
+					action_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5))
 				else:
 					action_label.text = "ACTIVE"
-					action_label.add_theme_color_override("font_color", Color(0.4, 0.8, 1.0)) # Status cyan
+					action_label.add_theme_color_override("font_color", Color(0.4, 0.8, 1.0))
+					
+		# Animate transition of position, scale, and style box background
+		if is_turn != _is_turn or is_fold != _is_fold or force_snap:
+			_is_turn = is_turn
+			
+			if force_snap:
+				position.x = target_x
+				scale = target_scale
+				style_box.bg_color = target_bg
+			else:
+				var duration := 0.2 if is_turn else 0.15
+				if _tween:
+					_tween.kill()
+				_tween = create_tween().set_parallel(true)
+				_tween.tween_property(self, "position:x", target_x, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+				_tween.tween_property(self, "scale", target_scale, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+				_tween.tween_property(style_box, "bg_color", target_bg, 0.1 if is_turn else duration)
 				
+		# Update dots visibility
+		dots_hbox.visible = is_turn
+		
+		# Configure borders & styling
+		if is_local:
+			style_box.border_color = Color(1.0, 0.0, 0.5, 0.95)
+			style_box.set_border_width_all(2)
+		else:
+			style_box.set_border_width_all(0)
+			style_box.border_color = Color(0, 0, 0, 0)
+			
 	func _process(_delta: float) -> void:
 		if _is_fold:
 			return
@@ -336,11 +339,14 @@ class PlayerRowPill extends PanelContainer:
 		# No blinking turn labels or fast pulsing borders
 		action_label.modulate.a = 1.0
 		
-		# Maintain position X alignment when not tweening
-		var target_x: float = -20.0 if _is_turn else 0.0
+		# Maintain position X and scale alignment when not tweening
+		var target_x: float = -30.0 if _is_turn else 0.0
+		var target_scale := Vector2(1.15, 1.15) if _is_turn else Vector2(1.0, 1.0)
 		if _tween == null or not _tween.is_valid() or not _tween.is_running():
 			if position.x != target_x:
 				position.x = target_x
+			if scale != target_scale:
+				scale = target_scale
 
 	func _format_chips(value: int) -> String:
 		var s := str(value)

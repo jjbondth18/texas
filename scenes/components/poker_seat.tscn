@@ -3,6 +3,6 @@
 [ext_resource type="Script" path="res://scripts/components/poker_seat.gd" id="1"]
 
 [node name="PokerSeat" type="Control"]
-custom_minimum_size = Vector2(220, 126)
+custom_minimum_size = Vector2(140, 110)
 layout_mode = 3
 script = ExtResource("1")
