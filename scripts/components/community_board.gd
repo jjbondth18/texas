@@ -29,6 +29,6 @@ func set_cards(cards: Array) -> void:
 		else:
 			card.visible = true
 			card.set_card({"rank": "", "suit": "", "face_up": false})
-			card.modulate = Color(1, 1, 1, 0.22)
+			card.modulate = Color.WHITE
 		if i < cards.size():
 			card.modulate = Color.WHITE

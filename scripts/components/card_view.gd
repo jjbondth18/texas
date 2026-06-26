@@ -60,8 +60,13 @@ func _update() -> void:
 	var font_size := int(current_height * 0.24)
 	_label.add_theme_font_size_override("font_size", font_size)
 	var face_up := bool(card_data.get("face_up", false))
+	var rank := String(card_data.get("rank", ""))
+	var is_empty_slot := (not is_mini_back) and (not face_up) and (rank == "")
 	
-	if not face_up:
+	if is_empty_slot:
+		_label.visible = false
+		_texture_rect.visible = false
+	elif not face_up:
 		_label.visible = true
 		_texture_rect.visible = false
 		_label.text = "◆"
@@ -71,7 +76,6 @@ func _update() -> void:
 		_texture_rect.visible = true
 		
 		var suit := String(card_data.get("suit", ""))
-		var rank := String(card_data.get("rank", ""))
 		if rank == "T":
 			rank = "10"
 		var folder := ""
@@ -101,17 +105,36 @@ func _update() -> void:
 func _draw() -> void:
 	var rect := Rect2(Vector2.ZERO, size)
 	if is_mini_back:
-		var fill := Color(0.04, 0.03, 0.07, 0.95)
-		draw_rect(rect, fill, true)
-		draw_rect(rect, Color(0.62, 0.36, 1.0, 0.65), false, 1.0)
+		var style_box := StyleBoxFlat.new()
+		style_box.bg_color = Color(0.04, 0.03, 0.07, 0.95)
+		style_box.set_corner_radius_all(3)
+		style_box.border_color = Color(0.62, 0.36, 1.0, 0.65)
+		style_box.set_border_width_all(1)
+		style_box.anti_aliasing = true
+		style_box.draw(get_canvas_item(), rect)
 	else:
 		var face_up := bool(card_data.get("face_up", false))
-		if face_up:
-			draw_rect(rect, Color(0.8, 0.88, 1.0, 0.55 if not selected else 0.95), false, 2.0)
+		var rank := String(card_data.get("rank", ""))
+		var is_empty_slot := (not face_up) and (rank == "")
+		
+		var style_box := StyleBoxFlat.new()
+		style_box.set_corner_radius_all(6)
+		style_box.anti_aliasing = true
+		
+		if is_empty_slot:
+			style_box.bg_color = Color(0.05, 0.05, 0.1, 0.25)
+			style_box.border_color = Color(1.0, 0.0, 0.6, 0.28)
+			style_box.set_border_width_all(1.5)
+		elif face_up:
+			style_box.bg_color = Color(0, 0, 0, 0)
+			style_box.border_color = Color(0.8, 0.88, 1.0, 0.55 if not selected else 0.95)
+			style_box.set_border_width_all(1.5)
 		else:
-			var fill := Color(0.08, 0.09, 0.18, 0.98)
-			draw_rect(rect, fill, true)
-			draw_rect(rect, Color(0.8, 0.88, 1.0, 0.55 if not selected else 0.95), false, 2.0)
+			style_box.bg_color = Color(0.08, 0.09, 0.18, 0.98)
+			style_box.border_color = Color(0.8, 0.88, 1.0, 0.55 if not selected else 0.95)
+			style_box.set_border_width_all(1.5)
+			
+		style_box.draw(get_canvas_item(), rect)
 
 func _suit_symbol(suit: String) -> String:
 	match suit:
