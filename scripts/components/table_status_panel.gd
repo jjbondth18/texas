@@ -262,6 +262,8 @@ class PlayerRowPill extends PanelContainer:
 		# Determine target visual styling
 		var target_x: float = 0.0
 		var target_bg: Color
+		var target_border: Color
+		var target_border_width := 1
 		
 		if is_fold:
 			_is_fold = true
@@ -270,7 +272,9 @@ class PlayerRowPill extends PanelContainer:
 			action_label.text = "FOLD"
 			action_label.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
 			action_label.visible = true
-			target_bg = Color(0.04, 0.04, 0.04, 0.35) # Folded: Color(0.04, 0.04, 0.04, 0.35)
+			target_bg = Color(0.08, 0.08, 0.08, 0.60) # Folded: Color(0.08, 0.08, 0.08, 0.60)
+			target_border = Color(0.2, 0.2, 0.2, 0.3)
+			target_border_width = 1
 		else:
 			_is_fold = false
 			modulate = Color.WHITE
@@ -278,13 +282,19 @@ class PlayerRowPill extends PanelContainer:
 			
 			if is_local:
 				target_bg = Color(0.16, 0.12, 0.25, 0.7)
+				target_border = Color(1.0, 0.0, 0.5, 0.95) # Local: Neon Magenta Outline
+				target_border_width = 2
 			else:
-				target_bg = Color(0.12, 0.08, 0.18, 0.65) # Active: Color(0.12, 0.08, 0.18, 0.65)
+				target_bg = Color(0.12, 0.09, 0.22, 0.75) # Active: Color(0.12, 0.09, 0.22, 0.75)
+				target_border = Color(0.28, 0.22, 0.45, 0.6) # Active: Color(0.28, 0.22, 0.45, 0.6)
+				target_border_width = 1
 				
 			if is_turn:
 				action_label.visible = false
 				target_x = -20.0 # Slide left 20px
-				target_bg = Color(0.20, 0.12, 0.38, 0.9) # Turn: Color(0.20, 0.12, 0.38, 0.9)
+				target_bg = Color(0.22, 0.14, 0.45, 0.90) # Turn: Color(0.22, 0.14, 0.45, 0.90)
+				target_border = Color(0.0, 1.0, 0.7, 0.9) # Turn: Neon Cyan/Green Outline
+				target_border_width = 1
 			else:
 				action_label.visible = true
 				if last_action != "":
@@ -294,13 +304,15 @@ class PlayerRowPill extends PanelContainer:
 					action_label.text = "ACTIVE"
 					action_label.add_theme_color_override("font_color", Color(0.4, 0.8, 1.0))
 					
-		# Animate transition of position and style box background (No scale changes!)
+		# Animate transition of position, style box background, border color (No scale changes!)
 		if is_turn != _is_turn or is_fold != _is_fold or force_snap:
 			_is_turn = is_turn
 			
 			if force_snap:
 				position.x = target_x
 				style_box.bg_color = target_bg
+				style_box.border_color = target_border
+				style_box.set_border_width_all(target_border_width)
 			else:
 				var duration := 0.15 # 0.15s tween
 				if _tween:
@@ -308,17 +320,19 @@ class PlayerRowPill extends PanelContainer:
 				_tween = create_tween().set_parallel(true)
 				_tween.tween_property(self, "position:x", target_x, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 				_tween.tween_property(style_box, "bg_color", target_bg, 0.1 if is_turn else duration)
+				_tween.tween_property(style_box, "border_color", target_border, duration)
+				style_box.set_border_width_all(target_border_width)
 				
 		# Update dots visibility
 		dots_hbox.visible = is_turn
 		
 		# Configure borders & styling
-		if is_local:
+		if is_local and not is_turn:
 			style_box.border_color = Color(1.0, 0.0, 0.5, 0.95)
 			style_box.set_border_width_all(2)
-		else:
-			style_box.set_border_width_all(0)
-			style_box.border_color = Color(0, 0, 0, 0)
+		elif not is_turn:
+			style_box.set_border_width_all(target_border_width)
+			style_box.border_color = target_border
 			
 	func _process(_delta: float) -> void:
 		if _is_fold:
@@ -328,7 +342,7 @@ class PlayerRowPill extends PanelContainer:
 		var is_turn := bool(player_data.get("is_turn", false))
 		
 		# Local Player Static Neon Border (No high frequency pulses)
-		if is_local:
+		if is_local and not is_turn:
 			style_box.border_color = Color(1.0, 0.0, 0.5, 0.95)
 			style_box.set_border_width_all(2)
 				
