@@ -26,26 +26,17 @@ func _ready() -> void:
 	vbox.add_theme_constant_override("separation", 14)
 	margin.add_child(vbox)
 	
-	# Header Label / Ranking Badge
-	var ranking_header := Button.new()
-	ranking_header.text = "📊 RANKING"
-	ranking_header.custom_minimum_size = Vector2(0, 36)
-	ranking_header.disabled = true
-	var hdr_style := StyleBoxFlat.new()
-	hdr_style.set_corner_radius_all(18)
-	hdr_style.bg_color = Color(0.06, 0.05, 0.12, 0.6)
-	hdr_style.border_color = Color(0.35, 0.35, 0.45, 0.4)
-	hdr_style.set_border_width_all(1)
-	ranking_header.add_theme_stylebox_override("disabled", hdr_style)
-	ranking_header.add_theme_color_override("font_disabled_color", Color(0.85, 0.85, 0.95))
-	vbox.add_child(ranking_header)
+	# Wrap the "PLAYER STATUS" label in a MarginContainer to give it a 20px bottom margin
+	var status_margin := MarginContainer.new()
+	status_margin.add_theme_constant_override("margin_bottom", 20)
+	vbox.add_child(status_margin)
 	
 	var status_label := Label.new()
 	status_label.text = "PLAYER STATUS"
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	status_label.add_theme_font_size_override("font_size", 12)
 	status_label.add_theme_color_override("font_color", Color(0.65, 0.55, 0.85))
-	vbox.add_child(status_label)
+	status_margin.add_child(status_label)
 	
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -54,7 +45,7 @@ func _ready() -> void:
 	
 	_rows_container = VBoxContainer.new()
 	_rows_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_rows_container.add_theme_constant_override("separation", 16) # Locked separation 16
+	_rows_container.add_theme_constant_override("separation", 12) # Fixed separation 12
 	scroll.add_child(_rows_container)
 	
 	_exit_button = Button.new()
@@ -120,9 +111,8 @@ func set_status(snapshot: Dictionary) -> void:
 		_rows_container.move_child(pill, i)
 
 # Inner class representing a high-fidelity sliding player row pill in the list
-class PlayerRowPill extends Control:
+class PlayerRowPill extends PanelContainer:
 	var player_data: Dictionary
-	var inner_card: PanelContainer
 	var style_box: StyleBoxFlat
 	var action_label: Label
 	var avatar_rect: TextureRect
@@ -138,35 +128,31 @@ class PlayerRowPill extends Control:
 	
 	var _is_turn := false
 	var _is_fold := false
+	var _tween: Tween
 	
 	func _init(data: Dictionary) -> void:
 		player_data = data
-		custom_minimum_size = Vector2(0, 80) # Locked outer height 80
+		custom_minimum_size = Vector2(280, 85)
 		size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		
-		# Inner Card is the actual visual container that slides
-		inner_card = PanelContainer.new()
-		inner_card.custom_minimum_size = Vector2(0, 80) # Locked inner height 80
-		inner_card.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		add_child(inner_card)
 		
 		style_box = StyleBoxFlat.new()
 		style_box.corner_detail = 8
-		style_box.set_corner_radius_all(8) # Corner Radius 8
+		style_box.set_corner_radius_all(8)
 		style_box.anti_aliasing = true
-		inner_card.add_theme_stylebox_override("panel", style_box)
 		
-		# Margins inside the card (content margins 10)
-		var margin := MarginContainer.new()
-		margin.add_theme_constant_override("margin_left", 10)
-		margin.add_theme_constant_override("margin_right", 10)
-		margin.add_theme_constant_override("margin_top", 10)
-		margin.add_theme_constant_override("margin_bottom", 10)
-		inner_card.add_child(margin)
+		# Inner padding via content margins of the StyleBox
+		style_box.content_margin_left = 12
+		style_box.content_margin_right = 12
+		style_box.content_margin_top = 10
+		style_box.content_margin_bottom = 10
+		
+		add_theme_stylebox_override("panel", style_box)
 		
 		var hbox := HBoxContainer.new()
 		hbox.add_theme_constant_override("separation", 12)
-		margin.add_child(hbox)
+		hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		hbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		add_child(hbox)
 		
 		# Circular Avatar Container
 		avatar_panel = Panel.new()
@@ -188,7 +174,8 @@ class PlayerRowPill extends Control:
 		# Text Container
 		var vbox := VBoxContainer.new()
 		vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		vbox.add_theme_constant_override("separation", 1)
+		vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		vbox.add_theme_constant_override("separation", 2)
 		hbox.add_child(vbox)
 		
 		name_label = Label.new()
@@ -269,11 +256,13 @@ class PlayerRowPill extends Control:
 			var target_x: float = -20.0 if is_turn else 0.0
 			
 			if force_snap:
-				inner_card.position.x = target_x
+				position.x = target_x
 			else:
 				var duration := 0.2 if is_turn else 0.15
-				var tween := create_tween()
-				tween.tween_property(inner_card, "position:x", target_x, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+				if _tween:
+					_tween.kill()
+				_tween = create_tween()
+				_tween.tween_property(self, "position:x", target_x, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 				
 		# Update dots visibility
 		dots_hbox.visible = is_turn
@@ -297,9 +286,11 @@ class PlayerRowPill extends Control:
 			action_label.visible = true
 			style_box.bg_color = Color(0.12, 0.1, 0.18, 0.35)
 			
-			if inner_card.position.x != 0.0:
-				var tween := create_tween()
-				tween.tween_property(inner_card, "position:x", 0.0, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+			if position.x != 0.0:
+				if _tween:
+					_tween.kill()
+				_tween = create_tween()
+				_tween.tween_property(self, "position:x", 0.0, 0.15).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		else:
 			_is_fold = false
 			modulate = Color.WHITE
@@ -344,6 +335,12 @@ class PlayerRowPill extends Control:
 		
 		# No blinking turn labels or fast pulsing borders
 		action_label.modulate.a = 1.0
+		
+		# Maintain position X alignment when not tweening
+		var target_x: float = -20.0 if _is_turn else 0.0
+		if _tween == null or not _tween.is_valid() or not _tween.is_running():
+			if position.x != target_x:
+				position.x = target_x
 
 	func _format_chips(value: int) -> String:
 		var s := str(value)
