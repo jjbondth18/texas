@@ -162,7 +162,7 @@ func _layout() -> void:
 
 	_set_design_rect(_room_info_panel, Rect2(0, 0, 320, 220), scale)
 	_set_design_rect(_info_panel, Rect2(0, 240, 320, 760), scale)
-	_set_design_rect(_status_panel, Rect2(2290, 0, 270, 1000), scale)
+	_set_design_rect(_status_panel, Rect2(2270, 0, 290, 1000), scale)
 	_set_design_rect(_seat_layer, Rect2(0, 0, 2560, 1000), scale)
 	_set_design_rect(_dealer_label, Rect2(1150, 60, 260, 40), scale)
 	_set_design_rect(_pot_display, Rect2(1130, 330, 300, 82), scale)

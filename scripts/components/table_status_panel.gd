@@ -16,7 +16,7 @@ func _ready() -> void:
 	
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 20)
-	margin.add_theme_constant_override("margin_right", 5) #贴右边缘 20 像素以避让
+	margin.add_theme_constant_override("margin_right", 5) #贴右边缘
 	margin.add_theme_constant_override("margin_top", 24)
 	margin.add_theme_constant_override("margin_bottom", 24)
 	add_child(margin)
@@ -43,10 +43,19 @@ func _ready() -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	vbox.add_child(scroll)
 	
+	# Wrap rows_container in a MarginContainer with a 40px left margin inside scroll to prevent clipping during slide
+	var scroll_margin := MarginContainer.new()
+	scroll_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll_margin.add_theme_constant_override("margin_left", 40) # Buffer area for sliding left without clipping
+	scroll_margin.add_theme_constant_override("margin_right", 0)
+	scroll_margin.add_theme_constant_override("margin_top", 0)
+	scroll_margin.add_theme_constant_override("margin_bottom", 0)
+	scroll.add_child(scroll_margin)
+	
 	_rows_container = VBoxContainer.new()
 	_rows_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_rows_container.add_theme_constant_override("separation", 12) # Fixed separation 12
-	scroll.add_child(_rows_container)
+	scroll_margin.add_child(_rows_container)
 	
 	_exit_button = Button.new()
 	_exit_button.text = "EXIT TABLE"
@@ -132,9 +141,8 @@ class PlayerRowPill extends PanelContainer:
 	
 	func _init(data: Dictionary) -> void:
 		player_data = data
-		custom_minimum_size = Vector2(240, 85) # Squeezed width from 280 to 240
+		custom_minimum_size = Vector2(220, 85) # Width 220px to fit inside scroll container with 40px left margin
 		size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		pivot_offset = Vector2(120, 42.5) # Center pivot for 240x85 card
 		
 		style_box = StyleBoxFlat.new()
 		style_box.corner_detail = 8
@@ -253,7 +261,6 @@ class PlayerRowPill extends PanelContainer:
 		
 		# Determine target visual styling
 		var target_x: float = 0.0
-		var target_scale := Vector2(1.0, 1.0)
 		var target_bg: Color
 		
 		if is_fold:
@@ -263,7 +270,7 @@ class PlayerRowPill extends PanelContainer:
 			action_label.text = "FOLD"
 			action_label.add_theme_color_override("font_color", Color(0.55, 0.55, 0.55))
 			action_label.visible = true
-			target_bg = Color(0.05, 0.05, 0.05, 0.35) # Color(0.05, 0.05, 0.05, 0.35)
+			target_bg = Color(0.04, 0.04, 0.04, 0.35) # Folded: Color(0.04, 0.04, 0.04, 0.35)
 		else:
 			_is_fold = false
 			modulate = Color.WHITE
@@ -272,13 +279,12 @@ class PlayerRowPill extends PanelContainer:
 			if is_local:
 				target_bg = Color(0.16, 0.12, 0.25, 0.7)
 			else:
-				target_bg = Color(0.12, 0.08, 0.20, 0.75) # Color(0.12, 0.08, 0.20, 0.75)
+				target_bg = Color(0.12, 0.08, 0.18, 0.65) # Active: Color(0.12, 0.08, 0.18, 0.65)
 				
 			if is_turn:
 				action_label.visible = false
-				target_x = -30.0
-				target_scale = Vector2(1.15, 1.15)
-				target_bg = Color(0.20, 0.12, 0.35, 0.90) # Color(0.20, 0.12, 0.35, 0.90)
+				target_x = -20.0 # Slide left 20px
+				target_bg = Color(0.20, 0.12, 0.38, 0.9) # Turn: Color(0.20, 0.12, 0.38, 0.9)
 			else:
 				action_label.visible = true
 				if last_action != "":
@@ -288,21 +294,19 @@ class PlayerRowPill extends PanelContainer:
 					action_label.text = "ACTIVE"
 					action_label.add_theme_color_override("font_color", Color(0.4, 0.8, 1.0))
 					
-		# Animate transition of position, scale, and style box background
+		# Animate transition of position and style box background (No scale changes!)
 		if is_turn != _is_turn or is_fold != _is_fold or force_snap:
 			_is_turn = is_turn
 			
 			if force_snap:
 				position.x = target_x
-				scale = target_scale
 				style_box.bg_color = target_bg
 			else:
-				var duration := 0.2 if is_turn else 0.15
+				var duration := 0.15 # 0.15s tween
 				if _tween:
 					_tween.kill()
 				_tween = create_tween().set_parallel(true)
 				_tween.tween_property(self, "position:x", target_x, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-				_tween.tween_property(self, "scale", target_scale, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 				_tween.tween_property(style_box, "bg_color", target_bg, 0.1 if is_turn else duration)
 				
 		# Update dots visibility
@@ -339,14 +343,11 @@ class PlayerRowPill extends PanelContainer:
 		# No blinking turn labels or fast pulsing borders
 		action_label.modulate.a = 1.0
 		
-		# Maintain position X and scale alignment when not tweening
-		var target_x: float = -30.0 if _is_turn else 0.0
-		var target_scale := Vector2(1.15, 1.15) if _is_turn else Vector2(1.0, 1.0)
+		# Maintain position X alignment when not tweening
+		var target_x: float = -20.0 if _is_turn else 0.0
 		if _tween == null or not _tween.is_valid() or not _tween.is_running():
 			if position.x != target_x:
 				position.x = target_x
-			if scale != target_scale:
-				scale = target_scale
 
 	func _format_chips(value: int) -> String:
 		var s := str(value)
