@@ -24,11 +24,12 @@ func set_cards(cards: Array) -> void:
 	for i in range(_slots.size()):
 		var card = _slots[i]
 		if i < cards.size():
-			card.visible = true
+			if not card.visible:
+				card.visible = true
+				card.modulate.a = 0.0
+				var tween := create_tween()
+				tween.tween_property(card, "modulate:a", 1.0, 0.25)
 			card.set_card(Dictionary(cards[i]))
 		else:
-			card.visible = true
-			card.set_card({"rank": "", "suit": "", "face_up": false})
-			card.modulate = Color.WHITE
-		if i < cards.size():
+			card.visible = false
 			card.modulate = Color.WHITE
