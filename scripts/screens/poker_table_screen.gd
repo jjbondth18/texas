@@ -116,12 +116,23 @@ func _set_design_rect(node: Control, rect: Rect2, scale: float) -> void:
 	node.size = rect.size * scale
 
 func _apply_saved_major_layout() -> void:
-	var items := LayoutSchema.merged_items_with_defaults(LayoutSchema.load_user_config())
+	var loaded := LayoutSchema.load_runtime_config()
+	var source := String(loaded.get("source", "default"))
+	var path := String(loaded.get("path", ""))
+	var config := Dictionary(loaded.get("config", LayoutSchema.default_config()))
+	var items := LayoutSchema.merged_items_with_defaults(config)
+	if source == "user":
+		print("[PokerTableLayout] Loaded user layout config")
+	else:
+		print("[PokerTableLayout] Loaded default layout config: %s" % path)
 	var targets := _major_layout_targets()
 	for id in items.keys():
 		if not targets.has(id) or targets[id] == null:
 			continue
-		_apply_design_rect_to_control(targets[id], LayoutSchema.dict_to_rect(Dictionary(items[id])))
+		var rect := LayoutSchema.dict_to_rect(Dictionary(items[id]))
+		_apply_design_rect_to_control(targets[id], rect)
+		if id == "bottom_hud":
+			print("[PokerTableLayout] Applied bottom_hud rect: %s" % rect)
 
 func _major_layout_targets() -> Dictionary:
 	return {

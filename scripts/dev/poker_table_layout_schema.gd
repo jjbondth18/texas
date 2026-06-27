@@ -4,6 +4,7 @@ class_name PokerTableLayoutSchema
 const VERSION := 1
 const DESIGN_SIZE := Vector2(2560, 1000)
 const USER_CONFIG_PATH := "user://poker_table_layout_config.json"
+const DEFAULT_CONFIG_PATH := "res://docs/frontend/poker_table_layout_config.default.json"
 
 const TARGET_IDS := [
 	"seat_1",
@@ -88,6 +89,33 @@ static func load_user_config() -> Dictionary:
 	if file == null:
 		return empty_config()
 	return deserialize(file.get_as_text())
+
+static func load_default_config_file() -> Dictionary:
+	if not FileAccess.file_exists(DEFAULT_CONFIG_PATH):
+		return default_config()
+	var file := FileAccess.open(DEFAULT_CONFIG_PATH, FileAccess.READ)
+	if file == null:
+		return default_config()
+	var config := deserialize(file.get_as_text())
+	if Dictionary(config.get("items", {})).is_empty():
+		return default_config()
+	return config
+
+static func load_runtime_config() -> Dictionary:
+	if FileAccess.file_exists(USER_CONFIG_PATH):
+		var user_config := load_user_config()
+		if not Dictionary(user_config.get("items", {})).is_empty():
+			return {
+				"source": "user",
+				"path": USER_CONFIG_PATH,
+				"config": user_config,
+			}
+	var default_config_file := load_default_config_file()
+	return {
+		"source": "default",
+		"path": DEFAULT_CONFIG_PATH,
+		"config": default_config_file,
+	}
 
 static func save_user_config(items: Dictionary) -> Error:
 	var file := FileAccess.open(USER_CONFIG_PATH, FileAccess.WRITE)
