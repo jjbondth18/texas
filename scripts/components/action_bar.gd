@@ -11,275 +11,159 @@ var _check_call_action: Dictionary
 var _raise_action: Dictionary
 
 # Public properties for Three-Compartment console references
-var chips_label: Label
-var profit_label: Label
-var winrate_label: Label
+@onready var chips_label: Label = $PlayerInfoPanel/ChipsLabel
+@onready var profit_label: Label = $PlayerInfoPanel/ProfitLabel
+@onready var winrate_label: Label = $PlayerInfoPanel/WinRateLabel
 
-var timer_label: Label
-var local_cards_root: HBoxContainer
+@onready var timer_label: Label = $HoleCardsPanel/TurnTimer
+@onready var local_cards_root: Control = $HoleCardsPanel/LocalHoleCards
 
 # Right segment controls
-var _fold_button: Button
-var _check_call_button: Button
-var _raise_confirm_button: Button
-var _minus_button: Button
-var _plus_button: Button
-var _h_slider: HSlider
-var _pot_25_button: Button
-var _max_button: Button
-var _raise_value_label: Label
+@onready var _fold_button: Button = $ActionPanel/MainButtons/FoldButton
+@onready var _check_call_button: Button = $ActionPanel/MainButtons/CheckCallButton
+@onready var _raise_confirm_button: Button = $ActionPanel/MainButtons/BetRaiseButton
+@onready var _minus_button: Button = $ActionPanel/RaiseControlPanel/MinusButton
+@onready var _plus_button: Button = $ActionPanel/RaiseControlPanel/PlusButton
+@onready var _h_slider: HSlider = $ActionPanel/RaiseControlPanel/RaiseSlider
+@onready var _pot_25_button: Button = $ActionPanel/RaiseControlPanel/PotMultiplierButton
+@onready var _max_button: Button = $ActionPanel/RaiseControlPanel/MaxButton
+@onready var _raise_value_label: Label = $ActionPanel/RaiseControlPanel/RaiseValueLabel
+
+@onready var _avatar_rect: TextureRect = $PlayerInfoPanel/AvatarPanel/AvatarRect
 
 func _ready() -> void:
-	# Build the action bar layout inside an HBoxContainer
-	var main_hbox := HBoxContainer.new()
-	main_hbox.add_theme_constant_override("separation", 16) # 16px separation between boxes
-	add_child(main_hbox)
-	
-	# Connect to resized signal to keep main_hbox perfectly sized to fit Control bounds
-	resized.connect(func():
-		main_hbox.size = size
-		main_hbox.position = Vector2.ZERO
-	)
-	main_hbox.size = size
-	main_hbox.position = Vector2.ZERO
-	
-	# 🛑 1. 左段：数据舱无条件收紧 (Squeeze Left Panel to Width 420)
-	var left_panel := PanelContainer.new()
-	left_panel.name = "LeftStatsPanel"
-	left_panel.custom_minimum_size = Vector2(420, 180)
-	left_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	left_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	# 🛑 1. 左段：数据舱 (PlayerInfoPanel) Style Box Override & Hardcoded Dimensions
+	var left_panel := $PlayerInfoPanel
+	left_panel.custom_minimum_size = Vector2(450, 180)
+	left_panel.size = Vector2(450, 180)
+	left_panel.position = Vector2(0, 0)
 	
 	var lp_style := StyleBoxFlat.new()
 	lp_style.bg_color = Color(0.10, 0.07, 0.18, 0.85) # Dark purple-black bg
 	lp_style.set_corner_radius_all(8)
 	lp_style.border_color = Color(0.35, 0.28, 0.55, 0.7) # Clear high-light dark purple-gray border
 	lp_style.set_border_width_all(1)
-	lp_style.content_margin_left = 15
-	lp_style.content_margin_right = 15
-	lp_style.content_margin_top = 10
-	lp_style.content_margin_bottom = 10
 	left_panel.add_theme_stylebox_override("panel", lp_style)
-	main_hbox.add_child(left_panel)
-	
-	var lp_hbox := HBoxContainer.new()
-	lp_hbox.add_theme_constant_override("separation", 16)
-	lp_hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lp_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	left_panel.add_child(lp_hbox)
 	
 	# Circular Big Avatar
-	var avatar_panel := Panel.new()
+	var avatar_panel := $PlayerInfoPanel/AvatarPanel
 	avatar_panel.custom_minimum_size = Vector2(72, 72)
-	avatar_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	avatar_panel.clip_children = Control.CLIP_CHILDREN_AND_DRAW
+	avatar_panel.size = Vector2(72, 72)
+	avatar_panel.position = Vector2(15, 54)
+	
 	var av_style := StyleBoxFlat.new()
 	av_style.set_corner_radius_all(36)
 	avatar_panel.add_theme_stylebox_override("panel", av_style)
-	lp_hbox.add_child(avatar_panel)
 	
-	var avatar_rect := TextureRect.new()
-	avatar_rect.custom_minimum_size = Vector2(72, 72)
-	avatar_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	avatar_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	avatar_panel.add_child(avatar_rect)
-	avatar_rect.texture = load("res://assets/ChatGPT Image 2026年6月24日 22_13_25 (5).png") # Luna avatar
+	_avatar_rect.custom_minimum_size = Vector2(72, 72)
+	_avatar_rect.size = Vector2(72, 72)
+	_avatar_rect.position = Vector2.ZERO
+	_avatar_rect.texture = load("res://assets/ChatGPT Image 2026年6月24日 22_13_25 (5).png") # Luna avatar
 	
-	# VBox for live stats
-	var lp_vbox := VBoxContainer.new()
-	lp_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lp_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	lp_vbox.add_theme_constant_override("separation", 4)
-	lp_hbox.add_child(lp_vbox)
-	
-	chips_label = Label.new()
+	chips_label.position = Vector2(103, 50)
 	chips_label.add_theme_font_size_override("font_size", 16)
 	chips_label.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42)) # Gold
 	
-	# Apply SystemFont to make it bold
 	var bold_font := SystemFont.new()
 	bold_font.font_names = PackedStringArray(["sans-serif", "Segoe UI", "Arial"])
 	bold_font.font_weight = 700
 	chips_label.add_theme_font_override("font", bold_font)
-	lp_vbox.add_child(chips_label)
 	
-	profit_label = Label.new()
+	profit_label.position = Vector2(103, 78)
 	profit_label.add_theme_font_size_override("font_size", 14)
-	lp_vbox.add_child(profit_label)
 	
-	winrate_label = Label.new()
+	winrate_label.position = Vector2(103, 106)
 	winrate_label.add_theme_font_size_override("font_size", 14)
 	winrate_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5)) # Neon Magenta
-	lp_vbox.add_child(winrate_label)
 	
-	# 🛑 2. 中段：卡牌与计时专用独立舱 (Center Panel Width 480)
-	var center_panel := PanelContainer.new()
-	center_panel.name = "CenterCardsPanel"
-	center_panel.custom_minimum_size = Vector2(480, 180)
-	center_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	center_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	# 🛑 2. 中段：卡牌与计时专用独立舱 (HoleCardsPanel) Style Box Override & Hardcoded Dimensions
+	var center_panel := $HoleCardsPanel
+	center_panel.custom_minimum_size = Vector2(500, 180)
+	center_panel.size = Vector2(500, 180)
+	center_panel.position = Vector2(466, 0) # 450 + 16 gap
 	
 	var cp_style := StyleBoxFlat.new()
 	cp_style.bg_color = Color(0.10, 0.07, 0.18, 0.85) # Dark purple-black bg
 	cp_style.set_corner_radius_all(8)
 	cp_style.border_color = Color(0.35, 0.28, 0.55, 0.7) # Clear high-light dark purple-gray border
 	cp_style.set_border_width_all(1)
-	cp_style.content_margin_left = 10
-	cp_style.content_margin_right = 10
-	cp_style.content_margin_top = 10
-	cp_style.content_margin_bottom = 10
 	center_panel.add_theme_stylebox_override("panel", cp_style)
-	main_hbox.add_child(center_panel)
 	
-	# CenterContainer wrapper for perfect vertical/horizontal alignment of cards & timer
-	var center_cc := CenterContainer.new()
-	center_cc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	center_cc.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	center_panel.add_child(center_cc)
-	
-	var cp_vbox := VBoxContainer.new()
-	cp_vbox.add_theme_constant_override("separation", 6)
-	cp_vbox.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	cp_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	center_cc.add_child(cp_vbox)
-	
-	timer_label = Label.new()
+	timer_label.size = Vector2(480, 20)
+	timer_label.position = Vector2(10, 10)
 	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	timer_label.add_theme_font_size_override("font_size", 13)
 	timer_label.add_theme_color_override("font_color", Color(0.65, 0.95, 1.0))
-	timer_label.custom_minimum_size = Vector2(0, 20)
-	cp_vbox.add_child(timer_label)
 	
-	local_cards_root = HBoxContainer.new()
-	local_cards_root.alignment = BoxContainer.ALIGNMENT_CENTER
-	local_cards_root.add_theme_constant_override("separation", 10)
-	local_cards_root.custom_minimum_size = Vector2(0, 120)
-	local_cards_root.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	local_cards_root.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	cp_vbox.add_child(local_cards_root)
+	local_cards_root.custom_minimum_size = Vector2(186, 120)
+	local_cards_root.size = Vector2(186, 120)
+	local_cards_root.position = Vector2(157, 40)
 	
-	var CardViewScene = load("res://scenes/components/card_view.tscn")
-	for i in range(2):
-		var card = CardViewScene.instantiate()
-		card.custom_minimum_size = Vector2(88, 120)
-		local_cards_root.add_child(card)
-
-	# 🛑 3. 右段：加注与按钮控制台 (Right Panel Width 950 — 强制左移避让)
-	var right_panel := PanelContainer.new()
-	right_panel.name = "RightPanel"
-	right_panel.custom_minimum_size = Vector2(950, 180)
-	right_panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	right_panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	# 🛑 3. 右段：加注与按钮控制台 (ActionPanel) Style Box Override & Hardcoded Dimensions (150px Safety Zone)
+	var right_panel := $ActionPanel
+	right_panel.custom_minimum_size = Vector2(900, 180)
+	right_panel.size = Vector2(900, 180)
+	right_panel.position = Vector2(982, 0) # 466 + 500 + 16 gap
 	
 	var rp_style := StyleBoxFlat.new()
 	rp_style.bg_color = Color(0.10, 0.07, 0.18, 0.85) # Dark purple-black bg
 	rp_style.set_corner_radius_all(8)
 	rp_style.border_color = Color(0.35, 0.28, 0.55, 0.7) # Clear high-light dark purple-gray border
 	rp_style.set_border_width_all(1)
-	rp_style.content_margin_left = 15
-	rp_style.content_margin_right = 120 # 120px physical moat
-	rp_style.content_margin_top = 10
-	rp_style.content_margin_bottom = 10
 	right_panel.add_theme_stylebox_override("panel", rp_style)
-	main_hbox.add_child(right_panel)
 	
-	var right_hbox := HBoxContainer.new()
-	right_hbox.add_theme_constant_override("separation", 10)
-	right_hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	right_panel.add_child(right_hbox)
-	
-	# FOLD button
-	_fold_button = Button.new()
-	_fold_button.text = "FOLD"
+	# Hardcode position and size of right panel elements at runtime to enforce safety zone
 	_fold_button.custom_minimum_size = Vector2(120, 64)
-	_fold_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_fold_button.focus_mode = Control.FOCUS_NONE
-	_style_action_button(_fold_button, Color(0.45, 0.45, 0.52)) # Muted Gray-Violet
-	right_hbox.add_child(_fold_button)
-	
-	# CHECK/CALL button
-	_check_call_button = Button.new()
-	_check_call_button.text = "CHECK"
+	_fold_button.size = Vector2(120, 64)
+	_fold_button.position = Vector2(0, 58)
+
 	_check_call_button.custom_minimum_size = Vector2(120, 64)
-	_check_call_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_check_call_button.focus_mode = Control.FOCUS_NONE
-	_style_action_button(_check_call_button, Color(1.0, 0.0, 0.5)) # Neon Magenta
-	right_hbox.add_child(_check_call_button)
-	
-	# RAISE button
-	_raise_confirm_button = Button.new()
-	_raise_confirm_button.text = "RAISE"
+	_check_call_button.size = Vector2(120, 64)
+	_check_call_button.position = Vector2(130, 58)
+
 	_raise_confirm_button.custom_minimum_size = Vector2(120, 64)
-	_raise_confirm_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_raise_confirm_button.focus_mode = Control.FOCUS_NONE
-	_style_action_button(_raise_confirm_button, Color(0.0, 0.75, 1.0)) # Bright Neon Cyan
-	right_hbox.add_child(_raise_confirm_button)
-	
-	# minus button
-	_minus_button = Button.new()
-	_minus_button.text = "-"
+	_raise_confirm_button.size = Vector2(120, 64)
+	_raise_confirm_button.position = Vector2(260, 58)
+
 	_minus_button.custom_minimum_size = Vector2(32, 32)
-	_minus_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_minus_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_minus_button.focus_mode = Control.FOCUS_NONE
+	_minus_button.size = Vector2(32, 32)
+	_minus_button.position = Vector2(0, 74)
+
+	_h_slider.custom_minimum_size = Vector2(170, 32)
+	_h_slider.size = Vector2(170, 32)
+	_h_slider.position = Vector2(42, 74)
+
+	_raise_value_label.size = Vector2(170, 23)
+	_raise_value_label.position = Vector2(42, 49)
+
+	_plus_button.custom_minimum_size = Vector2(32, 32)
+	_plus_button.size = Vector2(32, 32)
+	_plus_button.position = Vector2(222, 74)
+
+	_pot_25_button.custom_minimum_size = Vector2(80, 28)
+	_pot_25_button.size = Vector2(80, 28)
+	_pot_25_button.position = Vector2(264, 58)
+
+	_max_button.custom_minimum_size = Vector2(80, 28)
+	_max_button.size = Vector2(80, 28)
+	_max_button.position = Vector2(264, 94)
+	
+	# Style buttons and slider
+	_style_action_button(_fold_button, Color(0.45, 0.45, 0.52)) # Muted Gray-Violet
+	_style_action_button(_check_call_button, Color(1.0, 0.0, 0.5)) # Neon Magenta
+	_style_action_button(_raise_confirm_button, Color(0.0, 0.75, 1.0)) # Bright Neon Cyan
+	
 	_style_adjust_button(_minus_button)
-	right_hbox.add_child(_minus_button)
-	
-	# Slider Area (HSlider directly as sibling)
-	_h_slider = HSlider.new()
-	_h_slider.custom_minimum_size = Vector2(220, 32)
-	_h_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_h_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_h_slider.focus_mode = Control.FOCUS_NONE
+	_style_adjust_button(_plus_button)
 	_style_h_slider(_h_slider)
-	right_hbox.add_child(_h_slider)
 	
-	# Large Raise Value Label (as child of _h_slider)
-	_raise_value_label = Label.new()
 	_raise_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_raise_value_label.add_theme_font_size_override("font_size", 16)
 	_raise_value_label.add_theme_color_override("font_color", Color(0.0, 0.9, 1.0)) # Cyan glow
-	_raise_value_label.text = "100"
 	_raise_value_label.add_theme_font_override("font", bold_font)
-	_h_slider.add_child(_raise_value_label)
-	_raise_value_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	_raise_value_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	_raise_value_label.offset_top = -25
-	_raise_value_label.offset_bottom = 0
 	
-	# plus button
-	_plus_button = Button.new()
-	_plus_button.text = "+"
-	_plus_button.custom_minimum_size = Vector2(32, 32)
-	_plus_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	_plus_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_plus_button.focus_mode = Control.FOCUS_NONE
-	_style_adjust_button(_plus_button)
-	right_hbox.add_child(_plus_button)
-	
-	# Quick multipliers
-	var quick_vbox := VBoxContainer.new()
-	quick_vbox.custom_minimum_size = Vector2(80, 64)
-	quick_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	quick_vbox.add_theme_constant_override("separation", 6)
-	right_hbox.add_child(quick_vbox)
-	
-	_pot_25_button = Button.new()
-	_pot_25_button.text = "2.5x POT"
-	_pot_25_button.custom_minimum_size = Vector2(80, 28)
-	_pot_25_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_pot_25_button.focus_mode = Control.FOCUS_NONE
 	_style_quick_button(_pot_25_button)
-	quick_vbox.add_child(_pot_25_button)
-	
-	_max_button = Button.new()
-	_max_button.text = "MAX"
-	_max_button.custom_minimum_size = Vector2(80, 28)
-	_max_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	_max_button.focus_mode = Control.FOCUS_NONE
 	_style_quick_button(_max_button)
-	quick_vbox.add_child(_max_button)
 	
 	# Event bindings
 	_fold_button.pressed.connect(func(): action_pressed.emit(_fold_action.duplicate(true)))

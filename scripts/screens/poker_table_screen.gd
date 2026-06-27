@@ -18,25 +18,22 @@ const DESIGN_SIZE := Vector2(2560, 1000)
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
 
 var snapshot := {}
-var _content_root: Control
-var _seat_layer: Control
-var _seats := {}
-var _community_board
-var _pot_display
-var _action_bar: ActionBar
-var _info_panel
-var _room_info_panel: PanelContainer
-var _status_panel
+@onready var _content_root: Control = $TableUIRoot
+@onready var _seat_layer: Control = $TableUIRoot/TableLayer/SeatLayer
+@onready var _dealer_label: Label = $TableUIRoot/TableLayer/CenterBoardPanel/DealerIndicator
+@onready var _pot_display: Control = $TableUIRoot/TableLayer/CenterBoardPanel/PotPanel
+@onready var _community_board: Control = $TableUIRoot/TableLayer/CenterBoardPanel/CommunityCardsPanel
+@onready var _info_panel: PanelContainer = $TableUIRoot/LeftPanel/ChatLogPanel
+@onready var _room_info_panel: PanelContainer = $TableUIRoot/LeftPanel/TableInfoPanel
+@onready var _status_panel: PanelContainer = $TableUIRoot/RightPanel/PlayerStatusList
+@onready var _action_bar: ActionBar = $TableUIRoot/BottomPlayerPanel
 
-# Three-compartment Bottom Console
-var _bottom_console: Control
+var _seats := {}
 var _chips_label_left: Label
 var _profit_label_left: Label
 var _winrate_label_left: Label
 var _timer_label: Label
-var _local_cards_root: HBoxContainer
-
-var _dealer_label: Label
+var _local_cards_root: Control
 var _capture_output := ""
 var _layout_editor
 var _layout_targets_registered := false
@@ -78,65 +75,27 @@ func _notification(what: int) -> void:
 		_layout()
 
 func _build_scene() -> void:
-	var bg := TextureRect.new()
-	bg.name = "TableBackground"
-	bg.texture = _load_texture(TABLE_BACKGROUND_PATH)
-	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(bg)
-
-	_content_root = Control.new()
-	_content_root.name = "TableUIRoot"
-	_content_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_content_root)
-
-	_info_panel = InfoPanelScene.instantiate()
-	_info_panel.name = "LeftInfoPanel"
-	_content_root.add_child(_info_panel)
-
-	_room_info_panel = RoomInfoPanelScene.new()
-	_room_info_panel.name = "LeftRoomInfoPanel"
-	_content_root.add_child(_room_info_panel)
-
-	_status_panel = StatusPanelScene.instantiate()
-	_status_panel.name = "RightStatusPanel"
-	_status_panel.exit_table_requested.connect(_return_home)
-	_content_root.add_child(_status_panel)
-
-	_seat_layer = Control.new()
-	_seat_layer.name = "SeatLayer"
-	_seat_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_seat_layer.z_index = 1
-	_content_root.add_child(_seat_layer)
-	for i in range(1, 10):
-		var seat = PokerSeatScene.instantiate()
-		seat.name = "Seat%d%s" % [i, "_Local" if i == 5 else ""]
-		_seat_layer.add_child(seat)
-		_seats[i] = seat
-
-	_dealer_label = Label.new()
-	_dealer_label.name = "DealerIndicator"
-	_dealer_label.text = "DEALER"
-	_dealer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Load background texture statically defined in scene
+	var bg_rect := $BackgroundLayer/TableBackground
+	bg_rect.texture = _load_texture(TABLE_BACKGROUND_PATH)
+	
+	# Setup seats map from static scene nodes
+	_seats[1] = $TableUIRoot/TableLayer/SeatLayer/Seat1Panel
+	_seats[2] = $TableUIRoot/TableLayer/SeatLayer/Seat2Panel
+	_seats[3] = $TableUIRoot/TableLayer/SeatLayer/Seat3Panel
+	_seats[4] = $TableUIRoot/TableLayer/SeatLayer/Seat4Panel
+	_seats[5] = $TableUIRoot/TableLayer/SeatLayer/Seat5Panel
+	_seats[6] = $TableUIRoot/TableLayer/SeatLayer/Seat6Panel
+	_seats[7] = $TableUIRoot/TableLayer/SeatLayer/Seat7Panel
+	_seats[8] = $TableUIRoot/TableLayer/SeatLayer/Seat8Panel
+	_seats[9] = $TableUIRoot/TableLayer/SeatLayer/Seat9Panel
+	
 	_dealer_label.add_theme_font_size_override("font_size", 20)
 	_dealer_label.add_theme_color_override("font_color", Color(1, 0.86, 0.45))
-	_content_root.add_child(_dealer_label)
-
-	_pot_display = PotDisplayScene.instantiate()
-	_content_root.add_child(_pot_display)
-
-	_community_board = CommunityBoardScene.instantiate()
-	_content_root.add_child(_community_board)
-
-	_bottom_console = Control.new()
-	_bottom_console.name = "BottomConsoleContainer"
-	add_child(_bottom_console)
 	
-	_action_bar = ActionBarScene.instantiate()
+	# Connect signals
+	_status_panel.exit_table_requested.connect(_return_home)
 	_action_bar.action_pressed.connect(_on_action_pressed)
-	_bottom_console.add_child(_action_bar)
 	
 	# Wire up variables from _action_bar to keep existing logic working without change
 	_chips_label_left = _action_bar.chips_label
@@ -152,47 +111,9 @@ func _layout() -> void:
 	if _content_root == null:
 		return
 	var scale: float = minf(size.x / DESIGN_SIZE.x, size.y / DESIGN_SIZE.y)
-	var content_size: Vector2 = DESIGN_SIZE * scale
-	_content_root.position = (size - content_size) * 0.5
-	_content_root.size = content_size
-
-	_set_design_rect(_room_info_panel, Rect2(0, 0, 320, 220), scale)
-	_set_design_rect(_info_panel, Rect2(0, 240, 320, 760), scale)
-	_set_design_rect(_status_panel, Rect2(2270, 0, 290, 1000), scale)
-	_set_design_rect(_seat_layer, Rect2(0, 0, 2560, 1000), scale)
-	_set_design_rect(_dealer_label, Rect2(1150, 60, 260, 40), scale)
-	_set_design_rect(_pot_display, Rect2(1130, 330, 300, 82), scale)
-	_set_design_rect(_community_board, Rect2(880, 430, 800, 140), scale)
-	
-	# Anchoring _bottom_console to the screen bottom using PRESET_BOTTOM_WIDE
-	_bottom_console.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	_bottom_console.offset_top = -180 * scale
-	_bottom_console.offset_bottom = 0
-	if _action_bar:
-		_action_bar.scale = Vector2(scale, scale)
-		_action_bar.size = Vector2(1882, 180)
-		_action_bar.position = Vector2(_content_root.position.x + 320 * scale, 0)
-
-	var normal_seat_size := Vector2(140, 110)
-	var local_seat_size := Vector2(140, 110)
-
-	var fixed_positions := {
-		1: Vector2(1620, 190),  # 1号位：右上转角
-		2: Vector2(1920, 310),  # 2号位：right side
-		3: Vector2(2150, 520),  # 3号位：right center
-		4: Vector2(1880, 750),  # 4号位：right bottom
-		5: Vector2(1280, 760),  # 5号位：local Seat 5 (moved up to Y=760 to avoid bottom console)
-		6: Vector2(680, 750),   # 6号位：left bottom
-		7: Vector2(410, 520),   # 7号位：left center
-		8: Vector2(640, 310),   # 8号位：left side
-		9: Vector2(940, 190)    # 9号位：left top
-	}
-
-	for visual_position in range(1, 10):
-		var pos: Vector2 = fixed_positions[visual_position]
-		var size_val := local_seat_size if visual_position == 5 else normal_seat_size
-		var rect := Rect2(pos - size_val * 0.5, size_val)
-		_set_design_rect(_seats[visual_position], rect, scale)
+	_content_root.scale = Vector2(scale, scale)
+	_content_root.position = (size - DESIGN_SIZE * scale) * 0.5
+	_content_root.size = DESIGN_SIZE
 	_update_layout_editor_space(scale)
 
 func _set_design_rect(node: Control, rect: Rect2, scale: float) -> void:
