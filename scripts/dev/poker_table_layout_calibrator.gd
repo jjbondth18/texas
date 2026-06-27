@@ -2,7 +2,6 @@ extends Control
 class_name PokerTableLayoutCalibrator
 
 const Schema := preload("res://scripts/dev/poker_table_layout_schema.gd")
-const BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
 
 var _background: TextureRect
 var _boxes_root: Control
@@ -19,10 +18,8 @@ var _origin := Vector2.ZERO
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_build_background()
-	_build_boxes()
-	_build_help()
-	_load_layout()
+	_bind_scene_nodes()
+	_read_items_from_boxes()
 	_layout()
 	_handle_capture_args()
 
@@ -80,56 +77,42 @@ func _input(event: InputEvent) -> void:
 		_apply_items_to_boxes()
 		get_viewport().set_input_as_handled()
 
-func _build_background() -> void:
-	_background = TextureRect.new()
-	_background.name = "TableBackground"
-	_background.texture = _load_texture(BACKGROUND_PATH)
-	_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_background)
-
-func _build_boxes() -> void:
-	_boxes_root = Control.new()
-	_boxes_root.name = "LayoutBoxes"
-	add_child(_boxes_root)
+func _bind_scene_nodes() -> void:
+	_background = get_node_or_null("TableBackground") as TextureRect
+	_boxes_root = get_node_or_null("LayoutBoxes") as Control
+	_help = get_node_or_null("HelpOverlay") as Label
+	_boxes.clear()
+	if _background:
+		_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if _boxes_root == null:
+		push_error("LayoutCalibrator requires a LayoutBoxes node in the scene.")
+		return
+	_boxes_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for id in Schema.TARGET_IDS:
-		var box := PanelContainer.new()
-		box.name = id
+		var box := _boxes_root.get_node_or_null(String(id)) as Control
+		if box == null:
+			push_error("LayoutCalibrator missing layout box node: %s" % id)
+			continue
 		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		box.add_theme_stylebox_override("panel", _box_style(false))
-		var label := Label.new()
-		label.text = id
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		label.add_theme_font_size_override("font_size", 18)
-		label.add_theme_color_override("font_color", Color.WHITE)
-		box.add_child(label)
-		_boxes_root.add_child(box)
 		_boxes[id] = box
-
-func _build_help() -> void:
-	_help = Label.new()
-	_help.name = "HelpOverlay"
-	_help.position = Vector2(24, 24)
-	_help.size = Vector2(560, 180)
-	_help.add_theme_font_size_override("font_size", 16)
-	_help.add_theme_color_override("font_color", Color.WHITE)
-	add_child(_help)
 	_update_help()
 
-func _load_layout() -> void:
-	_items = Schema.merged_items_with_defaults(Schema.load_user_config())
-	_apply_items_to_boxes()
+func _read_items_from_boxes() -> void:
+	_items = Schema.DEFAULT_ITEMS.duplicate(true)
+	for id in _boxes.keys():
+		var box: Control = _boxes[id]
+		_items[id] = Schema.rect_to_dict(Rect2(box.position, box.size))
 
 func _layout() -> void:
 	if _background:
 		_background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	if _boxes_root == null:
 		return
-	_scale = minf(size.x / Schema.DESIGN_SIZE.x, size.y / Schema.DESIGN_SIZE.y)
-	_origin = (size - Schema.DESIGN_SIZE * _scale) * 0.5
+	var viewport_size := size
+	if viewport_size.x <= 1.0 or viewport_size.y <= 1.0:
+		viewport_size = get_viewport_rect().size
+	_scale = minf(viewport_size.x / Schema.DESIGN_SIZE.x, viewport_size.y / Schema.DESIGN_SIZE.y)
+	_origin = (viewport_size - Schema.DESIGN_SIZE * _scale) * 0.5
 	_boxes_root.position = _origin
 	_boxes_root.size = Schema.DESIGN_SIZE * _scale
 	_apply_items_to_boxes()
@@ -146,9 +129,15 @@ func _apply_items_to_boxes() -> void:
 	_update_help()
 
 func _save_layout() -> void:
+	_sync_items_from_boxes()
 	var err := Schema.save_user_config(_items)
 	print("[LayoutCalibrator] Saved layout to %s, err=%s" % [Schema.USER_CONFIG_PATH, err])
 	_update_help("Saved to %s" % Schema.USER_CONFIG_PATH)
+
+func _sync_items_from_boxes() -> void:
+	for id in _boxes.keys():
+		var box: Control = _boxes[id]
+		_items[id] = Schema.rect_to_dict(Rect2(box.position / max(_scale, 0.0001), box.size / max(_scale, 0.0001)))
 
 func _target_at(screen_pos: Vector2) -> String:
 	var ids := Schema.TARGET_IDS.duplicate()
@@ -186,14 +175,6 @@ func _update_help(extra: String = "") -> void:
 	if _help == null:
 		return
 	_help.text = "POKER TABLE LAYOUT CALIBRATOR\nClick box: select\nDrag: move\nDrag corner / Shift+Drag: resize\nArrow keys: nudge\nShift+Arrow: large nudge\nTab: cycle\nCtrl+S: save user layout\nCtrl+R: reset defaults\nSelected: %s%s" % [_selected_id, "\n" + extra if extra != "" else ""]
-
-func _load_texture(path: String) -> Texture2D:
-	var image := Image.new()
-	var error := image.load(ProjectSettings.globalize_path(path))
-	if error != OK:
-		push_error("Failed to load calibrator background: %s" % path)
-		return null
-	return ImageTexture.create_from_image(image)
 
 func _handle_capture_args() -> void:
 	var args := OS.get_cmdline_args()

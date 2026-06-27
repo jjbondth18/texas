@@ -6,6 +6,8 @@ Open this scene to edit the large poker table layout boxes without cluttering th
 res://scenes/dev/poker_table_layout_calibrator.tscn
 ```
 
+The scene is editor-visible. `TableBackground`, `LayoutBoxes`, each named layout box, and `HelpOverlay` are real nodes in the `.tscn`, so they appear in the scene tree and 2D editor without pressing Play.
+
 ## Controls
 
 - click a box: select
@@ -27,6 +29,8 @@ user://poker_table_layout_config.json
 ```
 
 The real Poker Table consumes this JSON when it opens.
+
+Saving reads the current rects from the real `LayoutBoxes` child nodes. If you move or resize boxes in the Godot editor, run the calibrator scene and press `Ctrl + S` to write those editor-authored rects to the user JSON.
 
 ## Runtime Validation
 

@@ -1,12 +1,401 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/dev/poker_table_layout_calibrator.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/poker_table/backgrounds/table_neon_v1.png" id="2"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_box"]
+bg_color = Color(0.05, 0.18, 0.34, 0.34)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.35, 0.9, 1, 0.9)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
 
 [node name="PokerTableLayoutCalibrator" type="Control"]
 layout_mode = 3
+offset_right = 2560.0
+offset_bottom = 1000.0
+script = ExtResource("1")
+
+[node name="TableBackground" type="TextureRect" parent="."]
+layout_mode = 0
+offset_right = 2560.0
+offset_bottom = 1000.0
+mouse_filter = 2
+texture = ExtResource("2")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="LayoutBoxes" type="Control" parent="."]
+layout_mode = 0
+offset_right = 2560.0
+offset_bottom = 1000.0
+mouse_filter = 2
+
+[node name="seat_1" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_left = 1580.0
+offset_top = 250.0
+offset_right = 1760.0
+offset_bottom = 340.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/seat_1"]
+layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("1")
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "seat_1"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="seat_2" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_left = 1880.0
+offset_top = 340.0
+offset_right = 2060.0
+offset_bottom = 430.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/seat_2"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "seat_2"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="seat_3" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_left = 2030.0
+offset_top = 520.0
+offset_right = 2210.0
+offset_bottom = 610.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/seat_3"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "seat_3"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="seat_4" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_left = 1760.0
+offset_top = 700.0
+offset_right = 1940.0
+offset_bottom = 790.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/seat_4"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "seat_4"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="seat_5_local" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_left = 1180.0
+offset_top = 710.0
+offset_right = 1400.0
+offset_bottom = 810.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/seat_5_local"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "seat_5_local"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="seat_6" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_left = 720.0
+offset_top = 700.0
+offset_right = 900.0
+offset_bottom = 790.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/seat_6"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "seat_6"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="seat_7" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_left = 410.0
+offset_top = 520.0
+offset_right = 590.0
+offset_bottom = 610.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/seat_7"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "seat_7"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="seat_8" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_left = 560.0
+offset_top = 340.0
+offset_right = 740.0
+offset_bottom = 430.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/seat_8"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "seat_8"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="seat_9" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_left = 900.0
+offset_top = 250.0
+offset_right = 1080.0
+offset_bottom = 340.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/seat_9"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "seat_9"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="left_panel" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_top = 160.0
+offset_right = 320.0
+offset_bottom = 920.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/left_panel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "left_panel"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="right_panel" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_left = 2240.0
+offset_top = 160.0
+offset_right = 2560.0
+offset_bottom = 920.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/right_panel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "right_panel"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="bottom_hud" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_left = 280.0
+offset_top = 760.0
+offset_right = 2160.0
+offset_bottom = 950.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/bottom_hud"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "bottom_hud"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="pot_display" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_left = 1100.0
+offset_top = 360.0
+offset_right = 1460.0
+offset_bottom = 450.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/pot_display"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "pot_display"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="community_board" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_left = 930.0
+offset_top = 455.0
+offset_right = 1630.0
+offset_bottom = 585.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/community_board"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "community_board"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="dealer_indicator" type="Panel" parent="LayoutBoxes"]
+layout_mode = 0
+offset_left = 1200.0
+offset_top = 220.0
+offset_right = 1360.0
+offset_bottom = 270.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Label" type="Label" parent="LayoutBoxes/dealer_indicator"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 18
+text = "dealer_indicator"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HelpOverlay" type="Label" parent="."]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 584.0
+offset_bottom = 224.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "POKER TABLE LAYOUT CALIBRATOR
+Click box: select
+Drag: move
+Drag corner / Shift+Drag: resize
+Arrow keys: nudge
+Shift+Arrow: large nudge
+Tab: cycle
+Ctrl+S: save user layout
+Ctrl+R: reset defaults
+Selected: seat_5_local"
