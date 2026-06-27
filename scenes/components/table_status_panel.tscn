@@ -3,6 +3,6 @@
 [ext_resource type="Script" path="res://scripts/components/table_status_panel.gd" id="1"]
 
 [node name="TableStatusPanel" type="PanelContainer"]
-custom_minimum_size = Vector2(320, 760)
+custom_minimum_size = Vector2(320, 520)
 layout_mode = 3
 script = ExtResource("1")

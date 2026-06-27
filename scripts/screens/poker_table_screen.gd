@@ -23,9 +23,11 @@ var snapshot := {}
 @onready var _dealer_label: Label = $TableUIRoot/TableLayer/DealerIndicator
 @onready var _pot_display: Control = $TableUIRoot/TableLayer/PotDisplay
 @onready var _community_board: Control = $TableUIRoot/TableLayer/CommunityBoard
-@onready var _info_panel: PanelContainer = $TableUIRoot/LeftPanel/ChatLogPanel
+@onready var _chat_panel: TableInfoPanel = $TableUIRoot/RightPanel/ChatPanel
+@onready var _log_panel: TableInfoPanel = $TableUIRoot/RightPanel/LogPanel
 @onready var _room_info_panel: PanelContainer = $TableUIRoot/LeftPanel/TableInfoPanel
-@onready var _status_panel: PanelContainer = $TableUIRoot/RightPanel/PlayerStatusList
+@onready var _status_panel: PanelContainer = $TableUIRoot/LeftPanel/PlayerStatusList
+@onready var _exit_button: Button = $TableUIRoot/RightPanel/ExitTableButton
 @onready var _action_bar: ActionBar = $TableUIRoot/BottomHud
 
 var _seats := {}
@@ -90,8 +92,18 @@ func _build_scene() -> void:
 	_dealer_label.add_theme_color_override("font_color", Color(1, 0.86, 0.45))
 	
 	# Connect signals
-	_status_panel.exit_table_requested.connect(_return_home)
+	_exit_button.pressed.connect(_return_home)
 	_action_bar.action_pressed.connect(_on_action_pressed)
+	
+	# Premium neon styling for exit button
+	var btn_normal := HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.60), Color(1.0, 0.0, 0.5, 0.80), 18)
+	var btn_hover := HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.80), Color(1.0, 0.0, 0.5, 1.0), 18)
+	_exit_button.add_theme_stylebox_override("normal", btn_normal)
+	_exit_button.add_theme_stylebox_override("hover", btn_hover)
+	_exit_button.add_theme_stylebox_override("pressed", btn_hover)
+	_exit_button.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
+	_exit_button.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
+	_exit_button.add_theme_font_size_override("font_size", 14)
 	
 	# Wire up variables from _action_bar to keep existing logic working without change
 	_chips_label_left = _action_bar.chips_label
@@ -187,7 +199,7 @@ func _refresh() -> void:
 		pot_val = int(pot_data)
 		
 	_action_bar.set_actions(Array(snapshot.get("available_actions", [])), pot_val)
-	_info_panel.set_info(Array(snapshot.get("hand_history", [])), Array(snapshot.get("system_messages", [])))
+	_log_panel.set_info(Array(snapshot.get("hand_history", [])), Array(snapshot.get("system_messages", [])))
 	if _room_info_panel:
 		_room_info_panel.set_room_info(
 			snapshot.get("table_id", "mock_table_001"),

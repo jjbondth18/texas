@@ -83,7 +83,7 @@ offset_right = 320.0
 offset_bottom = 220.0
 script = ExtResource("5")
 
-[node name="ChatLogPanel" parent="TableUIRoot/LeftPanel" instance=ExtResource("6")]
+[node name="PlayerStatusList" parent="TableUIRoot/LeftPanel" instance=ExtResource("7")]
 layout_mode = 0
 offset_top = 240.0
 offset_bottom = 760.0
@@ -117,10 +117,25 @@ text = "RIGHT PANEL"
 theme_override_colors/font_color = Color(1, 0, 1, 0.8)
 theme_override_font_sizes/font_size = 12
 
-[node name="PlayerStatusList" parent="TableUIRoot/RightPanel" instance=ExtResource("7")]
+[node name="ChatPanel" parent="TableUIRoot/RightPanel" instance=ExtResource("6")]
 layout_mode = 0
 offset_right = 320.0
+offset_bottom = 320.0
+
+[node name="LogPanel" parent="TableUIRoot/RightPanel" instance=ExtResource("6")]
+layout_mode = 0
+offset_top = 340.0
+offset_bottom = 700.0
+panel_mode = "Log"
+
+[node name="ExitTableButton" type="Button" parent="TableUIRoot/RightPanel"]
+layout_mode = 0
+offset_top = 718.0
+offset_right = 320.0
 offset_bottom = 760.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+text = "EXIT TABLE"
 
 [node name="TableLayer" type="Control" parent="TableUIRoot"]
 layout_mode = 3

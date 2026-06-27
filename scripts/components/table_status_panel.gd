@@ -1,10 +1,7 @@
 extends PanelContainer
 class_name TableStatusPanel
 
-signal exit_table_requested
-
 var _rows_container: VBoxContainer
-var _exit_button: Button
 var _pills := {}
 
 func _ready() -> void:
@@ -57,25 +54,7 @@ func _ready() -> void:
 	_rows_container.add_theme_constant_override("separation", 12) # Fixed separation 12
 	scroll_margin.add_child(_rows_container)
 	
-	_exit_button = Button.new()
-	_exit_button.text = "EXIT TABLE"
-	_exit_button.custom_minimum_size = Vector2(0, 42)
-	_exit_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	
-	# Premium neon styling for exit button
-	var btn_normal := HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.60), Color(1.0, 0.0, 0.5, 0.80), 18)
-	var btn_hover := HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.80), Color(1.0, 0.0, 0.5, 1.0), 18)
-	_exit_button.add_theme_stylebox_override("normal", btn_normal)
-	_exit_button.add_theme_stylebox_override("hover", btn_hover)
-	_exit_button.add_theme_stylebox_override("pressed", btn_hover)
-	_exit_button.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
-	_exit_button.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
-	_exit_button.add_theme_font_size_override("font_size", 14)
-	
-	_exit_button.pressed.connect(func() -> void:
-		exit_table_requested.emit()
-	)
-	vbox.add_child(_exit_button)
+
 
 func set_status(snapshot: Dictionary) -> void:
 	if _rows_container == null:
