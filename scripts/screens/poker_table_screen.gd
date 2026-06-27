@@ -39,6 +39,7 @@ var _layout_editor
 var _layout_targets_registered := false
 
 func _ready() -> void:
+	_hide_editor_guides(self)
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	
 	var args := _all_cmdline_args()
@@ -321,3 +322,10 @@ func _format_chips(value: int) -> String:
 		result = s[i] + result
 		count += 1
 	return result
+
+func _hide_editor_guides(node: Node) -> void:
+	if node.name.begins_with("Guide"):
+		if node is Control:
+			node.visible = false
+	for child in node.get_children():
+		_hide_editor_guides(child)

@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scripts/screens/poker_table_screen.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/components/poker_seat.tscn" id="2"]
@@ -9,6 +9,7 @@
 [ext_resource type="PackedScene" path="res://scenes/components/table_status_panel.tscn" id="7"]
 [ext_resource type="Script" path="res://scripts/components/action_bar.gd" id="8"]
 [ext_resource type="PackedScene" path="res://scenes/components/card_view.tscn" id="9"]
+[ext_resource type="Texture2D" path="res://assets/poker_table/backgrounds/table_neon_v1.png" id="10"]
 
 [node name="PokerTableScreen" type="Control"]
 layout_mode = 3
@@ -36,6 +37,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+texture = ExtResource("10")
 expand_mode = 1
 stretch_mode = 6
 
@@ -51,6 +53,27 @@ layout_mode = 3
 anchors_preset = 0
 offset_right = 320.0
 offset_bottom = 1000.0
+
+[node name="GuideLeftPanelBorder" type="ReferenceRect" parent="TableUIRoot/LeftPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(0, 0.5, 1, 0.7)
+border_width = 2.0
+editor_only = true
+
+[node name="GuideLeftPanelLabel" type="Label" parent="TableUIRoot/LeftPanel"]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 154.0
+offset_bottom = 27.0
+text = "LEFT PANEL"
+theme_override_colors/font_color = Color(0, 0.5, 1, 0.8)
+theme_override_font_sizes/font_size = 12
 
 [node name="TableInfoPanel" type="PanelContainer" parent="TableUIRoot/LeftPanel"]
 layout_mode = 0
@@ -70,6 +93,27 @@ offset_left = 2270.0
 offset_right = 2560.0
 offset_bottom = 1000.0
 
+[node name="GuideRightPanelBorder" type="ReferenceRect" parent="TableUIRoot/RightPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(1, 0, 1, 0.7)
+border_width = 2.0
+editor_only = true
+
+[node name="GuideRightPanelLabel" type="Label" parent="TableUIRoot/RightPanel"]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 154.0
+offset_bottom = 27.0
+text = "RIGHT PANEL"
+theme_override_colors/font_color = Color(1, 0, 1, 0.8)
+theme_override_font_sizes/font_size = 12
+
 [node name="PlayerStatusList" parent="TableUIRoot/RightPanel" instance=ExtResource("7")]
 layout_mode = 0
 offset_right = 290.0
@@ -82,12 +126,54 @@ offset_right = 2560.0
 offset_bottom = 1000.0
 mouse_filter = 2
 
+[node name="GuideTableLayerBorder" type="ReferenceRect" parent="TableUIRoot/TableLayer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(0.2, 0.6, 1, 0.4)
+border_width = 1.0
+editor_only = true
+
+[node name="GuideTableLayerLabel" type="Label" parent="TableUIRoot/TableLayer"]
+layout_mode = 0
+offset_left = 340.0
+offset_top = 4.0
+offset_right = 490.0
+offset_bottom = 27.0
+text = "TABLE LAYER"
+theme_override_colors/font_color = Color(0.2, 0.6, 1, 0.5)
+theme_override_font_sizes/font_size = 12
+
 [node name="SeatLayer" type="Control" parent="TableUIRoot/TableLayer"]
 layout_mode = 3
 anchors_preset = 0
 offset_right = 2560.0
 offset_bottom = 1000.0
 mouse_filter = 2
+
+[node name="GuideSeatLayerBorder" type="ReferenceRect" parent="TableUIRoot/TableLayer/SeatLayer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(0, 1, 1, 0.5)
+border_width = 1.5
+editor_only = true
+
+[node name="GuideSeatLayerLabel" type="Label" parent="TableUIRoot/TableLayer/SeatLayer"]
+layout_mode = 0
+offset_left = 340.0
+offset_top = 24.0
+offset_right = 490.0
+offset_bottom = 47.0
+text = "SEAT LAYER"
+theme_override_colors/font_color = Color(0, 1, 1, 0.6)
+theme_override_font_sizes/font_size = 12
 
 [node name="Seat1Panel" parent="TableUIRoot/TableLayer/SeatLayer" instance=ExtResource("2")]
 layout_mode = 0
@@ -96,12 +182,32 @@ offset_top = 135.0
 offset_right = 1690.0
 offset_bottom = 245.0
 
+[node name="GuideSeat1Label" type="Label" parent="TableUIRoot/TableLayer/SeatLayer/Seat1Panel"]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 140.0
+offset_bottom = 3.0
+text = "Seat 1"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
+
 [node name="Seat2Panel" parent="TableUIRoot/TableLayer/SeatLayer" instance=ExtResource("2")]
 layout_mode = 0
 offset_left = 1850.0
 offset_top = 255.0
 offset_right = 1990.0
 offset_bottom = 365.0
+
+[node name="GuideSeat2Label" type="Label" parent="TableUIRoot/TableLayer/SeatLayer/Seat2Panel"]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 140.0
+offset_bottom = 3.0
+text = "Seat 2"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
 
 [node name="Seat3Panel" parent="TableUIRoot/TableLayer/SeatLayer" instance=ExtResource("2")]
 layout_mode = 0
@@ -110,12 +216,32 @@ offset_top = 465.0
 offset_right = 2220.0
 offset_bottom = 575.0
 
+[node name="GuideSeat3Label" type="Label" parent="TableUIRoot/TableLayer/SeatLayer/Seat3Panel"]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 140.0
+offset_bottom = 3.0
+text = "Seat 3"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
+
 [node name="Seat4Panel" parent="TableUIRoot/TableLayer/SeatLayer" instance=ExtResource("2")]
 layout_mode = 0
 offset_left = 1810.0
 offset_top = 695.0
 offset_right = 1950.0
 offset_bottom = 805.0
+
+[node name="GuideSeat4Label" type="Label" parent="TableUIRoot/TableLayer/SeatLayer/Seat4Panel"]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 140.0
+offset_bottom = 3.0
+text = "Seat 4"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
 
 [node name="Seat5Panel" parent="TableUIRoot/TableLayer/SeatLayer" instance=ExtResource("2")]
 layout_mode = 0
@@ -124,12 +250,32 @@ offset_top = 705.0
 offset_right = 1350.0
 offset_bottom = 815.0
 
+[node name="GuideSeat5Label" type="Label" parent="TableUIRoot/TableLayer/SeatLayer/Seat5Panel"]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 140.0
+offset_bottom = 3.0
+text = "Seat 5"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
+
 [node name="Seat6Panel" parent="TableUIRoot/TableLayer/SeatLayer" instance=ExtResource("2")]
 layout_mode = 0
 offset_left = 610.0
 offset_top = 695.0
 offset_right = 750.0
 offset_bottom = 805.0
+
+[node name="GuideSeat6Label" type="Label" parent="TableUIRoot/TableLayer/SeatLayer/Seat6Panel"]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 140.0
+offset_bottom = 3.0
+text = "Seat 6"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
 
 [node name="Seat7Panel" parent="TableUIRoot/TableLayer/SeatLayer" instance=ExtResource("2")]
 layout_mode = 0
@@ -138,12 +284,32 @@ offset_top = 465.0
 offset_right = 480.0
 offset_bottom = 575.0
 
+[node name="GuideSeat7Label" type="Label" parent="TableUIRoot/TableLayer/SeatLayer/Seat7Panel"]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 140.0
+offset_bottom = 3.0
+text = "Seat 7"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
+
 [node name="Seat8Panel" parent="TableUIRoot/TableLayer/SeatLayer" instance=ExtResource("2")]
 layout_mode = 0
 offset_left = 570.0
 offset_top = 255.0
 offset_right = 710.0
 offset_bottom = 365.0
+
+[node name="GuideSeat8Label" type="Label" parent="TableUIRoot/TableLayer/SeatLayer/Seat8Panel"]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 140.0
+offset_bottom = 3.0
+text = "Seat 8"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
 
 [node name="Seat9Panel" parent="TableUIRoot/TableLayer/SeatLayer" instance=ExtResource("2")]
 layout_mode = 0
@@ -152,6 +318,16 @@ offset_top = 135.0
 offset_right = 1010.0
 offset_bottom = 245.0
 
+[node name="GuideSeat9Label" type="Label" parent="TableUIRoot/TableLayer/SeatLayer/Seat9Panel"]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 140.0
+offset_bottom = 3.0
+text = "Seat 9"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
+
 [node name="CenterBoardPanel" type="Control" parent="TableUIRoot/TableLayer"]
 layout_mode = 3
 anchors_preset = 0
@@ -159,6 +335,27 @@ offset_left = 800.0
 offset_top = 50.0
 offset_right = 1760.0
 offset_bottom = 600.0
+
+[node name="GuideCenterBoardPanelBorder" type="ReferenceRect" parent="TableUIRoot/TableLayer/CenterBoardPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(1, 1, 0, 0.7)
+border_width = 2.0
+editor_only = true
+
+[node name="GuideCenterBoardPanelLabel" type="Label" parent="TableUIRoot/TableLayer/CenterBoardPanel"]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 154.0
+offset_bottom = 27.0
+text = "CENTER BOARD"
+theme_override_colors/font_color = Color(1, 1, 0, 0.8)
+theme_override_font_sizes/font_size = 12
 
 [node name="DealerIndicator" type="Label" parent="TableUIRoot/TableLayer/CenterBoardPanel"]
 layout_mode = 0
@@ -176,12 +373,54 @@ offset_top = 280.0
 offset_right = 630.0
 offset_bottom = 362.0
 
+[node name="GuidePotPanelBorder" type="ReferenceRect" parent="TableUIRoot/TableLayer/CenterBoardPanel/PotPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(1, 0.84, 0, 0.7)
+border_width = 1.5
+editor_only = true
+
+[node name="GuidePotPanelLabel" type="Label" parent="TableUIRoot/TableLayer/CenterBoardPanel/PotPanel"]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 100.0
+offset_bottom = 27.0
+text = "POT PANEL"
+theme_override_colors/font_color = Color(1, 0.84, 0, 0.8)
+theme_override_font_sizes/font_size = 10
+
 [node name="CommunityCardsPanel" parent="TableUIRoot/TableLayer/CenterBoardPanel" instance=ExtResource("4")]
 layout_mode = 0
 offset_left = 80.0
 offset_top = 380.0
 offset_right = 880.0
 offset_bottom = 520.0
+
+[node name="GuideCommunityCardsPanelBorder" type="ReferenceRect" parent="TableUIRoot/TableLayer/CenterBoardPanel/CommunityCardsPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(0, 0.5, 0.5, 0.7)
+border_width = 1.5
+editor_only = true
+
+[node name="GuideCommunityCardsPanelLabel" type="Label" parent="TableUIRoot/TableLayer/CenterBoardPanel/CommunityCardsPanel"]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 160.0
+offset_bottom = 27.0
+text = "COMMUNITY CARDS"
+theme_override_colors/font_color = Color(0, 0.5, 0.5, 0.8)
+theme_override_font_sizes/font_size = 10
 
 [node name="BottomPlayerPanel" type="Control" parent="TableUIRoot"]
 layout_mode = 3
@@ -192,10 +431,52 @@ offset_right = 2202.0
 offset_bottom = 1000.0
 script = ExtResource("8")
 
+[node name="GuideBottomPlayerPanelBorder" type="ReferenceRect" parent="TableUIRoot/BottomPlayerPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(1, 0.4, 0.7, 0.7)
+border_width = 2.0
+editor_only = true
+
+[node name="GuideBottomPlayerPanelLabel" type="Label" parent="TableUIRoot/BottomPlayerPanel"]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 200.0
+offset_bottom = 27.0
+text = "BOTTOM PLAYER PANEL"
+theme_override_colors/font_color = Color(1, 0.4, 0.7, 0.8)
+theme_override_font_sizes/font_size = 12
+
 [node name="PlayerInfoPanel" type="Panel" parent="TableUIRoot/BottomPlayerPanel"]
 layout_mode = 0
 offset_right = 450.0
 offset_bottom = 180.0
+
+[node name="GuidePlayerInfoPanelBorder" type="ReferenceRect" parent="TableUIRoot/BottomPlayerPanel/PlayerInfoPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(0.2, 0.8, 0.2, 0.6)
+border_width = 1.5
+editor_only = true
+
+[node name="GuidePlayerInfoPanelLabel" type="Label" parent="TableUIRoot/BottomPlayerPanel/PlayerInfoPanel"]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 150.0
+offset_bottom = 27.0
+text = "PLAYER INFO"
+theme_override_colors/font_color = Color(0.2, 0.8, 0.2, 0.7)
+theme_override_font_sizes/font_size = 10
 
 [node name="AvatarPanel" type="Panel" parent="TableUIRoot/BottomPlayerPanel/PlayerInfoPanel"]
 clip_children = 2
@@ -239,6 +520,27 @@ offset_left = 466.0
 offset_right = 966.0
 offset_bottom = 180.0
 
+[node name="GuideHoleCardsPanelBorder" type="ReferenceRect" parent="TableUIRoot/BottomPlayerPanel/HoleCardsPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(1, 0.5, 0, 0.6)
+border_width = 1.5
+editor_only = true
+
+[node name="GuideHoleCardsPanelLabel" type="Label" parent="TableUIRoot/BottomPlayerPanel/HoleCardsPanel"]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 150.0
+offset_bottom = 27.0
+text = "HOLE CARDS"
+theme_override_colors/font_color = Color(1, 0.5, 0, 0.7)
+theme_override_font_sizes/font_size = 10
+
 [node name="TurnTimer" type="Label" parent="TableUIRoot/BottomPlayerPanel/HoleCardsPanel"]
 layout_mode = 0
 offset_left = 10.0
@@ -270,6 +572,27 @@ layout_mode = 0
 offset_left = 982.0
 offset_right = 1882.0
 offset_bottom = 180.0
+
+[node name="GuideActionPanelBorder" type="ReferenceRect" parent="TableUIRoot/BottomPlayerPanel/ActionPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(1, 0, 0.5, 0.6)
+border_width = 1.5
+editor_only = true
+
+[node name="GuideActionPanelLabel" type="Label" parent="TableUIRoot/BottomPlayerPanel/ActionPanel"]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 150.0
+offset_bottom = 27.0
+text = "ACTION PANEL"
+theme_override_colors/font_color = Color(1, 0, 0.5, 0.7)
+theme_override_font_sizes/font_size = 10
 
 [node name="MainButtons" type="Control" parent="TableUIRoot/BottomPlayerPanel/ActionPanel"]
 layout_mode = 0
