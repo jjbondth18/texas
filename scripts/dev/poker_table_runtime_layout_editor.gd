@@ -76,20 +76,20 @@ func _gui_input(event: InputEvent) -> void:
 				_dragging = true
 				_resizing = event.shift_pressed
 				_drag_start_mouse = event.position
-				_drag_start_rect = _node_to_design_rect(targets[selected_id])
+				_drag_start_rect = targets[selected_id].get_global_rect()
 				accept_event()
 		else:
 			_dragging = false
 			_resizing = false
 			accept_event()
 	elif event is InputEventMouseMotion and _dragging and selected_id != "":
-		var delta: Vector2 = (event.position - _drag_start_mouse) / content_scale
+		var delta: Vector2 = event.position - _drag_start_mouse
 		var rect := _drag_start_rect
 		if _resizing:
 			rect.size = Vector2(max(20.0, rect.size.x + delta.x), max(20.0, rect.size.y + delta.y))
 		else:
 			rect.position += delta
-		_apply_design_rect(targets[selected_id], rect)
+		_set_control_global_rect(targets[selected_id], rect)
 		queue_redraw()
 		accept_event()
 
@@ -159,9 +159,15 @@ func _target_at(point: Vector2) -> String:
 	var ids := targets.keys()
 	ids.reverse()
 	for id in ids:
-		if _design_to_overlay_rect(_node_to_design_rect(targets[id])).has_point(point):
+		if _control_contains_global_point(targets[id], point):
 			return String(id)
 	return ""
+
+func _global_mouse_to_control_local(target: Control, global_mouse_pos: Vector2) -> Vector2:
+	return global_mouse_pos - target.get_global_rect().position
+
+func _control_contains_global_point(target: Control, global_mouse_pos: Vector2) -> bool:
+	return target.get_global_rect().has_point(global_mouse_pos)
 
 func _node_to_design_rect(node: Control) -> Rect2:
 	var global := node.get_global_rect()
@@ -170,11 +176,15 @@ func _node_to_design_rect(node: Control) -> Rect2:
 func _apply_design_rect(node: Control, rect: Rect2) -> void:
 	var global_pos := content_origin + rect.position * content_scale
 	var global_size := rect.size * content_scale
-	if node.get_parent() is CanvasItem:
-		node.position = node.get_parent().to_local(global_pos)
+	_set_control_global_rect(node, Rect2(global_pos, global_size))
+
+func _set_control_global_rect(target: Control, global_rect: Rect2) -> void:
+	var parent_control := target.get_parent() as Control
+	if parent_control != null:
+		target.position = global_rect.position - parent_control.get_global_rect().position
 	else:
-		node.global_position = global_pos
-	node.size = global_size
+		target.position = global_rect.position
+	target.size = global_rect.size
 
 func _design_to_overlay_rect(rect: Rect2) -> Rect2:
 	return Rect2(content_origin + rect.position * content_scale, rect.size * content_scale)
