@@ -117,21 +117,24 @@ text = "RIGHT PANEL"
 
 [node name="ChatPanel" parent="TableUIRoot/RightPanel" unique_id=786283437 instance=ExtResource("6")]
 layout_mode = 0
+offset_left = -113.0
+offset_top = 590.0
 offset_right = 320.0
-offset_bottom = 320.0
+offset_bottom = 1047.0
 
 [node name="LogPanel" parent="TableUIRoot/RightPanel" unique_id=1286579126 instance=ExtResource("6")]
 layout_mode = 0
-offset_top = 340.0
+offset_top = -124.0
 offset_right = 320.0
-offset_bottom = 700.0
+offset_bottom = 581.0
 panel_mode = "Log"
 
 [node name="ExitTableButton" type="Button" parent="TableUIRoot/RightPanel" unique_id=550252906]
 layout_mode = 0
-offset_top = 718.0
-offset_right = 320.0
-offset_bottom = 760.0
+offset_left = -50.0
+offset_top = -279.0
+offset_right = 270.0
+offset_bottom = -210.0
 focus_mode = 0
 mouse_default_cursor_shape = 2
 text = "EXIT TABLE"
@@ -437,6 +440,7 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_right = -75.0
 grow_horizontal = 2
 grow_vertical = 2
 border_color = Color(1, 0.4, 0.7, 0.7)
@@ -569,7 +573,7 @@ offset_bottom = 120.0
 [node name="ActionPanel" type="Panel" parent="TableUIRoot/BottomHud" unique_id=1615088134]
 layout_mode = 0
 offset_left = 1139.0
-offset_right = 1889.0
+offset_right = 1795.0
 offset_bottom = 359.0
 
 [node name="GuideActionPanelBorder" type="ReferenceRect" parent="TableUIRoot/BottomHud/ActionPanel" unique_id=282737501]
@@ -600,34 +604,35 @@ offset_bottom = 190.0
 
 [node name="FoldButton" type="Button" parent="TableUIRoot/BottomHud/ActionPanel/MainButtons" unique_id=420419422]
 layout_mode = 0
-offset_top = 63.0
-offset_right = 120.0
-offset_bottom = 127.0
+offset_left = 19.0
+offset_top = 254.0
+offset_right = 139.0
+offset_bottom = 318.0
 focus_mode = 0
 text = "FOLD"
 
 [node name="CheckCallButton" type="Button" parent="TableUIRoot/BottomHud/ActionPanel/MainButtons" unique_id=368305405]
 layout_mode = 0
-offset_left = 130.0
-offset_top = 63.0
-offset_right = 250.0
-offset_bottom = 127.0
+offset_left = 161.0
+offset_top = 264.0
+offset_right = 281.0
+offset_bottom = 328.0
 focus_mode = 0
 text = "CHECK"
 
 [node name="BetRaiseButton" type="Button" parent="TableUIRoot/BottomHud/ActionPanel/MainButtons" unique_id=2111298782]
 layout_mode = 0
-offset_left = 260.0
-offset_top = 63.0
-offset_right = 380.0
-offset_bottom = 127.0
+offset_left = 12.0
+offset_top = 32.0
+offset_right = 236.0
+offset_bottom = 146.0
 focus_mode = 0
 text = "RAISE"
 
 [node name="RaiseControlPanel" type="Control" parent="TableUIRoot/BottomHud/ActionPanel" unique_id=999136130]
 anchors_preset = 0
-offset_left = 405.0
-offset_right = 749.0
+offset_left = 277.0
+offset_right = 718.0
 offset_bottom = 190.0
 
 [node name="MinusButton" type="Button" parent="TableUIRoot/BottomHud/ActionPanel/RaiseControlPanel" unique_id=1091996700]

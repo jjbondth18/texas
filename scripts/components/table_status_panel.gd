@@ -143,7 +143,7 @@ class PlayerRowPill extends PanelContainer:
 		player_data = data
 		is_left = left_side
 		custom_minimum_size = Vector2(220, 85) # Width 220px to fit inside scroll container with 40px left margin
-		size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		size_flags_horizontal = Control.SIZE_SHRINK_END if is_left else Control.SIZE_EXPAND_FILL
 		
 		style_box = StyleBoxFlat.new()
 		style_box.corner_detail = 8
@@ -162,6 +162,7 @@ class PlayerRowPill extends PanelContainer:
 		hbox.add_theme_constant_override("separation", 12)
 		hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		hbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hbox.alignment = BoxContainer.ALIGNMENT_END if is_left else BoxContainer.ALIGNMENT_BEGIN
 		add_child(hbox)
 		
 		# Circular Avatar Container
@@ -204,6 +205,7 @@ class PlayerRowPill extends PanelContainer:
 		name_label = Label.new()
 		name_label.add_theme_font_size_override("font_size", 13)
 		name_label.add_theme_color_override("font_color", Color.WHITE)
+		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if is_left else HORIZONTAL_ALIGNMENT_LEFT
 		name_label.clip_text = true
 		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -262,10 +264,12 @@ class PlayerRowPill extends PanelContainer:
 		chips_label = Label.new()
 		chips_label.add_theme_font_size_override("font_size", 14)
 		chips_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
+		chips_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if is_left else HORIZONTAL_ALIGNMENT_LEFT
 		text_vbox.add_child(chips_label)
 		
 		action_label = Label.new()
 		action_label.add_theme_font_size_override("font_size", 11)
+		action_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if is_left else HORIZONTAL_ALIGNMENT_LEFT
 		text_vbox.add_child(action_label)
 		
 		# Initial config
@@ -274,16 +278,19 @@ class PlayerRowPill extends PanelContainer:
 	func update_data(data: Dictionary, left_side: bool, force_snap: bool = false) -> void:
 		player_data = data
 		is_left = left_side
+		size_flags_horizontal = Control.SIZE_SHRINK_END if is_left else Control.SIZE_EXPAND_FILL
 		
 		# Dynamically ensure children order inside hbox matches side configuration
 		var hbox = get_child(0) as HBoxContainer
 		if hbox != null:
+			hbox.alignment = BoxContainer.ALIGNMENT_END if is_left else BoxContainer.ALIGNMENT_BEGIN
 			if is_left:
 				if hbox.get_child_count() >= 2 and hbox.get_child(0) == avatar_panel:
 					hbox.move_child(text_vbox, 0)
 			else:
 				if hbox.get_child_count() >= 2 and hbox.get_child(0) == text_vbox:
 					hbox.move_child(avatar_panel, 0)
+		_apply_text_alignment()
 		
 		var name_str := String(player_data.get("player_name", ""))
 		var chips := int(player_data.get("chips", 0))
@@ -344,7 +351,7 @@ class PlayerRowPill extends PanelContainer:
 				
 			if is_turn:
 				action_label.visible = false
-				target_x = 10.0 if is_left else -10.0 # Slide right 10px on left panel, slide left 10px on right panel
+				target_x = _active_offset()
 				target_bg = Color(0.22, 0.14, 0.45, 0.90)
 				target_border = Color(0.0, 1.0, 0.7, 0.9) # Turn: Neon Cyan/Green Outline
 				target_border_width = 1
@@ -411,10 +418,20 @@ class PlayerRowPill extends PanelContainer:
 		action_label.modulate.a = 1.0
 		
 		# Maintain position X alignment when not tweening
-		var target_x: float = -20.0 if _is_turn else 0.0
+		var target_x: float = _active_offset() if _is_turn else 0.0
 		if _tween == null or not _tween.is_valid() or not _tween.is_running():
 			if position.x != target_x:
 				position.x = target_x
+
+	func _apply_text_alignment() -> void:
+		var alignment := HORIZONTAL_ALIGNMENT_RIGHT if is_left else HORIZONTAL_ALIGNMENT_LEFT
+		name_label.horizontal_alignment = alignment
+		chips_label.horizontal_alignment = alignment
+		action_label.horizontal_alignment = alignment
+		dots_hbox.alignment = BoxContainer.ALIGNMENT_END if is_left else BoxContainer.ALIGNMENT_BEGIN
+
+	func _active_offset() -> float:
+		return 12.0 if is_left else -10.0
 
 	func _format_chips(value: int) -> String:
 		var s := str(value)

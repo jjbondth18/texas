@@ -210,33 +210,8 @@ func _refresh() -> void:
 	
 	var local := Dictionary(snapshot.get("local_player", {}))
 	
-	# Update local stats dynamically in the Left Compartment
 	if not local.is_empty():
-		var chips := int(local.get("chips", 24500))
-		_chips_label_left.text = "Chips: %s" % _format_chips(chips)
-		
-		# Session Profit/Loss:
-		var initial_chips := 20000
-		var profit := chips - initial_chips
-		if profit >= 0:
-			_profit_label_left.text = "+$%s" % _format_chips(profit)
-			_profit_label_left.add_theme_color_override("font_color", Color(0.2, 0.9, 0.3)) # Bright Green
-		else:
-			_profit_label_left.text = "-$%s" % _format_chips(abs(profit))
-			_profit_label_left.add_theme_color_override("font_color", Color(1.0, 0.2, 0.2)) # Neon Red
-			
-		# Win Rate estimation based on street phase
-		var phase = String(snapshot.get("phase", "preflop")).to_lower()
-		var win_rate_str := "54.2%"
-		if phase == "flop":
-			win_rate_str = "72.8%"
-		elif phase == "turn":
-			win_rate_str = "85.5%"
-		elif phase == "river":
-			win_rate_str = "94.1%"
-		elif phase == "showdown":
-			win_rate_str = "100.0%"
-		_winrate_label_left.text = "Win Rate: %s" % win_rate_str
+		_action_bar.set_local_player_info(local, String(snapshot.get("phase", "preflop")))
 		
 	var cards := Array(local.get("cards", []))
 	for i in range(_local_cards_root.get_child_count()):
