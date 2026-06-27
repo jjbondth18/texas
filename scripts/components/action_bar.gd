@@ -28,6 +28,7 @@ var _raise_action: Dictionary
 @onready var _raise_value_label: Label = $ActionPanel/RaiseControlPanel/RaiseValueLabel
 @onready var _avatar_rect: TextureRect = $PlayerInfoPanel/AvatarPanel/AvatarRect
 
+var _desk_surface: Panel
 var _player_name_label: Label
 var _you_badge: PanelContainer
 var _chips_caption_label: Label
@@ -62,14 +63,40 @@ func _ready() -> void:
 	_bold_font.font_weight = 700
 
 	_glass_shader = Shader.new()
-	_glass_shader.code = "shader_type canvas_item;\n\nuniform vec4 base_color : source_color = vec4(0.06, 0.03, 0.12, 0.88);\nuniform vec4 glow_color : source_color = vec4(1.0, 0.0, 0.55, 1.0);\nuniform float pulse_intensity : hint_range(0.0, 1.0) = 0.15;\nuniform float sweep_speed = 1.0;\nuniform float sweep_intensity = 0.08;\nuniform float noise_intensity = 0.015;\nuniform float breathing_brightness = 1.0;\n\nfloat rand(vec2 co) {\n    return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);\n}\n\nvoid fragment() {\n    vec2 uv = UV;\n    \n    // Layer 1: Base glass with diagonal gradient\n    float grad = clamp(1.0 - (uv.x + uv.y) * 0.5, 0.0, 1.0);\n    vec4 color = mix(base_color * 0.8, base_color * 1.4 + vec4(0.06, 0.04, 0.14, 0.08), grad);\n    color.rgb *= breathing_brightness;\n    \n    // Layer 2: Inner shadow / depth\n    float vignette = uv.x * (1.0 - uv.x) * uv.y * (1.0 - uv.y) * 16.0;\n    vignette = clamp(pow(vignette, 0.25), 0.0, 1.0);\n    color.rgb = mix(color.rgb * 0.35, color.rgb, vignette);\n    \n    // Layer 3: Edge glow (thin neon rim)\n    float dist_x = min(uv.x, 1.0 - uv.x);\n    float dist_y = min(uv.y, 1.0 - uv.y);\n    float min_dist = min(dist_x, dist_y);\n    float border = smoothstep(0.015, 0.0, min_dist);\n    \n    float pulse = 1.0 + sin(TIME * 2.0) * pulse_intensity;\n    vec4 edge_glow = glow_color * border * pulse;\n    color = mix(color, edge_glow, border);\n    \n    // Layer 4: Gradient sweep/drift (top to bottom sweep)\n    float sweep = sin(uv.y * 3.14159 - TIME * sweep_speed) * 0.5 + 0.5;\n    color.rgb += glow_color.rgb * sweep * sweep_intensity * vignette;\n    \n    // Layer 5: Noise shimmer overlay\n    float noise = rand(uv + vec2(TIME * 0.02)) * noise_intensity;\n    color.rgb += vec3(noise);\n    \n    COLOR = color;\n}"
+	_glass_shader.code = "shader_type canvas_item;\n\nuniform vec4 base_color : source_color = vec4(0.06, 0.03, 0.12, 0.88);\nuniform vec4 glow_color : source_color = vec4(1.0, 0.0, 0.55, 1.0);\nuniform float pulse_intensity : hint_range(0.0, 1.0) = 0.15;\nuniform float sweep_speed = 1.0;\nuniform float sweep_intensity = 0.08;\nuniform float noise_intensity = 0.015;\nuniform float breathing_brightness = 1.0;\nuniform float left_glow_mult = 0.9;\nuniform float center_glow_mult = 1.3;\nuniform float right_glow_mult = 0.8;\n\nfloat rand(vec2 co) {\n    return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);\n}\n\nvoid fragment() {\n    vec2 uv = UV;\n    \n    // Calculate regional glow multipliers\n    float glow_mult = left_glow_mult;\n    if (uv.x > 0.4418 && uv.x <= 0.6329) {\n        float t = (uv.x - 0.4418) / (0.6329 - 0.4418);\n        glow_mult = mix(left_glow_mult, center_glow_mult, smoothstep(0.0, 1.0, t));\n    } else if (uv.x > 0.6329) {\n        float t = (uv.x - 0.6329) / (1.0 - 0.6329);\n        glow_mult = mix(center_glow_mult, right_glow_mult, smoothstep(0.0, 1.0, t));\n    } else {\n        float t = uv.x / 0.4418;\n        glow_mult = mix(left_glow_mult * 0.7, left_glow_mult, smoothstep(0.0, 1.0, t));\n    }\n    \n    // Layer 1: Base glass with diagonal gradient\n    float grad = clamp(1.0 - (uv.x + uv.y) * 0.5, 0.0, 1.0);\n    vec4 color = mix(base_color * 0.8, base_color * 1.4 + vec4(0.06, 0.04, 0.14, 0.08), grad);\n    color.rgb *= breathing_brightness;\n    \n    // Layer 2: Inner shadow / depth\n    float vignette = uv.x * (1.0 - uv.x) * uv.y * (1.0 - uv.y) * 16.0;\n    vignette = clamp(pow(vignette, 0.25), 0.0, 1.0);\n    color.rgb = mix(color.rgb * 0.35, color.rgb, vignette);\n    \n    // Layer 3: Continuous outer glow rim\n    float dist_x = min(uv.x, 1.0 - uv.x);\n    float dist_y = min(uv.y, 1.0 - uv.y);\n    float min_dist = min(dist_x, dist_y);\n    float border = smoothstep(0.008, 0.0, min_dist);\n    \n    float pulse = 1.0 + sin(TIME * 2.0) * pulse_intensity;\n    vec4 edge_glow = glow_color * border * pulse * glow_mult;\n    color = mix(color, edge_glow, border);\n    \n    // Layer 4: Continuous gradient sweep/drift\n    float sweep = sin(uv.y * 3.14159 - TIME * sweep_speed) * 0.5 + 0.5;\n    color.rgb += glow_color.rgb * sweep * sweep_intensity * vignette * glow_mult;\n    \n    // Layer 5: Vertical Dividers drawn directly inside the desk surface shader\n    float div1 = smoothstep(0.0015, 0.0, abs(uv.x - 0.4418));\n    float div2 = smoothstep(0.0015, 0.0, abs(uv.x - 0.6329));\n    float div_vignette = uv.y * (1.0 - uv.y) * 4.0;\n    float divider_mask = max(div1, div2) * div_vignette;\n    color = mix(color, vec4(0.75, 0.45, 1.0, 0.15), divider_mask);\n    \n    // Layer 6: Noise shimmer overlay\n    float noise = rand(uv + vec2(TIME * 0.02)) * noise_intensity;\n    color.rgb += vec3(noise);\n    \n    COLOR = color;\n}"
 
 	_avatar_shader = Shader.new()
 	_avatar_shader.code = "shader_type canvas_item;\n\nuniform float time_speed = 2.0;\nuniform vec4 glow_color : source_color = vec4(1.0, 0.0, 0.55, 1.0);\nuniform float glow_intensify = 0.6;\n\nvoid fragment() {\n    vec2 uv = UV;\n    vec2 center = vec2(0.5, 0.5);\n    float dist = distance(uv, center);\n    \n    // Mask at dist = 0.41 (circle crop)\n    float mask = smoothstep(0.41, 0.40, dist);\n    \n    // Avatar texture mapping\n    vec4 tex_color = texture(TEXTURE, uv);\n    \n    // Metallic border (gold/magenta mix) at 0.40 < dist < 0.44\n    float border_mask = smoothstep(0.40, 0.41, dist) * smoothstep(0.44, 0.43, dist);\n    float angle = atan(uv.y - 0.5, uv.x - 0.5);\n    float metallic = sin(angle * 5.0 + TIME * 0.8) * 0.2 + 0.8;\n    vec4 metal_color = mix(vec4(1.0, 0.82, 0.25, 1.0), glow_color, sin(TIME * 0.5 + angle) * 0.5 + 0.5) * metallic;\n    \n    // Pulsing Outer Glow Ring at 0.43 < dist < 0.49\n    float pulse = 0.8 + sin(TIME * time_speed) * 0.2;\n    float glow_mask = smoothstep(0.42, 0.44, dist) * smoothstep(0.49, 0.45, dist) * pulse;\n    vec4 outer_glow = glow_color * 1.8 * glow_intensify;\n    \n    // Large soft radial bloom behind the badge\n    float bloom = smoothstep(0.5, 0.0, dist) * 0.22 * glow_intensify * (0.85 + sin(TIME * time_speed) * 0.15);\n    vec4 bloom_color = glow_color * bloom;\n    \n    vec4 final_color = vec4(0.0);\n    final_color = mix(final_color, bloom_color, 1.0 - mask);\n    final_color = mix(final_color, tex_color, mask);\n    final_color = mix(final_color, metal_color, border_mask);\n    final_color = mix(final_color, outer_glow, glow_mask * 0.7);\n    \n    final_color.a = max(mask, max(border_mask, max(glow_mask * 0.5, bloom * 0.8)));\n    COLOR = final_color;\n}"
 
-	$PlayerInfoPanel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.75, 0.10, 1.0, 0.88)))
-	$HoleCardsPanel.add_theme_stylebox_override("panel", _make_panel_style(Color(1.0, 0.0, 0.45, 0.82)))
-	$ActionPanel.add_theme_stylebox_override("panel", _make_panel_style(Color(0.30, 0.25, 1.0, 0.78)))
+	# Hide all guides inside BottomHud to keep UI extremely clean and visual-focused
+	for guide_path in [
+		"GuideBottomHudBorder",
+		"GuideBottomHudLabel",
+		"PlayerInfoPanel/GuidePlayerInfoPanelBorder",
+		"PlayerInfoPanel/GuidePlayerInfoPanelLabel",
+		"HoleCardsPanel/GuideHoleCardsPanelBorder",
+		"HoleCardsPanel/GuideHoleCardsPanelLabel",
+		"ActionPanel/GuideActionPanelBorder",
+		"ActionPanel/GuideActionPanelLabel"
+	]:
+		var guide_node := get_node_or_null(guide_path)
+		if guide_node != null:
+			guide_node.visible = false
+
+	# Setup the single continuous desk surface panel spanning left-to-right (0.0 to 1795.0 px)
+	_desk_surface = Panel.new()
+	_desk_surface.name = "DeskSurfacePanel"
+	_desk_surface.position = Vector2(0, 0)
+	_desk_surface.size = Vector2(1795, 368)
+	_desk_surface.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_desk_surface)
+	move_child(_desk_surface, 0)
+
+	# Override child panels style to StyleBoxEmpty to remove separate container boxes
+	var empty_style := StyleBoxEmpty.new()
+	$PlayerInfoPanel.add_theme_stylebox_override("panel", empty_style)
+	$HoleCardsPanel.add_theme_stylebox_override("panel", empty_style)
+	$ActionPanel.add_theme_stylebox_override("panel", empty_style)
 
 	_build_player_info_overlay()
 	$PlayerInfoPanel.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -241,10 +268,7 @@ func _build_player_info_overlay() -> void:
 	winrate_label.add_theme_font_size_override("font_size", 18)
 	winrate_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5))
 
-	_apply_glass_shader_to_panel($PlayerInfoPanel, Color(1.0, 0.0, 0.56))
-	_apply_glass_shader_to_panel(_buy_in_tile, Color(0.78, 0.45, 1.0))
-	_apply_glass_shader_to_panel(_session_tile, Color(0.0, 0.95, 0.55))
-	_apply_glass_shader_to_panel(_winrate_tile, Color(1.0, 0.0, 0.5))
+	_apply_glass_shader_to_panel(_desk_surface, Color(1.0, 0.0, 0.56))
 
 
 func _build_hand_panel() -> void:
@@ -477,12 +501,12 @@ func _make_info_tile(name_value: String, border_color: Color) -> Panel:
 
 func _apply_info_tile_style(panel: Panel, border_color: Color) -> void:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.035, 0.14, 0.74)
-	style.border_color = border_color
+	style.bg_color = Color(0.04, 0.02, 0.08, 0.35)
+	style.border_color = Color(border_color.r, border_color.g, border_color.b, 0.22)
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(9)
-	style.shadow_color = Color(border_color.r, border_color.g, border_color.b, 0.20)
-	style.shadow_size = 10
+	style.shadow_color = Color(0, 0, 0, 0)
+	style.shadow_size = 0
 	panel.add_theme_stylebox_override("panel", style)
 
 
@@ -499,12 +523,12 @@ func _make_avatar_badge_style() -> StyleBoxFlat:
 
 func _make_hand_base_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.12, 0.04, 0.18, 0.48)
-	style.border_color = Color(1.0, 0.0, 0.55, 0.28)
+	style.bg_color = Color(0.12, 0.04, 0.18, 0.25)
+	style.border_color = Color(1.0, 0.0, 0.55, 0.15)
 	style.set_border_width_all(1)
 	style.set_corner_radius_all(16)
-	style.shadow_color = Color(1.0, 0.0, 0.55, 0.34)
-	style.shadow_size = 26
+	style.shadow_color = Color(0, 0, 0, 0)
+	style.shadow_size = 0
 	return style
 
 
@@ -637,6 +661,10 @@ func _on_profile_hover_entered() -> void:
 	var mat = _avatar_rect.material as ShaderMaterial
 	if mat != null:
 		tween.tween_method(func(val): mat.set_shader_parameter("glow_intensify", val), 0.6, 1.2, 0.25)
+		
+	var ds_mat = _desk_surface.material as ShaderMaterial
+	if ds_mat != null:
+		tween.tween_method(func(val): ds_mat.set_shader_parameter("left_glow_mult", val), 0.9, 1.25, 0.25)
 
 
 func _on_profile_hover_exited() -> void:
@@ -647,6 +675,10 @@ func _on_profile_hover_exited() -> void:
 	var mat = _avatar_rect.material as ShaderMaterial
 	if mat != null:
 		tween.tween_method(func(val): mat.set_shader_parameter("glow_intensify", val), 1.2, 0.6, 0.25)
+		
+	var ds_mat = _desk_surface.material as ShaderMaterial
+	if ds_mat != null:
+		tween.tween_method(func(val): ds_mat.set_shader_parameter("left_glow_mult", val), 1.25, 0.9, 0.25)
 
 
 func _process(delta: float) -> void:
@@ -657,16 +689,9 @@ func _process(delta: float) -> void:
 	# 1. Subtle chips glow flicker (very subtle)
 	chips_label.modulate = Color(1.0, 1.0, 1.0, 0.95 + sin(_accum_time * 16.0) * randf_range(0.015, 0.03))
 	
-	# 2. Active panel breathing brightness on the PlayerInfoPanel shader material
-	var panel_mat = $PlayerInfoPanel.material as ShaderMaterial
-	if panel_mat != null:
-		var breathing = 0.88 + sin(_accum_time * 2.5) * 0.12
-		panel_mat.set_shader_parameter("breathing_brightness", breathing)
-		
-	# 3. Dynamic breathing brightness on the three sub-tiles
-	for tile in [_buy_in_tile, _session_tile, _winrate_tile]:
-		if tile != null:
-			var tile_mat = tile.material as ShaderMaterial
-			if tile_mat != null:
-				var breathing = 0.90 + sin(_accum_time * 2.5) * 0.10
-				tile_mat.set_shader_parameter("breathing_brightness", breathing)
+	# 2. Active panel breathing brightness on the desk surface shader material
+	if _desk_surface != null:
+		var ds_mat = _desk_surface.material as ShaderMaterial
+		if ds_mat != null:
+			var breathing = 0.88 + sin(_accum_time * 2.5) * 0.12
+			ds_mat.set_shader_parameter("breathing_brightness", breathing)
