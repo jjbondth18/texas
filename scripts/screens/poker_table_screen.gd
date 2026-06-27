@@ -12,6 +12,7 @@ const CardViewScene := preload("res://scenes/components/card_view.tscn")
 const ScreenNavigator := preload("res://scripts/app/screen_navigator.gd")
 const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
 const RoomInfoPanelScene := preload("res://scripts/components/table_room_info_panel.gd")
+const RuntimeLayoutEditor := preload("res://scripts/dev/poker_table_runtime_layout_editor.gd")
 
 const DESIGN_SIZE := Vector2(2560, 1000)
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
@@ -37,6 +38,8 @@ var _local_cards_root: HBoxContainer
 
 var _dealer_label: Label
 var _capture_output := ""
+var _layout_editor
+var _layout_targets_registered := false
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -50,6 +53,9 @@ func _ready() -> void:
 	_apply_capture_args()
 
 func _input(event: InputEvent) -> void:
+	if _layout_editor and _layout_editor.handle_key_event(event):
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_ESCAPE:
@@ -140,6 +146,7 @@ func _build_scene() -> void:
 	_local_cards_root = _action_bar.local_cards_root
 	
 	_layout()
+	_build_layout_editor()
 
 func _layout() -> void:
 	if _content_root == null:
@@ -186,10 +193,53 @@ func _layout() -> void:
 		var size_val := local_seat_size if visual_position == 5 else normal_seat_size
 		var rect := Rect2(pos - size_val * 0.5, size_val)
 		_set_design_rect(_seats[visual_position], rect, scale)
+	_update_layout_editor_space(scale)
 
 func _set_design_rect(node: Control, rect: Rect2, scale: float) -> void:
 	node.position = rect.position * scale
 	node.size = rect.size * scale
+
+func _build_layout_editor() -> void:
+	if _layout_editor != null:
+		return
+	_layout_editor = RuntimeLayoutEditor.new()
+	_layout_editor.name = "PokerTableRuntimeLayoutEditor"
+	add_child(_layout_editor)
+	_update_layout_editor_space(minf(size.x / DESIGN_SIZE.x, size.y / DESIGN_SIZE.y))
+	_register_layout_editor_targets()
+
+func _update_layout_editor_space(scale: float) -> void:
+	if _layout_editor == null:
+		return
+	_layout_editor.configure_layout_space(_content_root.global_position if _content_root else Vector2.ZERO, scale)
+	if _layout_targets_registered:
+		_layout_editor.apply_saved_layout()
+
+func _register_layout_editor_targets() -> void:
+	if _layout_editor == null:
+		return
+	var targets := {
+		"seat_1": _seats.get(1),
+		"seat_2": _seats.get(2),
+		"seat_3": _seats.get(3),
+		"seat_4": _seats.get(4),
+		"seat_5_local": _seats.get(5),
+		"seat_6": _seats.get(6),
+		"seat_7": _seats.get(7),
+		"seat_8": _seats.get(8),
+		"seat_9": _seats.get(9),
+		"left_info_panel": _info_panel,
+		"right_status_panel": _status_panel,
+		"local_player_info_panel": _room_info_panel,
+		"local_hole_cards": _local_cards_root,
+		"action_bar": _action_bar,
+		"community_board": _community_board,
+		"pot_display": _pot_display,
+		"dealer_indicator": _dealer_label,
+		"turn_timer": _timer_label,
+	}
+	_layout_editor.register_targets(targets)
+	_layout_targets_registered = true
 
 func _load_phase(phase: String) -> void:
 	snapshot = MockTableSimulation.get_phase_snapshot(phase)
