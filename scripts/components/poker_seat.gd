@@ -13,7 +13,7 @@ var _cards_root: HBoxContainer
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
-	custom_minimum_size = Vector2(140, 110)
+	custom_minimum_size = Vector2(120, 90)
 	
 	_name_label = _make_label(12, Color.WHITE)
 	_name_label.name = "PlayerName"
@@ -113,27 +113,28 @@ func _make_label(font_size: int, color: Color) -> Label:
 	return label
 
 func _layout_children() -> void:
-	_cards_root.position = Vector2(45, 2)
+	var center_x := size.x * 0.5
+	_cards_root.position = Vector2(center_x - 25, 2)
 	_cards_root.size = Vector2(50, 30)
 
 	_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_name_label.position = Vector2(10, 60)
+	_name_label.position = Vector2(center_x - 60, 60)
 	_name_label.size = Vector2(120, 18)
 
 	_chips_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_chips_label.position = Vector2(10, 78)
+	_chips_label.position = Vector2(center_x - 60, 78)
 	_chips_label.size = Vector2(120, 16)
 
 	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_status_label.position = Vector2(10, 42)
+	_status_label.position = Vector2(center_x - 60, 42)
 	_status_label.size = Vector2(120, 16)
 
 	_bet_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_bet_label.position = Vector2(10, 102)
+	_bet_label.position = Vector2(center_x - 60, 102)
 	_bet_label.size = Vector2(120, 16)
 
 	# Role badge centered on the top-right of the avatar
-	var avatar_center := Vector2(70, 32)
+	var avatar_center := Vector2(center_x, 32)
 	var badge_center := avatar_center + Vector2(16, 16)
 	_role_label.position = badge_center - Vector2(9, 9)
 	_role_label.size = Vector2(18, 18)
@@ -177,8 +178,9 @@ func _draw() -> void:
 		style.border_width_bottom = 2
 
 	# Draw the pill behind the name and chips text only!
-	var pill_rect := Rect2(10, 58, 120, 44)
-	var avatar_center := Vector2(70, 32)
+	var center_x := size.x * 0.5
+	var pill_rect := Rect2(center_x - 60, 58, 120, 44)
+	var avatar_center := Vector2(center_x, 32)
 		
 	style.draw(get_canvas_item(), pill_rect)
 	
@@ -213,7 +215,7 @@ func _draw() -> void:
 		draw_circle(avatar_center, 14, Color(avatar_border.r, avatar_border.g, avatar_border.b, 0.25))
 		
 		# Draw gold micro-chip icon next to the chip count
-		var chip_center := Vector2(30, 86)
+		var chip_center := Vector2(center_x - 40, 86)
 		draw_circle(chip_center, 4.5, Color(1.0, 0.84, 0.0, 0.95))
 		draw_circle(chip_center, 2.5, Color(0.9, 0.45, 0.0, 0.95))
 		draw_circle(chip_center, 1.0, Color(1.0, 1.0, 1.0, 0.95))

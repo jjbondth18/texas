@@ -20,13 +20,13 @@ const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_
 var snapshot := {}
 @onready var _content_root: Control = $TableUIRoot
 @onready var _seat_layer: Control = $TableUIRoot/TableLayer/SeatLayer
-@onready var _dealer_label: Label = $TableUIRoot/TableLayer/CenterBoardPanel/DealerIndicator
-@onready var _pot_display: Control = $TableUIRoot/TableLayer/CenterBoardPanel/PotPanel
-@onready var _community_board: Control = $TableUIRoot/TableLayer/CenterBoardPanel/CommunityCardsPanel
+@onready var _dealer_label: Label = $TableUIRoot/TableLayer/DealerIndicator
+@onready var _pot_display: Control = $TableUIRoot/TableLayer/PotDisplay
+@onready var _community_board: Control = $TableUIRoot/TableLayer/CommunityBoard
 @onready var _info_panel: PanelContainer = $TableUIRoot/LeftPanel/ChatLogPanel
 @onready var _room_info_panel: PanelContainer = $TableUIRoot/LeftPanel/TableInfoPanel
 @onready var _status_panel: PanelContainer = $TableUIRoot/RightPanel/PlayerStatusList
-@onready var _action_bar: ActionBar = $TableUIRoot/BottomPlayerPanel
+@onready var _action_bar: ActionBar = $TableUIRoot/BottomHud
 
 var _seats := {}
 var _chips_label_left: Label
@@ -109,7 +109,6 @@ func _layout() -> void:
 	_content_root.scale = Vector2(scale, scale)
 	_content_root.position = (size - DESIGN_SIZE * scale) * 0.5
 	_content_root.size = DESIGN_SIZE
-	_apply_saved_major_layout()
 
 func _set_design_rect(node: Control, rect: Rect2, scale: float) -> void:
 	node.position = rect.position * scale

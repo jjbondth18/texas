@@ -32,35 +32,23 @@ var _raise_action: Dictionary
 @onready var _avatar_rect: TextureRect = $PlayerInfoPanel/AvatarPanel/AvatarRect
 
 func _ready() -> void:
-	# 🛑 1. 左段：数据舱 (PlayerInfoPanel) Style Box Override & Hardcoded Dimensions
+	# 🛑 1. 左段：数据舱 (PlayerInfoPanel) Style Box Override
 	var left_panel := $PlayerInfoPanel
-	left_panel.custom_minimum_size = Vector2(450, 180)
-	left_panel.size = Vector2(450, 180)
-	left_panel.position = Vector2(0, 0)
-	
 	var lp_style := StyleBoxFlat.new()
 	lp_style.bg_color = Color(0.10, 0.07, 0.18, 0.85) # Dark purple-black bg
 	lp_style.set_corner_radius_all(8)
-	lp_style.border_color = Color(0.35, 0.28, 0.55, 0.7) # Clear high-light dark purple-gray border
+	lp_style.border_color = Color(0.35, 0.28, 0.55, 0.7) # Clear high-light border
 	lp_style.set_border_width_all(1)
 	left_panel.add_theme_stylebox_override("panel", lp_style)
 	
 	# Circular Big Avatar
 	var avatar_panel := $PlayerInfoPanel/AvatarPanel
-	avatar_panel.custom_minimum_size = Vector2(72, 72)
-	avatar_panel.size = Vector2(72, 72)
-	avatar_panel.position = Vector2(15, 54)
-	
 	var av_style := StyleBoxFlat.new()
 	av_style.set_corner_radius_all(36)
 	avatar_panel.add_theme_stylebox_override("panel", av_style)
 	
-	_avatar_rect.custom_minimum_size = Vector2(72, 72)
-	_avatar_rect.size = Vector2(72, 72)
-	_avatar_rect.position = Vector2.ZERO
 	_avatar_rect.texture = load("res://assets/ChatGPT Image 2026年6月24日 22_13_25 (5).png") # Luna avatar
 	
-	chips_label.position = Vector2(103, 50)
 	chips_label.add_theme_font_size_override("font_size", 16)
 	chips_label.add_theme_color_override("font_color", Color(1.0, 0.86, 0.42)) # Gold
 	
@@ -69,84 +57,32 @@ func _ready() -> void:
 	bold_font.font_weight = 700
 	chips_label.add_theme_font_override("font", bold_font)
 	
-	profit_label.position = Vector2(103, 78)
 	profit_label.add_theme_font_size_override("font_size", 14)
 	
-	winrate_label.position = Vector2(103, 106)
 	winrate_label.add_theme_font_size_override("font_size", 14)
 	winrate_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5)) # Neon Magenta
 	
-	# 🛑 2. 中段：卡牌与计时专用独立舱 (HoleCardsPanel) Style Box Override & Hardcoded Dimensions
+	# 🛑 2. 中段：卡牌与计时专用独立舱 (HoleCardsPanel) Style Box Override
 	var center_panel := $HoleCardsPanel
-	center_panel.custom_minimum_size = Vector2(500, 180)
-	center_panel.size = Vector2(500, 180)
-	center_panel.position = Vector2(466, 0) # 450 + 16 gap
-	
 	var cp_style := StyleBoxFlat.new()
 	cp_style.bg_color = Color(0.10, 0.07, 0.18, 0.85) # Dark purple-black bg
 	cp_style.set_corner_radius_all(8)
-	cp_style.border_color = Color(0.35, 0.28, 0.55, 0.7) # Clear high-light dark purple-gray border
+	cp_style.border_color = Color(0.35, 0.28, 0.55, 0.7) # Clear high-light border
 	cp_style.set_border_width_all(1)
 	center_panel.add_theme_stylebox_override("panel", cp_style)
 	
-	timer_label.size = Vector2(480, 20)
-	timer_label.position = Vector2(10, 10)
 	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	timer_label.add_theme_font_size_override("font_size", 13)
 	timer_label.add_theme_color_override("font_color", Color(0.65, 0.95, 1.0))
 	
-	local_cards_root.custom_minimum_size = Vector2(186, 120)
-	local_cards_root.size = Vector2(186, 120)
-	local_cards_root.position = Vector2(157, 40)
-	
-	# 🛑 3. 右段：加注与按钮控制台 (ActionPanel) Style Box Override & Hardcoded Dimensions (150px Safety Zone)
+	# 🛑 3. 右段：加注与按钮控制台 (ActionPanel) Style Box Override
 	var right_panel := $ActionPanel
-	right_panel.custom_minimum_size = Vector2(900, 180)
-	right_panel.size = Vector2(900, 180)
-	right_panel.position = Vector2(982, 0) # 466 + 500 + 16 gap
-	
 	var rp_style := StyleBoxFlat.new()
 	rp_style.bg_color = Color(0.10, 0.07, 0.18, 0.85) # Dark purple-black bg
 	rp_style.set_corner_radius_all(8)
-	rp_style.border_color = Color(0.35, 0.28, 0.55, 0.7) # Clear high-light dark purple-gray border
+	rp_style.border_color = Color(0.35, 0.28, 0.55, 0.7) # Clear high-light border
 	rp_style.set_border_width_all(1)
 	right_panel.add_theme_stylebox_override("panel", rp_style)
-	
-	# Hardcode position and size of right panel elements at runtime to enforce safety zone
-	_fold_button.custom_minimum_size = Vector2(120, 64)
-	_fold_button.size = Vector2(120, 64)
-	_fold_button.position = Vector2(0, 58)
-
-	_check_call_button.custom_minimum_size = Vector2(120, 64)
-	_check_call_button.size = Vector2(120, 64)
-	_check_call_button.position = Vector2(130, 58)
-
-	_raise_confirm_button.custom_minimum_size = Vector2(120, 64)
-	_raise_confirm_button.size = Vector2(120, 64)
-	_raise_confirm_button.position = Vector2(260, 58)
-
-	_minus_button.custom_minimum_size = Vector2(32, 32)
-	_minus_button.size = Vector2(32, 32)
-	_minus_button.position = Vector2(0, 74)
-
-	_h_slider.custom_minimum_size = Vector2(170, 32)
-	_h_slider.size = Vector2(170, 32)
-	_h_slider.position = Vector2(42, 74)
-
-	_raise_value_label.size = Vector2(170, 23)
-	_raise_value_label.position = Vector2(42, 49)
-
-	_plus_button.custom_minimum_size = Vector2(32, 32)
-	_plus_button.size = Vector2(32, 32)
-	_plus_button.position = Vector2(222, 74)
-
-	_pot_25_button.custom_minimum_size = Vector2(80, 28)
-	_pot_25_button.size = Vector2(80, 28)
-	_pot_25_button.position = Vector2(264, 58)
-
-	_max_button.custom_minimum_size = Vector2(80, 28)
-	_max_button.size = Vector2(80, 28)
-	_max_button.position = Vector2(264, 94)
 	
 	# Style buttons and slider
 	_style_action_button(_fold_button, Color(0.45, 0.45, 0.52)) # Muted Gray-Violet
