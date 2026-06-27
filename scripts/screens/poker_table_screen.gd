@@ -12,7 +12,7 @@ const CardViewScene := preload("res://scenes/components/card_view.tscn")
 const ScreenNavigator := preload("res://scripts/app/screen_navigator.gd")
 const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
 const RoomInfoPanelScene := preload("res://scripts/components/table_room_info_panel.gd")
-const RuntimeLayoutEditor := preload("res://scripts/dev/poker_table_runtime_layout_editor.gd")
+const LayoutSchema := preload("res://scripts/dev/poker_table_layout_schema.gd")
 
 const DESIGN_SIZE := Vector2(2560, 1000)
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
@@ -35,8 +35,6 @@ var _winrate_label_left: Label
 var _timer_label: Label
 var _local_cards_root: Control
 var _capture_output := ""
-var _layout_editor
-var _layout_targets_registered := false
 
 func _ready() -> void:
 	_hide_editor_guides(self)
@@ -51,9 +49,6 @@ func _ready() -> void:
 	_apply_capture_args()
 
 func _input(event: InputEvent) -> void:
-	if _layout_editor and _layout_editor.handle_key_event(event):
-		get_viewport().set_input_as_handled()
-		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_ESCAPE:
@@ -106,7 +101,6 @@ func _build_scene() -> void:
 	_local_cards_root = _action_bar.local_cards_root
 	
 	_layout()
-	_build_layout_editor()
 
 func _layout() -> void:
 	if _content_root == null:
@@ -115,32 +109,22 @@ func _layout() -> void:
 	_content_root.scale = Vector2(scale, scale)
 	_content_root.position = (size - DESIGN_SIZE * scale) * 0.5
 	_content_root.size = DESIGN_SIZE
-	_update_layout_editor_space(scale)
+	_apply_saved_major_layout()
 
 func _set_design_rect(node: Control, rect: Rect2, scale: float) -> void:
 	node.position = rect.position * scale
 	node.size = rect.size * scale
 
-func _build_layout_editor() -> void:
-	if _layout_editor != null:
-		return
-	_layout_editor = RuntimeLayoutEditor.new()
-	_layout_editor.name = "PokerTableRuntimeLayoutEditor"
-	add_child(_layout_editor)
-	_update_layout_editor_space(minf(size.x / DESIGN_SIZE.x, size.y / DESIGN_SIZE.y))
-	_register_layout_editor_targets()
+func _apply_saved_major_layout() -> void:
+	var items := LayoutSchema.merged_items_with_defaults(LayoutSchema.load_user_config())
+	var targets := _major_layout_targets()
+	for id in items.keys():
+		if not targets.has(id) or targets[id] == null:
+			continue
+		_apply_design_rect_to_control(targets[id], LayoutSchema.dict_to_rect(Dictionary(items[id])))
 
-func _update_layout_editor_space(scale: float) -> void:
-	if _layout_editor == null:
-		return
-	_layout_editor.configure_layout_space(_content_root.global_position if _content_root else Vector2.ZERO, scale)
-	if _layout_targets_registered:
-		_layout_editor.apply_saved_layout()
-
-func _register_layout_editor_targets() -> void:
-	if _layout_editor == null:
-		return
-	var targets := {
+func _major_layout_targets() -> Dictionary:
+	return {
 		"seat_1": _seats.get(1),
 		"seat_2": _seats.get(2),
 		"seat_3": _seats.get(3),
@@ -150,18 +134,24 @@ func _register_layout_editor_targets() -> void:
 		"seat_7": _seats.get(7),
 		"seat_8": _seats.get(8),
 		"seat_9": _seats.get(9),
-		"left_info_panel": _info_panel,
-		"right_status_panel": _status_panel,
-		"local_player_info_panel": _room_info_panel,
-		"local_hole_cards": _local_cards_root,
-		"action_bar": _action_bar,
-		"community_board": _community_board,
+		"left_panel": $TableUIRoot/LeftPanel,
+		"right_panel": $TableUIRoot/RightPanel,
+		"bottom_hud": _action_bar,
 		"pot_display": _pot_display,
+		"community_board": _community_board,
 		"dealer_indicator": _dealer_label,
-		"turn_timer": _timer_label,
 	}
-	_layout_editor.register_targets(targets)
-	_layout_targets_registered = true
+
+func _apply_design_rect_to_control(target: Control, design_rect: Rect2) -> void:
+	var target_parent := target.get_parent() as Control
+	if target_parent == null:
+		target.position = design_rect.position
+		target.size = design_rect.size
+		return
+	var parent_design_origin: Vector2 = (target_parent.get_global_rect().position - _content_root.get_global_rect().position) / max(_content_root.scale.x, 0.0001)
+	var parent_design_scale: Vector2 = target_parent.get_global_transform().get_scale() / _content_root.get_global_transform().get_scale()
+	target.position = (design_rect.position - parent_design_origin) / parent_design_scale
+	target.size = design_rect.size / parent_design_scale
 
 func _load_phase(phase: String) -> void:
 	snapshot = MockTableSimulation.get_phase_snapshot(phase)
