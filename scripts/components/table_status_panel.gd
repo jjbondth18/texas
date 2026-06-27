@@ -3,6 +3,7 @@ class_name TableStatusPanel
 
 var _rows_container: VBoxContainer
 var _pills := {}
+var is_left_panel := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
@@ -40,11 +41,18 @@ func _ready() -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	vbox.add_child(scroll)
 	
-	# Wrap rows_container in a MarginContainer with a 40px left margin inside scroll to prevent clipping during slide
+	# Wrap rows_container in a MarginContainer inside scroll to prevent clipping during slide
 	var scroll_margin := MarginContainer.new()
 	scroll_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll_margin.add_theme_constant_override("margin_left", 40) # Buffer area for sliding left without clipping
-	scroll_margin.add_theme_constant_override("margin_right", 0)
+	
+	is_left_panel = global_position.x < 1280 or get_parent().name.contains("Left")
+	if is_left_panel:
+		scroll_margin.add_theme_constant_override("margin_left", 16)
+		scroll_margin.add_theme_constant_override("margin_right", 20)
+	else:
+		scroll_margin.add_theme_constant_override("margin_left", 40)
+		scroll_margin.add_theme_constant_override("margin_right", 0)
+		
 	scroll_margin.add_theme_constant_override("margin_top", 0)
 	scroll_margin.add_theme_constant_override("margin_bottom", 0)
 	scroll.add_child(scroll_margin)
@@ -60,6 +68,16 @@ func set_status(snapshot: Dictionary) -> void:
 	if _rows_container == null:
 		return
 		
+	is_left_panel = global_position.x < 1280 or get_parent().name.contains("Left")
+	var scroll_margin = _rows_container.get_parent() as MarginContainer
+	if scroll_margin != null:
+		if is_left_panel:
+			scroll_margin.add_theme_constant_override("margin_left", 16)
+			scroll_margin.add_theme_constant_override("margin_right", 20)
+		else:
+			scroll_margin.add_theme_constant_override("margin_left", 40)
+			scroll_margin.add_theme_constant_override("margin_right", 0)
+			
 	var seats := Array(snapshot.get("seats", []))
 	var active_players := []
 	var active_seats := []
@@ -85,9 +103,9 @@ func set_status(snapshot: Dictionary) -> void:
 	for player in active_players:
 		var seat_idx := int(player.get("seat_index", 0))
 		if _pills.has(seat_idx):
-			_pills[seat_idx].update_data(player)
+			_pills[seat_idx].update_data(player, is_left_panel)
 		else:
-			var pill := PlayerRowPill.new(player)
+			var pill := PlayerRowPill.new(player, is_left_panel)
 			_pills[seat_idx] = pill
 			_rows_container.add_child(pill)
 			
@@ -108,6 +126,8 @@ class PlayerRowPill extends PanelContainer:
 	var name_label: Label
 	var chips_label: Label
 	var you_badge: PanelContainer
+	var is_left := false
+	var text_vbox: VBoxContainer
 	
 	# Turn dots
 	var dots_hbox: HBoxContainer
@@ -119,8 +139,9 @@ class PlayerRowPill extends PanelContainer:
 	var _is_fold := false
 	var _tween: Tween
 	
-	func _init(data: Dictionary) -> void:
+	func _init(data: Dictionary, left_side: bool) -> void:
 		player_data = data
+		is_left = left_side
 		custom_minimum_size = Vector2(220, 85) # Width 220px to fit inside scroll container with 40px left margin
 		size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		
@@ -152,7 +173,6 @@ class PlayerRowPill extends PanelContainer:
 		var av_style := StyleBoxFlat.new()
 		av_style.set_corner_radius_all(24)
 		avatar_panel.add_theme_stylebox_override("panel", av_style)
-		hbox.add_child(avatar_panel)
 		
 		avatar_rect = TextureRect.new()
 		avatar_rect.custom_minimum_size = Vector2(48, 48)
@@ -161,17 +181,25 @@ class PlayerRowPill extends PanelContainer:
 		avatar_panel.add_child(avatar_rect)
 		
 		# Text Container
-		var vbox := VBoxContainer.new()
-		vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		vbox.add_theme_constant_override("separation", 2)
-		hbox.add_child(vbox)
+		text_vbox = VBoxContainer.new()
+		text_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		text_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		text_vbox.add_theme_constant_override("separation", 2)
+		
+		if is_left:
+			# Left panel: [ text | avatar ]
+			hbox.add_child(text_vbox)
+			hbox.add_child(avatar_panel)
+		else:
+			# Right panel: [ avatar | text ]
+			hbox.add_child(avatar_panel)
+			hbox.add_child(text_vbox)
 		
 		# Name row HBox to support name on left and YOU badge on right
 		var name_row := HBoxContainer.new()
 		name_row.add_theme_constant_override("separation", 6)
 		name_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		vbox.add_child(name_row)
+		text_vbox.add_child(name_row)
 		
 		name_label = Label.new()
 		name_label.add_theme_font_size_override("font_size", 13)
@@ -210,7 +238,7 @@ class PlayerRowPill extends PanelContainer:
 		dots_hbox = HBoxContainer.new()
 		dots_hbox.add_theme_constant_override("separation", 4)
 		dots_hbox.visible = false
-		vbox.add_child(dots_hbox)
+		text_vbox.add_child(dots_hbox)
 		
 		var dot_style := StyleBoxFlat.new()
 		dot_style.set_corner_radius_all(3)
@@ -234,17 +262,29 @@ class PlayerRowPill extends PanelContainer:
 		chips_label = Label.new()
 		chips_label.add_theme_font_size_override("font_size", 14)
 		chips_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
-		vbox.add_child(chips_label)
+		text_vbox.add_child(chips_label)
 		
 		action_label = Label.new()
 		action_label.add_theme_font_size_override("font_size", 11)
-		vbox.add_child(action_label)
+		text_vbox.add_child(action_label)
 		
 		# Initial config
-		update_data(data, true)
+		update_data(data, is_left, true)
 		
-	func update_data(data: Dictionary, force_snap: bool = false) -> void:
+	func update_data(data: Dictionary, left_side: bool, force_snap: bool = false) -> void:
 		player_data = data
+		is_left = left_side
+		
+		# Dynamically ensure children order inside hbox matches side configuration
+		var hbox = get_child(0) as HBoxContainer
+		if hbox != null:
+			if is_left:
+				if hbox.get_child_count() >= 2 and hbox.get_child(0) == avatar_panel:
+					hbox.move_child(text_vbox, 0)
+			else:
+				if hbox.get_child_count() >= 2 and hbox.get_child(0) == text_vbox:
+					hbox.move_child(avatar_panel, 0)
+		
 		var name_str := String(player_data.get("player_name", ""))
 		var chips := int(player_data.get("chips", 0))
 		var is_local := bool(player_data.get("is_local", false))
@@ -304,7 +344,7 @@ class PlayerRowPill extends PanelContainer:
 				
 			if is_turn:
 				action_label.visible = false
-				target_x = -20.0 # Slide left 20px
+				target_x = 10.0 if is_left else -10.0 # Slide right 10px on left panel, slide left 10px on right panel
 				target_bg = Color(0.22, 0.14, 0.45, 0.90)
 				target_border = Color(0.0, 1.0, 0.7, 0.9) # Turn: Neon Cyan/Green Outline
 				target_border_width = 1
