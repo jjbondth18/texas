@@ -55,19 +55,44 @@ func reset_table() -> Dictionary:
 
 
 func can_start_hand() -> bool:
-	var playable_count: int = 0
+	return table_state in [WAITING, HAND_OVER] and eligible_next_hand_seat_ids().size() >= 2
+
+
+func eligible_next_hand_seat_ids() -> Array[int]:
+	var result: Array[int] = []
 	for seat in seats:
 		var data: Dictionary = seat
-		if String(data.get("status", EMPTY)) in [SITTING, PLAYING] and int(data.get("chips", 0)) > 0:
-			playable_count += 1
-	return table_state in [WAITING, HAND_OVER] and playable_count >= 2
+		if _is_eligible_for_next_hand(data):
+			result.append(int(data.get("seat_id", data.get("seat_index", 0))))
+	return result
+
+
+func next_hand_eligibility_report() -> Array[String]:
+	var lines: Array[String] = []
+	var eligible: Array[int] = eligible_next_hand_seat_ids()
+	lines.append("eligible_players=%d seats=%s" % [eligible.size(), str(eligible)])
+	for seat in seats:
+		var data: Dictionary = seat
+		var seat_id: int = int(data.get("seat_id", data.get("seat_index", 0)))
+		var status: String = String(data.get("status", EMPTY))
+		var chips: int = int(data.get("chips", 0))
+		var sitting_out: bool = bool(data.get("is_sitting_out", false))
+		var reason: String = "included" if _is_eligible_for_next_hand(data) else _next_hand_exclusion_reason(data)
+		lines.append("Seat %d: chips=%d status=%s sitting_out=%s %s" % [
+			seat_id,
+			chips,
+			status,
+			str(sitting_out),
+			reason,
+		])
+	return lines
 
 
 func start_new_hand(seed: int = 0) -> Dictionary:
 	if seats.is_empty():
 		reset_table()
 	if not can_start_hand():
-		_log("Cannot start hand: waiting for enough seated players.")
+		_log_start_hand_blocked()
 		return to_snapshot()
 
 	table_state = HAND_STARTING
@@ -83,10 +108,11 @@ func start_new_hand(seed: int = 0) -> Dictionary:
 		seat["last_action"] = ""
 		seat["last_action_amount"] = 0
 		seat["last_action_seq"] = 0
+		seat["has_acted"] = false
 		seat["is_dealer"] = false
 		seat["is_small_blind"] = false
 		seat["is_big_blind"] = false
-		if String(seat.get("status", EMPTY)) != EMPTY and int(seat.get("chips", 0)) > 0:
+		if _is_eligible_for_next_hand(seat):
 			seat["status"] = PLAYING
 		elif String(seat.get("status", EMPTY)) != EMPTY:
 			seat["status"] = OUT
@@ -616,6 +642,42 @@ func _should_auto_runout_all_in() -> bool:
 	if contenders.size() < 2:
 		return false
 	return _players_who_can_act_ids().is_empty()
+
+
+func _is_eligible_for_next_hand(seat: Dictionary) -> bool:
+	var status: String = String(seat.get("status", EMPTY))
+	if status in [EMPTY, OUT]:
+		return false
+	if bool(seat.get("is_sitting_out", false)):
+		return false
+	if String(seat.get("player_id", "")) == "":
+		return false
+	return int(seat.get("chips", 0)) > 0
+
+
+func _next_hand_exclusion_reason(seat: Dictionary) -> String:
+	var status: String = String(seat.get("status", EMPTY))
+	if status == EMPTY:
+		return "excluded: empty seat"
+	if status == OUT:
+		return "excluded: out"
+	if bool(seat.get("is_sitting_out", false)):
+		return "excluded: sitting out"
+	if String(seat.get("player_id", "")) == "":
+		return "excluded: no player"
+	if int(seat.get("chips", 0)) <= 0:
+		return "excluded: no chips"
+	return "excluded"
+
+
+func _log_start_hand_blocked() -> void:
+	var eligible_count: int = eligible_next_hand_seat_ids().size()
+	_log("Cannot start hand: only %d eligible player%s." % [
+		eligible_count,
+		"" if eligible_count == 1 else "s",
+	])
+	for line in next_hand_eligibility_report():
+		_debug_rule(line)
 
 
 func _seat_by_id(seat_id: int) -> Dictionary:

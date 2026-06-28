@@ -4,6 +4,7 @@ class_name TableRoomInfoPanel
 var _room_label: Label
 var _blinds_label: Label
 var _hand_label: Label
+var _progress_label: Label
 var _seat_label: Label
 var _timer_bar: ProgressBar
 var _seconds_left := 45.0
@@ -47,10 +48,18 @@ func _ready() -> void:
 	vbox.add_child(separator)
 	
 	_hand_label = Label.new()
+	_hand_label.name = "HandIdLabel"
 	_hand_label.text = "Hand #88451236"
 	_hand_label.add_theme_font_size_override("font_size", 12)
 	_hand_label.add_theme_color_override("font_color", Color(0.65, 0.76, 1.0, 0.7))
 	vbox.add_child(_hand_label)
+
+	_progress_label = Label.new()
+	_progress_label.name = "HandProgressLabel"
+	_progress_label.text = "Hand 0 / 10"
+	_progress_label.add_theme_font_size_override("font_size", 12)
+	_progress_label.add_theme_color_override("font_color", Color(0.95, 0.92, 1.0, 0.82))
+	vbox.add_child(_progress_label)
 
 	_seat_label = Label.new()
 	_seat_label.text = "Seat: 5"
@@ -96,10 +105,14 @@ func set_table_context(stage: String, hand_id: String, seat_id: int, blinds_text
 	if _room_label:
 		_room_label.text = stage.to_upper()
 	if _hand_label:
-		_hand_label.text = "Hand %s" % hand_id
+		_hand_label.text = "ID: %s" % hand_id
 	if _blinds_label:
 		_blinds_label.text = "NLH %s" % blinds_text
 	set_seat(seat_id)
+
+func set_hand_progress(progress_text: String) -> void:
+	if _progress_label:
+		_progress_label.text = progress_text
 
 func set_seat(seat_id: int) -> void:
 	if _seat_label:

@@ -365,6 +365,9 @@ func _start_next_hand() -> void:
 	if String(_table_flow.table_state) == TexasTableFlowScript.WAITING:
 		_configure_table_flow_from_launch_context()
 	_sync_launch_profile_to_table_flow()
+	if not _can_table_flow_start_next_hand():
+		_enter_session_over_with_reason("Not enough players")
+		return
 	var hand_number: int = _table_session.begin_next_hand() if _table_session != null else 0
 	if hand_number > 0:
 		_append_session_log("Hand %s started." % _session_hand_count_text())
@@ -574,6 +577,8 @@ func _refresh() -> void:
 				int(snapshot.get("local_seat_index", 5)),
 				String(snapshot.get("blinds_text", "25/50"))
 			)
+			if _room_info_panel.has_method("set_hand_progress"):
+				_room_info_panel.call("set_hand_progress", _session_progress_text())
 		else:
 			_room_info_panel.set_room_info(
 				snapshot.get("table_id", "mock_table_001"),
@@ -1057,6 +1062,35 @@ func _enter_session_over() -> void:
 	_refresh_rule_debug_panel()
 
 
+func _enter_session_over_with_reason(reason: String) -> void:
+	if _table_session == null:
+		_configure_table_session_from_launch_context()
+	if _table_session == null:
+		return
+	if reason != "":
+		_table_session.end_reason = reason
+	_table_session.current_table_chips = _local_table_chips()
+	_table_session.session_end_chips = _table_session.current_table_chips
+	_table_session.session_profit = _table_session.session_end_chips - _table_session.session_start_chips
+	_append_session_log("Table session complete: %s." % reason)
+	_enter_session_over()
+
+
+func _can_table_flow_start_next_hand() -> bool:
+	if _table_flow == null:
+		return false
+	var eligible: Array[int] = _table_flow.eligible_next_hand_seat_ids()
+	for line in _table_flow.next_hand_eligibility_report():
+		print("[NextHandEligibility] %s" % line)
+	if eligible.size() < 2:
+		_append_session_log("Cannot start next hand: only %d eligible player%s." % [
+			eligible.size(),
+			"" if eligible.size() == 1 else "s",
+		])
+		return false
+	return true
+
+
 func _configure_table_session_from_launch_context() -> void:
 	var context: Dictionary = TableLaunchContext.get_current_table_context()
 	_table_session = TableSessionScript.from_context(context)
@@ -1110,6 +1144,14 @@ func _session_hand_count_text() -> String:
 	if _table_session == null:
 		return "-"
 	return _table_session.hand_count_text()
+
+
+func _session_progress_text() -> String:
+	if _table_session == null:
+		return "Hand 0 / 0"
+	if _table_session.max_hands <= 0 or _table_session.max_hands >= 999:
+		return "Hand %d / ∞" % max(_table_session.current_hand_index, _table_session.hands_played)
+	return "Hand %d / %d" % [max(_table_session.current_hand_index, _table_session.hands_played), _table_session.max_hands]
 
 
 func _local_table_chips() -> int:
