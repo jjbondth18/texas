@@ -4,6 +4,19 @@ class_name TableSession
 const MODE_QUICK_PLAY := "quick_play"
 const MODE_TRAINING := "training"
 const MODE_FRIENDS_ROOM := "friends_room"
+const TABLE_TYPE_PUBLIC_CHIP := "public_chip"
+const TABLE_TYPE_PRIVATE_ROOM := "private_room"
+const TABLE_TYPE_TRAINING_AI := "training_ai"
+const SEAT_ACTIVE := "active"
+const SEAT_FOLDED := "folded"
+const SEAT_LEFT := "left"
+const SEAT_DISCONNECTED := "disconnected"
+const SEAT_SIT_OUT := "sit_out"
+const TABLE_WAITING := "waiting"
+const TABLE_PLAYING := "playing"
+const TABLE_PAUSED := "paused"
+const TABLE_CLOSED := "closed"
+const HOST_LEFT_MOCK_MESSAGE := "Host left. Table closed safely. Account balances were not changed."
 
 var mode := MODE_QUICK_PLAY
 var table_type := MODE_QUICK_PLAY
@@ -28,6 +41,12 @@ var is_session_over := false
 var end_reason := ""
 var last_winner := "-"
 var last_win_amount := 0
+var min_active_players := 2
+var status := TABLE_PLAYING
+var pending_cash_out := 0
+var pending_refund := 0
+var last_auto_action := ""
+var host_left_message := ""
 
 func configure_from_context(context: Dictionary) -> void:
 	mode = String(context.get("mode", MODE_QUICK_PLAY))
@@ -53,6 +72,12 @@ func configure_from_context(context: Dictionary) -> void:
 	end_reason = String(context.get("end_reason", ""))
 	last_winner = String(context.get("last_winner", "-"))
 	last_win_amount = int(context.get("last_win_amount", 0))
+	min_active_players = int(context.get("min_active_players", min_active_players))
+	status = String(context.get("status", status))
+	pending_cash_out = int(context.get("pending_cash_out", 0))
+	pending_refund = int(context.get("pending_refund", 0))
+	last_auto_action = String(context.get("last_auto_action", ""))
+	host_left_message = String(context.get("host_left_message", ""))
 
 func can_start_next_hand() -> bool:
 	if is_session_over:
@@ -94,6 +119,95 @@ func record_hand_result(settlement: Dictionary, local_seat_id: int, local_chips:
 		if end_reason == "":
 			end_reason = "Hands completed"
 
+func apply_player_leave_during_hand(seat: Dictionary, disconnect: bool = false) -> Dictionary:
+	var result := seat.duplicate(true)
+	var committed: int = int(result.get("committed_this_hand", result.get("current_bet", 0)))
+	var table_stack: int = int(result.get("table_stack", result.get("chips", 0)))
+	var cash_out: int = max(table_stack, 0)
+	result["committed_this_hand"] = max(committed, 0)
+	result["folded"] = true
+	result["in_hand"] = false
+	result["next_hand_eligible"] = false
+	result["status"] = SEAT_DISCONNECTED if disconnect else SEAT_LEFT
+	result["left"] = not disconnect
+	result["disconnected"] = disconnect
+	result["pending_cash_out"] = 0
+	result["pending_refund"] = 0
+	if uses_practice_chips or mode == MODE_TRAINING or table_type == TABLE_TYPE_TRAINING_AI:
+		result["practice_stack_discarded"] = cash_out
+	elif table_type == TABLE_TYPE_PRIVATE_ROOM or mode == MODE_FRIENDS_ROOM:
+		result["pending_refund"] = cash_out
+		pending_refund += cash_out
+	else:
+		result["pending_cash_out"] = cash_out
+		pending_cash_out += cash_out
+	return result
+
+func apply_timeout(seat: Dictionary, check_available: bool) -> Dictionary:
+	var result := seat.duplicate(true)
+	var timeout_count: int = int(result.get("timeout_count", 0)) + 1
+	result["timeout_count"] = timeout_count
+	if check_available:
+		result["auto_action"] = "check"
+		result["last_action"] = "Auto-check"
+		result["folded"] = bool(result.get("folded", false))
+	else:
+		result["auto_action"] = "fold"
+		result["last_action"] = "Auto-fold"
+		result["folded"] = true
+		result["in_hand"] = false
+		result["status"] = SEAT_FOLDED
+	last_auto_action = String(result.get("last_action", ""))
+	if timeout_count >= 2:
+		result = mark_sit_out(result)
+	return result
+
+func mark_sit_out(seat: Dictionary) -> Dictionary:
+	var result := seat.duplicate(true)
+	result["status"] = SEAT_SIT_OUT
+	result["sit_out"] = true
+	result["in_hand"] = false
+	result["next_hand_eligible"] = false
+	result["post_blinds"] = false
+	result["deal_in_next_hand"] = false
+	return result
+
+func should_deal_next_hand(seat: Dictionary) -> bool:
+	if not bool(seat.get("occupied", true)):
+		return false
+	if bool(seat.get("sit_out", false)):
+		return false
+	if bool(seat.has("next_hand_eligible")) and not bool(seat.get("next_hand_eligible", true)):
+		return false
+	var seat_status := String(seat.get("status", SEAT_ACTIVE))
+	if [SEAT_LEFT, SEAT_DISCONNECTED, SEAT_SIT_OUT, "empty", "out"].has(seat_status):
+		return false
+	return int(seat.get("chips", seat.get("table_stack", 0))) > 0
+
+func active_player_count(seats: Array) -> int:
+	var count := 0
+	for seat in seats:
+		if should_deal_next_hand(Dictionary(seat)):
+			count += 1
+	return count
+
+func refresh_table_status_for_active_players(seats: Array) -> String:
+	if status == TABLE_CLOSED:
+		return status
+	status = TABLE_PLAYING if active_player_count(seats) >= min_active_players else TABLE_PAUSED
+	return status
+
+func apply_host_leave_mock() -> Dictionary:
+	status = TABLE_CLOSED
+	is_session_over = true
+	end_reason = HOST_LEFT_MOCK_MESSAGE
+	host_left_message = HOST_LEFT_MOCK_MESSAGE
+	return {
+		"status": status,
+		"message": HOST_LEFT_MOCK_MESSAGE,
+		"affects_account_balance": false,
+	}
+
 func hand_count_text() -> String:
 	if max_hands <= 0 or max_hands >= 999:
 		return "%d / unlimited" % max(current_hand_index, hands_played)
@@ -124,6 +238,12 @@ func to_dict() -> Dictionary:
 		"end_reason": end_reason,
 		"last_winner": last_winner,
 		"last_win_amount": last_win_amount,
+		"min_active_players": min_active_players,
+		"status": status,
+		"pending_cash_out": pending_cash_out,
+		"pending_refund": pending_refund,
+		"last_auto_action": last_auto_action,
+		"host_left_message": host_left_message,
 	}
 
 static func from_context(context: Dictionary) -> TableSession:

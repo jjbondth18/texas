@@ -61,3 +61,23 @@ Gem Match remains a reserved server-required mode and does not enter the launch 
 - Friends Room: private room code flow for invited friends; private rooms are not public tables.
 - Training: AI practice mode using practice chips; results do not affect account balance or ranked stats.
 - Gem Match: future secure server mode; currently reserved and unavailable.
+
+## Leave / Timeout / Sit Out Rules
+
+These rules describe the local/mock table behavior and the target contract for the future server-authoritative table.
+
+- If a player leaves or disconnects during a hand, chips already committed to the pot remain in the pot.
+- The leaving player's current hand is folded and the player is not dealt into the next hand.
+- The leaving player's uncommitted table stack is not gifted to other players.
+- Public chip tables record the uncommitted stack as a pending cash out/refund for future authoritative settlement.
+- Private casual rooms return the uncommitted stack to the local casual room state or simply clear the seat.
+- Training discards the remaining practice stack and never writes it back to account chips or gems.
+- If a player times out and checking is available, the local/mock action is auto-check.
+- If a player times out and checking is not available, the local/mock action is auto-fold.
+- After two consecutive timeouts, the player is marked `sit_out`.
+- `sit_out` players do not post new blinds, do not receive new hole cards, and are not counted as active for the next hand.
+- If active players fall below the table minimum, the table moves to `paused` or `waiting` until enough players are available.
+- In the P2P/mock prototype, host leave closes the table safely and reports: "Host left. Table closed safely. Account balances were not changed."
+- The host client is not trusted to finalize account settlement. In the future server version, the server maintains table state and the host has no special settlement authority.
+
+Gem Match remains reserved and does not enter these table lifecycle rules because it does not create a table.

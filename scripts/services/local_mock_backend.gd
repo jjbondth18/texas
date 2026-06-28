@@ -116,6 +116,8 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 			"biggest_pot": 0,
 			"best_hand_desc": "-",
 			"is_session_over": false,
+			"min_active_players": 2,
+			"status": "playing",
 		},
 	}
 
