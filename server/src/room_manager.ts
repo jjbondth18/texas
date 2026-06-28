@@ -19,18 +19,21 @@ interface Room {
 export class RoomManager {
   private clients = new Map<string, Client>();
   private rooms = new Map<string, Room>();
+  private serverLogs: string[] = [];
   private nextPlayerId = 1;
   private nextRoomId = 1;
 
   connect(ws?: WebSocket): Client {
     const client: Client = { id: `player_${this.nextPlayerId++}`, name: "Player", ws };
     this.clients.set(client.id, client);
+    this.recordLog(`connect ${client.id}`);
     return client;
   }
 
   disconnect(playerId: string): void {
     const client = this.clients.get(playerId);
     if (!client) return;
+    this.recordLog(`disconnect ${playerId}`);
     const room = client.roomId ? this.rooms.get(client.roomId) : undefined;
     if (room) {
       room.table.markDisconnected(playerId);
@@ -44,12 +47,14 @@ export class RoomManager {
     const client = this.mustClient(playerId);
     if (message.type === "hello") {
       client.name = message.name || client.name || playerId;
+      this.recordLog(`hello ${client.id} name=${client.name}`);
       this.send(client, { type: "hello", request_id: message.request_id, player_id: client.id });
       return;
     }
     if (message.type === "create_room") {
       const room = this.createRoom();
       this.joinRoom(client, room.id);
+      this.recordLog(`${client.id} created ${room.id}`);
       this.send(client, { type: "hello", request_id: message.request_id, room_id: room.id, player_id: client.id });
       this.broadcast(room);
       return;
@@ -60,23 +65,29 @@ export class RoomManager {
     switch (message.type) {
       case "join_room":
         this.joinRoom(client, room.id);
+        this.recordLog(`${client.id} joined ${room.id}`);
         break;
       case "sit_down":
         room.table.sitDown(toPlayer(client), numberOr(message.seat_index, 0), numberOr(message.buy_in, 5000));
+        this.recordLog(`${client.id} sat in ${room.id} seat=${numberOr(message.seat_index, 0)}`);
         break;
       case "leave_seat":
         room.table.leaveSeat(client.id);
+        this.recordLog(`${client.id} left seat in ${room.id}`);
         break;
       case "ready":
         room.table.setReady(client.id, message.ready ?? true);
+        this.recordLog(`${client.id} ready=${message.ready ?? true} in ${room.id}`);
         break;
       case "start_hand":
         room.table.startHand();
         processAutomaticTurns(room.table);
+        this.recordLog(`${client.id} started hand in ${room.id}`);
         break;
       case "player_action":
         if (!message.action) throw new Error("action is required");
         applyPlayerAction(room.table, client.id, message.action, numberOr(message.amount, 0));
+        this.recordLog(`${client.id} action=${message.action} amount=${numberOr(message.amount, 0)} in ${room.id}`);
         break;
       default:
         throw new Error(`unsupported message: ${message.type}`);
@@ -97,6 +108,59 @@ export class RoomManager {
 
   getClient(playerId: string): Client | undefined {
     return this.clients.get(playerId);
+  }
+
+  activeConnectionCount(): number {
+    let count = 0;
+    for (const client of this.clients.values()) {
+      if (client.ws && client.ws.readyState === client.ws.OPEN) count += 1;
+    }
+    return count;
+  }
+
+  roomCount(): number {
+    return this.rooms.size;
+  }
+
+  recordLog(message: string): void {
+    const timestamp = new Date().toISOString();
+    this.serverLogs.push(`[${timestamp}] ${message}`);
+    if (this.serverLogs.length > 120) this.serverLogs = this.serverLogs.slice(-120);
+  }
+
+  adminSnapshot(showPrivateCards: boolean): Record<string, unknown> {
+    return {
+      active_websocket_connections: this.activeConnectionCount(),
+      room_count: this.roomCount(),
+      rooms: [...this.rooms.values()].map((room) => {
+        const snapshot = room.table.publicSnapshot();
+        return {
+          room_id: room.id,
+          connected_player_ids: [...room.clients],
+          hand_state: snapshot.phase,
+          betting_round: snapshot.phase,
+          pot: snapshot.pot,
+          side_pots: snapshot.side_pots,
+          community_cards: snapshot.community_cards.map((card) => card.code),
+          current_turn_seat: snapshot.current_turn_seat,
+          seats: room.table.seats.map((seat) => ({
+            seat_index: seat.seatIndex,
+            player_id: seat.playerId,
+            name: seat.name,
+            chips: seat.chips,
+            current_bet: seat.currentBet,
+            contribution: seat.contribution,
+            status: seat.status,
+            disconnected: seat.disconnected,
+            last_action: seat.lastAction,
+            hole_card_count: seat.holeCards.length,
+            ...(showPrivateCards ? { hole_cards: seat.holeCards.map((card) => card.code) } : {}),
+          })),
+          recent_table_logs: snapshot.log.slice(-20),
+        };
+      }),
+      recent_server_logs: this.serverLogs.slice(-50),
+    };
   }
 
   private joinRoom(client: Client, roomId: string): void {
