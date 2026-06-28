@@ -11,10 +11,12 @@ static var room_id := ""
 static var is_training := false
 static var allow_debug_tools := false
 static var ai_player_count := 0
+static var max_hands := 10
 static var buy_in := PlayerProfileScript.DEFAULT_TABLE_BUY_IN
 static var small_blind := 25
 static var big_blind := 50
 static var seats: Array[Dictionary] = []
+static var table_session: Dictionary = {}
 static var player_profile: Dictionary = PlayerProfileScript.default_profile()
 
 static func configure(mode: String = "quick_play", id: String = "mock_table_001", profile: Dictionary = {}) -> void:
@@ -29,9 +31,11 @@ static func configure(mode: String = "quick_play", id: String = "mock_table_001"
 	room_id = ""
 	allow_debug_tools = is_training
 	ai_player_count = 7 if mode in ["quick_play", "training"] else 0
+	max_hands = 999 if is_training else 10
 	small_blind = 25
 	big_blind = 50
 	seats.clear()
+	table_session = _default_table_session()
 
 static func reset() -> void:
 	configure("quick_play", "mock_table_001", PlayerProfileScript.default_profile())
@@ -56,6 +60,7 @@ static func configure_from_context(context: Dictionary) -> void:
 	is_training = bool(context.get("is_training", mode == "training"))
 	allow_debug_tools = bool(context.get("allow_debug_tools", is_training))
 	ai_player_count = int(context.get("ai_player_count", 0))
+	max_hands = int(context.get("max_hands", 10))
 	buy_in = int(context.get("buy_in", PlayerProfileScript.DEFAULT_TABLE_BUY_IN))
 	small_blind = int(context.get("small_blind", 25))
 	big_blind = int(context.get("big_blind", 50))
@@ -63,6 +68,7 @@ static func configure_from_context(context: Dictionary) -> void:
 	for seat in Array(context.get("seats", [])):
 		seats.append(Dictionary(seat).duplicate(true))
 	set_player_profile(Dictionary(context.get("local_player_profile", PlayerProfileScript.default_profile())))
+	table_session = Dictionary(context.get("table_session", _default_table_session())).duplicate(true)
 
 static func get_current_table_context() -> Dictionary:
 	return {
@@ -78,7 +84,30 @@ static func get_current_table_context() -> Dictionary:
 		"is_training": is_training,
 		"allow_debug_tools": allow_debug_tools,
 		"ai_player_count": ai_player_count,
+		"max_hands": max_hands,
+		"table_session": table_session.duplicate(true),
 	}
 
 static func has_seat_context() -> bool:
 	return not seats.is_empty()
+
+static func _default_table_session() -> Dictionary:
+	var session_buy_in: int = buy_in
+	return {
+		"mode": mode,
+		"buy_in": session_buy_in,
+		"starting_chips": session_buy_in,
+		"current_table_chips": session_buy_in,
+		"small_blind": small_blind,
+		"big_blind": big_blind,
+		"max_hands": max_hands,
+		"current_hand_index": 0,
+		"session_start_chips": session_buy_in,
+		"session_end_chips": session_buy_in,
+		"session_profit": 0,
+		"hands_played": 0,
+		"hands_won": 0,
+		"biggest_pot": 0,
+		"best_hand_desc": "-",
+		"is_session_over": false,
+	}

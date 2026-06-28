@@ -424,7 +424,7 @@ func finish_hand() -> Dictionary:
 		_log("%s wins %d." % [winner_text, pot_amount])
 	for winner_id in winners:
 		_add_visual_event("player_action", winner_id, "WIN", int(pot_amount / max(winners.size(), 1)))
-	_log("Hand over. Press S to start the next hand.")
+	_log("Hand over.")
 	_debug_rule("settlement winners=%s win_amount=%d rank=%s pot=%d->0" % [
 		str(winners),
 		int(hand_data["settlement"].get("win_amount", 0)),

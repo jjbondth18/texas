@@ -20,6 +20,7 @@ const LayoutSchema := preload("res://scripts/dev/poker_table_layout_schema.gd")
 const TexasTableFlowScript := preload("res://scripts/core/texas_table_flow.gd")
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
+const TableSessionScript := preload("res://scripts/data/table_session.gd")
 
 const DESIGN_SIZE := Vector2(2560, 1000)
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
@@ -82,6 +83,12 @@ var _community_reveal_token: int = 0
 var _local_cards_reveal_token: int = 0
 var _rule_debug_panel: PanelContainer
 var _rule_debug_text: RichTextLabel
+var _table_session: TableSession
+var _session_log: Array[String] = []
+var _session_result_panel: PanelContainer
+var _session_result_text: RichTextLabel
+var _recorded_session_hand_ids := {}
+var _session_started := false
 
 func _ready() -> void:
 	_hide_editor_guides(self)
@@ -94,7 +101,9 @@ func _ready() -> void:
 		
 	_build_scene()
 	_configure_table_flow_from_launch_context()
+	_configure_table_session_from_launch_context()
 	_load_phase(_phase_from_args())
+	call_deferred("_auto_start_session_if_ready")
 	_apply_capture_args()
 
 func _input(event: InputEvent) -> void:
@@ -117,9 +126,11 @@ func _input(event: InputEvent) -> void:
 			KEY_5:
 				_load_phase("showdown")
 			KEY_S:
-				_start_next_hand()
+				if _can_use_debug_start_key():
+					_start_next_hand()
 			KEY_SPACE:
-				_start_next_hand()
+				if _can_use_space_next_hand():
+					_start_next_hand()
 			KEY_N:
 				_advance_test_stage()
 			KEY_W:
@@ -139,6 +150,7 @@ func _build_scene() -> void:
 	_hide_legacy_top_center_bars()
 	call_deferred("_hide_legacy_top_center_bars")
 	_build_rule_debug_panel()
+	_build_session_result_panel()
 	
 	# Setup seats map from static scene nodes
 	_seats[1] = $TableSurfaceLayer/TableLayer/SeatLayer/Seat1Panel
@@ -321,27 +333,30 @@ func _load_phase(phase: String) -> void:
 	_refresh()
 
 func _start_test_hand() -> void:
-	_hand_over_sequence_active = false
-	_next_hand_ready = true
-	_reset_visual_hand_state()
-	_configure_table_flow_from_launch_context()
-	_sync_launch_profile_to_table_flow()
-	snapshot = _table_flow_to_ui_snapshot(_table_flow.start_new_hand())
-	_apply_launch_context(snapshot)
-	_refresh()
-	_schedule_ai_turns()
+	_start_next_hand()
 
 func _start_next_hand() -> void:
+	if _table_session == null:
+		_configure_table_session_from_launch_context()
+	if _table_session != null and not _table_session.can_start_next_hand():
+		_enter_session_over()
+		return
 	var state: String = String(_table_flow.table_state)
 	if state == TexasTableFlowScript.HAND_OVER and not _next_hand_ready:
 		return
 	if state not in [TexasTableFlowScript.WAITING, TexasTableFlowScript.HAND_OVER]:
 		return
+	if _session_result_panel != null:
+		_session_result_panel.visible = false
 	_hand_over_sequence_active = false
 	_next_hand_ready = true
 	_reset_visual_hand_state()
-	_configure_table_flow_from_launch_context()
+	if String(_table_flow.table_state) == TexasTableFlowScript.WAITING:
+		_configure_table_flow_from_launch_context()
 	_sync_launch_profile_to_table_flow()
+	var hand_number: int = _table_session.begin_next_hand() if _table_session != null else 0
+	if hand_number > 0:
+		_append_session_log("Hand %s started." % _session_hand_count_text())
 	snapshot = _table_flow_to_ui_snapshot(_table_flow.start_new_hand())
 	_apply_launch_context(snapshot)
 	_refresh()
@@ -375,6 +390,7 @@ func _reset_test_table() -> void:
 	_visual_pause_until_msec = 0
 	_reset_visual_hand_state()
 	_configure_table_flow_from_launch_context()
+	_configure_table_session_from_launch_context()
 	_table_flow.reset_table()
 	_sync_launch_profile_to_table_flow()
 	snapshot = _table_flow_to_ui_snapshot(_table_flow.to_snapshot())
@@ -386,6 +402,11 @@ func _sync_launch_profile_to_table_flow() -> void:
 	var local_name: String = PlayerProfileScript.get_player_name(profile)
 	var local_avatar_id: String = PlayerProfileScript.get_avatar_id(profile)
 	var table_chips: int = PlayerProfileScript.table_buy_in(profile)
+	if _table_session != null:
+		table_chips = _table_session.current_table_chips
+	var should_seed_chips: bool = String(_table_flow.table_state) == TexasTableFlowScript.WAITING
+	if _table_session != null:
+		should_seed_chips = should_seed_chips and _table_session.hands_played == 0 and _table_session.current_hand_index == 0
 	for i in range(_table_flow.seats.size()):
 		var seat: Dictionary = Dictionary(_table_flow.seats[i]).duplicate(true)
 		if not bool(seat.get("is_local", false)):
@@ -393,7 +414,7 @@ func _sync_launch_profile_to_table_flow() -> void:
 		seat["player_id"] = String(profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID))
 		seat["player_name"] = local_name
 		seat["avatar_id"] = local_avatar_id
-		if String(_table_flow.table_state) in [TexasTableFlowScript.WAITING, TexasTableFlowScript.HAND_OVER]:
+		if should_seed_chips:
 			seat["chips"] = table_chips
 		_table_flow.seats[i] = seat
 		return
@@ -444,6 +465,11 @@ func _table_flow_to_ui_snapshot(source: Dictionary) -> Dictionary:
 			"buy_in": 20000,
 		})
 	var local_player: Dictionary = _find_local_player(seats)
+	var table_log: Array = []
+	for session_item in _session_log:
+		table_log.append(session_item)
+	for log_item in Array(source.get("table_log", [])):
+		table_log.append(log_item)
 	return {
 		"source_model": "texas_table_flow",
 		"table_id": "mock_table_001",
@@ -461,10 +487,11 @@ func _table_flow_to_ui_snapshot(source: Dictionary) -> Dictionary:
 		"turn_seat_index": int(hand.get("current_turn_seat", -1)),
 		"turn_seconds": 15,
 		"available_actions": _table_flow.get_legal_actions(local_seat_index),
-		"hand_history": Array(source.get("table_log", [])).duplicate(),
+		"hand_history": table_log,
 		"system_messages": ["TexasTableFlow data binding active"],
 		"visual_events": Array(hand.get("visual_events", [])).duplicate(true),
 		"rule_debug_log": Array(source.get("rule_debug_log", [])).duplicate(),
+		"table_session": _table_session.to_dict() if _table_session != null else {},
 	}
 
 func _refresh() -> void:
@@ -938,6 +965,10 @@ func _handle_hand_over_state() -> void:
 		return
 	_hand_over_sequence_active = true
 	_next_hand_ready = false
+	_record_session_hand_result_once()
+	if _table_session != null and _table_session.is_session_over:
+		_enter_session_over()
+		return
 	call_deferred("_unlock_next_hand_after_showdown_pause")
 
 func _unlock_next_hand_after_showdown_pause() -> void:
@@ -946,8 +977,194 @@ func _unlock_next_hand_after_showdown_pause() -> void:
 		_hand_over_sequence_active = false
 		return
 	_next_hand_ready = true
-	if _auto_next_hand_enabled:
+	if _auto_next_hand_enabled and _table_session != null and _table_session.can_start_next_hand():
 		_start_next_hand()
+
+
+func _record_session_hand_result_once() -> void:
+	if _table_session == null:
+		return
+	var hand: Dictionary = Dictionary(_table_flow.hand_data)
+	var hand_id: String = String(hand.get("hand_id", ""))
+	if hand_id == "":
+		return
+	if _recorded_session_hand_ids.has(hand_id):
+		return
+	_recorded_session_hand_ids[hand_id] = true
+	var settlement: Dictionary = Dictionary(hand.get("settlement", {}))
+	var local_seat_id: int = int(snapshot.get("local_seat_index", 5))
+	var local_chips: int = _local_table_chips()
+	_table_session.record_hand_result(settlement, local_seat_id, local_chips)
+	var winner_names: Array[String] = []
+	for winner_name in Array(settlement.get("winner_names", [])):
+		winner_names.append(String(winner_name))
+	_append_session_log("Hand %s complete. Winner: %s +%d." % [
+		_session_hand_count_text(),
+		", ".join(winner_names) if not winner_names.is_empty() else "-",
+		int(settlement.get("win_amount", 0)),
+	])
+	if _table_session.is_session_over:
+		_append_session_log("Table session complete. Profit %+d." % _table_session.session_profit)
+
+
+func _enter_session_over() -> void:
+	if _table_session == null:
+		return
+	_table_session.is_session_over = true
+	_next_hand_ready = false
+	_auto_next_hand_enabled = false
+	_update_launch_context_session()
+	_show_session_result_panel()
+	_refresh_rule_debug_panel()
+
+
+func _configure_table_session_from_launch_context() -> void:
+	var context: Dictionary = TableLaunchContext.get_current_table_context()
+	_table_session = TableSessionScript.from_context(context)
+	_auto_next_hand_enabled = _table_session.mode != TableSessionScript.MODE_TRAINING
+	_session_log.clear()
+	_recorded_session_hand_ids.clear()
+	_session_started = false
+	_append_session_log("Table session ready.")
+	_append_session_log("Buy-in %d. Blinds %d / %d." % [
+		_table_session.buy_in,
+		_table_session.small_blind,
+		_table_session.big_blind,
+	])
+
+
+func _auto_start_session_if_ready() -> void:
+	if _table_session == null:
+		_configure_table_session_from_launch_context()
+	if _table_session == null or _session_started:
+		return
+	if String(_table_flow.table_state) != TexasTableFlowScript.WAITING:
+		return
+	_session_started = true
+	_append_session_log("Table session started.")
+	if _table_session.mode == TableSessionScript.MODE_TRAINING:
+		_append_session_log("Training mode. Space starts next hand after HAND_OVER.")
+	_start_next_hand()
+
+
+func _can_use_debug_start_key() -> bool:
+	return TableLaunchContext.allow_debug_tools or TableLaunchContext.is_training
+
+
+func _can_use_space_next_hand() -> bool:
+	return TableLaunchContext.is_training or TableLaunchContext.allow_debug_tools
+
+
+func _append_session_log(message: String) -> void:
+	if message == "":
+		return
+	_session_log.append(message)
+	if _session_log.size() > 16:
+		while _session_log.size() > 16:
+			_session_log.remove_at(0)
+	print("[TableSession] %s" % message)
+
+
+func _session_hand_count_text() -> String:
+	if _table_session == null:
+		return "-"
+	return _table_session.hand_count_text()
+
+
+func _local_table_chips() -> int:
+	for seat_item in _table_flow.seats:
+		var seat: Dictionary = Dictionary(seat_item)
+		if bool(seat.get("is_local", false)):
+			return int(seat.get("chips", 0))
+	return _table_session.current_table_chips if _table_session != null else 0
+
+
+func _update_launch_context_session() -> void:
+	if _table_session == null:
+		return
+	TableLaunchContext.table_session = _table_session.to_dict()
+
+
+func _build_session_result_panel() -> void:
+	_session_result_panel = _content_root.get_node_or_null("SessionResultPanel") as PanelContainer
+	if _session_result_panel == null:
+		_session_result_panel = PanelContainer.new()
+		_session_result_panel.name = "SessionResultPanel"
+		_session_result_panel.position = Vector2(920, 245)
+		_session_result_panel.size = Vector2(720, 410)
+		_session_result_panel.custom_minimum_size = _session_result_panel.size
+		_session_result_panel.z_index = 42
+		_session_result_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+		_session_result_panel.add_theme_stylebox_override("panel", _rule_debug_panel_style())
+		_content_root.add_child(_session_result_panel)
+		var margin := MarginContainer.new()
+		margin.add_theme_constant_override("margin_left", 24)
+		margin.add_theme_constant_override("margin_right", 24)
+		margin.add_theme_constant_override("margin_top", 22)
+		margin.add_theme_constant_override("margin_bottom", 22)
+		_session_result_panel.add_child(margin)
+		var column := VBoxContainer.new()
+		column.add_theme_constant_override("separation", 16)
+		margin.add_child(column)
+		_session_result_text = RichTextLabel.new()
+		_session_result_text.name = "SessionResultText"
+		_session_result_text.bbcode_enabled = true
+		_session_result_text.fit_content = false
+		_session_result_text.scroll_active = false
+		_session_result_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_session_result_text.add_theme_font_size_override("normal_font_size", 22)
+		_session_result_text.add_theme_color_override("default_color", Color(0.92, 0.94, 1.0))
+		_session_result_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_session_result_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		column.add_child(_session_result_text)
+		var row := HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.add_theme_constant_override("separation", 18)
+		column.add_child(row)
+		var play_again := Button.new()
+		play_again.text = "PLAY AGAIN"
+		play_again.custom_minimum_size = Vector2(180, 48)
+		play_again.pressed.connect(_restart_session)
+		row.add_child(play_again)
+		var home_button := Button.new()
+		home_button.text = "BACK TO HOME"
+		home_button.custom_minimum_size = Vector2(190, 48)
+		home_button.pressed.connect(_return_home)
+		row.add_child(home_button)
+	else:
+		_session_result_text = _session_result_panel.find_child("SessionResultText", true, false) as RichTextLabel
+	_session_result_panel.visible = false
+
+
+func _show_session_result_panel() -> void:
+	if _session_result_panel == null or _session_result_text == null or _table_session == null:
+		return
+	_session_result_text.text = "\n".join([
+		"[center][b]SESSION COMPLETE[/b][/center]",
+		"",
+		"Hands Played: %s" % _table_session.hand_count_text(),
+		"Buy-in: %s" % _format_chips(_table_session.buy_in),
+		"Final Chips: %s" % _format_chips(_table_session.session_end_chips),
+		"Profit: %+d" % _table_session.session_profit,
+		"Hands Won: %d" % _table_session.hands_won,
+		"Biggest Pot: %s" % _format_chips(_table_session.biggest_pot),
+		"Best Hand: %s" % _table_session.best_hand_desc,
+	])
+	_session_result_panel.visible = true
+
+
+func _restart_session() -> void:
+	if _session_result_panel != null:
+		_session_result_panel.visible = false
+	_configure_table_flow_from_launch_context()
+	_configure_table_session_from_launch_context()
+	_table_flow.reset_table()
+	_sync_launch_profile_to_table_flow()
+	snapshot = _table_flow_to_ui_snapshot(_table_flow.to_snapshot())
+	_apply_launch_context(snapshot)
+	_refresh()
+	_session_started = false
+	_auto_start_session_if_ready()
 
 
 func _build_rule_debug_panel() -> void:
@@ -1010,6 +1227,22 @@ func _refresh_rule_debug_panel() -> void:
 	var acted: Array = Array(hand.get("acted_this_round", []))
 	var lines: Array[String] = []
 	lines.append("POKER RULE DEBUG  (Ctrl+D hide/show)")
+	if _table_session != null:
+		lines.append("SESSION mode=%s hand=%s buy_in=%d over=%s" % [
+			_table_session.mode,
+			_table_session.hand_count_text(),
+			_table_session.buy_in,
+			str(_table_session.is_session_over),
+		])
+		lines.append("session_start=%d table_chips=%d profit=%+d played=%d won=%d biggest=%d best=%s" % [
+			_table_session.session_start_chips,
+			_table_session.current_table_chips,
+			_table_session.session_profit,
+			_table_session.hands_played,
+			_table_session.hands_won,
+			_table_session.biggest_pot,
+			_table_session.best_hand_desc,
+		])
 	lines.append("state=%s  hand=%s" % [String(_table_flow.table_state), String(hand.get("hand_id", "-"))])
 	lines.append("dealer=%d  SB=%d  BB=%d  current_turn=%d" % [
 		int(hand.get("dealer_seat", -1)),

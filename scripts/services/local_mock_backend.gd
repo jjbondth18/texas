@@ -35,6 +35,9 @@ func get_current_table_context() -> Dictionary:
 func _build_table_context(mode: String, table_id: String, room_id: String, profile: Dictionary, training: bool, debug_tools: bool, ai_count: int) -> Dictionary:
 	var normalized_profile: Dictionary = PlayerProfileScript.normalized_dict(profile)
 	var buy_in: int = PlayerProfileScript.table_buy_in(normalized_profile)
+	if training:
+		buy_in = PlayerProfileScript.DEFAULT_TABLE_BUY_IN
+	var max_hands: int = 999 if training else 10
 	return {
 		"mode": mode,
 		"backend_type": "local_mock",
@@ -48,6 +51,25 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 		"is_training": training,
 		"allow_debug_tools": debug_tools,
 		"ai_player_count": ai_count,
+		"max_hands": max_hands,
+		"table_session": {
+			"mode": mode,
+			"buy_in": buy_in,
+			"starting_chips": buy_in,
+			"current_table_chips": buy_in,
+			"small_blind": 25,
+			"big_blind": 50,
+			"max_hands": max_hands,
+			"current_hand_index": 0,
+			"session_start_chips": buy_in,
+			"session_end_chips": buy_in,
+			"session_profit": 0,
+			"hands_played": 0,
+			"hands_won": 0,
+			"biggest_pot": 0,
+			"best_hand_desc": "-",
+			"is_session_over": false,
+		},
 	}
 
 func _build_mock_seats(profile: Dictionary, buy_in: int, ai_count: int) -> Array[Dictionary]:
