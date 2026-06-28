@@ -21,6 +21,7 @@ const TexasTableFlowScript := preload("res://scripts/core/texas_table_flow.gd")
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 const TableSessionScript := preload("res://scripts/data/table_session.gd")
+const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
 
 const DESIGN_SIZE := Vector2(2560, 1000)
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
@@ -87,8 +88,10 @@ var _table_session: TableSession
 var _session_log: Array[String] = []
 var _session_result_panel: PanelContainer
 var _session_result_text: RichTextLabel
+var _session_play_again_button: Button
 var _recorded_session_hand_ids := {}
 var _session_started := false
+var _profile_settlement_applied := false
 
 func _ready() -> void:
 	_hide_editor_guides(self)
@@ -1013,6 +1016,7 @@ func _enter_session_over() -> void:
 	_table_session.is_session_over = true
 	_next_hand_ready = false
 	_auto_next_hand_enabled = false
+	_apply_session_profit_to_profile()
 	_update_launch_context_session()
 	_show_session_result_panel()
 	_refresh_rule_debug_panel()
@@ -1025,6 +1029,7 @@ func _configure_table_session_from_launch_context() -> void:
 	_session_log.clear()
 	_recorded_session_hand_ids.clear()
 	_session_started = false
+	_profile_settlement_applied = false
 	_append_session_log("Table session ready.")
 	_append_session_log("Buy-in: %d. Blinds: %d / %d. Hands: %s." % [
 		_table_session.buy_in,
@@ -1123,10 +1128,12 @@ func _build_session_result_panel() -> void:
 		row.add_theme_constant_override("separation", 18)
 		column.add_child(row)
 		var play_again := Button.new()
+		play_again.name = "PlayAgainButton"
 		play_again.text = "PLAY AGAIN"
 		play_again.custom_minimum_size = Vector2(180, 48)
 		play_again.pressed.connect(_restart_session)
 		row.add_child(play_again)
+		_session_play_again_button = play_again
 		var home_button := Button.new()
 		home_button.text = "BACK TO HOME"
 		home_button.custom_minimum_size = Vector2(190, 48)
@@ -1134,29 +1141,47 @@ func _build_session_result_panel() -> void:
 		row.add_child(home_button)
 	else:
 		_session_result_text = _session_result_panel.find_child("SessionResultText", true, false) as RichTextLabel
+		_session_play_again_button = _session_result_panel.find_child("PlayAgainButton", true, false) as Button
 	_session_result_panel.visible = false
 
 
 func _show_session_result_panel() -> void:
 	if _session_result_panel == null or _session_result_text == null or _table_session == null:
 		return
+	var can_play_again := _can_play_again()
+	if _session_play_again_button != null:
+		_session_play_again_button.name = "PlayAgainButton"
+		_session_play_again_button.disabled = not can_play_again
+		_session_play_again_button.tooltip_text = "" if can_play_again else "Not enough chips for this buy-in."
+	var profit_color := "#35f5c8" if _table_session.session_profit >= 0 else "#ff4f9a"
 	_session_result_text.text = "\n".join([
 		"[center][b]SESSION COMPLETE[/b][/center]",
 		"",
-		"Hands Played: %s" % _table_session.hand_count_text(),
+		"Mode: %s" % _session_mode_label(),
 		"Buy-in: %s" % _format_chips(_table_session.buy_in),
+		"Blinds: %d / %d" % [_table_session.small_blind, _table_session.big_blind],
+		"Hands Played: %s" % _table_session.hand_count_text(),
+		"Starting Chips: %s" % _format_chips(_table_session.session_start_chips),
 		"Final Chips: %s" % _format_chips(_table_session.session_end_chips),
-		"Profit: %+d" % _table_session.session_profit,
+		"Profit: [color=%s]%+d[/color]" % [profit_color, _table_session.session_profit],
 		"Hands Won: %d" % _table_session.hands_won,
 		"Biggest Pot: %s" % _format_chips(_table_session.biggest_pot),
 		"Best Hand: %s" % _table_session.best_hand_desc,
+		"Last Winner: %s" % _table_session.last_winner,
+		"End Reason: %s" % (_table_session.end_reason if _table_session.end_reason != "" else "Session ended"),
+		"",
+		"[center]%s[/center]" % ("" if can_play_again else "Not enough chips to play again with this buy-in."),
 	])
 	_session_result_panel.visible = true
 
 
 func _restart_session() -> void:
+	if not _can_play_again():
+		_append_session_log("Play Again blocked: not enough chips for buy-in %d." % (_table_session.buy_in if _table_session != null else 0))
+		return
 	if _session_result_panel != null:
 		_session_result_panel.visible = false
+	_reset_launch_context_session_for_play_again()
 	_configure_table_flow_from_launch_context()
 	_configure_table_session_from_launch_context()
 	_table_flow.reset_table()
@@ -1166,6 +1191,67 @@ func _restart_session() -> void:
 	_refresh()
 	_session_started = false
 	_auto_start_session_if_ready()
+
+
+func _apply_session_profit_to_profile() -> void:
+	if _profile_settlement_applied or _table_session == null:
+		return
+	_profile_settlement_applied = true
+	var service := ProfileServiceScript.new()
+	var profile := service.apply_session_profit(_table_session.session_profit)
+	TableLaunchContext.set_player_profile(profile)
+	_append_session_log("Profile chips updated by %+d." % _table_session.session_profit)
+
+
+func _reset_launch_context_session_for_play_again() -> void:
+	if _table_session == null:
+		return
+	TableLaunchContext.buy_in = _table_session.buy_in
+	TableLaunchContext.small_blind = _table_session.small_blind
+	TableLaunchContext.big_blind = _table_session.big_blind
+	TableLaunchContext.max_hands = _table_session.max_hands
+	TableLaunchContext.table_session = {
+		"mode": _table_session.mode,
+		"buy_in": _table_session.buy_in,
+		"starting_chips": _table_session.buy_in,
+		"current_table_chips": _table_session.buy_in,
+		"small_blind": _table_session.small_blind,
+		"big_blind": _table_session.big_blind,
+		"max_hands": _table_session.max_hands,
+		"current_hand_index": 0,
+		"session_start_chips": _table_session.buy_in,
+		"session_end_chips": _table_session.buy_in,
+		"session_profit": 0,
+		"hands_played": 0,
+		"hands_won": 0,
+		"biggest_pot": 0,
+		"best_hand_desc": "-",
+		"is_session_over": false,
+		"end_reason": "",
+		"last_winner": "-",
+		"last_win_amount": 0,
+	}
+
+
+func _can_play_again() -> bool:
+	if _table_session == null:
+		return false
+	var profile := ProfileServiceScript.new().get_current_profile()
+	return PlayerProfileScript.get_total_chips(profile) >= _table_session.buy_in
+
+
+func _session_mode_label() -> String:
+	if _table_session == null:
+		return "-"
+	match _table_session.mode:
+		TableSessionScript.MODE_QUICK_PLAY:
+			return "Quick Play"
+		TableSessionScript.MODE_TRAINING:
+			return "Training"
+		TableSessionScript.MODE_FRIENDS_ROOM:
+			return "Friends Room"
+		_:
+			return _table_session.mode.capitalize()
 
 
 func _build_rule_debug_panel() -> void:
@@ -1229,14 +1315,16 @@ func _refresh_rule_debug_panel() -> void:
 	var lines: Array[String] = []
 	lines.append("POKER RULE DEBUG  (Ctrl+D hide/show)")
 	if _table_session != null:
-		lines.append("SESSION mode=%s hand=%s buy_in=%d over=%s" % [
+		lines.append("SESSION mode=%s hand=%s buy_in=%d over=%s reason=%s" % [
 			_table_session.mode,
 			_table_session.hand_count_text(),
 			_table_session.buy_in,
 			str(_table_session.is_session_over),
+			_table_session.end_reason if _table_session.end_reason != "" else "-",
 		])
-		lines.append("session_start=%d table_chips=%d profit=%+d played=%d won=%d biggest=%d best=%s" % [
+		lines.append("session_start=%d final=%d table_chips=%d profit=%+d played=%d won=%d biggest=%d best=%s" % [
 			_table_session.session_start_chips,
+			_table_session.session_end_chips,
 			_table_session.current_table_chips,
 			_table_session.session_profit,
 			_table_session.hands_played,

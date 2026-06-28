@@ -21,6 +21,9 @@ var hands_won := 0
 var biggest_pot := 0
 var best_hand_desc := "-"
 var is_session_over := false
+var end_reason := ""
+var last_winner := "-"
+var last_win_amount := 0
 
 func configure_from_context(context: Dictionary) -> void:
 	mode = String(context.get("mode", MODE_QUICK_PLAY))
@@ -39,6 +42,9 @@ func configure_from_context(context: Dictionary) -> void:
 	best_hand_desc = String(context.get("best_hand_desc", "-"))
 	is_session_over = bool(context.get("is_session_over", false))
 	current_hand_index = int(context.get("current_hand_index", hands_played))
+	end_reason = String(context.get("end_reason", ""))
+	last_winner = String(context.get("last_winner", "-"))
+	last_win_amount = int(context.get("last_win_amount", 0))
 
 func can_start_next_hand() -> bool:
 	if is_session_over:
@@ -65,14 +71,20 @@ func record_hand_result(settlement: Dictionary, local_seat_id: int, local_chips:
 	session_profit = session_end_chips - session_start_chips
 	if Array(settlement.get("winner_seats", [])).has(local_seat_id):
 		hands_won += 1
+	var winner_names: Array = Array(settlement.get("winner_names", []))
+	last_winner = String(winner_names[0]) if not winner_names.is_empty() else "-"
+	last_win_amount = int(settlement.get("win_amount", 0))
 	if pot_before > biggest_pot:
 		biggest_pot = pot_before
 	if desc != "":
 		best_hand_desc = desc
 	if current_table_chips <= 0:
 		is_session_over = true
+		end_reason = "Out of chips"
 	if max_hands > 0 and hands_played >= max_hands:
 		is_session_over = true
+		if end_reason == "":
+			end_reason = "Hands completed"
 
 func hand_count_text() -> String:
 	if max_hands <= 0 or max_hands >= 999:
@@ -97,6 +109,9 @@ func to_dict() -> Dictionary:
 		"biggest_pot": biggest_pot,
 		"best_hand_desc": best_hand_desc,
 		"is_session_over": is_session_over,
+		"end_reason": end_reason,
+		"last_winner": last_winner,
+		"last_win_amount": last_win_amount,
 	}
 
 static func from_context(context: Dictionary) -> TableSession:
