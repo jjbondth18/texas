@@ -39,3 +39,17 @@ The current registry is local/mock only. A future server implementation can repl
 - `buy_in`, `blinds`, `hand_count`, `max_players`, and `current_players`
 
 Quick join uses a simple mock rule: prefer waiting, quick-joinable, non-full public chip tables with the most current players; otherwise join any non-full quick-joinable public chip table; otherwise create a default public chip table.
+
+## Table Launch Flow
+
+All real table launches from the Home/Lobby UI pass through the same lightweight launch transition before the poker table scene opens.
+
+- Quick Chip: Finding a public chip table.
+- Table Browser Join: Joining a public table.
+- Table Browser Create: Creating a public table.
+- Friends Room Start: Creating a private room table.
+- Training: Preparing an AI training table.
+
+The transition is presentation only. It does not change public table registry selection, practice-chip isolation, account chip/gem balances, session settlement, or table context data.
+
+Gem Match remains a reserved server-required mode and does not enter the launch flow.

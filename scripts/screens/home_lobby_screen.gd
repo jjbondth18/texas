@@ -43,6 +43,9 @@ var _foreground_decor: TextureRect
 var _expanded := false
 var _bg_breath_tween: Tween
 var _fade_overlay: ColorRect
+var _launch_transition_label: Label
+var _launch_transition_tween: Tween
+var _is_launching_table := false
 var _bgm_player: AudioStreamPlayer
 
 const MockDataProvider := preload("res://scripts/demo/mock_data_provider.gd")
@@ -125,7 +128,18 @@ func _ready() -> void:
 	_fade_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_fade_overlay.visible = false
 	add_child(_fade_overlay)
-	
+
+	_launch_transition_label = Label.new()
+	_launch_transition_label.name = "EnteringTableLabel"
+	_launch_transition_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_launch_transition_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_launch_transition_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_launch_transition_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_launch_transition_label.visible = false
+	_launch_transition_label.add_theme_font_size_override("font_size", 24)
+	_launch_transition_label.add_theme_color_override("font_color", Color(0.96, 0.92, 1.0, 0.96))
+	_fade_overlay.add_child(_launch_transition_label)
+
 	_bgm_player = AudioStreamPlayer.new()
 	_bgm_player.name = "BGMPlayer"
 	var ogg = load("res://assets/music/bgm1.ogg") if ResourceLoader.exists("res://assets/music/bgm1.ogg") else AudioStreamOggVorbis.load_from_file(ProjectSettings.globalize_path("res://assets/music/bgm1.ogg"))
@@ -764,7 +778,9 @@ func _on_mode_selected(id: String) -> void:
 		"quick_play":
 			_show_quick_play_setup()
 		"training":
-			_open_backend_table(_local_backend.create_training_table(_player_profile))
+			_start_table_launch_transition("Preparing AI training table...", func() -> void:
+				_open_backend_table(_local_backend.create_training_table(_player_profile))
+			)
 		"room_browser":
 			set_state(LobbyState.ROOM_BROWSER)
 		"private_table":
@@ -806,7 +822,9 @@ func _start_quick_play_from_setup() -> void:
 		"max_hands": _selected_quick_max_hands,
 	}
 	_hide_quick_play_setup()
-	_open_backend_table(_local_backend.quick_join_public_table(_player_profile, setup_config))
+	_start_table_launch_transition("Finding a public chip table...", func() -> void:
+		_open_backend_table(_local_backend.quick_join_public_table(_player_profile, setup_config))
+	)
 
 
 func _update_quick_play_setup_profile() -> void:
@@ -958,14 +976,53 @@ func _format_number(value: int) -> String:
 	return text + output
 
 func _open_poker_table_with_profile(mode: String, table_id: String) -> void:
-	TableLaunchContext.configure(mode, table_id, _player_profile)
-	ScreenNavigator.open_poker_table(get_tree(), mode, table_id, _player_profile)
+	_start_table_launch_transition("Preparing table...", func() -> void:
+		TableLaunchContext.configure(mode, table_id, _player_profile)
+		ScreenNavigator.open_poker_table(get_tree(), mode, table_id, _player_profile)
+	)
 
 func _open_backend_table(table_context: Dictionary) -> void:
 	if table_context.is_empty():
+		_finish_table_launch_transition()
 		_show_coming_soon("TABLE")
 		return
 	ScreenNavigator.open_poker_table_with_context(get_tree(), table_context)
+
+func _start_table_launch_transition(label_text: String, launch_callable: Callable) -> void:
+	if _is_launching_table:
+		return
+	_is_launching_table = true
+	if _launch_transition_tween != null:
+		_launch_transition_tween.kill()
+	if _fade_overlay == null:
+		launch_callable.call()
+		return
+	_fade_overlay.visible = true
+	_fade_overlay.color = Color(0, 0, 0, 0)
+	_fade_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	if _launch_transition_label != null:
+		_launch_transition_label.text = "ENTERING TABLE\n%s" % label_text
+		_launch_transition_label.visible = true
+	_stop_bg_breathing()
+	_launch_transition_tween = create_tween()
+	_launch_transition_tween.tween_property(_fade_overlay, "color", Color(0.0, 0.0, 0.0, 0.88), 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	_launch_transition_tween.tween_interval(0.25)
+	_launch_transition_tween.tween_callback(func() -> void:
+		launch_callable.call()
+	)
+
+func _finish_table_launch_transition() -> void:
+	_is_launching_table = false
+	if _launch_transition_tween != null:
+		_launch_transition_tween.kill()
+		_launch_transition_tween = null
+	if _fade_overlay != null:
+		_fade_overlay.visible = false
+		_fade_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_fade_overlay.color = Color(0, 0, 0, 0)
+	if _launch_transition_label != null:
+		_launch_transition_label.visible = false
+	_start_bg_breathing()
 
 func _open_friends_room_lobby() -> void:
 	_friends_room_context = _local_backend.create_friends_room(_player_profile)
@@ -1160,27 +1217,23 @@ func _process(delta: float) -> void:
 
 func _on_join_pressed(room_id: String) -> void:
 	print("Loading Poker Table: %s..." % room_id)
-	_fade_overlay.visible = true
-	_fade_overlay.color = Color(0, 0, 0, 0)
-	_fade_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	_stop_bg_breathing()
-	var tween := create_tween()
-	tween.tween_property(_fade_overlay, "color", Color(0.0, 0.0, 0.0, 1.0), 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	tween.tween_callback(func() -> void:
+	_start_table_launch_transition("Joining public table...", func() -> void:
 		print("Transition complete. Poker table %s loaded." % room_id)
 		_open_backend_table(_local_backend.join_public_table(room_id, _player_profile))
 	)
 
 func _create_public_chip_table_from_browser() -> void:
-	_reload_player_profile()
-	var table := _local_backend.create_public_table({
-		"small_blind": 25,
-		"big_blind": 50,
-		"buy_in": 10000,
-		"hand_count": 10,
-		"created_by": String(_player_profile.get("player_id", "local_player")),
-	})
-	_open_backend_table(_local_backend.join_public_table(String(table.get("table_id", "")), _player_profile))
+	_start_table_launch_transition("Creating public table...", func() -> void:
+		_reload_player_profile()
+		var table := _local_backend.create_public_table({
+			"small_blind": 25,
+			"big_blind": 50,
+			"buy_in": 10000,
+			"hand_count": 10,
+			"created_by": String(_player_profile.get("player_id", "local_player")),
+		})
+		_open_backend_table(_local_backend.join_public_table(String(table.get("table_id", "")), _player_profile))
+	)
 
 func _build_toast() -> void:
 	_toast_label = Label.new()
@@ -1434,7 +1487,11 @@ func _build_friends_room_panel() -> void:
 	start_button.add_theme_color_override("font_color", Color(1, 1, 1, 0.96))
 	start_button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.60), Color(1.0, 0.0, 0.5, 0.80), 21))
 	start_button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.82), Color(1.0, 0.0, 0.5, 1.0), 21))
-	start_button.pressed.connect(func() -> void: _open_backend_table(_friends_room_context))
+	start_button.pressed.connect(func() -> void:
+		_start_table_launch_transition("Creating private room...", func() -> void:
+			_open_backend_table(_friends_room_context)
+		)
+	)
 	button_row.add_child(start_button)
 
 	var back_button := Button.new()
