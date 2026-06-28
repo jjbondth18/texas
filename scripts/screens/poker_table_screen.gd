@@ -1182,6 +1182,7 @@ func _configure_table_flow_from_launch_context() -> void:
 	if context.is_empty():
 		return
 	_table_flow.configure_from_launch_context(context)
+	return
 	_top_bar_root = Control.new()
 	_top_bar_root.name = "TopBar"
 	_top_bar_root.position = Vector2(32, 10)
@@ -1270,6 +1271,9 @@ func _configure_table_flow_from_launch_context() -> void:
 
 
 func _build_top_bar_container_layout() -> void:
+	_build_top_action_bar()
+	_hide_legacy_top_center_bars()
+	return
 	_top_bar_root = _content_root.get_node_or_null("TopBarRoot") as Control
 	if _top_bar_root == null:
 		_top_bar_root = Control.new()
