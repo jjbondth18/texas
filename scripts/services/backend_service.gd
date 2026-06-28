@@ -1,7 +1,7 @@
 extends RefCounted
 class_name BackendService
 
-func create_quick_play_table(_profile: Dictionary) -> Dictionary:
+func create_quick_play_table(_profile: Dictionary, _setup_config: Dictionary = {}) -> Dictionary:
 	push_error("create_quick_play_table must be implemented by a backend.")
 	return {}
 

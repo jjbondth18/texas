@@ -1,7 +1,7 @@
 extends BackendService
 class_name SteamLobbyBackend
 
-func create_quick_play_table(_profile: Dictionary) -> Dictionary:
+func create_quick_play_table(_profile: Dictionary, _setup_config: Dictionary = {}) -> Dictionary:
 	push_warning("[SteamLobbyBackend] Placeholder only. Use LocalMockBackend for current builds.")
 	return {}
 

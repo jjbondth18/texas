@@ -8,15 +8,23 @@ const TableSessionScript := preload("res://scripts/data/table_session.gd")
 func _initialize() -> void:
 	var profile := PlayerProfileScript.default_profile()
 	var backend := LocalMockBackendScript.new()
-	var context := backend.create_quick_play_table(profile)
-	_require(int(context.get("buy_in", 0)) == 20000, "quick play buy-in must be 20000 for default profile")
-	_require(int(context.get("small_blind", 0)) == 25, "quick play small blind must be 25")
-	_require(int(context.get("big_blind", 0)) == 50, "quick play big blind must be 50")
-	_require(int(context.get("max_hands", 0)) == 10, "quick play max_hands must be 10")
+	var context := backend.create_quick_play_table(profile, {
+		"buy_in": 10000,
+		"small_blind": 50,
+		"big_blind": 100,
+		"max_hands": 20,
+	})
+	_require(int(context.get("buy_in", 0)) == 10000, "quick play buy-in must follow setup")
+	_require(int(context.get("small_blind", 0)) == 50, "quick play small blind must follow setup")
+	_require(int(context.get("big_blind", 0)) == 100, "quick play big blind must follow setup")
+	_require(int(context.get("max_hands", 0)) == 20, "quick play max_hands must follow setup")
 
 	TableLaunchContextScript.configure_from_context(context)
 	var launch_context := TableLaunchContextScript.get_current_table_context()
-	_require(int(launch_context.get("max_hands", 0)) == 10, "launch context must preserve max_hands")
+	_require(int(launch_context.get("buy_in", 0)) == 10000, "launch context must preserve buy_in")
+	_require(int(launch_context.get("small_blind", 0)) == 50, "launch context must preserve small blind")
+	_require(int(launch_context.get("big_blind", 0)) == 100, "launch context must preserve big blind")
+	_require(int(launch_context.get("max_hands", 0)) == 20, "launch context must preserve max_hands")
 	_require(Dictionary(launch_context.get("table_session", {})).has("session_start_chips"), "launch context must expose table_session")
 
 	var session := TableSessionScript.from_context(launch_context)

@@ -19,7 +19,7 @@ static var seats: Array[Dictionary] = []
 static var table_session: Dictionary = {}
 static var player_profile: Dictionary = PlayerProfileScript.default_profile()
 
-static func configure(mode: String = "quick_play", id: String = "mock_table_001", profile: Dictionary = {}) -> void:
+static func configure(mode: String = "quick_play", id: String = "mock_table_001", profile: Dictionary = {}, setup_config: Dictionary = {}) -> void:
 	launch_mode = mode
 	TableLaunchContext.mode = mode
 	table_id = id
@@ -27,13 +27,15 @@ static func configure(mode: String = "quick_play", id: String = "mock_table_001"
 	if not profile.is_empty():
 		set_player_profile(profile)
 	buy_in = PlayerProfileScript.table_buy_in(player_profile)
+	if setup_config.has("buy_in"):
+		buy_in = int(setup_config.get("buy_in", buy_in))
 	backend_type = "local_mock"
 	room_id = ""
 	allow_debug_tools = is_training
 	ai_player_count = 7 if mode in ["quick_play", "training"] else 0
-	max_hands = 999 if is_training else 10
-	small_blind = 25
-	big_blind = 50
+	max_hands = 999 if is_training else int(setup_config.get("max_hands", 10))
+	small_blind = int(setup_config.get("small_blind", 25))
+	big_blind = int(setup_config.get("big_blind", 50))
 	seats.clear()
 	table_session = _default_table_session()
 

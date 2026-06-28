@@ -1026,10 +1026,11 @@ func _configure_table_session_from_launch_context() -> void:
 	_recorded_session_hand_ids.clear()
 	_session_started = false
 	_append_session_log("Table session ready.")
-	_append_session_log("Buy-in %d. Blinds %d / %d." % [
+	_append_session_log("Buy-in: %d. Blinds: %d / %d. Hands: %s." % [
 		_table_session.buy_in,
 		_table_session.small_blind,
 		_table_session.big_blind,
+		"Unlimited" if _table_session.max_hands >= 999 else str(_table_session.max_hands),
 	])
 
 

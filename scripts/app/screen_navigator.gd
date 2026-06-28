@@ -6,8 +6,8 @@ const POKER_TABLE_SCENE := "res://scenes/screens/poker_table_screen.tscn"
 
 const TableLaunchContextScript := preload("res://scripts/app/table_launch_context.gd")
 
-static func open_poker_table(tree: SceneTree, launch_mode: String = "quick_play", table_id: String = "mock_table_001", player_profile: Dictionary = {}) -> void:
-	TableLaunchContextScript.configure(launch_mode, table_id, player_profile)
+static func open_poker_table(tree: SceneTree, launch_mode: String = "quick_play", table_id: String = "mock_table_001", player_profile: Dictionary = {}, setup_config: Dictionary = {}) -> void:
+	TableLaunchContextScript.configure(launch_mode, table_id, player_profile, setup_config)
 	tree.change_scene_to_file(POKER_TABLE_SCENE)
 
 static func open_poker_table_with_context(tree: SceneTree, table_context: Dictionary) -> void:

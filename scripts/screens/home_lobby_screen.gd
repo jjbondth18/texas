@@ -50,6 +50,8 @@ const ScreenNavigator := preload("res://scripts/app/screen_navigator.gd")
 const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
 const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
 const LocalMockBackendScript := preload("res://scripts/services/local_mock_backend.gd")
+const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
+const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 const MODE_IMAGES := {
 	"quick_play": "res://assets/home_lobby/mode_cards/mode_quick_play.png",
 	"room_browser": "res://assets/home_lobby/mode_cards/mode_cash_tables.png",
@@ -74,6 +76,17 @@ var _friends_room_context: Dictionary = {}
 var _friends_room_id_label: Label
 var _friends_room_seats_label: Label
 var _friends_room_ready_label: Label
+var _quick_play_setup_panel: PanelContainer
+var _quick_play_setup_avatar: TextureRect
+var _quick_play_setup_name_label: Label
+var _quick_play_setup_chips_label: Label
+var _quick_buy_in_buttons: Dictionary = {}
+var _quick_blinds_buttons: Dictionary = {}
+var _quick_hand_count_buttons: Dictionary = {}
+var _selected_quick_buy_in := 20000
+var _selected_quick_small_blind := 25
+var _selected_quick_big_blind := 50
+var _selected_quick_max_hands := 10
 
 func _ready() -> void:
 	# Force standalone windowed mode to bypass Godot editor stretch bugs
@@ -90,6 +103,7 @@ func _ready() -> void:
 	_build_store_panel()
 	_build_profile_panel()
 	_build_settings_panel()
+	_build_quick_play_setup_panel()
 	
 	_fade_overlay = ColorRect.new()
 	_fade_overlay.name = "FadeOverlay"
@@ -124,6 +138,8 @@ func _ready() -> void:
 
 func set_state(new_state: LobbyState, animated: bool = true) -> void:
 	current_state = new_state
+	if _quick_play_setup_panel != null and new_state != LobbyState.PLAY_EXPANDED:
+		_quick_play_setup_panel.visible = false
 	
 	var nav_id := "home"
 	match current_state:
@@ -360,6 +376,146 @@ func _build_play_panel() -> void:
 	content.add_child(_daily_bonus)
 
 
+func _build_quick_play_setup_panel() -> void:
+	_quick_play_setup_panel = PanelContainer.new()
+	_quick_play_setup_panel.name = "QuickPlaySetupPanel"
+	_quick_play_setup_panel.anchor_left = 0.5
+	_quick_play_setup_panel.anchor_top = 0.5
+	_quick_play_setup_panel.anchor_right = 0.5
+	_quick_play_setup_panel.anchor_bottom = 0.5
+	_quick_play_setup_panel.offset_left = -360
+	_quick_play_setup_panel.offset_top = -292
+	_quick_play_setup_panel.offset_right = 360
+	_quick_play_setup_panel.offset_bottom = 292
+	_quick_play_setup_panel.z_index = 60
+	_quick_play_setup_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	_quick_play_setup_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.018, 0.92), Color(1.0, 0.0, 0.5, 0.40), 12, 1))
+	_quick_play_setup_panel.visible = false
+	_lobby_ui_root.add_child(_quick_play_setup_panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 28)
+	margin.add_theme_constant_override("margin_right", 28)
+	margin.add_theme_constant_override("margin_top", 24)
+	margin.add_theme_constant_override("margin_bottom", 24)
+	_quick_play_setup_panel.add_child(margin)
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 18)
+	margin.add_child(column)
+
+	var title := Label.new()
+	title.text = "QUICK PLAY"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HomeTheme.make_font_settings(title, 28, HomeTheme.TEXT)
+	column.add_child(title)
+
+	var profile_row := HBoxContainer.new()
+	profile_row.add_theme_constant_override("separation", 14)
+	profile_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	column.add_child(profile_row)
+
+	var avatar_frame := PanelContainer.new()
+	avatar_frame.custom_minimum_size = Vector2(78, 78)
+	avatar_frame.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.012, 0.010, 0.024, 0.92), Color(0.82, 0.78, 1.0, 0.65), 39, 1))
+	profile_row.add_child(avatar_frame)
+	_quick_play_setup_avatar = TextureRect.new()
+	_quick_play_setup_avatar.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_quick_play_setup_avatar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_quick_play_setup_avatar.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_quick_play_setup_avatar.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	_quick_play_setup_avatar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	avatar_frame.add_child(_quick_play_setup_avatar)
+
+	var profile_text := VBoxContainer.new()
+	profile_text.add_theme_constant_override("separation", 5)
+	profile_row.add_child(profile_text)
+	_quick_play_setup_name_label = Label.new()
+	HomeTheme.make_font_settings(_quick_play_setup_name_label, 19, HomeTheme.TEXT)
+	profile_text.add_child(_quick_play_setup_name_label)
+	_quick_play_setup_chips_label = Label.new()
+	HomeTheme.make_font_settings(_quick_play_setup_chips_label, 15, HomeTheme.GOLD)
+	profile_text.add_child(_quick_play_setup_chips_label)
+
+	_build_quick_setup_section(column, "BUY-IN", _quick_buy_in_buttons, [5000, 10000, 20000, 50000], _select_quick_buy_in)
+	_build_quick_blinds_section(column)
+	_build_quick_setup_section(column, "HAND COUNT", _quick_hand_count_buttons, [10, 20, 999], _select_quick_hand_count)
+
+	var button_row := HBoxContainer.new()
+	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	button_row.add_theme_constant_override("separation", 16)
+	column.add_child(button_row)
+
+	var start_button := Button.new()
+	start_button.text = "START TABLE"
+	start_button.custom_minimum_size = Vector2(180, 48)
+	start_button.focus_mode = Control.FOCUS_NONE
+	start_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	start_button.add_theme_font_size_override("font_size", 15)
+	start_button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.68), Color(1.0, 0.0, 0.5, 0.85), 22))
+	start_button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.86), Color(1.0, 0.0, 0.5, 1.0), 22))
+	start_button.pressed.connect(_start_quick_play_from_setup)
+	button_row.add_child(start_button)
+
+	var cancel_button := Button.new()
+	cancel_button.text = "CANCEL"
+	cancel_button.custom_minimum_size = Vector2(140, 48)
+	cancel_button.focus_mode = Control.FOCUS_NONE
+	cancel_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	cancel_button.add_theme_font_size_override("font_size", 14)
+	cancel_button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.58), Color(0.36, 0.42, 0.7, 0.28), 22))
+	cancel_button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.035, 0.04, 0.085, 0.82), Color(0.78, 0.58, 1.0, 0.55), 22))
+	cancel_button.pressed.connect(_hide_quick_play_setup)
+	button_row.add_child(cancel_button)
+
+
+func _build_quick_setup_section(parent: VBoxContainer, title_text: String, buttons: Dictionary, values: Array, callback: Callable) -> void:
+	var title := Label.new()
+	title.text = title_text
+	HomeTheme.make_font_settings(title, 12, HomeTheme.MUTED)
+	parent.add_child(title)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	parent.add_child(row)
+	for value_item in values:
+		var value: int = int(value_item)
+		var button := Button.new()
+		button.text = _quick_option_label(title_text, value)
+		button.custom_minimum_size = Vector2(150, 42)
+		button.focus_mode = Control.FOCUS_NONE
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		button.add_theme_font_size_override("font_size", 13)
+		var captured_value: int = value
+		button.pressed.connect(func() -> void: callback.call(captured_value))
+		buttons[value] = button
+		row.add_child(button)
+
+
+func _build_quick_blinds_section(parent: VBoxContainer) -> void:
+	var title := Label.new()
+	title.text = "BLINDS"
+	HomeTheme.make_font_settings(title, 12, HomeTheme.MUTED)
+	parent.add_child(title)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	parent.add_child(row)
+	var blind_pairs := [[25, 50], [50, 100], [100, 200]]
+	for pair_item in blind_pairs:
+		var pair: Array = Array(pair_item)
+		var small_blind: int = int(pair[0])
+		var big_blind: int = int(pair[1])
+		var key := "%d/%d" % [small_blind, big_blind]
+		var button := Button.new()
+		button.text = "%d / %d" % [small_blind, big_blind]
+		button.custom_minimum_size = Vector2(150, 42)
+		button.focus_mode = Control.FOCUS_NONE
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		button.add_theme_font_size_override("font_size", 13)
+		button.pressed.connect(func() -> void: _select_quick_blinds(small_blind, big_blind))
+		_quick_blinds_buttons[key] = button
+		row.add_child(button)
+
+
 func _build_foreground() -> void:
 	_foreground_decor = TextureRect.new()
 	_foreground_decor.name = "ForegroundDecor"
@@ -533,7 +689,7 @@ func _on_mode_selected(id: String) -> void:
 	print("Selected lobby mode: %s" % id)
 	match id:
 		"quick_play":
-			_open_backend_table(_local_backend.create_quick_play_table(_player_profile))
+			_show_quick_play_setup()
 		"training":
 			_open_backend_table(_local_backend.create_training_table(_player_profile))
 		"room_browser":
@@ -544,6 +700,145 @@ func _on_mode_selected(id: String) -> void:
 			_show_coming_soon("EVENTS")
 		_:
 			_show_coming_soon(id.to_upper())
+
+func _show_quick_play_setup() -> void:
+	if _quick_play_setup_panel == null:
+		return
+	_update_quick_play_setup_profile()
+	_select_default_quick_buy_in()
+	_selected_quick_small_blind = 25
+	_selected_quick_big_blind = 50
+	_selected_quick_max_hands = 10
+	_refresh_quick_play_setup_options()
+	_quick_play_setup_panel.visible = true
+	_quick_play_setup_panel.modulate.a = 0.0
+	var tween := create_tween()
+	tween.tween_property(_quick_play_setup_panel, "modulate:a", 1.0, 0.16).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+
+func _hide_quick_play_setup() -> void:
+	if _quick_play_setup_panel != null:
+		_quick_play_setup_panel.visible = false
+
+
+func _start_quick_play_from_setup() -> void:
+	var setup_config := {
+		"buy_in": _selected_quick_buy_in,
+		"small_blind": _selected_quick_small_blind,
+		"big_blind": _selected_quick_big_blind,
+		"max_hands": _selected_quick_max_hands,
+	}
+	_hide_quick_play_setup()
+	_open_backend_table(_local_backend.create_quick_play_table(_player_profile, setup_config))
+
+
+func _update_quick_play_setup_profile() -> void:
+	var player_name := PlayerProfileScript.get_player_name(_player_profile)
+	var total_chips := PlayerProfileScript.get_total_chips(_player_profile)
+	_quick_play_setup_name_label.text = player_name
+	_quick_play_setup_chips_label.text = "Total Chips: %s" % _format_number(total_chips)
+	var texture: Texture2D = AvatarLibraryScript.get_avatar_by_id(PlayerProfileScript.get_avatar_id(_player_profile))
+	if texture == null:
+		var avatar_path := String(_player_profile.get("avatar", ""))
+		if avatar_path != "" and ResourceLoader.exists(avatar_path):
+			texture = load(avatar_path) as Texture2D
+	_quick_play_setup_avatar.texture = texture
+	_quick_play_setup_avatar.visible = texture != null
+
+
+func _select_default_quick_buy_in() -> void:
+	var total_chips := PlayerProfileScript.get_total_chips(_player_profile)
+	var best := 0
+	for option in [5000, 10000, 20000, 50000]:
+		var value: int = int(option)
+		if value <= total_chips and value <= 20000:
+			best = value
+	if best == 0:
+		for option in [5000, 10000, 20000, 50000]:
+			var value: int = int(option)
+			if value <= total_chips:
+				best = max(best, value)
+	_selected_quick_buy_in = best if best > 0 else 5000
+
+
+func _select_quick_buy_in(value: int) -> void:
+	if value > PlayerProfileScript.get_total_chips(_player_profile):
+		return
+	_selected_quick_buy_in = value
+	_refresh_quick_play_setup_options()
+
+
+func _select_quick_blinds(small_blind: int, big_blind: int) -> void:
+	_selected_quick_small_blind = small_blind
+	_selected_quick_big_blind = big_blind
+	_refresh_quick_play_setup_options()
+
+
+func _select_quick_hand_count(value: int) -> void:
+	_selected_quick_max_hands = value
+	_refresh_quick_play_setup_options()
+
+
+func _refresh_quick_play_setup_options() -> void:
+	var total_chips := PlayerProfileScript.get_total_chips(_player_profile)
+	for key_item in _quick_buy_in_buttons.keys():
+		var value: int = int(key_item)
+		var button: Button = _quick_buy_in_buttons[key_item] as Button
+		if button == null:
+			continue
+		var disabled: bool = value > total_chips
+		_apply_quick_option_style(button, value == _selected_quick_buy_in, disabled)
+	for key_item in _quick_blinds_buttons.keys():
+		var key: String = String(key_item)
+		var button: Button = _quick_blinds_buttons[key_item] as Button
+		if button == null:
+			continue
+		_apply_quick_option_style(button, key == "%d/%d" % [_selected_quick_small_blind, _selected_quick_big_blind], false)
+	for key_item in _quick_hand_count_buttons.keys():
+		var value: int = int(key_item)
+		var button: Button = _quick_hand_count_buttons[key_item] as Button
+		if button == null:
+			continue
+		_apply_quick_option_style(button, value == _selected_quick_max_hands, false)
+
+
+func _apply_quick_option_style(button: Button, selected: bool, disabled: bool) -> void:
+	button.disabled = disabled
+	var bg := Color(0.018, 0.022, 0.052, 0.72)
+	var border := Color(0.36, 0.42, 0.7, 0.28)
+	var font := HomeTheme.TEXT
+	if selected:
+		bg = Color(0.22, 0.08, 0.18, 0.84)
+		border = Color(1.0, 0.0, 0.5, 0.86)
+		font = Color(1.0, 0.92, 0.98, 1.0)
+	elif disabled:
+		bg = Color(0.01, 0.012, 0.024, 0.38)
+		border = Color(0.20, 0.22, 0.32, 0.18)
+		font = Color(0.40, 0.42, 0.52, 0.85)
+	button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(bg, border, 16))
+	button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(bg.lightened(0.08), border.lightened(0.18), 16))
+	button.add_theme_stylebox_override("pressed", HomeTheme.make_button_style(bg.darkened(0.08), border, 16))
+	button.add_theme_stylebox_override("disabled", HomeTheme.make_button_style(bg, border, 16))
+	button.add_theme_color_override("font_color", font)
+	button.add_theme_color_override("font_hover_color", font)
+	button.add_theme_color_override("font_disabled_color", font)
+
+
+func _quick_option_label(title_text: String, value: int) -> String:
+	if title_text == "HAND COUNT" and value >= 999:
+		return "Unlimited"
+	if title_text == "HAND COUNT":
+		return "%d hands" % value
+	return _format_number(value)
+
+
+func _format_number(value: int) -> String:
+	var text := str(value)
+	var output := ""
+	while text.length() > 3:
+		output = "," + text.substr(text.length() - 3, 3) + output
+		text = text.substr(0, text.length() - 3)
+	return text + output
 
 func _open_poker_table_with_profile(mode: String, table_id: String) -> void:
 	TableLaunchContext.configure(mode, table_id, _player_profile)

@@ -7,23 +7,23 @@ const TableSeatScript := preload("res://scripts/data/table_seat.gd")
 
 var _current_context: Dictionary = {}
 
-func create_quick_play_table(profile: Dictionary) -> Dictionary:
-	_current_context = _build_table_context("quick_play", "mock_table_001", "", profile, false, false, 7)
+func create_quick_play_table(profile: Dictionary, setup_config: Dictionary = {}) -> Dictionary:
+	_current_context = _build_table_context("quick_play", "mock_table_001", "", profile, false, false, 7, setup_config)
 	return _current_context.duplicate(true)
 
 func create_training_table(profile: Dictionary) -> Dictionary:
-	_current_context = _build_table_context("training", "mock_training_table_001", "", profile, true, true, 7)
+	_current_context = _build_table_context("training", "mock_training_table_001", "", profile, true, true, 7, {})
 	return _current_context.duplicate(true)
 
 func create_friends_room(profile: Dictionary) -> Dictionary:
 	var room_id := "FR-%04d" % (1000 + (Time.get_ticks_msec() % 9000))
-	_current_context = _build_table_context("friends_room", "mock_friends_table_%s" % room_id, room_id, profile, false, true, 3)
+	_current_context = _build_table_context("friends_room", "mock_friends_table_%s" % room_id, room_id, profile, false, true, 3, {})
 	_current_context["room_state"] = "waiting"
 	_current_context["ready_seats"] = [5]
 	return _current_context.duplicate(true)
 
 func join_room(room_id: String, profile: Dictionary) -> Dictionary:
-	_current_context = _build_table_context("friends_room", "mock_friends_table_%s" % room_id, room_id, profile, false, true, 3)
+	_current_context = _build_table_context("friends_room", "mock_friends_table_%s" % room_id, room_id, profile, false, true, 3, {})
 	return _current_context.duplicate(true)
 
 func leave_room() -> void:
@@ -32,12 +32,16 @@ func leave_room() -> void:
 func get_current_table_context() -> Dictionary:
 	return _current_context.duplicate(true)
 
-func _build_table_context(mode: String, table_id: String, room_id: String, profile: Dictionary, training: bool, debug_tools: bool, ai_count: int) -> Dictionary:
+func _build_table_context(mode: String, table_id: String, room_id: String, profile: Dictionary, training: bool, debug_tools: bool, ai_count: int, setup_config: Dictionary = {}) -> Dictionary:
 	var normalized_profile: Dictionary = PlayerProfileScript.normalized_dict(profile)
 	var buy_in: int = PlayerProfileScript.table_buy_in(normalized_profile)
 	if training:
 		buy_in = PlayerProfileScript.DEFAULT_TABLE_BUY_IN
-	var max_hands: int = 999 if training else 10
+	else:
+		buy_in = int(setup_config.get("buy_in", buy_in))
+	var small_blind: int = int(setup_config.get("small_blind", 25))
+	var big_blind: int = int(setup_config.get("big_blind", 50))
+	var max_hands: int = 999 if training else int(setup_config.get("max_hands", 10))
 	return {
 		"mode": mode,
 		"backend_type": "local_mock",
@@ -46,8 +50,8 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 		"room_id": room_id,
 		"seats": _build_mock_seats(normalized_profile, buy_in, ai_count),
 		"buy_in": buy_in,
-		"small_blind": 25,
-		"big_blind": 50,
+		"small_blind": small_blind,
+		"big_blind": big_blind,
 		"is_training": training,
 		"allow_debug_tools": debug_tools,
 		"ai_player_count": ai_count,
@@ -57,8 +61,8 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 			"buy_in": buy_in,
 			"starting_chips": buy_in,
 			"current_table_chips": buy_in,
-			"small_blind": 25,
-			"big_blind": 50,
+			"small_blind": small_blind,
+			"big_blind": big_blind,
 			"max_hands": max_hands,
 			"current_hand_index": 0,
 			"session_start_chips": buy_in,
