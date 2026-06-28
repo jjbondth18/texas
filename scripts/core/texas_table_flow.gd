@@ -30,14 +30,23 @@ var rule_debug_log: Array[String] = []
 
 var small_blind: int = 25
 var big_blind: int = 50
+var _configured_seats: Array[Dictionary] = []
 var _hand_number: int = 0
 var _last_dealer_seat: int = 0
 var _visual_event_number: int = 0
 
 
+func configure_from_launch_context(context: Dictionary) -> void:
+	small_blind = int(context.get("small_blind", small_blind))
+	big_blind = int(context.get("big_blind", big_blind))
+	_configured_seats.clear()
+	for seat in Array(context.get("seats", [])):
+		_configured_seats.append(Dictionary(seat).duplicate(true))
+
+
 func reset_table() -> Dictionary:
 	table_state = WAITING
-	seats = _mock_player_seats()
+	seats = _configured_seats.duplicate(true) if not _configured_seats.is_empty() else _mock_player_seats()
 	hand_data = _empty_hand_data()
 	table_log.clear()
 	rule_debug_log.clear()

@@ -1,6 +1,10 @@
 extends Control
 class_name PokerTableScreen
 
+# POKER TABLE UI FREEZE:
+# Do not change layout/position/size of existing poker table UI nodes unless the task explicitly asks for visual changes.
+# Logic/data binding changes are allowed, but must not move or resize frozen UI components.
+
 const MockTableSimulation := preload("res://scripts/demo/mock_table_simulation.gd")
 const PokerSeatScene := preload("res://scenes/components/poker_seat.tscn")
 const CommunityBoardScene := preload("res://scenes/components/community_board.tscn")
@@ -15,6 +19,7 @@ const RoomInfoPanelScene := preload("res://scripts/components/table_room_info_pa
 const LayoutSchema := preload("res://scripts/dev/poker_table_layout_schema.gd")
 const TexasTableFlowScript := preload("res://scripts/core/texas_table_flow.gd")
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
+const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 
 const DESIGN_SIZE := Vector2(2560, 1000)
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
@@ -88,6 +93,7 @@ func _ready() -> void:
 		TableLaunchContext.configure("training", "mock_table_001")
 		
 	_build_scene()
+	_configure_table_flow_from_launch_context()
 	_load_phase(_phase_from_args())
 	_apply_capture_args()
 
@@ -303,7 +309,10 @@ func _apply_design_rect_to_control(target: Control, design_rect: Rect2) -> void:
 
 func _load_phase(phase: String) -> void:
 	if phase.to_lower() == "waiting":
-		snapshot = _table_flow_to_ui_snapshot(_table_flow.reset_table())
+		_configure_table_flow_from_launch_context()
+		_table_flow.reset_table()
+		_sync_launch_profile_to_table_flow()
+		snapshot = _table_flow_to_ui_snapshot(_table_flow.to_snapshot())
 	else:
 		snapshot = MockTableSimulation.get_phase_snapshot(phase)
 	_apply_launch_context(snapshot)
@@ -313,6 +322,8 @@ func _start_test_hand() -> void:
 	_hand_over_sequence_active = false
 	_next_hand_ready = true
 	_reset_visual_hand_state()
+	_configure_table_flow_from_launch_context()
+	_sync_launch_profile_to_table_flow()
 	snapshot = _table_flow_to_ui_snapshot(_table_flow.start_new_hand())
 	_apply_launch_context(snapshot)
 	_refresh()
@@ -327,6 +338,8 @@ func _start_next_hand() -> void:
 	_hand_over_sequence_active = false
 	_next_hand_ready = true
 	_reset_visual_hand_state()
+	_configure_table_flow_from_launch_context()
+	_sync_launch_profile_to_table_flow()
 	snapshot = _table_flow_to_ui_snapshot(_table_flow.start_new_hand())
 	_apply_launch_context(snapshot)
 	_refresh()
@@ -340,6 +353,7 @@ func _advance_test_stage() -> void:
 
 func _force_test_showdown() -> void:
 	if String(_table_flow.table_state) == TexasTableFlowScript.WAITING:
+		_sync_launch_profile_to_table_flow()
 		_table_flow.start_new_hand()
 	var guard: int = 0
 	while String(_table_flow.table_state) not in [TexasTableFlowScript.SHOWDOWN, TexasTableFlowScript.HAND_OVER]:
@@ -358,9 +372,29 @@ func _reset_test_table() -> void:
 	_next_hand_ready = true
 	_visual_pause_until_msec = 0
 	_reset_visual_hand_state()
-	snapshot = _table_flow_to_ui_snapshot(_table_flow.reset_table())
+	_configure_table_flow_from_launch_context()
+	_table_flow.reset_table()
+	_sync_launch_profile_to_table_flow()
+	snapshot = _table_flow_to_ui_snapshot(_table_flow.to_snapshot())
 	_apply_launch_context(snapshot)
 	_refresh()
+
+func _sync_launch_profile_to_table_flow() -> void:
+	var profile: Dictionary = TableLaunchContext.get_player_profile()
+	var local_name: String = PlayerProfileScript.get_player_name(profile)
+	var local_avatar_id: String = PlayerProfileScript.get_avatar_id(profile)
+	var table_chips: int = PlayerProfileScript.table_buy_in(profile)
+	for i in range(_table_flow.seats.size()):
+		var seat: Dictionary = Dictionary(_table_flow.seats[i]).duplicate(true)
+		if not bool(seat.get("is_local", false)):
+			continue
+		seat["player_id"] = String(profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID))
+		seat["player_name"] = local_name
+		seat["avatar_id"] = local_avatar_id
+		if String(_table_flow.table_state) in [TexasTableFlowScript.WAITING, TexasTableFlowScript.HAND_OVER]:
+			seat["chips"] = table_chips
+		_table_flow.seats[i] = seat
+		return
 
 func _table_flow_to_ui_snapshot(source: Dictionary) -> Dictionary:
 	var hand: Dictionary = Dictionary(source.get("hand_data", {})).duplicate(true)
@@ -1106,13 +1140,44 @@ func _apply_launch_context(target_snapshot: Dictionary) -> void:
 		target_snapshot["local_player"] = _find_local_player(seats)
 	else:
 		target_snapshot["table_id"] = TableLaunchContext.table_id
-		target_snapshot["connection_status"] = "Mock online table"
+		if TableLaunchContext.launch_mode == "friends_room":
+			target_snapshot["table_name"] = "Friends Room"
+			target_snapshot["connection_status"] = "LOCAL MOCK ROOM"
+		else:
+			target_snapshot["connection_status"] = "Mock online table"
+	_apply_local_profile_to_snapshot(target_snapshot)
+
+func _apply_local_profile_to_snapshot(target_snapshot: Dictionary) -> void:
+	var profile: Dictionary = TableLaunchContext.get_player_profile()
+	var local_name: String = PlayerProfileScript.get_player_name(profile)
+	var local_avatar_id: String = PlayerProfileScript.get_avatar_id(profile)
+	var local_avatar_texture: Texture2D = AvatarLibraryScript.get_avatar_by_id(local_avatar_id)
+	var seats: Array = Array(target_snapshot.get("seats", [])).duplicate(true)
+	for i in range(seats.size()):
+		var seat: Dictionary = Dictionary(seats[i]).duplicate(true)
+		if not bool(seat.get("is_local", false)):
+			seats[i] = seat
+			continue
+		seat["player_id"] = String(profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID))
+		seat["player_name"] = local_name
+		seat["avatar_id"] = local_avatar_id
+		seat["avatar_texture"] = local_avatar_texture
+		seat["buy_in"] = PlayerProfileScript.table_buy_in(profile)
+		seats[i] = seat
+	target_snapshot["seats"] = seats
+	target_snapshot["local_player"] = _find_local_player(seats)
 
 func _build_top_status_bar() -> void:
 	if _top_right_action_bar != null:
 		return
 	_build_top_action_bar()
 	return
+
+func _configure_table_flow_from_launch_context() -> void:
+	var context: Dictionary = TableLaunchContext.get_current_table_context()
+	if context.is_empty():
+		return
+	_table_flow.configure_from_launch_context(context)
 	_top_bar_root = Control.new()
 	_top_bar_root.name = "TopBar"
 	_top_bar_root.position = Vector2(32, 10)

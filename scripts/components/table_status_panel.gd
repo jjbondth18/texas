@@ -1,6 +1,10 @@
 extends PanelContainer
 class_name TableStatusPanel
 
+# POKER TABLE UI FREEZE:
+# Do not change layout/position/size of existing poker table UI nodes unless the task explicitly asks for visual changes.
+# Logic/data binding changes are allowed, but must not move or resize frozen UI components.
+
 var _rows_container: VBoxContainer
 var _pills := {}
 var is_left_panel := false

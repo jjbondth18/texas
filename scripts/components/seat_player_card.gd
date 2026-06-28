@@ -1,6 +1,10 @@
 extends Control
 class_name SeatPlayerCard
 
+# POKER TABLE UI FREEZE:
+# Do not change layout/position/size of existing poker table UI nodes unless the task explicitly asks for visual changes.
+# Logic/data binding changes are allowed, but must not move or resize frozen UI components.
+
 const GLASS_BACKGROUND := preload("res://assets/ui/neon_poker_ui_clean/glass_background.png")
 const AVATAR_RING := preload("res://assets/ui/neon_poker_ui_clean/avatar_ring.png")
 const CARD_BACKS_PAIR := preload("res://assets/ui/neon_poker_ui_clean/card_backs_pair.png")

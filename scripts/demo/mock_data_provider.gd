@@ -14,7 +14,8 @@ const StoreViewModelScript := preload("res://scripts/app/store_view_model.gd")
 const ProfileViewModelScript := preload("res://scripts/app/profile_view_model.gd")
 const SettingsViewModelScript := preload("res://scripts/app/settings_view_model.gd")
 
-const AVATAR_PLACEHOLDER := "res://assets/home_lobby/profile/avatar_placeholder.png"
+const LOCAL_AVATAR_ID := "4_05"
+const LOCAL_AVATAR_PATH := "res://assets/playersAv_cut/%s.png" % LOCAL_AVATAR_ID
 
 static func get_mock_player_profile() -> Dictionary:
 	return _mock_player_profile().to_lobby_dict()
@@ -65,16 +66,20 @@ static func _mock_player_profile():
 		24,
 		875,
 		1500,
-		25750,
+		24500,
 		1250,
-		AVATAR_PLACEHOLDER
+		LOCAL_AVATAR_PATH,
+		PlayerProfileScript.DEFAULT_PLAYER_ID,
+		LOCAL_AVATAR_ID,
+		LOCAL_AVATAR_ID,
+		[LOCAL_AVATAR_ID]
 	)
 
 static func _mock_lobby_modes() -> Array:
 	return [
 		LobbyModeScript.new("quick_play", "QUICK PLAY", "Jump into a table instantly", "res://assets/home_lobby/mode_cards/mode_quick_play.png", true, "quick_play"),
 		LobbyModeScript.new("room_browser", "ROOM BROWSER", "Choose a table from the lobby", "res://assets/home_lobby/mode_cards/mode_cash_tables.png", true, "room_browser"),
-		LobbyModeScript.new("private_table", "PRIVATE TABLE", "Create or join a room with friends", "res://assets/home_lobby/mode_cards/mode_private_table.png", true, "private_table"),
+		LobbyModeScript.new("private_table", "FRIENDS ROOM", "Create a local room with friends", "res://assets/home_lobby/mode_cards/mode_private_table.png", true, "private_table"),
 		LobbyModeScript.new("training", "TRAINING", "Practice against AI and learn safely", "res://assets/home_lobby/mode_cards/mode_tournaments.png", true, "training"),
 		LobbyModeScript.new("events", "EVENTS", "Limited-time tables and special rules", "res://assets/home_lobby/mode_cards/mode_club_games.png", true, "events"),
 	]

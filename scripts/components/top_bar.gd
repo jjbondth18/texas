@@ -3,11 +3,14 @@ class_name TopBar
 
 signal exit_requested
 
+const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
+
 var _name_label: Label
 var _level_label: Label
 var _xp_bar: ProgressBar
 var _chips_label: Label
 var _premium_label: Label
+var _avatar_rect: TextureRect
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(0, 64)
@@ -27,8 +30,16 @@ func _ready() -> void:
 
 	var avatar := Panel.new()
 	avatar.custom_minimum_size = Vector2(44, 44)
+	avatar.clip_children = Control.CLIP_CHILDREN_AND_DRAW
 	avatar.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.08, 0.07, 0.13, 1), Color(0.82, 0.78, 1.0, 0.8), 22, 1))
 	profile.add_child(avatar)
+	_avatar_rect = TextureRect.new()
+	_avatar_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_avatar_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_avatar_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_avatar_rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	_avatar_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	avatar.add_child(_avatar_rect)
 
 	var profile_text := VBoxContainer.new()
 	profile_text.add_theme_constant_override("separation", 3)
@@ -80,6 +91,21 @@ func configure(player: Dictionary) -> void:
 	
 	var premium_val = player.get("gems", player.get("premium_currency", 0))
 	_premium_label.text = "%s" % _format_number(premium_val)
+	_apply_avatar(player)
+
+func _apply_avatar(player: Dictionary) -> void:
+	if _avatar_rect == null:
+		return
+	var texture: Texture2D = null
+	var avatar_id := String(player.get("selected_avatar_id", player.get("avatar_id", "")))
+	if avatar_id != "":
+		texture = AvatarLibraryScript.get_avatar_by_id(avatar_id)
+	if texture == null:
+		var avatar_path := String(player.get("avatar", ""))
+		if avatar_path != "" and ResourceLoader.exists(avatar_path):
+			texture = load(avatar_path) as Texture2D
+	_avatar_rect.texture = texture
+	_avatar_rect.visible = texture != null
 
 func _currency_pill(parent: Container, title: String, color: Color) -> Label:
 	var pill := PanelContainer.new()

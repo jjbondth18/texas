@@ -8,7 +8,8 @@ enum LobbyState {
 	STORE,
 	PROFILE,
 	SETTINGS,
-	ROOM_BROWSER
+	ROOM_BROWSER,
+	FRIENDS_ROOM
 }
 
 @export var background_motion_enabled := true
@@ -30,6 +31,7 @@ var _logo_fallback: Control
 var _prompt: Label
 var _play_panel: PanelContainer
 var _room_browser_panel: PanelContainer
+var _friends_room_panel: PanelContainer
 var _replay_panel: PanelContainer
 var _store_panel: PanelContainer
 var _profile_panel: PanelContainer
@@ -46,6 +48,8 @@ var _bgm_player: AudioStreamPlayer
 const MockDataProvider := preload("res://scripts/demo/mock_data_provider.gd")
 const ScreenNavigator := preload("res://scripts/app/screen_navigator.gd")
 const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
+const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
+const LocalMockBackendScript := preload("res://scripts/services/local_mock_backend.gd")
 const MODE_IMAGES := {
 	"quick_play": "res://assets/home_lobby/mode_cards/mode_quick_play.png",
 	"room_browser": "res://assets/home_lobby/mode_cards/mode_cash_tables.png",
@@ -64,6 +68,12 @@ var _cta_float_time := 0.0
 var _cta_hover_tween: Tween
 var _toast_label: Label
 var _toast_tween: Tween
+var _player_profile: Dictionary = {}
+var _local_backend: LocalMockBackend
+var _friends_room_context: Dictionary = {}
+var _friends_room_id_label: Label
+var _friends_room_seats_label: Label
+var _friends_room_ready_label: Label
 
 func _ready() -> void:
 	# Force standalone windowed mode to bypass Godot editor stretch bugs
@@ -75,6 +85,7 @@ func _ready() -> void:
 	_build_layout()
 	_build_play_panel()
 	_build_room_browser_panel()
+	_build_friends_room_panel()
 	_build_replay_panel()
 	_build_store_panel()
 	_build_profile_panel()
@@ -104,7 +115,10 @@ func _ready() -> void:
 	_bgm_player.play()
 	
 	var lobby_vm := MockDataProvider.get_lobby_view_model()
-	_top_bar.configure(lobby_vm["player"])
+	_local_backend = LocalMockBackendScript.new()
+	_player_profile = ProfileServiceScript.new().get_current_profile()
+	lobby_vm["player"] = _player_profile
+	_top_bar.configure(_player_profile)
 	set_state(LobbyState.COLLAPSED, false)
 	_handle_runtime_capture_args()
 
@@ -114,7 +128,7 @@ func set_state(new_state: LobbyState, animated: bool = true) -> void:
 	var nav_id := "home"
 	match current_state:
 		LobbyState.COLLAPSED: nav_id = "home"
-		LobbyState.PLAY_EXPANDED, LobbyState.ROOM_BROWSER: nav_id = "play"
+		LobbyState.PLAY_EXPANDED, LobbyState.ROOM_BROWSER, LobbyState.FRIENDS_ROOM: nav_id = "play"
 		LobbyState.REPLAY: nav_id = "replay"
 		LobbyState.STORE: nav_id = "store"
 		LobbyState.PROFILE: nav_id = "profile"
@@ -404,6 +418,7 @@ func _get_panel_for_state(state: LobbyState) -> PanelContainer:
 		LobbyState.PROFILE: return _profile_panel
 		LobbyState.SETTINGS: return _settings_panel
 		LobbyState.ROOM_BROWSER: return _room_browser_panel
+		LobbyState.FRIENDS_ROOM: return _friends_room_panel
 		_: return null
 
 func _set_expanded(value: bool, immediate: bool = false) -> void:
@@ -416,7 +431,7 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 	var logo_scale := LOGO_EXPANDED_SCALE if value else LOGO_COLLAPSED_SCALE
 	
 	var active_panel := _get_panel_for_state(current_state)
-	var all_panels := [_play_panel, _replay_panel, _store_panel, _profile_panel, _settings_panel, _room_browser_panel]
+	var all_panels := [_play_panel, _replay_panel, _store_panel, _profile_panel, _settings_panel, _room_browser_panel, _friends_room_panel]
 	
 	if _transition_tween:
 		_transition_tween.kill()
@@ -518,19 +533,32 @@ func _on_mode_selected(id: String) -> void:
 	print("Selected lobby mode: %s" % id)
 	match id:
 		"quick_play":
-			TableLaunchContext.configure("quick_play", "mock_table_001")
-			ScreenNavigator.open_poker_table(get_tree(), "quick_play", "mock_table_001")
+			_open_backend_table(_local_backend.create_quick_play_table(_player_profile))
 		"training":
-			TableLaunchContext.configure("training", "mock_training_table_001")
-			ScreenNavigator.open_poker_table(get_tree(), "training", "mock_training_table_001")
+			_open_backend_table(_local_backend.create_training_table(_player_profile))
 		"room_browser":
 			_show_coming_soon("ROOM BROWSER")
 		"private_table":
-			_show_coming_soon("PRIVATE TABLE")
+			_open_friends_room_lobby()
 		"events":
 			_show_coming_soon("EVENTS")
 		_:
 			_show_coming_soon(id.to_upper())
+
+func _open_poker_table_with_profile(mode: String, table_id: String) -> void:
+	TableLaunchContext.configure(mode, table_id, _player_profile)
+	ScreenNavigator.open_poker_table(get_tree(), mode, table_id, _player_profile)
+
+func _open_backend_table(table_context: Dictionary) -> void:
+	if table_context.is_empty():
+		_show_coming_soon("TABLE")
+		return
+	ScreenNavigator.open_poker_table_with_context(get_tree(), table_context)
+
+func _open_friends_room_lobby() -> void:
+	_friends_room_context = _local_backend.create_friends_room(_player_profile)
+	_update_friends_room_panel()
+	set_state(LobbyState.FRIENDS_ROOM)
 
 func set_background_motion_enabled(value: bool) -> void:
 	background_motion_enabled = value
@@ -728,7 +756,7 @@ func _on_join_pressed(room_id: String) -> void:
 	tween.tween_property(_fade_overlay, "color", Color(0.0, 0.0, 0.0, 1.0), 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tween.tween_callback(func() -> void:
 		print("Transition complete. Poker table %s loaded." % room_id)
-		ScreenNavigator.open_poker_table(get_tree(), "quick_play", room_id)
+		_open_backend_table(_local_backend.join_room(room_id, _player_profile))
 	)
 
 func _build_toast() -> void:
@@ -910,6 +938,99 @@ func _build_room_browser_panel() -> void:
 		var r_id := String(room["room_id"])
 		join_btn.pressed.connect(func() -> void: _on_join_pressed(r_id))
 		btn_container.add_child(join_btn)
+
+func _build_friends_room_panel() -> void:
+	_friends_room_panel = PanelContainer.new()
+	_friends_room_panel.name = "LocalMockRoomLobby"
+	_friends_room_panel.anchor_left = 0.0
+	_friends_room_panel.anchor_top = 0.32
+	_friends_room_panel.anchor_right = 1.0
+	_friends_room_panel.anchor_bottom = 0.91
+	_friends_room_panel.offset_left = MAIN_LEFT
+	_friends_room_panel.offset_right = -MAIN_RIGHT
+	_friends_room_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	_friends_room_panel.custom_minimum_size = Vector2(0, 580)
+	_friends_room_panel.visible = false
+	_friends_room_panel.modulate.a = 0.0
+	_friends_room_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.016, 0.72), Color(0.62, 0.36, 1.0, 0.28), 8, 1))
+	_lobby_ui_root.add_child(_friends_room_panel)
+
+	var content := VBoxContainer.new()
+	content.name = "FriendsRoomContent"
+	content.add_theme_constant_override("separation", 18)
+	_friends_room_panel.add_child(content)
+
+	var title := Label.new()
+	title.text = "FRIENDS ROOM"
+	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
+	content.add_child(title)
+
+	var sub := Label.new()
+	sub.text = "LOCAL MOCK ROOM - STEAM / SERVER BACKENDS RESERVED"
+	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
+	content.add_child(sub)
+
+	var room_card := PanelContainer.new()
+	room_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	room_card.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.012, 0.50), Color(0.2, 0.24, 0.38, 0.25), 8, 1))
+	content.add_child(room_card)
+
+	var room_box := VBoxContainer.new()
+	room_box.add_theme_constant_override("separation", 12)
+	room_card.add_child(room_box)
+
+	_friends_room_id_label = _room_lobby_label("ROOM ID: -", 17, Color(1.0, 0.92, 0.72, 0.96))
+	_friends_room_seats_label = _room_lobby_label("SEATS: -", 15, Color(0.88, 0.92, 1.0, 0.92))
+	_friends_room_ready_label = _room_lobby_label("READY: -", 15, HomeTheme.PURPLE)
+	room_box.add_child(_friends_room_id_label)
+	room_box.add_child(_friends_room_seats_label)
+	room_box.add_child(_friends_room_ready_label)
+
+	var button_row := HBoxContainer.new()
+	button_row.add_theme_constant_override("separation", 12)
+	room_box.add_child(button_row)
+
+	var start_button := Button.new()
+	start_button.text = "START MOCK TABLE"
+	start_button.custom_minimum_size = Vector2(190, 42)
+	start_button.focus_mode = Control.FOCUS_NONE
+	start_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	start_button.add_theme_font_size_override("font_size", 13)
+	start_button.add_theme_color_override("font_color", Color(1, 1, 1, 0.96))
+	start_button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.60), Color(1.0, 0.0, 0.5, 0.80), 21))
+	start_button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.82), Color(1.0, 0.0, 0.5, 1.0), 21))
+	start_button.pressed.connect(func() -> void: _open_backend_table(_friends_room_context))
+	button_row.add_child(start_button)
+
+	var back_button := Button.new()
+	back_button.text = "BACK"
+	back_button.custom_minimum_size = Vector2(110, 42)
+	back_button.focus_mode = Control.FOCUS_NONE
+	back_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	back_button.add_theme_font_size_override("font_size", 13)
+	back_button.add_theme_color_override("font_color", Color(0.86, 0.88, 1.0, 0.92))
+	back_button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.58), Color(0.36, 0.42, 0.7, 0.18), 21))
+	back_button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.035, 0.04, 0.085, 0.82), Color(0.78, 0.58, 1.0, 0.55), 21))
+	back_button.pressed.connect(func() -> void: set_state(LobbyState.PLAY_EXPANDED))
+	button_row.add_child(back_button)
+
+func _room_lobby_label(text: String, font_size: int, color: Color) -> Label:
+	var label := Label.new()
+	label.text = text
+	HomeTheme.make_font_settings(label, font_size, color)
+	return label
+
+func _update_friends_room_panel() -> void:
+	if _friends_room_id_label == null:
+		return
+	var seats: Array = Array(_friends_room_context.get("seats", []))
+	var occupied := 0
+	for seat in seats:
+		if String(Dictionary(seat).get("status", "")) != "empty":
+			occupied += 1
+	_friends_room_id_label.text = "ROOM ID: %s" % String(_friends_room_context.get("room_id", "-"))
+	_friends_room_seats_label.text = "SEATS: %d / 9" % occupied
+	_friends_room_ready_label.text = "READY: Seat 5 local player"
 
 func _build_replay_panel() -> void:
 	_replay_panel = PanelContainer.new()

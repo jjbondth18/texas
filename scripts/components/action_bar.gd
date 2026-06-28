@@ -1,6 +1,10 @@
 extends Control
 class_name ActionBar
 
+# POKER TABLE UI FREEZE:
+# Do not change layout/position/size of existing poker table UI nodes unless the task explicitly asks for visual changes.
+# Logic/data binding changes are allowed, but must not move or resize frozen UI components.
+
 signal action_pressed(action: Dictionary)
 
 var actions: Array[Dictionary] = []
