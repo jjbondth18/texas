@@ -105,6 +105,7 @@ func _ready() -> void:
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
 	DisplayServer.window_set_size(Vector2i(1920, 1080))
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	_local_backend = LocalMockBackendScript.new()
 	_build_background()
 	_build_foreground()
 	_build_layout()
@@ -141,7 +142,6 @@ func _ready() -> void:
 	_bgm_player.play()
 	
 	var lobby_vm := MockDataProvider.get_lobby_view_model()
-	_local_backend = LocalMockBackendScript.new()
 	_player_profile = ProfileServiceScript.new().get_current_profile()
 	lobby_vm["player"] = _player_profile
 	_top_bar.configure(_player_profile)
@@ -621,7 +621,7 @@ func _on_nav_selected(id: String) -> void:
 func _on_play_submenu_selected(id: String) -> void:
 	print("Selected play submenu: %s" % id)
 	if id == "room_browser":
-		_show_coming_soon("ROOM BROWSER")
+		set_state(LobbyState.ROOM_BROWSER)
 
 var _transition_tween: Tween
 
@@ -766,7 +766,7 @@ func _on_mode_selected(id: String) -> void:
 		"training":
 			_open_backend_table(_local_backend.create_training_table(_player_profile))
 		"room_browser":
-			_show_coming_soon("ROOM BROWSER")
+			set_state(LobbyState.ROOM_BROWSER)
 		"private_table":
 			_open_friends_room_lobby()
 		"events":
@@ -806,7 +806,7 @@ func _start_quick_play_from_setup() -> void:
 		"max_hands": _selected_quick_max_hands,
 	}
 	_hide_quick_play_setup()
-	_open_backend_table(_local_backend.create_quick_play_table(_player_profile, setup_config))
+	_open_backend_table(_local_backend.quick_join_public_table(_player_profile, setup_config))
 
 
 func _update_quick_play_setup_profile() -> void:
@@ -1168,8 +1168,19 @@ func _on_join_pressed(room_id: String) -> void:
 	tween.tween_property(_fade_overlay, "color", Color(0.0, 0.0, 0.0, 1.0), 1.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	tween.tween_callback(func() -> void:
 		print("Transition complete. Poker table %s loaded." % room_id)
-		_open_backend_table(_local_backend.join_room(room_id, _player_profile))
+		_open_backend_table(_local_backend.join_public_table(room_id, _player_profile))
 	)
+
+func _create_public_chip_table_from_browser() -> void:
+	_reload_player_profile()
+	var table := _local_backend.create_public_table({
+		"small_blind": 25,
+		"big_blind": 50,
+		"buy_in": 10000,
+		"hand_count": 10,
+		"created_by": String(_player_profile.get("player_id", "local_player")),
+	})
+	_open_backend_table(_local_backend.join_public_table(String(table.get("table_id", "")), _player_profile))
 
 func _build_toast() -> void:
 	_toast_label = Label.new()
@@ -1233,9 +1244,20 @@ func _build_room_browser_panel() -> void:
 	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
 	title_box.add_child(title)
 	var sub := Label.new()
-	sub.text = "CHOOSE A NEON TABLE AND JOIN THE GAME"
+	sub.text = "PUBLIC CHIP TABLES - BROWSE, CREATE, OR JOIN"
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	title_box.add_child(sub)
+
+	var create_button := Button.new()
+	create_button.text = "CREATE PUBLIC CHIP TABLE"
+	create_button.custom_minimum_size = Vector2(240, 38)
+	create_button.focus_mode = Control.FOCUS_NONE
+	create_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	create_button.add_theme_font_size_override("font_size", 13)
+	create_button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.60), Color(1.0, 0.0, 0.5, 0.80), 18))
+	create_button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.80), Color(1.0, 0.0, 0.5, 1.0), 18))
+	create_button.pressed.connect(_create_public_chip_table_from_browser)
+	title_box.add_child(create_button)
 	
 	var list_container := PanelContainer.new()
 	list_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1272,7 +1294,7 @@ func _build_room_browser_panel() -> void:
 	sep.color = Color(0.62, 0.36, 1.0, 0.18)
 	list_vbox.add_child(sep)
 	
-	var rooms := MockDataProvider.get_mock_rooms()
+	var rooms := _local_backend.list_public_tables()
 	for room in rooms:
 		var row_panel := PanelContainer.new()
 		row_panel.custom_minimum_size = Vector2(0, 64)
@@ -1290,7 +1312,7 @@ func _build_room_browser_panel() -> void:
 		row_margin.add_child(row_hbox)
 		
 		var name_lbl := Label.new()
-		name_lbl.text = room["name"]
+		name_lbl.text = String(room["table_name"])
 		name_lbl.custom_minimum_size = Vector2(col_widths[0], 0)
 		HomeTheme.make_font_settings(name_lbl, 15, Color(1, 1, 1, 0.95))
 		row_hbox.add_child(name_lbl)
@@ -1302,13 +1324,13 @@ func _build_room_browser_panel() -> void:
 		row_hbox.add_child(blinds_lbl)
 		
 		var players_lbl := Label.new()
-		players_lbl.text = "%d / %d" % [room["players"], room["max_players"]]
+		players_lbl.text = "%d / %d" % [room["current_players"], room["max_players"]]
 		players_lbl.custom_minimum_size = Vector2(col_widths[2], 0)
 		HomeTheme.make_font_settings(players_lbl, 14, Color(0.85, 0.90, 1.0))
 		row_hbox.add_child(players_lbl)
 		
 		var buyin_lbl := Label.new()
-		buyin_lbl.text = "%d - %d Chips" % [room["buy_in_min"], room["buy_in_max"]]
+		buyin_lbl.text = "%d Chips" % int(room["buy_in"])
 		buyin_lbl.custom_minimum_size = Vector2(col_widths[3], 0)
 		HomeTheme.make_font_settings(buyin_lbl, 14, Color(0.85, 0.90, 1.0))
 		row_hbox.add_child(buyin_lbl)
@@ -1337,6 +1359,7 @@ func _build_room_browser_panel() -> void:
 		join_btn.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
 		join_btn.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
 		join_btn.add_theme_font_size_override("font_size", 13)
+		join_btn.disabled = String(room.get("status", "")) == "full"
 		
 		join_btn.mouse_entered.connect(func() -> void:
 			var btn_tween := create_tween()
@@ -1347,7 +1370,7 @@ func _build_room_browser_panel() -> void:
 			btn_tween.tween_property(join_btn, "scale", Vector2(1.0, 1.0), 0.12).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 		)
 		
-		var r_id := String(room["room_id"])
+		var r_id := String(room["table_id"])
 		join_btn.pressed.connect(func() -> void: _on_join_pressed(r_id))
 		btn_container.add_child(join_btn)
 
