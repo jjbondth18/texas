@@ -135,7 +135,9 @@ func _build_scene() -> void:
 	# Load background texture statically defined in scene
 	var bg_rect := $BackgroundLayer/TableBackground
 	bg_rect.texture = _load_texture(TABLE_BACKGROUND_PATH)
-	_build_top_status_bar()
+	_build_top_action_bar()
+	_hide_legacy_top_center_bars()
+	call_deferred("_hide_legacy_top_center_bars")
 	_build_rule_debug_panel()
 	
 	# Setup seats map from static scene nodes
@@ -466,6 +468,7 @@ func _table_flow_to_ui_snapshot(source: Dictionary) -> Dictionary:
 	}
 
 func _refresh() -> void:
+	_hide_legacy_top_center_bars()
 	var visual_events: Array = Array(snapshot.get("visual_events", []))
 	var has_new_hole_deal: bool = _has_unseen_visual_event(visual_events, "deal_hole")
 	var has_new_community_deal: bool = _has_unseen_visual_event(visual_events, "deal_community")
@@ -1428,16 +1431,27 @@ func _hide_legacy_top_center_bars() -> void:
 		var root := _content_root.get_node_or_null(root_name) as Node
 		if root == null:
 			continue
-		for node_name in ["CenterSegmentedBar", "CenterContainer", "BackgroundGlass", "LeftContainer", "RightContainer", "LeftSystemPill"]:
-			var legacy_node := root.get_node_or_null(node_name) as CanvasItem
-			if legacy_node != null:
-				legacy_node.visible = false
+		_hide_legacy_top_descendants(root)
 	_top_status_bar = null
 	_top_table_label = null
 	_top_blinds_label = null
 	_top_hand_id_label = null
 	_top_dealer_label = null
 	_top_time_label = null
+
+func _hide_legacy_top_descendants(node: Node) -> void:
+	var legacy_names := {
+		"CenterSegmentedBar": true,
+		"CenterContainer": true,
+		"BackgroundGlass": true,
+		"LeftContainer": true,
+		"RightContainer": true,
+		"LeftSystemPill": true,
+	}
+	if legacy_names.has(String(node.name)) and node is CanvasItem:
+		(node as CanvasItem).visible = false
+	for child in node.get_children():
+		_hide_legacy_top_descendants(child)
 
 
 func _clear_children(node: Node) -> void:
