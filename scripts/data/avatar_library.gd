@@ -10,6 +10,36 @@ const UNLOCK_RULE_AVATARS := {
 	"big_pot_5000": "10_03",
 	"profitable_session": "8_01",
 }
+const DISPLAY_NAME_OVERRIDES := {
+	"1_01": "Neon Phantom",
+	"1_02": "Cyber Dealer",
+	"1_03": "Violet Shark",
+	"2_01": "Golden Ace",
+	"3_01": "Shadow Player",
+	"4_05": "Lucky Fox",
+	"6_05": "Royal Spade",
+	"7_01": "Crimson Queen",
+	"8_01": "Desert Gambler",
+	"10_03": "Midnight Rider",
+}
+const FALLBACK_DISPLAY_NAMES := [
+	"Neon Phantom",
+	"Cyber Dealer",
+	"Violet Shark",
+	"Golden Ace",
+	"Shadow Player",
+	"Lucky Fox",
+	"Royal Spade",
+	"Crimson Queen",
+	"Desert Gambler",
+	"Midnight Rider",
+	"Diamond Rogue",
+	"Velvet Ace",
+	"Starlight Jack",
+	"Moonlit Caller",
+	"Arcade Bluff",
+	"Silver River",
+]
 
 static var _avatar_ids: Array[String] = []
 static var _texture_cache: Dictionary = {}
@@ -64,6 +94,16 @@ static func get_random_avatar() -> Texture2D:
 
 static func avatar_path(avatar_id: String) -> String:
 	return "%s%s.png" % [AVATAR_ROOT, avatar_id]
+
+
+static func display_name_for_avatar_id(avatar_id: String) -> String:
+	if DISPLAY_NAME_OVERRIDES.has(avatar_id):
+		return String(DISPLAY_NAME_OVERRIDES[avatar_id])
+	var ids: Array[String] = load_all_avatars()
+	var index: int = ids.find(avatar_id)
+	if index < 0:
+		index = 0
+	return String(FALLBACK_DISPLAY_NAMES[index % FALLBACK_DISPLAY_NAMES.size()])
 
 
 static func default_avatar_id() -> String:

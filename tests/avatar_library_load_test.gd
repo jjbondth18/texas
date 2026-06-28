@@ -8,6 +8,7 @@ func _init() -> void:
 	_require(ids.has("4_05"), "avatar library must include default avatar 4_05")
 	_require(AvatarLibraryScript.get_avatar_by_id(ids[0]) != null, "avatar library must load texture by id")
 	_require(AvatarLibraryScript.avatar_path(ids[0]).begins_with("res://assets/playersAv_cut/"), "avatar paths must use playersAv_cut")
+	_require(AvatarLibraryScript.display_name_for_avatar_id("1_01") != "1_01", "avatar display names must not expose internal ids")
 
 	print("Avatar library load test passed.")
 	quit(0)

@@ -79,6 +79,7 @@ var _friends_room_ready_label: Label
 var _profile_avatar_rect: TextureRect
 var _profile_name_label: Label
 var _profile_level_label: Label
+var _profile_avatar_name_label: Label
 var _profile_stats_labels: Dictionary = {}
 var _profile_avatar_grid: GridContainer
 var _profile_avatar_buttons: Dictionary = {}
@@ -1756,7 +1757,7 @@ func _build_profile_panel() -> void:
 	# Card Body
 	var body_hbox := HBoxContainer.new()
 	body_hbox.add_theme_constant_override("separation", 24)
-	body_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body_hbox.custom_minimum_size = Vector2(0, 214)
 	main_vbox.add_child(body_hbox)
 	
 	# Left: Player Card info
@@ -1765,11 +1766,11 @@ func _build_profile_panel() -> void:
 	card_info.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.012, 0.50), Color(0.2, 0.24, 0.38, 0.25), 8, 1))
 	var c_vbox := VBoxContainer.new()
 	c_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	c_vbox.add_theme_constant_override("separation", 16)
+	c_vbox.add_theme_constant_override("separation", 10)
 	card_info.add_child(c_vbox)
 	
 	var avatar_frame := PanelContainer.new()
-	avatar_frame.custom_minimum_size = Vector2(112, 112)
+	avatar_frame.custom_minimum_size = Vector2(146, 146)
 	avatar_frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	avatar_frame.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.012, 0.016, 0.038, 0.86), Color(0.60, 0.92, 1.0, 0.70), 20, 1))
 	c_vbox.add_child(avatar_frame)
@@ -1792,6 +1793,12 @@ func _build_profile_panel() -> void:
 	HomeTheme.make_font_settings(_profile_level_label, 13, HomeTheme.MUTED)
 	_profile_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	c_vbox.add_child(_profile_level_label)
+
+	_profile_avatar_name_label = Label.new()
+	_profile_avatar_name_label.name = "ProfileAvatarNameLabel"
+	HomeTheme.make_font_settings(_profile_avatar_name_label, 13, HomeTheme.CYAN)
+	_profile_avatar_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	c_vbox.add_child(_profile_avatar_name_label)
 	
 	body_hbox.add_child(card_info)
 	
@@ -1810,9 +1817,9 @@ func _build_profile_panel() -> void:
 	
 	_profile_stats_labels.clear()
 	var stats_grid := GridContainer.new()
-	stats_grid.columns = 2
-	stats_grid.add_theme_constant_override("h_separation", 12)
-	stats_grid.add_theme_constant_override("v_separation", 12)
+	stats_grid.columns = 3
+	stats_grid.add_theme_constant_override("h_separation", 10)
+	stats_grid.add_theme_constant_override("v_separation", 8)
 	r_vbox.add_child(stats_grid)
 	for stat_id in [
 		"total_chips",
@@ -1827,19 +1834,31 @@ func _build_profile_panel() -> void:
 	]:
 		_profile_stats_labels[stat_id] = _make_profile_stat_tile(stats_grid, _profile_stat_title(stat_id))
 
+	body_hbox.add_child(right_panel)
+
+	var gallery_panel := PanelContainer.new()
+	gallery_panel.name = "AvatarGalleryPanel"
+	gallery_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gallery_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	gallery_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.014, 0.58), Color(0.62, 0.36, 1.0, 0.30), 8, 1))
+	main_vbox.add_child(gallery_panel)
+	var gallery_vbox := VBoxContainer.new()
+	gallery_vbox.add_theme_constant_override("separation", 10)
+	gallery_panel.add_child(gallery_vbox)
 	var gallery_title := Label.new()
-	gallery_title.text = "AVATAR GALLERY"
+	gallery_title.text = "CHARACTER AVATARS"
 	HomeTheme.make_font_settings(gallery_title, 16, HomeTheme.PURPLE)
-	r_vbox.add_child(gallery_title)
+	gallery_vbox.add_child(gallery_title)
 	var gallery_scroll := ScrollContainer.new()
-	gallery_scroll.custom_minimum_size = Vector2(0, 170)
+	gallery_scroll.custom_minimum_size = Vector2(0, 300)
 	gallery_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gallery_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	gallery_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	r_vbox.add_child(gallery_scroll)
+	gallery_vbox.add_child(gallery_scroll)
 	_profile_avatar_grid = GridContainer.new()
-	_profile_avatar_grid.columns = 6
-	_profile_avatar_grid.add_theme_constant_override("h_separation", 10)
-	_profile_avatar_grid.add_theme_constant_override("v_separation", 10)
+	_profile_avatar_grid.columns = 8
+	_profile_avatar_grid.add_theme_constant_override("h_separation", 12)
+	_profile_avatar_grid.add_theme_constant_override("v_separation", 12)
 	gallery_scroll.add_child(_profile_avatar_grid)
 	_build_avatar_gallery()
 		
@@ -1857,24 +1876,22 @@ func _build_profile_panel() -> void:
 		a_lbl.text = ach
 		HomeTheme.make_font_settings(a_lbl, 12, Color(0.72, 0.76, 0.92))
 		r_vbox.add_child(a_lbl)
-		
-	body_hbox.add_child(right_panel)
 	_refresh_profile_panel()
 
 func _make_profile_stat_tile(parent: Container, title_text: String) -> Label:
 	var tile := PanelContainer.new()
-	tile.custom_minimum_size = Vector2(230, 72)
+	tile.custom_minimum_size = Vector2(168, 54)
 	tile.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.018, 0.022, 0.052, 0.64), Color(0.55, 0.48, 0.88, 0.30), 8, 1))
 	parent.add_child(tile)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 5)
+	box.add_theme_constant_override("separation", 3)
 	tile.add_child(box)
 	var title := Label.new()
 	title.text = title_text
 	HomeTheme.make_font_settings(title, 11, HomeTheme.MUTED)
 	box.add_child(title)
 	var value := Label.new()
-	HomeTheme.make_font_settings(value, 17, Color(0.92, 0.96, 1.0))
+	HomeTheme.make_font_settings(value, 15, Color(0.92, 0.96, 1.0))
 	box.add_child(value)
 	return value
 
@@ -1913,6 +1930,7 @@ func _refresh_profile_panel() -> void:
 			int(_player_profile.get("xp_max", PlayerProfileScript.DEFAULT_XP_MAX)),
 		]
 	if _profile_avatar_rect != null:
+		var selected_avatar_id: String = PlayerProfileScript.get_avatar_id(_player_profile)
 		var texture: Texture2D = AvatarLibraryScript.get_avatar_by_id(PlayerProfileScript.get_avatar_id(_player_profile))
 		if texture == null:
 			var avatar_path := String(_player_profile.get("avatar", ""))
@@ -1920,6 +1938,8 @@ func _refresh_profile_panel() -> void:
 				texture = load(avatar_path) as Texture2D
 		_profile_avatar_rect.texture = texture
 		_profile_avatar_rect.visible = texture != null
+		if _profile_avatar_name_label != null:
+			_profile_avatar_name_label.text = "Selected Avatar: %s" % AvatarLibraryScript.display_name_for_avatar_id(selected_avatar_id)
 	_set_profile_stat("total_chips", _format_number(PlayerProfileScript.get_total_chips(_player_profile)))
 	_set_profile_stat("total_sessions_played", _format_number(int(_player_profile.get("total_sessions_played", 0))))
 	_set_profile_stat("total_hands_played", _format_number(int(_player_profile.get("total_hands_played", 0))))
@@ -1944,8 +1964,8 @@ func _build_avatar_gallery() -> void:
 	for avatar_id in AvatarLibraryScript.load_all_avatars():
 		var button := Button.new()
 		button.name = "Avatar_%s" % avatar_id
-		button.text = avatar_id
-		button.custom_minimum_size = Vector2(96, 118)
+		button.text = AvatarLibraryScript.display_name_for_avatar_id(avatar_id)
+		button.custom_minimum_size = Vector2(128, 158)
 		button.icon = AvatarLibraryScript.get_avatar_by_id(avatar_id)
 		button.expand_icon = true
 		button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1970,7 +1990,9 @@ func _refresh_avatar_gallery() -> void:
 		var is_unlocked: bool = unlocked.has(avatar_id)
 		var is_selected: bool = avatar_id == selected_id
 		button.disabled = not is_unlocked
-		button.text = "%s%s" % [avatar_id, "\nSELECTED" if is_selected else ("\nLOCKED" if not is_unlocked else "")]
+		var display_name: String = AvatarLibraryScript.display_name_for_avatar_id(avatar_id)
+		var status_text: String = "Selected" if is_selected else ("Locked" if not is_unlocked else "Unlocked")
+		button.text = "%s\n%s" % [display_name, status_text]
 		button.modulate = Color(1, 1, 1, 1) if is_unlocked else Color(0.38, 0.38, 0.46, 0.70)
 		button.add_theme_stylebox_override("normal", _avatar_gallery_button_style(is_selected, is_unlocked, false))
 		button.add_theme_stylebox_override("hover", _avatar_gallery_button_style(is_selected, is_unlocked, true))
