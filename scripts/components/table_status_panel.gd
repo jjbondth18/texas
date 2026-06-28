@@ -32,7 +32,7 @@ func _ready() -> void:
 	var status_label := Label.new()
 	status_label.text = "PLAYER STATUS"
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	status_label.add_theme_font_size_override("font_size", 12)
+	status_label.add_theme_font_size_override("font_size", 13)
 	status_label.add_theme_color_override("font_color", Color(0.65, 0.55, 0.85))
 	status_margin.add_child(status_label)
 	
@@ -173,12 +173,17 @@ class PlayerRowPill extends PanelContainer:
 		
 		var av_style := StyleBoxFlat.new()
 		av_style.set_corner_radius_all(24)
+		av_style.bg_color = Color(0.012, 0.010, 0.022, 0.54)
+		av_style.border_color = Color(0.55, 0.38, 0.92, 0.18)
+		av_style.set_border_width_all(1)
 		avatar_panel.add_theme_stylebox_override("panel", av_style)
 		
 		avatar_rect = TextureRect.new()
 		avatar_rect.custom_minimum_size = Vector2(48, 48)
 		avatar_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		avatar_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		avatar_rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		avatar_rect.modulate = Color.WHITE
 		avatar_panel.add_child(avatar_rect)
 		
 		# Text Container
@@ -203,7 +208,7 @@ class PlayerRowPill extends PanelContainer:
 		text_vbox.add_child(name_row)
 		
 		name_label = Label.new()
-		name_label.add_theme_font_size_override("font_size", 13)
+		name_label.add_theme_font_size_override("font_size", 14)
 		name_label.add_theme_color_override("font_color", Color.WHITE)
 		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if is_left else HORIZONTAL_ALIGNMENT_LEFT
 		name_label.clip_text = true
@@ -229,7 +234,7 @@ class PlayerRowPill extends PanelContainer:
 		
 		var yb_label := Label.new()
 		yb_label.text = "YOU"
-		yb_label.add_theme_font_size_override("font_size", 9)
+		yb_label.add_theme_font_size_override("font_size", 10)
 		yb_label.add_theme_color_override("font_color", Color.WHITE)
 		yb_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		yb_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -262,13 +267,13 @@ class PlayerRowPill extends PanelContainer:
 		dots_hbox.add_child(dot3)
 		
 		chips_label = Label.new()
-		chips_label.add_theme_font_size_override("font_size", 14)
+		chips_label.add_theme_font_size_override("font_size", 15)
 		chips_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
 		chips_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if is_left else HORIZONTAL_ALIGNMENT_LEFT
 		text_vbox.add_child(chips_label)
 		
 		action_label = Label.new()
-		action_label.add_theme_font_size_override("font_size", 11)
+		action_label.add_theme_font_size_override("font_size", 12)
 		action_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if is_left else HORIZONTAL_ALIGNMENT_LEFT
 		text_vbox.add_child(action_label)
 		
@@ -297,7 +302,9 @@ class PlayerRowPill extends PanelContainer:
 		var is_local := bool(player_data.get("is_local", false))
 		var is_turn := bool(player_data.get("is_turn", false))
 		var last_action := String(player_data.get("last_action", ""))
-		var is_fold := String(player_data.get("status", "")) == "fold"
+		var last_action_amount := int(player_data.get("last_action_amount", 0))
+		var status_value := String(player_data.get("raw_status", player_data.get("status", "")))
+		var is_fold := status_value == "folded"
 		var player_id := String(player_data.get("player_id", ""))
 		
 		# Load avatar image
@@ -314,6 +321,10 @@ class PlayerRowPill extends PanelContainer:
 		if ResourceLoader.exists(av_paths[av_idx]):
 			avatar_rect.texture = load(av_paths[av_idx])
 			
+		var avatar_texture: Texture2D = player_data.get("avatar_texture", null) as Texture2D
+		avatar_rect.texture = avatar_texture
+		avatar_rect.visible = avatar_texture != null
+		
 		name_label.text = name_str
 		you_badge.visible = is_local
 		
@@ -350,7 +361,9 @@ class PlayerRowPill extends PanelContainer:
 				target_border_width = 1
 				
 			if is_turn:
-				action_label.visible = false
+				action_label.visible = true
+				action_label.text = "YOUR TURN" if is_local else "THINKING..."
+				action_label.add_theme_color_override("font_color", Color(1.0, 0.90, 0.42) if is_local else Color(0.46, 1.0, 0.86))
 				target_x = _active_offset()
 				target_bg = Color(0.22, 0.14, 0.45, 0.90)
 				target_border = Color(0.0, 1.0, 0.7, 0.9) # Turn: Neon Cyan/Green Outline
@@ -358,11 +371,14 @@ class PlayerRowPill extends PanelContainer:
 			else:
 				action_label.visible = true
 				if last_action != "":
-					action_label.text = last_action.to_upper()
-					action_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5))
+					action_label.text = _action_text(last_action, last_action_amount)
+					action_label.add_theme_color_override("font_color", _action_color(last_action))
+				elif status_value == "all_in":
+					action_label.text = "ALL-IN"
+					action_label.add_theme_color_override("font_color", _action_color("ALL-IN"))
 				else:
-					action_label.text = "ACTIVE"
-					action_label.add_theme_color_override("font_color", Color(0.4, 0.8, 1.0))
+					action_label.text = "WAITING"
+					action_label.add_theme_color_override("font_color", Color(0.58, 0.78, 1.0))
 					
 		# Animate transition of position, style box background, border color (No scale changes!)
 		if is_turn != _is_turn or is_fold != _is_fold or force_snap:
@@ -443,3 +459,25 @@ class PlayerRowPill extends PanelContainer:
 			result = s[i] + result
 			count += 1
 		return result
+
+	func _action_text(action_label: String, amount: int) -> String:
+		var label := action_label.to_upper()
+		if label == "WIN" and amount > 0:
+			return "WIN +%s" % _format_chips(amount)
+		if amount > 0 and label not in ["CHECK", "FOLD"]:
+			return "%s %s" % [label, _format_chips(amount)]
+		return label
+
+	func _action_color(action_label: String) -> Color:
+		match action_label.to_upper():
+			"FOLD":
+				return Color(0.55, 0.55, 0.60)
+			"CHECK", "CALL", "SB", "BB":
+				return Color(0.62, 0.88, 1.0)
+			"BET", "RAISE":
+				return Color(1.0, 0.46, 0.94)
+			"ALL-IN":
+				return Color(1.0, 0.18, 0.42)
+			"WIN":
+				return Color(1.0, 0.82, 0.25)
+		return Color(0.58, 0.78, 1.0)

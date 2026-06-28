@@ -18,6 +18,7 @@ func _ready() -> void:
 	_texture_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_texture_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_texture_rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	_texture_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_texture_rect)
 
@@ -88,6 +89,7 @@ func _update() -> void:
 			_label.visible = false
 			_using_texture = true
 		else:
+			push_warning("Missing formal card texture for %s%s at %s" % [rank, suit, texture_path])
 			_texture_rect.visible = false
 			_label.visible = false
 	queue_redraw()
@@ -116,16 +118,55 @@ func _draw() -> void:
 		style_box.border_color = Color(1.0, 0.0, 0.6, 0.28)
 		style_box.set_border_width_all(1.5)
 	elif face_up:
-		style_box.bg_color = Color(0.94, 0.94, 0.98, 0.98) if not _using_texture else Color(0, 0, 0, 0)
-		style_box.border_color = Color(0.8, 0.88, 1.0, 0.95 if selected else 0.55)
-		style_box.set_border_width_all(1.5)
+		if _using_texture:
+			_draw_texture_card_shadow(rect)
+			return
+		else:
+			return
 	else:
 		style_box.bg_color = Color(0.08, 0.09, 0.18, 0.98)
 		style_box.border_color = Color(0.8, 0.88, 1.0, 0.95 if selected else 0.55)
 		style_box.set_border_width_all(1.5)
 	style_box.draw(get_canvas_item(), rect)
-	if face_up and not _using_texture and not is_empty_slot:
-		_draw_procedural_card(rect)
+
+
+func _draw_texture_card_shadow(rect: Rect2) -> void:
+	var shadow := StyleBoxFlat.new()
+	shadow.anti_aliasing = true
+	shadow.bg_color = Color(0.0, 0.0, 0.0, 0.24)
+	shadow.set_corner_radius_all(8)
+	shadow.shadow_color = Color(0.0, 0.0, 0.0, 0.34)
+	shadow.shadow_size = 8
+	var shadow_rect := rect.grow(-4.0)
+	shadow.draw(get_canvas_item(), Rect2(shadow_rect.position + Vector2(4, 8), shadow_rect.size))
+
+
+func _draw_card_shadow(rect: Rect2) -> void:
+	var shadow := StyleBoxFlat.new()
+	shadow.anti_aliasing = true
+	shadow.bg_color = Color(0.0, 0.0, 0.0, 0.34)
+	shadow.set_corner_radius_all(8)
+	shadow.shadow_color = Color(0.45, 0.02, 0.45, 0.30)
+	shadow.shadow_size = 14
+	var shadow_rect := rect.grow(-2.0)
+	shadow.draw(get_canvas_item(), Rect2(shadow_rect.position + Vector2(5, 9), shadow_rect.size))
+
+
+func _draw_card_material(rect: Rect2) -> void:
+	var body := rect.grow(-1.5)
+	var base := StyleBoxFlat.new()
+	base.anti_aliasing = true
+	base.bg_color = Color(0.98, 0.98, 1.0, 0.98)
+	base.border_color = Color(0.80, 0.86, 0.98, 0.70)
+	base.set_border_width_all(1)
+	base.set_corner_radius_all(7)
+	base.draw(get_canvas_item(), body)
+	for i in range(8):
+		var t := float(i) / 7.0
+		var stripe := Rect2(body.position + Vector2(1, body.size.y * t), Vector2(body.size.x - 2, body.size.y / 8.0 + 1.0))
+		var shade := Color(0.92, 0.93, 0.98, 0.10 + t * 0.045)
+		draw_rect(stripe, shade)
+	draw_rect(Rect2(body.position + Vector2(3, 3), Vector2(body.size.x - 6, body.size.y * 0.28)), Color(1.0, 1.0, 1.0, 0.16))
 
 
 func _draw_procedural_card(rect: Rect2) -> void:
@@ -133,12 +174,13 @@ func _draw_procedural_card(rect: Rect2) -> void:
 	var suit := String(card_data.get("suit", ""))
 	var color := _suit_color(suit)
 	var font := get_theme_default_font()
-	var corner_size := int(rect.size.y * 0.17)
-	var rank_pos := Vector2(rect.position.x + rect.size.x * 0.13, rect.position.y + rect.size.y * 0.22)
+	var corner_size := int(rect.size.y * 0.15)
+	var rank_pos := Vector2(rect.position.x + rect.size.x * 0.11, rect.position.y + rect.size.y * 0.21)
+	_draw_suit_pip(rect.get_center() + Vector2(0, rect.size.y * 0.10), rect.size.x * 0.30, suit, Color(color.r, color.g, color.b, 0.12))
 	draw_string(font, rank_pos, rank, HORIZONTAL_ALIGNMENT_LEFT, -1, corner_size, color)
 	_draw_suit_pip(Vector2(rect.position.x + rect.size.x * 0.25, rect.position.y + rect.size.y * 0.34), rect.size.x * 0.10, suit, color)
-	_draw_suit_pip(rect.get_center() + Vector2(0, rect.size.y * 0.07), rect.size.x * 0.22, suit, color)
-	draw_string(font, Vector2(rect.position.x + rect.size.x * 0.67, rect.position.y + rect.size.y * 0.88), rank, HORIZONTAL_ALIGNMENT_LEFT, -1, corner_size, color)
+	_draw_suit_pip(rect.get_center() + Vector2(0, rect.size.y * 0.08), rect.size.x * 0.20, suit, color)
+	draw_string(font, Vector2(rect.position.x + rect.size.x * 0.66, rect.position.y + rect.size.y * 0.88), rank, HORIZONTAL_ALIGNMENT_LEFT, -1, corner_size, color)
 	_draw_suit_pip(Vector2(rect.position.x + rect.size.x * 0.76, rect.position.y + rect.size.y * 0.70), rect.size.x * 0.10, suit, color)
 
 
@@ -185,15 +227,27 @@ func _texture_path(rank: String, suit: String) -> String:
 	var folder := ""
 	var prefix := ""
 	match suit:
+		"club":
+			folder = "club"
+			prefix = "cardClubs_"
 		"clubs":
 			folder = "club"
 			prefix = "cardClubs_"
+		"diamond":
+			folder = "diamond"
+			prefix = "cardDiamonds_"
 		"diamonds":
 			folder = "diamond"
 			prefix = "cardDiamonds_"
+		"heart":
+			folder = "heart"
+			prefix = "cardHearts_"
 		"hearts":
 			folder = "heart"
 			prefix = "cardHearts_"
+		"spade":
+			folder = "spade"
+			prefix = "cardSpades_"
 		"spades":
 			folder = "spade"
 			prefix = "cardSpades_"

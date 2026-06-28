@@ -10,25 +10,24 @@ var _fold_action: Dictionary
 var _check_call_action: Dictionary
 var _raise_action: Dictionary
 
-@onready var chips_label: Label = $PlayerInfoPanel/ChipsLabel
-@onready var profit_label: Label = $PlayerInfoPanel/ProfitLabel
-@onready var winrate_label: Label = $PlayerInfoPanel/WinRateLabel
+@onready var chips_label: Label = $IdentityZone/ChipsLabel
+@onready var profit_label: Label = $IdentityZone/ProfitLabel
+@onready var winrate_label: Label = $IdentityZone/WinRateLabel
 
-@onready var timer_label: Label = $HoleCardsPanel/TurnTimer
-@onready var local_cards_root: Control = $HoleCardsPanel/LocalHoleCards
+@onready var timer_label: Label = $FocusZone/TurnTimer
+@onready var local_cards_root: Control = $FocusZone/LocalHoleCards
 
-@onready var _fold_button: Button = $ActionPanel/MainButtons/FoldButton
-@onready var _check_call_button: Button = $ActionPanel/MainButtons/CheckCallButton
-@onready var _raise_confirm_button: Button = $ActionPanel/MainButtons/BetRaiseButton
-@onready var _minus_button: Button = $ActionPanel/RaiseControlPanel/MinusButton
-@onready var _plus_button: Button = $ActionPanel/RaiseControlPanel/PlusButton
-@onready var _h_slider: HSlider = $ActionPanel/RaiseControlPanel/RaiseSlider
-@onready var _pot_25_button: Button = $ActionPanel/RaiseControlPanel/PotMultiplierButton
-@onready var _max_button: Button = $ActionPanel/RaiseControlPanel/MaxButton
-@onready var _raise_value_label: Label = $ActionPanel/RaiseControlPanel/RaiseValueLabel
-@onready var _avatar_rect: TextureRect = $PlayerInfoPanel/AvatarPanel/AvatarRect
+@onready var _fold_button: Button = $ControlZone/MainButtons/FoldButton
+@onready var _check_call_button: Button = $ControlZone/MainButtons/CheckCallButton
+@onready var _raise_confirm_button: Button = $ControlZone/MainButtons/BetRaiseButton
+@onready var _minus_button: Button = $ControlZone/RaiseControlPanel/MinusButton
+@onready var _plus_button: Button = $ControlZone/RaiseControlPanel/PlusButton
+@onready var _h_slider: HSlider = $ControlZone/RaiseControlPanel/RaiseSlider
+@onready var _pot_25_button: Button = $ControlZone/RaiseControlPanel/PotMultiplierButton
+@onready var _max_button: Button = $ControlZone/RaiseControlPanel/MaxButton
+@onready var _raise_value_label: Label = $ControlZone/RaiseControlPanel/RaiseValueLabel
+@onready var _avatar_rect: TextureRect = $IdentityZone/AvatarPanel/AvatarRect
 
-var _desk_surface: Panel
 var _player_name_label: Label
 var _you_badge: PanelContainer
 var _chips_caption_label: Label
@@ -63,7 +62,8 @@ func _ready() -> void:
 	_bold_font.font_weight = 700
 
 	_glass_shader = Shader.new()
-	_glass_shader.code = "shader_type canvas_item;\n\nuniform vec4 base_color : source_color = vec4(0.06, 0.03, 0.12, 0.88);\nuniform vec4 glow_color : source_color = vec4(1.0, 0.0, 0.55, 1.0);\nuniform float pulse_intensity : hint_range(0.0, 1.0) = 0.15;\nuniform float sweep_speed = 1.0;\nuniform float sweep_intensity = 0.08;\nuniform float noise_intensity = 0.015;\nuniform float breathing_brightness = 1.0;\nuniform float left_glow_mult = 0.9;\nuniform float center_glow_mult = 1.3;\nuniform float right_glow_mult = 0.8;\n\nfloat rand(vec2 co) {\n    return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);\n}\n\nvoid fragment() {\n    vec2 uv = UV;\n    \n    // Calculate regional glow multipliers\n    float glow_mult = left_glow_mult;\n    if (uv.x > 0.4418 && uv.x <= 0.6329) {\n        float t = (uv.x - 0.4418) / (0.6329 - 0.4418);\n        glow_mult = mix(left_glow_mult, center_glow_mult, smoothstep(0.0, 1.0, t));\n    } else if (uv.x > 0.6329) {\n        float t = (uv.x - 0.6329) / (1.0 - 0.6329);\n        glow_mult = mix(center_glow_mult, right_glow_mult, smoothstep(0.0, 1.0, t));\n    } else {\n        float t = uv.x / 0.4418;\n        glow_mult = mix(left_glow_mult * 0.7, left_glow_mult, smoothstep(0.0, 1.0, t));\n    }\n    \n    // Layer 1: Base glass with diagonal gradient\n    float grad = clamp(1.0 - (uv.x + uv.y) * 0.5, 0.0, 1.0);\n    vec4 color = mix(base_color * 0.8, base_color * 1.4 + vec4(0.06, 0.04, 0.14, 0.08), grad);\n    color.rgb *= breathing_brightness;\n    \n    // Layer 2: Inner shadow / depth\n    float vignette = uv.x * (1.0 - uv.x) * uv.y * (1.0 - uv.y) * 16.0;\n    vignette = clamp(pow(vignette, 0.25), 0.0, 1.0);\n    color.rgb = mix(color.rgb * 0.35, color.rgb, vignette);\n    \n    // Layer 3: Continuous outer glow rim\n    float dist_x = min(uv.x, 1.0 - uv.x);\n    float dist_y = min(uv.y, 1.0 - uv.y);\n    float min_dist = min(dist_x, dist_y);\n    float border = smoothstep(0.008, 0.0, min_dist);\n    \n    float pulse = 1.0 + sin(TIME * 2.0) * pulse_intensity;\n    vec4 edge_glow = glow_color * border * pulse * glow_mult;\n    color = mix(color, edge_glow, border);\n    \n    // Layer 4: Continuous gradient sweep/drift\n    float sweep = sin(uv.y * 3.14159 - TIME * sweep_speed) * 0.5 + 0.5;\n    color.rgb += glow_color.rgb * sweep * sweep_intensity * vignette * glow_mult;\n    \n    // Layer 5: Vertical Dividers drawn directly inside the desk surface shader\n    float div1 = smoothstep(0.0015, 0.0, abs(uv.x - 0.4418));\n    float div2 = smoothstep(0.0015, 0.0, abs(uv.x - 0.6329));\n    float div_vignette = uv.y * (1.0 - uv.y) * 4.0;\n    float divider_mask = max(div1, div2) * div_vignette;\n    color = mix(color, vec4(0.75, 0.45, 1.0, 0.15), divider_mask);\n    \n    // Layer 6: Noise shimmer overlay\n    float noise = rand(uv + vec2(TIME * 0.02)) * noise_intensity;\n    color.rgb += vec3(noise);\n    \n    COLOR = color;\n}"
+
+	_glass_shader.code = _make_glass_card_shader_code()
 
 	_avatar_shader = Shader.new()
 	_avatar_shader.code = "shader_type canvas_item;\n\nuniform float time_speed = 2.0;\nuniform vec4 glow_color : source_color = vec4(1.0, 0.0, 0.55, 1.0);\nuniform float glow_intensify = 0.6;\n\nvoid fragment() {\n    vec2 uv = UV;\n    vec2 center = vec2(0.5, 0.5);\n    float dist = distance(uv, center);\n    \n    // Mask at dist = 0.41 (circle crop)\n    float mask = smoothstep(0.41, 0.40, dist);\n    \n    // Avatar texture mapping\n    vec4 tex_color = texture(TEXTURE, uv);\n    \n    // Metallic border (gold/magenta mix) at 0.40 < dist < 0.44\n    float border_mask = smoothstep(0.40, 0.41, dist) * smoothstep(0.44, 0.43, dist);\n    float angle = atan(uv.y - 0.5, uv.x - 0.5);\n    float metallic = sin(angle * 5.0 + TIME * 0.8) * 0.2 + 0.8;\n    vec4 metal_color = mix(vec4(1.0, 0.82, 0.25, 1.0), glow_color, sin(TIME * 0.5 + angle) * 0.5 + 0.5) * metallic;\n    \n    // Pulsing Outer Glow Ring at 0.43 < dist < 0.49\n    float pulse = 0.8 + sin(TIME * time_speed) * 0.2;\n    float glow_mask = smoothstep(0.42, 0.44, dist) * smoothstep(0.49, 0.45, dist) * pulse;\n    vec4 outer_glow = glow_color * 1.8 * glow_intensify;\n    \n    // Large soft radial bloom behind the badge\n    float bloom = smoothstep(0.5, 0.0, dist) * 0.22 * glow_intensify * (0.85 + sin(TIME * time_speed) * 0.15);\n    vec4 bloom_color = glow_color * bloom;\n    \n    vec4 final_color = vec4(0.0);\n    final_color = mix(final_color, bloom_color, 1.0 - mask);\n    final_color = mix(final_color, tex_color, mask);\n    final_color = mix(final_color, metal_color, border_mask);\n    final_color = mix(final_color, outer_glow, glow_mask * 0.7);\n    \n    final_color.a = max(mask, max(border_mask, max(glow_mask * 0.5, bloom * 0.8)));\n    COLOR = final_color;\n}"
@@ -72,38 +72,35 @@ func _ready() -> void:
 	for guide_path in [
 		"GuideBottomHudBorder",
 		"GuideBottomHudLabel",
-		"PlayerInfoPanel/GuidePlayerInfoPanelBorder",
-		"PlayerInfoPanel/GuidePlayerInfoPanelLabel",
-		"HoleCardsPanel/GuideHoleCardsPanelBorder",
-		"HoleCardsPanel/GuideHoleCardsPanelLabel",
-		"ActionPanel/GuideActionPanelBorder",
-		"ActionPanel/GuideActionPanelLabel"
+		"IdentityZone/GuideIdentityZoneBorder",
+		"IdentityZone/GuideIdentityZoneLabel",
+		"FocusZone/GuideFocusZoneBorder",
+		"FocusZone/GuideFocusZoneLabel",
+		"ControlZone/GuideControlZoneBorder",
+		"ControlZone/GuideControlZoneLabel"
 	]:
 		var guide_node := get_node_or_null(guide_path)
 		if guide_node != null:
 			guide_node.visible = false
 
-	# Setup the single continuous desk surface panel spanning left-to-right (0.0 to 1795.0 px)
-	_desk_surface = Panel.new()
-	_desk_surface.name = "DeskSurfacePanel"
-	_desk_surface.position = Vector2(0, 0)
-	_desk_surface.size = Vector2(1795, 368)
-	_desk_surface.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_desk_surface)
-	move_child(_desk_surface, 0)
-
-	# Override child panels style to StyleBoxEmpty to remove separate container boxes
-	var empty_style := StyleBoxEmpty.new()
-	$PlayerInfoPanel.add_theme_stylebox_override("panel", empty_style)
-	$HoleCardsPanel.add_theme_stylebox_override("panel", empty_style)
-	$ActionPanel.add_theme_stylebox_override("panel", empty_style)
+	_apply_glass_card_material($IdentityZone, Color(1.0, 0.10, 0.72), 0.95, 0.05)
+	_apply_glass_card_material($FocusZone, Color(0.72, 0.28, 1.0), 1.16, 0.32)
+	_apply_glass_card_material($ControlZone, Color(0.08, 0.72, 1.0), 1.02, 0.61)
+	_configure_card_depth($IdentityZone)
+	_configure_card_depth($FocusZone)
+	_configure_card_depth($ControlZone)
+	for zone in [$IdentityZone, $FocusZone, $ControlZone]:
+		zone.visible = true
+		zone.mouse_entered.connect(_on_glass_card_hover_entered.bind(zone))
+		zone.mouse_exited.connect(_on_glass_card_hover_exited.bind(zone))
 
 	_build_player_info_overlay()
-	$PlayerInfoPanel.mouse_filter = Control.MOUSE_FILTER_PASS
-	$PlayerInfoPanel.mouse_entered.connect(_on_profile_hover_entered)
-	$PlayerInfoPanel.mouse_exited.connect(_on_profile_hover_exited)
+	$IdentityZone.mouse_filter = Control.MOUSE_FILTER_PASS
+	$IdentityZone.mouse_entered.connect(_on_profile_hover_entered)
+	$IdentityZone.mouse_exited.connect(_on_profile_hover_exited)
 	_build_hand_panel()
 	_build_action_controls()
+	_style_raise_value_label()
 	_layout_player_info_panel()
 	_layout_hand_panel()
 	_layout_action_panel()
@@ -148,6 +145,15 @@ func set_local_player_info(local: Dictionary, phase: String = "preflop") -> void
 
 	_player_name_label.text = String(local.get("player_name", "Luna0581"))
 	_you_badge.visible = bool(local.get("is_local", true))
+	var avatar_texture: Texture2D = local.get("avatar_texture", null) as Texture2D
+	var avatar_panel: Control = $IdentityZone/AvatarPanel
+	var initials_label: Label = avatar_panel.get_node_or_null("AvatarInitials") as Label
+	if avatar_texture != null:
+		_avatar_rect.texture = avatar_texture
+		if initials_label != null:
+			initials_label.visible = false
+	elif initials_label != null:
+		initials_label.visible = true
 	chips_label.text = _format_chips(chips)
 	_buy_in_value_label.text = _format_chips(buy_in)
 	profit_label.text = ("%+d" % profit) if abs(profit) < 1000 else ("%+s" % _format_chips(profit))
@@ -170,8 +176,11 @@ func set_actions(new_actions: Array, current_pot: int = 0) -> void:
 		var action_id := String(action.get("id", ""))
 		if action_id == "fold":
 			_fold_action = action
-		elif action_id in ["check", "call"]:
-			if _check_call_action.is_empty() or action_id == "call":
+		elif action_id == "check":
+			if _check_call_action.is_empty():
+				_check_call_action = action
+		elif action_id == "call":
+			if bool(action.get("enabled", false)) or _check_call_action.is_empty():
 				_check_call_action = action
 		elif action_id in ["bet", "raise"]:
 			_raise_action = action
@@ -219,8 +228,8 @@ func set_actions(new_actions: Array, current_pot: int = 0) -> void:
 
 
 func _build_player_info_overlay() -> void:
-	_player_name_label = _make_label("Luna0581", 22, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, true)
-	$PlayerInfoPanel.add_child(_player_name_label)
+	_player_name_label = _make_label("Luna0581", 24, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, true)
+	$IdentityZone.add_child(_player_name_label)
 
 	_you_badge = PanelContainer.new()
 	_you_badge.name = "YouBadge"
@@ -232,65 +241,62 @@ func _build_player_info_overlay() -> void:
 	badge_style.content_margin_top = 2
 	badge_style.content_margin_bottom = 3
 	_you_badge.add_theme_stylebox_override("panel", badge_style)
-	var badge_label := _make_label("YOU", 10, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, true)
+	var badge_label := _make_label("YOU", 11, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, true)
 	_you_badge.add_child(badge_label)
-	$PlayerInfoPanel.add_child(_you_badge)
+	$IdentityZone.add_child(_you_badge)
 	var initials := _make_label("L", 46, Color(0.90, 0.88, 1.0, 0.96), HORIZONTAL_ALIGNMENT_CENTER, true)
 	initials.name = "AvatarInitials"
 	initials.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	$PlayerInfoPanel/AvatarPanel.add_child(initials)
+	$IdentityZone/AvatarPanel.add_child(initials)
 
-	_chips_caption_label = _make_label("CHIPS", 11, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
-	_buy_in_value_label = _make_label("20,000", 18, Color(0.93, 0.93, 1.0), HORIZONTAL_ALIGNMENT_LEFT, false)
-	_buy_in_caption_label = _make_label("BUY-IN", 11, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
-	_session_caption_label = _make_label("SESSION RESULT", 11, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
-	_winrate_caption_label = _make_label("WIN RATE", 11, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
+	_chips_caption_label = _make_label("CHIPS", 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
+	_buy_in_value_label = _make_label("20,000", 19, Color(0.93, 0.93, 1.0), HORIZONTAL_ALIGNMENT_LEFT, false)
+	_buy_in_caption_label = _make_label("BUY-IN", 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
+	_session_caption_label = _make_label("SESSION RESULT", 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
+	_winrate_caption_label = _make_label("WIN RATE", 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
 	_buy_in_tile = _make_info_tile("BuyInTile", Color(0.78, 0.45, 1.0, 0.55))
 	_session_tile = _make_info_tile("SessionTile", Color(0.0, 0.95, 0.55, 0.55))
 	_winrate_tile = _make_info_tile("WinrateTile", Color(1.0, 0.0, 0.5, 0.50))
 	for node in [_buy_in_tile, _session_tile, _winrate_tile]:
-		$PlayerInfoPanel.add_child(node)
+		$IdentityZone.add_child(node)
 	_buy_in_icon_label = _make_label("$", 18, Color(1.0, 0.82, 0.25), HORIZONTAL_ALIGNMENT_CENTER, true)
 	_session_icon_label = _make_label("+", 18, Color(0.0, 0.95, 0.55), HORIZONTAL_ALIGNMENT_CENTER, true)
 	_winrate_icon_label = _make_label("%", 18, Color(0.74, 0.62, 1.0), HORIZONTAL_ALIGNMENT_CENTER, true)
 	for node in [_buy_in_icon_label, _session_icon_label, _winrate_icon_label]:
-		$PlayerInfoPanel.add_child(node)
+		$IdentityZone.add_child(node)
 	for node in [_chips_caption_label, _buy_in_value_label, _buy_in_caption_label, _session_caption_label, _winrate_caption_label]:
-		$PlayerInfoPanel.add_child(node)
+		$IdentityZone.add_child(node)
 
 	chips_label.add_theme_font_override("font", _bold_font)
-	chips_label.add_theme_font_size_override("font_size", 38)
+	chips_label.add_theme_font_size_override("font_size", 42)
 	chips_label.add_theme_color_override("font_color", Color(1.0, 0.75, 1.0))
 	chips_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	profit_label.add_theme_font_override("font", _bold_font)
-	profit_label.add_theme_font_size_override("font_size", 22)
+	profit_label.add_theme_font_size_override("font_size", 23)
 	winrate_label.add_theme_font_override("font", _bold_font)
-	winrate_label.add_theme_font_size_override("font_size", 18)
+	winrate_label.add_theme_font_size_override("font_size", 19)
 	winrate_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5))
-
-	_apply_glass_shader_to_panel(_desk_surface, Color(1.0, 0.0, 0.56))
-
 
 func _build_hand_panel() -> void:
 	_hand_base = Panel.new()
 	_hand_base.name = "HandGlowBase"
 	_hand_base.add_theme_stylebox_override("panel", _make_hand_base_style())
-	$HoleCardsPanel.add_child(_hand_base)
-	_hand_title_label = _make_label("YOUR HAND", 13, Color(0.84, 0.87, 1.0), HORIZONTAL_ALIGNMENT_CENTER, true)
-	$HoleCardsPanel.add_child(_hand_title_label)
-	_hand_subtitle_label = _make_label("HIGH CARD: ACE", 11, Color(0.86, 0.80, 1.0, 0.90), HORIZONTAL_ALIGNMENT_CENTER, false)
-	$HoleCardsPanel.add_child(_hand_subtitle_label)
+	$FocusZone.add_child(_hand_base)
+	_hand_title_label = _make_label("YOUR HAND", 14, Color(0.84, 0.87, 1.0), HORIZONTAL_ALIGNMENT_CENTER, true)
+	$FocusZone.add_child(_hand_title_label)
+	_hand_subtitle_label = _make_label("HIGH CARD: ACE", 12, Color(0.86, 0.80, 1.0, 0.90), HORIZONTAL_ALIGNMENT_CENTER, false)
+	$FocusZone.add_child(_hand_subtitle_label)
 	timer_label.text = "YOUR HAND"
 	timer_label.add_theme_font_override("font", _bold_font)
-	timer_label.add_theme_font_size_override("font_size", 13)
+	timer_label.add_theme_font_size_override("font_size", 14)
 	timer_label.add_theme_color_override("font_color", Color(0.84, 0.87, 1.0))
 	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	timer_label.visible = false
 
 
 func _build_action_controls() -> void:
-	_bet_title_label = _make_label("BET AMOUNT", 12, Color(0.84, 0.87, 1.0), HORIZONTAL_ALIGNMENT_CENTER, true)
-	$ActionPanel.add_child(_bet_title_label)
+	_bet_title_label = _make_label("BET AMOUNT", 13, Color(0.84, 0.87, 1.0), HORIZONTAL_ALIGNMENT_CENTER, true)
+	$ControlZone.add_child(_bet_title_label)
 
 	_pot_half_button = _pot_25_button
 	_pot_two_thirds_button = _make_button("2/3 POT")
@@ -298,15 +304,27 @@ func _build_action_controls() -> void:
 	_all_in_button = _max_button
 	_pot_half_button.text = "1/2 POT"
 	_all_in_button.text = "ALL-IN"
-	$ActionPanel/RaiseControlPanel.add_child(_pot_two_thirds_button)
-	$ActionPanel/RaiseControlPanel.add_child(_pot_button)
+	$ControlZone/RaiseControlPanel.add_child(_pot_two_thirds_button)
+	$ControlZone/RaiseControlPanel.add_child(_pot_button)
+
+
+func _style_raise_value_label() -> void:
+	_raise_value_label.add_theme_font_override("font", _bold_font)
+	_raise_value_label.add_theme_font_size_override("font_size", 23)
+	_raise_value_label.add_theme_color_override("font_color", Color(0.64, 0.92, 1.0))
+	_raise_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_raise_value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
 
 func _layout_player_info_panel() -> void:
-	var panel := $PlayerInfoPanel
-	var avatar_panel := $PlayerInfoPanel/AvatarPanel
-	avatar_panel.position = Vector2(44, 78)
-	avatar_panel.size = Vector2(132, 132)
+	var panel := $IdentityZone
+	panel.position = Vector2(0, 0)
+	panel.size = Vector2(785, 368)
+	panel.custom_minimum_size = panel.size
+	_configure_card_depth(panel)
+	var avatar_panel := $IdentityZone/AvatarPanel
+	avatar_panel.position = Vector2(24, 62)
+	avatar_panel.size = Vector2(188, 188)
 	avatar_panel.custom_minimum_size = avatar_panel.size
 	
 	# Disable clip_children so the shader outer glow ring can draw outside the cropped avatar area
@@ -316,19 +334,17 @@ func _layout_player_info_panel() -> void:
 	var empty_style := StyleBoxEmpty.new()
 	avatar_panel.add_theme_stylebox_override("panel", empty_style)
 	
-	_avatar_rect.position = Vector2.ZERO
-	_avatar_rect.size = avatar_panel.size
-	_avatar_rect.custom_minimum_size = avatar_panel.size
+	_avatar_rect.size = Vector2(176, 176)
+	_avatar_rect.position = (avatar_panel.size - _avatar_rect.size) * 0.5
+	_avatar_rect.custom_minimum_size = _avatar_rect.size
 	_avatar_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_avatar_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	
-	# Assign the avatar metallic frame & glow pulse shader
-	var av_mat := ShaderMaterial.new()
-	av_mat.shader = _avatar_shader
-	av_mat.set_shader_parameter("glow_color", Color(1.0, 0.0, 0.55, 1.0))
-	_avatar_rect.material = av_mat
+	_avatar_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_avatar_rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	_avatar_rect.material = null
+	_avatar_rect.modulate = Color.WHITE
+	_avatar_rect.self_modulate = Color.WHITE
 
-	var avatar_path := "res://assets/ChatGPT Image 2026骞?鏈?4鏃?22_13_25 (5).png"
+	var avatar_path := "res://assets/ChatGPT Image 2026楠?閺?4閺?22_13_25 (5).png"
 	if ResourceLoader.exists(avatar_path):
 		_avatar_rect.texture = load(avatar_path)
 		var initials := avatar_panel.get_node_or_null("AvatarInitials") as Label
@@ -350,14 +366,9 @@ func _layout_player_info_panel() -> void:
 	_buy_in_caption_label.position = Vector2(520, 103)
 	_buy_in_caption_label.size = Vector2(120, 22)
 
-	var divider := panel.get_node_or_null("InfoDivider") as ColorRect
-	if divider == null:
-		divider = ColorRect.new()
-		divider.name = "InfoDivider"
-		divider.color = Color(0.75, 0.45, 1.0, 0.30)
-		panel.add_child(divider)
-	divider.position = Vector2(220, 205)
-	divider.size = Vector2(510, 1)
+	var old_divider := panel.get_node_or_null("InfoDivider")
+	if old_divider != null:
+		old_divider.queue_free()
 
 	_buy_in_tile.position = Vector2(220, 236)
 	_buy_in_tile.size = Vector2(142, 78)
@@ -386,62 +397,163 @@ func _layout_player_info_panel() -> void:
 
 
 func _layout_hand_panel() -> void:
+	var panel := $FocusZone
+	panel.position = Vector2(801, 0)
+	panel.size = Vector2(332, 368)
+	panel.custom_minimum_size = panel.size
+	_configure_card_depth(panel)
 	_hand_title_label.position = Vector2(0, 36)
 	_hand_title_label.size = Vector2(332, 24)
-	_hand_base.position = Vector2(53, 78)
-	_hand_base.size = Vector2(226, 184)
-	_hand_subtitle_label.position = Vector2(78, 270)
+	_hand_base.position = Vector2(38, 82)
+	_hand_base.size = Vector2(256, 188)
+	_hand_subtitle_label.position = Vector2(72, 282)
 	_hand_subtitle_label.size = Vector2(176, 26)
 	timer_label.position = Vector2(0, 58)
 	timer_label.size = Vector2(332, 20)
-	local_cards_root.position = Vector2(66, 92)
-	local_cards_root.size = Vector2(210, 170)
+	local_cards_root.position = Vector2(42, 88)
+	local_cards_root.size = Vector2(250, 190)
 	for i in range(local_cards_root.get_child_count()):
 		var card := local_cards_root.get_child(i) as Control
 		if card == null:
 			continue
-		card.position = Vector2(12 + i * 92, 20 - i * 2)
-		card.size = Vector2(92, 138)
+		card.position = Vector2(20 + i * 106, 18 - i * 3)
+		card.size = Vector2(112, 168)
 		card.custom_minimum_size = card.size
 		card.pivot_offset = card.size * 0.5
 		card.rotation_degrees = -5.0 if i == 0 else 5.0
 
 
 func _layout_action_panel() -> void:
-	_bet_title_label.position = Vector2(0, 34)
+	var panel := $ControlZone
+	panel.position = Vector2(1139, 0)
+	panel.size = Vector2(656, 368)
+	panel.custom_minimum_size = panel.size
+	_configure_card_depth(panel)
+	_bet_title_label.position = Vector2(0, 28)
 	_bet_title_label.size = Vector2(656, 18)
-	_raise_value_label.position = Vector2(235, 54)
-	_raise_value_label.size = Vector2(190, 34)
+	_raise_value_label.position = Vector2(238, 50)
+	_raise_value_label.size = Vector2(180, 42)
 
-	var controls := $ActionPanel/RaiseControlPanel
-	controls.position = Vector2(36, 84)
-	controls.size = Vector2(584, 154)
-	_minus_button.position = Vector2(0, 2)
-	_minus_button.size = Vector2(44, 44)
-	_plus_button.position = Vector2(540, 2)
-	_plus_button.size = Vector2(44, 44)
-	_h_slider.position = Vector2(78, 10)
-	_h_slider.size = Vector2(430, 28)
+	var controls := $ControlZone/RaiseControlPanel
+	controls.position = Vector2(36, 92)
+	controls.size = Vector2(584, 146)
+	_minus_button.position = Vector2(0, 4)
+	_minus_button.size = Vector2(46, 46)
+	_plus_button.position = Vector2(538, 4)
+	_plus_button.size = Vector2(46, 46)
+	_h_slider.position = Vector2(76, 15)
+	_h_slider.size = Vector2(432, 26)
 
-	_pot_half_button.position = Vector2(0, 70)
-	_pot_two_thirds_button.position = Vector2(145, 70)
-	_pot_button.position = Vector2(290, 70)
-	_all_in_button.position = Vector2(435, 70)
+	_pot_half_button.position = Vector2(0, 76)
+	_pot_two_thirds_button.position = Vector2(146, 76)
+	_pot_button.position = Vector2(292, 76)
+	_all_in_button.position = Vector2(438, 76)
 	for btn in [_pot_half_button, _pot_two_thirds_button, _pot_button, _all_in_button]:
-		btn.size = Vector2(116, 42)
+		btn.size = Vector2(118, 44)
 		btn.custom_minimum_size = btn.size
 
-	var main_buttons := $ActionPanel/MainButtons
-	main_buttons.position = Vector2(36, 258)
-	main_buttons.size = Vector2(584, 78)
+	var main_buttons := $ControlZone/MainButtons
+	main_buttons.position = Vector2(36, 254)
+	main_buttons.size = Vector2(584, 82)
 	_fold_button.position = Vector2(0, 0)
-	_check_call_button.position = Vector2(200, 0)
-	_raise_confirm_button.position = Vector2(400, 0)
-	_fold_button.size = Vector2(162, 64)
-	_check_call_button.size = Vector2(162, 64)
-	_raise_confirm_button.size = Vector2(190, 68)
+	_check_call_button.position = Vector2(196, 0)
+	_raise_confirm_button.position = Vector2(388, 0)
+	_fold_button.size = Vector2(172, 72)
+	_check_call_button.size = Vector2(172, 72)
+	_raise_confirm_button.size = Vector2(196, 76)
 	for btn in [_fold_button, _check_call_button, _raise_confirm_button]:
 		btn.custom_minimum_size = btn.size
+
+
+func _make_glass_card_shader_code() -> String:
+	return """shader_type canvas_item;
+
+uniform vec4 base_color : source_color = vec4(0.045, 0.018, 0.080, 0.82);
+uniform vec4 accent_color : source_color = vec4(1.0, 0.0, 0.55, 1.0);
+uniform float card_brightness = 1.0;
+uniform float flow_phase = 0.0;
+uniform float rim_intensity : hint_range(0.0, 1.0) = 0.42;
+uniform float refraction_strength = 0.025;
+uniform float hover_refraction = 0.0;
+uniform float depth_bias = 1.0;
+uniform float breathing_brightness = 1.0;
+
+float rand(vec2 co) {
+	return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+float soft_noise(vec2 uv) {
+	float a = rand(floor(uv * 36.0));
+	float b = rand(floor(uv * 54.0) + vec2(17.0, 3.0));
+	return mix(a, b, 0.35);
+}
+
+void fragment() {
+	vec2 uv = UV;
+	float radius = 0.055;
+	vec2 rounded = max(abs(uv - vec2(0.5)) - vec2(0.5 - radius), 0.0);
+	float corner_mask = 1.0 - smoothstep(radius * 0.92, radius, length(rounded));
+
+	// Layer A: fake refraction distortion inside an individual card.
+	float refract_noise = soft_noise(uv + vec2(TIME * 0.010 + flow_phase, -TIME * 0.006));
+	float distortion_wave = sin((uv.x * 2.0 + uv.y * 1.15 + TIME * 0.22 + flow_phase) * 6.28318) * 0.5 + 0.5;
+	vec2 refracted_uv = uv + vec2(refract_noise - 0.5, 0.5 - refract_noise) * (refraction_strength + hover_refraction * 0.028);
+	refracted_uv += vec2(distortion_wave - 0.5, 0.0) * (0.008 + hover_refraction * 0.010);
+
+	// Layer B: internal thickness gradient.
+	float lower_lift = smoothstep(0.08, 1.0, refracted_uv.y);
+	float center_light = 1.0 - smoothstep(0.08, 0.78, distance(refracted_uv, vec2(0.50, 0.58)));
+	float top_compression = 1.0 - smoothstep(0.00, 0.34, refracted_uv.y);
+	float bottom_bevel = smoothstep(0.80, 1.0, uv.y);
+	float upper_bevel = 1.0 - smoothstep(0.00, 0.12, uv.y);
+	vec4 color = base_color;
+	color.rgb *= (0.56 + lower_lift * 0.42 + center_light * 0.24) * card_brightness * depth_bias;
+	color.rgb = mix(color.rgb, color.rgb * 0.58, top_compression * 0.72);
+
+	// Layer C: inner shadow and fog volume around each card.
+	float vignette = uv.x * (1.0 - uv.x) * uv.y * (1.0 - uv.y) * 16.0;
+	vignette = clamp(pow(vignette, 0.18), 0.0, 1.0);
+	color.rgb = mix(color.rgb * 0.30, color.rgb, vignette);
+	float inner_fog = (1.0 - vignette) * 0.42 + center_light * 0.18 + lower_lift * 0.16;
+	color.rgb = mix(color.rgb, vec3(0.18, 0.10, 0.28), inner_fog * 0.42);
+	color.rgb *= breathing_brightness;
+	color.rgb += accent_color.rgb * bottom_bevel * 0.20 * card_brightness;
+	color.rgb += vec3(0.20, 0.16, 0.28) * upper_bevel * 0.08;
+
+	// Layer D: precise thin neon rim per card.
+	float dist_x = min(uv.x, 1.0 - uv.x);
+	float dist_y = min(uv.y, 1.0 - uv.y);
+	float min_dist = min(dist_x, dist_y);
+	float rim = smoothstep(0.009, 0.0, min_dist);
+	float bevel_glass = smoothstep(0.030, 0.0, min_dist);
+	float rim_pulse = 0.86 + sin(TIME * 1.15) * 0.04;
+	color.rgb += accent_color.rgb * rim * rim_intensity * rim_pulse;
+	color.rgb += vec3(0.58, 0.45, 0.95) * bevel_glass * 0.075;
+	float edge_path = fract(uv.x + uv.y * 0.18 - TIME * 0.10 + flow_phase);
+	float edge_flow = (1.0 - smoothstep(0.0, 0.22, edge_path)) * bevel_glass;
+	color.rgb += accent_color.rgb * edge_flow * 0.22;
+
+	// Layer E: visible slow specular sweep.
+	float sweep_axis = uv.x * 0.92 + uv.y * 0.42;
+	float sweep_center = fract(TIME * 0.075 + flow_phase);
+	float sweep = 1.0 - smoothstep(0.00, 0.12, abs(sweep_axis - sweep_center));
+	color.rgb += mix(vec3(0.18, 0.62, 1.0), accent_color.rgb, 0.55) * sweep * 0.16;
+
+	// Layer F: soft internal flowing light band, same rhythm across cards.
+	float curved = uv.x + sin(uv.y * 3.14159) * 0.075;
+	float flow = sin((curved - TIME * 0.115 + flow_phase) * 6.28318) * 0.5 + 0.5;
+	flow = smoothstep(0.58, 0.96, flow);
+	color.rgb += accent_color.rgb * flow * (0.12 + hover_refraction * 0.08) * vignette;
+
+	// Micro grain and faint refracted highlights keep the card from reading flat.
+	float grain = soft_noise(refracted_uv * 1.8 + vec2(TIME * 0.004, 0.0));
+	float highlight = smoothstep(0.35, 1.0, sin((refracted_uv.x * 1.1 + refracted_uv.y * 0.55) * 6.28318) * 0.5 + 0.5);
+	color.rgb += vec3(grain * 0.024);
+	color.rgb += accent_color.rgb * highlight * 0.026 * vignette;
+
+	color.a *= corner_mask;
+	COLOR = color;
+}"""
 
 
 func _on_slider_value_changed(val: float) -> void:
@@ -501,12 +613,12 @@ func _make_info_tile(name_value: String, border_color: Color) -> Panel:
 
 func _apply_info_tile_style(panel: Panel, border_color: Color) -> void:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.02, 0.08, 0.35)
-	style.border_color = Color(border_color.r, border_color.g, border_color.b, 0.22)
+	style.bg_color = Color(0.06, 0.025, 0.11, 0.46)
+	style.border_color = Color(border_color.r, border_color.g, border_color.b, 0.36)
 	style.set_border_width_all(1)
-	style.set_corner_radius_all(9)
-	style.shadow_color = Color(0, 0, 0, 0)
-	style.shadow_size = 0
+	style.set_corner_radius_all(12)
+	style.shadow_color = Color(border_color.r, border_color.g, border_color.b, 0.12)
+	style.shadow_size = 8
 	panel.add_theme_stylebox_override("panel", style)
 
 
@@ -523,40 +635,45 @@ func _make_avatar_badge_style() -> StyleBoxFlat:
 
 func _make_hand_base_style() -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.12, 0.04, 0.18, 0.25)
-	style.border_color = Color(1.0, 0.0, 0.55, 0.15)
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(16)
-	style.shadow_color = Color(0, 0, 0, 0)
-	style.shadow_size = 0
+	style.bg_color = Color(0.08, 0.03, 0.13, 0.10)
+	style.border_color = Color(1.0, 0.0, 0.55, 0.06)
+	style.set_border_width_all(0)
+	style.set_corner_radius_all(18)
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.24)
+	style.shadow_size = 6
 	return style
 
 
 func _style_action_button(btn: Button, border_color: Color, level: int = 0) -> void:
-	var alpha := 0.48 + level * 0.08
-	var bg_color := Color(0.016, 0.012, 0.035, alpha)
+	var alpha := 0.58 + level * 0.08
+	var bg_color := Color(0.026, 0.018, 0.060, alpha)
 	if level == 1:
-		bg_color = Color(0.22, 0.02, 0.13, 0.72)
+		bg_color = Color(0.30, 0.025, 0.155, 0.82)
 	elif level == 2:
-		bg_color = Color(0.02, 0.25, 0.42, 0.82)
+		bg_color = Color(0.025, 0.29, 0.46, 0.90)
 
-	var style_normal := HomeTheme.make_button_style(bg_color, border_color * 0.65, 12)
-	style_normal.shadow_color = Color(border_color.r, border_color.g, border_color.b, 0.25 + level * 0.12)
+	var style_normal := HomeTheme.make_button_style(bg_color, border_color * 0.82, 14)
+	style_normal.shadow_color = Color(border_color.r, border_color.g, border_color.b, 0.18 + level * 0.12)
 	style_normal.shadow_size = 10 + level * 3
-	var style_hover := HomeTheme.make_button_style(bg_color + Color(0.04, 0.04, 0.06, 0.12), border_color, 12)
-	style_hover.shadow_color = Color(border_color.r, border_color.g, border_color.b, 0.55)
-	style_hover.shadow_size = 16
-	var style_disabled := HomeTheme.make_button_style(Color(0.008, 0.006, 0.015, 0.20), Color(border_color.r, border_color.g, border_color.b, 0.20), 12)
+	style_normal.shadow_offset = Vector2(0, 4)
+	var style_hover := HomeTheme.make_button_style(bg_color + Color(0.05, 0.045, 0.065, 0.12), border_color, 14)
+	style_hover.shadow_color = Color(border_color.r, border_color.g, border_color.b, 0.48 + level * 0.12)
+	style_hover.shadow_size = 15 + level * 5
+	style_hover.shadow_offset = Vector2(0, 4)
+	var style_pressed := HomeTheme.make_button_style(bg_color.darkened(0.08), border_color, 14)
+	style_pressed.shadow_color = Color(border_color.r, border_color.g, border_color.b, 0.34 + level * 0.10)
+	style_pressed.shadow_size = 8 + level * 3
+	var style_disabled := HomeTheme.make_button_style(Color(0.008, 0.006, 0.015, 0.20), Color(border_color.r, border_color.g, border_color.b, 0.20), 14)
 
 	btn.add_theme_stylebox_override("normal", style_normal)
 	btn.add_theme_stylebox_override("hover", style_hover)
-	btn.add_theme_stylebox_override("pressed", style_hover)
+	btn.add_theme_stylebox_override("pressed", style_pressed)
 	btn.add_theme_stylebox_override("disabled", style_disabled)
 	btn.add_theme_color_override("font_color", Color(1, 1, 1, 0.96))
 	btn.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
 	btn.add_theme_color_override("font_disabled_color", Color(0.45, 0.48, 0.55, 0.35))
 	btn.add_theme_font_override("font", _bold_font)
-	btn.add_theme_font_size_override("font_size", 15)
+	btn.add_theme_font_size_override("font_size", 17)
 
 
 func _style_adjust_button(btn: Button) -> void:
@@ -571,13 +688,17 @@ func _style_adjust_button(btn: Button) -> void:
 	btn.add_theme_color_override("font_color", Color.WHITE)
 	btn.add_theme_color_override("font_disabled_color", Color(0.4, 0.4, 0.4, 0.3))
 	btn.add_theme_font_override("font", _bold_font)
-	btn.add_theme_font_size_override("font_size", 18)
+	btn.add_theme_font_size_override("font_size", 19)
 
 
 func _style_quick_button(btn: Button) -> void:
 	var border_color := Color(0.78, 0.48, 1.0, 0.45)
-	var style_normal := HomeTheme.make_button_style(Color(0.08, 0.05, 0.16, 0.50), border_color, 7)
-	var style_hover := HomeTheme.make_button_style(Color(0.13, 0.07, 0.22, 0.70), Color(1.0, 0.0, 0.5, 0.85), 7)
+	var style_normal := HomeTheme.make_button_style(Color(0.08, 0.05, 0.16, 0.62), border_color, 9)
+	style_normal.shadow_color = Color(0.40, 0.12, 0.80, 0.12)
+	style_normal.shadow_size = 5
+	var style_hover := HomeTheme.make_button_style(Color(0.13, 0.07, 0.22, 0.76), Color(1.0, 0.0, 0.5, 0.85), 9)
+	style_hover.shadow_color = Color(1.0, 0.0, 0.5, 0.26)
+	style_hover.shadow_size = 9
 	var style_disabled := HomeTheme.make_button_style(Color(0.05, 0.05, 0.07, 0.2), Color(0.2, 0.2, 0.25, 0.2), 7)
 	btn.add_theme_stylebox_override("normal", style_normal)
 	btn.add_theme_stylebox_override("hover", style_hover)
@@ -586,22 +707,28 @@ func _style_quick_button(btn: Button) -> void:
 	btn.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
 	btn.add_theme_color_override("font_disabled_color", Color(0.4, 0.4, 0.4, 0.3))
 	btn.add_theme_font_override("font", _bold_font)
-	btn.add_theme_font_size_override("font_size", 12)
+	btn.add_theme_font_size_override("font_size", 13)
 
 
 func _style_h_slider(slider: HSlider) -> void:
 	var track_style := StyleBoxFlat.new()
-	track_style.bg_color = Color(0.25, 0.2, 0.35, 0.58)
+	track_style.bg_color = Color(0.10, 0.075, 0.18, 0.84)
+	track_style.border_color = Color(0.72, 0.56, 1.0, 0.30)
+	track_style.set_border_width_all(1)
 	track_style.set_corner_radius_all(3)
-	track_style.content_margin_top = 3
-	track_style.content_margin_bottom = 3
+	track_style.content_margin_top = 4
+	track_style.content_margin_bottom = 4
+	track_style.shadow_color = Color(0.72, 0.24, 1.0, 0.26)
+	track_style.shadow_size = 10
 	slider.add_theme_stylebox_override("slider", track_style)
 
 	var active_style := StyleBoxFlat.new()
-	active_style.bg_color = Color(1.0, 0.0, 0.5)
+	active_style.bg_color = Color(1.0, 0.0, 0.58)
 	active_style.set_corner_radius_all(3)
-	active_style.content_margin_top = 3
-	active_style.content_margin_bottom = 3
+	active_style.content_margin_top = 4
+	active_style.content_margin_bottom = 4
+	active_style.shadow_color = Color(1.0, 0.0, 0.58, 0.42)
+	active_style.shadow_size = 12
 	slider.add_theme_stylebox_override("grabber_area", active_style)
 	slider.add_theme_stylebox_override("grabber_area_highlight", active_style)
 
@@ -645,40 +772,80 @@ func _format_chips(value: int) -> String:
 	return sign + result
 
 
-func _apply_glass_shader_to_panel(panel: Panel, border_color: Color) -> void:
+func _apply_glass_card_material(panel: Panel, accent_color: Color, brightness: float, phase: float) -> void:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color.WHITE
+	style.border_color = Color(1, 1, 1, 0)
+	style.set_border_width_all(0)
+	style.set_corner_radius_all(24)
+	style.shadow_color = Color(accent_color.r, accent_color.g, accent_color.b, 0.16)
+	style.shadow_size = 18
+	style.shadow_offset = Vector2(0, 8)
+	panel.add_theme_stylebox_override("panel", style)
+	panel.clip_children = Control.CLIP_CHILDREN_DISABLED
+	panel.mouse_filter = Control.MOUSE_FILTER_PASS
 	var mat := ShaderMaterial.new()
 	mat.shader = _glass_shader
-	mat.set_shader_parameter("base_color", Color(0.06, 0.03, 0.12, 0.88))
-	mat.set_shader_parameter("glow_color", border_color)
+	mat.set_shader_parameter("base_color", Color(0.045, 0.018, 0.080, 0.82))
+	mat.set_shader_parameter("accent_color", accent_color)
+	mat.set_shader_parameter("card_brightness", brightness)
+	mat.set_shader_parameter("flow_phase", phase)
+	mat.set_shader_parameter("depth_bias", 1.0)
+	mat.set_shader_parameter("hover_refraction", 0.0)
 	panel.material = mat
+	panel.set_meta("glass_base_brightness", brightness)
+	panel.set_meta("glass_hover_brightness", brightness + 0.10)
+
+
+func _configure_card_depth(panel: Control) -> void:
+	panel.pivot_offset = panel.size * 0.5
+	panel.scale = Vector2.ONE
+	panel.z_index = 0
+	panel.visible = true
+
+
+func _on_glass_card_hover_entered(panel: Control) -> void:
+	var mat := panel.material as ShaderMaterial
+	if mat == null:
+		return
+	var base := float(panel.get_meta("glass_base_brightness", 1.0))
+	var hover := float(panel.get_meta("glass_hover_brightness", base + 0.10))
+	var tween := create_tween().set_parallel(true)
+	tween.tween_method(func(val): mat.set_shader_parameter("hover_refraction", val), 0.0, 1.0, 0.18)
+	tween.tween_method(func(val): mat.set_shader_parameter("card_brightness", val), base, hover, 0.18)
+	tween.tween_method(func(val): mat.set_shader_parameter("rim_intensity", val), 0.42, 0.56, 0.18)
+
+
+func _on_glass_card_hover_exited(panel: Control) -> void:
+	var mat := panel.material as ShaderMaterial
+	if mat == null:
+		return
+	var base := float(panel.get_meta("glass_base_brightness", 1.0))
+	var current_brightness := base
+	var tween := create_tween().set_parallel(true)
+	tween.tween_method(func(val): mat.set_shader_parameter("hover_refraction", val), 1.0, 0.0, 0.22)
+	tween.tween_method(func(val): mat.set_shader_parameter("card_brightness", val), current_brightness + 0.10, base, 0.22)
+	tween.tween_method(func(val): mat.set_shader_parameter("rim_intensity", val), 0.56, 0.42, 0.22)
 
 
 func _on_profile_hover_entered() -> void:
 	var tween := create_tween().set_parallel(true)
-	var avatar_panel := $PlayerInfoPanel/AvatarPanel
-	tween.tween_property(avatar_panel, "scale", Vector2(1.06, 1.06), 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	var avatar_panel := $IdentityZone/AvatarPanel
+	tween.tween_property(avatar_panel, "scale", Vector2(1.03, 1.03), 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	
 	var mat = _avatar_rect.material as ShaderMaterial
 	if mat != null:
 		tween.tween_method(func(val): mat.set_shader_parameter("glow_intensify", val), 0.6, 1.2, 0.25)
-		
-	var ds_mat = _desk_surface.material as ShaderMaterial
-	if ds_mat != null:
-		tween.tween_method(func(val): ds_mat.set_shader_parameter("left_glow_mult", val), 0.9, 1.25, 0.25)
 
 
 func _on_profile_hover_exited() -> void:
 	var tween := create_tween().set_parallel(true)
-	var avatar_panel := $PlayerInfoPanel/AvatarPanel
+	var avatar_panel := $IdentityZone/AvatarPanel
 	tween.tween_property(avatar_panel, "scale", Vector2(1.0, 1.0), 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	
 	var mat = _avatar_rect.material as ShaderMaterial
 	if mat != null:
 		tween.tween_method(func(val): mat.set_shader_parameter("glow_intensify", val), 1.2, 0.6, 0.25)
-		
-	var ds_mat = _desk_surface.material as ShaderMaterial
-	if ds_mat != null:
-		tween.tween_method(func(val): ds_mat.set_shader_parameter("left_glow_mult", val), 1.25, 0.9, 0.25)
 
 
 func _process(delta: float) -> void:
@@ -686,12 +853,12 @@ func _process(delta: float) -> void:
 		return
 	_accum_time += delta
 	
-	# 1. Subtle chips glow flicker (very subtle)
-	chips_label.modulate = Color(1.0, 1.0, 1.0, 0.95 + sin(_accum_time * 16.0) * randf_range(0.015, 0.03))
+	# 1. Slow brightness lift for the highest-priority chip count.
+	chips_label.modulate = Color(1.0, 1.0, 1.0, 0.96 + sin(_accum_time * 2.2) * 0.035)
 	
-	# 2. Active panel breathing brightness on the desk surface shader material
-	if _desk_surface != null:
-		var ds_mat = _desk_surface.material as ShaderMaterial
-		if ds_mat != null:
-			var breathing = 0.88 + sin(_accum_time * 2.5) * 0.12
-			ds_mat.set_shader_parameter("breathing_brightness", breathing)
+	# 2. Slow glass-card breathing on each floating card.
+	var breathing = 0.94 + sin(_accum_time * 1.7) * 0.06
+	for panel in [$IdentityZone, $FocusZone, $ControlZone]:
+		var mat = panel.material as ShaderMaterial
+		if mat != null:
+			mat.set_shader_parameter("breathing_brightness", breathing)

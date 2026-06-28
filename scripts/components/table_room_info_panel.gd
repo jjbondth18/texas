@@ -4,6 +4,7 @@ class_name TableRoomInfoPanel
 var _room_label: Label
 var _blinds_label: Label
 var _hand_label: Label
+var _seat_label: Label
 var _timer_bar: ProgressBar
 var _seconds_left := 45.0
 
@@ -50,6 +51,12 @@ func _ready() -> void:
 	_hand_label.add_theme_font_size_override("font_size", 12)
 	_hand_label.add_theme_color_override("font_color", Color(0.65, 0.76, 1.0, 0.7))
 	vbox.add_child(_hand_label)
+
+	_seat_label = Label.new()
+	_seat_label.text = "Seat: 5"
+	_seat_label.add_theme_font_size_override("font_size", 12)
+	_seat_label.add_theme_color_override("font_color", Color(0.72, 0.86, 1.0, 0.78))
+	vbox.add_child(_seat_label)
 	
 	var timer_label := Label.new()
 	timer_label.text = "BLINDS UP COUNTDOWN"
@@ -84,3 +91,16 @@ func set_room_info(table_id: String, blinds_text: String) -> void:
 		_hand_label.text = "Hand #%d" % int(abs(table_id.hash()) % 100000000)
 	if _blinds_label:
 		_blinds_label.text = "NLH %s" % blinds_text
+
+func set_table_context(stage: String, hand_id: String, seat_id: int, blinds_text: String) -> void:
+	if _room_label:
+		_room_label.text = stage.to_upper()
+	if _hand_label:
+		_hand_label.text = "Hand %s" % hand_id
+	if _blinds_label:
+		_blinds_label.text = "NLH %s" % blinds_text
+	set_seat(seat_id)
+
+func set_seat(seat_id: int) -> void:
+	if _seat_label:
+		_seat_label.text = "Seat: %d" % seat_id

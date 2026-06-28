@@ -15,7 +15,7 @@ func _ready() -> void:
 	add_child(_cards_root)
 	for i in range(5):
 		var card = CardViewScene.instantiate()
-		card.custom_minimum_size = Vector2(96, 136)
+		card.custom_minimum_size = Vector2(88, 138)
 		_cards_root.add_child(card)
 		_slots.append(card)
 	set_cards([])
@@ -24,12 +24,14 @@ func set_cards(cards: Array) -> void:
 	for i in range(_slots.size()):
 		var card = _slots[i]
 		if i < cards.size():
+			var card_data: Dictionary = Dictionary(cards[i]).duplicate(true)
+			card_data["face_up"] = true
 			if not card.visible:
 				card.visible = true
 				card.modulate.a = 0.0
 				var tween := create_tween()
 				tween.tween_property(card, "modulate:a", 1.0, 0.25)
-			card.set_card(Dictionary(cards[i]))
+			card.set_card(card_data)
 		else:
 			card.visible = false
 			card.modulate = Color.WHITE

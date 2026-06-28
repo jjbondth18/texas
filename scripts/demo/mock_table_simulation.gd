@@ -9,6 +9,8 @@ static func get_mock_table_snapshot() -> Dictionary:
 	return get_phase_snapshot("preflop")
 
 static func get_phase_snapshot(phase: String) -> Dictionary:
+	if phase.to_lower() in ["waiting", "ready"]:
+		return get_waiting_snapshot()
 	var state := HandLifecycleScript.start_new_hand({"seats": _mock_table_seats(), "dealer_seat": 0, "small_blind": 25, "big_blind": 50}, 101)
 	var target := _normalize_phase(phase)
 	while String(state.get("phase", "")) != target and not bool(state.get("hand_complete", false)):
@@ -19,8 +21,47 @@ static func get_phase_snapshot(phase: String) -> Dictionary:
 			break
 	return _with_ui_fields(state)
 
+static func get_waiting_snapshot() -> Dictionary:
+	return _with_ui_fields({
+		"table_id": "mock_table_001",
+		"table_name": "Neon Table 01",
+		"hand_id": "waiting",
+		"hand_number": 0,
+		"phase": "waiting",
+		"dealer_seat": -1,
+		"small_blind_seat": -1,
+		"big_blind_seat": -1,
+		"current_turn_seat": -1,
+		"small_blind": 25,
+		"big_blind": 50,
+		"current_bet": 0,
+		"minimum_raise": 50,
+		"pot": {"main": 0, "side_pots": []},
+		"community_cards": [],
+		"seats": _mock_table_seats(),
+		"action_history": [],
+		"events": [
+			{"type": "room_entered", "phase": "waiting", "seat_index": -1, "payload": {"room": "Neon Table 01"}},
+			{"type": "waiting_for_hand", "phase": "waiting", "seat_index": -1, "payload": {}},
+		],
+		"hand_complete": false,
+		"winners": [],
+		"available_actions": [],
+		"showdown_revealed": false,
+	})
+
 static func start_new_mock_hand(seed: int = 101) -> Dictionary:
 	return _with_ui_fields(HandLifecycleScript.start_new_hand({"seats": _mock_table_seats(), "dealer_seat": 0, "small_blind": 25, "big_blind": 50}, seed))
+
+static func start_test_hand(previous_snapshot: Dictionary = {}, seed: int = -1) -> Dictionary:
+	var source := previous_snapshot.duplicate(true)
+	if not source.has("seats") or Array(source.get("seats", [])).is_empty():
+		source["seats"] = _mock_table_seats()
+	source["small_blind"] = int(source.get("small_blind", 25))
+	source["big_blind"] = int(source.get("big_blind", 50))
+	source["dealer_seat"] = int(source.get("dealer_seat", 0))
+	var hand_seed := seed if seed != -1 else 100 + int(source.get("hand_number", 0)) + 1
+	return run_ai_until_local_turn(_with_ui_fields(HandLifecycleScript.start_new_hand(source, hand_seed)))
 
 static func apply_mock_action(table_state: Dictionary, action: Dictionary) -> Dictionary:
 	var state := table_state.duplicate(true)
@@ -32,7 +73,46 @@ static func apply_mock_action(table_state: Dictionary, action: Dictionary) -> Di
 	state["current_turn_seat"] = target_seat
 	
 	var next := HandLifecycleScript.apply_action(state, _normalize_action(state, norm_action))
-	return _with_ui_fields(next)
+	return run_ai_until_local_turn(_with_ui_fields(next))
+
+static func advance_stage(table_state: Dictionary) -> Dictionary:
+	var state := table_state.duplicate(true)
+	if String(state.get("phase", "")) in ["waiting", "ready", "finished"]:
+		return start_test_hand(state)
+	_force_complete_current_street(state)
+	return run_ai_until_local_turn(_with_ui_fields(state))
+
+static func force_showdown(table_state: Dictionary) -> Dictionary:
+	var state := table_state.duplicate(true)
+	if String(state.get("phase", "")) in ["waiting", "ready"]:
+		state = HandLifecycleScript.start_new_hand({"seats": _mock_table_seats(), "dealer_seat": 0, "small_blind": 25, "big_blind": 50}, 777)
+	var guard := 0
+	while String(state.get("phase", "")) not in ["showdown", "finished"] and guard < 120:
+		guard += 1
+		_force_complete_current_street(state)
+	return run_ai_until_local_turn(_with_ui_fields(state))
+
+static func reset_table() -> Dictionary:
+	return get_waiting_snapshot()
+
+static func run_ai_until_local_turn(table_state: Dictionary) -> Dictionary:
+	var state := table_state.duplicate(true)
+	var guard := 0
+	while guard < 80:
+		guard += 1
+		var phase := String(state.get("phase", ""))
+		if phase in ["waiting", "ready", "finished"]:
+			break
+		var turn_seat := int(state.get("current_turn_seat", -1))
+		if turn_seat == LOCAL_SEAT_INDEX:
+			break
+		var actions := HandLifecycleScript.get_legal_actions(state, turn_seat)
+		if actions.is_empty():
+			break
+		var action := _auto_action(actions)
+		action["seat_index"] = turn_seat
+		state = HandLifecycleScript.apply_action(state, action)
+	return _with_ui_fields(state)
 
 static func get_legal_actions(table_state: Dictionary, seat_index: int) -> Array:
 	return HandLifecycleScript.get_legal_actions(table_state, seat_index)
@@ -58,6 +138,7 @@ static func _with_ui_fields(state: Dictionary) -> Dictionary:
 	next["local_seat_index"] = LOCAL_SEAT_INDEX
 	next["turn_seat_index"] = int(next.get("current_turn_seat", -1))
 	next["turn_seconds"] = 15
+	next["room_state"] = _room_state_for_phase(String(next.get("phase", "waiting")))
 	var seats: Array = []
 	for seat in Array(next.get("seats", [])):
 		var data := Dictionary(seat).duplicate(true)
@@ -84,11 +165,14 @@ static func _with_ui_fields(state: Dictionary) -> Dictionary:
 		seats.append(data)
 	next["seats"] = seats
 	next["local_player"] = _local_player_from_seats(seats)
-	next["available_actions"] = HandLifecycleScript.get_legal_actions(next, int(next.get("current_turn_seat", -1)))
+	if int(next.get("current_turn_seat", -1)) == LOCAL_SEAT_INDEX:
+		next["available_actions"] = HandLifecycleScript.get_legal_actions(next, LOCAL_SEAT_INDEX)
+	else:
+		next["available_actions"] = []
 	next["hand_history"] = _history_from_events(Array(next.get("events", [])))
 	next["system_messages"] = [
-		"Lifecycle hand engine active",
-		"Debug phase keys override snapshots: 1 preflop, 2 flop, 3 turn, 4 river, 5 showdown, R reset",
+		"Lifecycle hand engine active. Room state: %s" % String(next.get("room_state", "")),
+		"Debug keys: S start hand, N advance stage, W force showdown, R reset table",
 	]
 	next["deck_count"] = 52
 	return next
@@ -147,6 +231,18 @@ static func _normalize_phase(phase: String) -> String:
 		return lowered
 	return "preflop"
 
+static func _room_state_for_phase(phase: String) -> String:
+	match phase:
+		"waiting":
+			return "waiting"
+		"ready":
+			return "ready"
+		"finished":
+			return "hand_over"
+		"showdown":
+			return "showdown"
+	return "in_hand"
+
 static func _local_player_from_seats(seats: Array) -> Dictionary:
 	for seat in seats:
 		var data := Dictionary(seat)
@@ -167,12 +263,46 @@ static func _history_from_events(events: Array) -> Array[String]:
 		var data := Dictionary(event)
 		var payload := Dictionary(data.get("payload", {}))
 		match String(data.get("type", "")):
+			"room_entered":
+				lines.append("Entered room: %s" % String(payload.get("room", "Neon Table 01")))
+			"waiting_for_hand":
+				lines.append("Waiting for next hand. Press S to start test hand.")
+			"hand_started":
+				lines.append("Hand #%d started" % int(payload.get("hand_number", 0)))
+			"dealer_assigned":
+				lines.append("Seat %d is dealer" % int(data.get("seat_index", -1)))
 			"blind_posted":
 				lines.append("Seat %d posted %s %d" % [int(data.get("seat_index", -1)), String(payload.get("blind", "")), int(payload.get("amount", 0))])
+			"hole_cards_dealt":
+				lines.append("Hole cards dealt")
 			"player_action":
-				lines.append("Seat %d %s %d" % [int(data.get("seat_index", -1)), String(payload.get("id", payload.get("action", ""))), int(payload.get("amount", 0))])
+				var amount := int(payload.get("amount", 0))
+				var suffix := " %d" % amount if amount > 0 else ""
+				lines.append("Seat %d %s%s" % [int(data.get("seat_index", -1)), String(payload.get("id", payload.get("action", ""))), suffix])
+			"street_completed":
+				lines.append("%s betting round complete" % String(payload.get("phase", "")).capitalize())
+			"street_started":
+				lines.append("%s started" % String(payload.get("phase", "")).capitalize())
 			"community_cards_dealt":
-				lines.append("Board cards dealt: %d total" % int(payload.get("total", 0)))
+				var total := int(payload.get("total", 0))
+				if total == 3:
+					lines.append("Flop dealt")
+				elif total == 4:
+					lines.append("Turn dealt")
+				elif total == 5:
+					lines.append("River dealt")
+				else:
+					lines.append("Board cards dealt: %d total" % total)
+			"showdown_started":
+				lines.append("Showdown started")
+			"winner_determined":
+				lines.append("Winner candidate: Seat %d (%s)" % [int(data.get("seat_index", -1)), String(payload.get("hand_rank", ""))])
+			"pot_awarded":
+				lines.append("Seat %d wins %d" % [int(data.get("seat_index", -1)), int(payload.get("amount", 0))])
 			"hand_finished":
 				lines.append("Hand finished: %s" % String(payload.get("reason", "")))
+			"hand_won_by_fold":
+				lines.append("Seat %d wins by fold" % int(data.get("seat_index", -1)))
+			"action_rejected":
+				lines.append("Action rejected: %s" % String(payload.get("reason", "")))
 	return lines

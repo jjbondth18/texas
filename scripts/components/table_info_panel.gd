@@ -43,7 +43,7 @@ func _ready() -> void:
 func _build_log_panel(parent: Control) -> void:
 	var root := VBoxContainer.new()
 	root.name = "TableLog"
-	root.add_theme_constant_override("separation", 10)
+	root.add_theme_constant_override("separation", 11)
 	parent.add_child(root)
 
 	root.add_child(_title_label("TABLE LOG", Color(0.62, 0.78, 1.0)))
@@ -58,14 +58,14 @@ func _build_log_panel(parent: Control) -> void:
 	_log_list = VBoxContainer.new()
 	_log_list.name = "TimelineRows"
 	_log_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_log_list.add_theme_constant_override("separation", 8)
+	_log_list.add_theme_constant_override("separation", 10)
 	scroll.add_child(_log_list)
 
 
 func _build_chat_panel(parent: Control) -> void:
 	var root := VBoxContainer.new()
 	root.name = "ChatBox"
-	root.add_theme_constant_override("separation", 9)
+	root.add_theme_constant_override("separation", 10)
 	parent.add_child(root)
 
 	root.add_child(_title_label("TABLE CHAT", Color(1.0, 0.0, 0.50)))
@@ -79,7 +79,7 @@ func _build_chat_panel(parent: Control) -> void:
 	_chat_list = VBoxContainer.new()
 	_chat_list.name = "ChatMessages"
 	_chat_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_chat_list.add_theme_constant_override("separation", 8)
+	_chat_list.add_theme_constant_override("separation", 9)
 	scroll.add_child(_chat_list)
 
 	var input_row := HBoxContainer.new()
@@ -95,7 +95,7 @@ func _build_chat_panel(parent: Control) -> void:
 	_chat_input.add_theme_stylebox_override("focus", _input_style(true))
 	_chat_input.add_theme_color_override("font_placeholder_color", Color(0.78, 0.78, 0.88, 0.36))
 	_chat_input.add_theme_color_override("font_color", Color.WHITE)
-	_chat_input.add_theme_font_size_override("font_size", 12)
+	_chat_input.add_theme_font_size_override("font_size", 13)
 	input_row.add_child(_chat_input)
 
 	_send_button = Button.new()
@@ -127,10 +127,10 @@ func set_info(history: Array, messages: Array) -> void:
 		child.queue_free()
 
 	var time_base := Time.get_time_dict_from_system()
-	_add_log_item("HAND HISTORY", _time_text(time_base, 0), history)
-	_add_log_item("SYSTEM MESSAGES", _time_text(time_base, 5), messages)
-	_add_log_item("GAME EVENT", _time_text(time_base, 9), ["Luna0581 raises to 100"])
-	_add_log_item("PLAYER ACTION", _time_text(time_base, 13), ["StealyHealy calls 100"])
+	if not history.is_empty():
+		_add_log_item("HAND HISTORY", _time_text(time_base, 0), history)
+	if not messages.is_empty():
+		_add_log_item("SYSTEM MESSAGES", _time_text(time_base, 5), messages)
 
 
 func _add_log_item(category: String, time_text: String, lines: Array) -> void:
@@ -152,17 +152,17 @@ func _add_log_item(category: String, time_text: String, lines: Array) -> void:
 
 	var content := VBoxContainer.new()
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	content.add_theme_constant_override("separation", 2)
+	content.add_theme_constant_override("separation", 3)
 	row.add_child(content)
 
-	var time_label := _body_label(time_text, 10, Color(0.78, 0.78, 0.88, 0.66))
+	var time_label := _body_label(time_text, 13, Color(0.78, 0.78, 0.88, 0.70))
 	content.add_child(time_label)
-	var cat_label := _body_label(category, 12, color)
+	var cat_label := _body_label(category, 16, color)
 	cat_label.add_theme_font_override("font", _bold_font())
 	content.add_child(cat_label)
 
 	for item in lines:
-		var line_label := _body_label(String(item), 11, Color(0.90, 0.90, 0.96, 0.90))
+		var line_label := _body_label(String(item), 14, Color(0.92, 0.92, 0.98, 0.94))
 		line_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		content.add_child(line_label)
 
@@ -172,7 +172,7 @@ func _add_chat_message(player_name: String, text: String, is_you: bool) -> void:
 		return
 	var row := VBoxContainer.new()
 	row.name = player_name + "Message"
-	row.add_theme_constant_override("separation", 3)
+	row.add_theme_constant_override("separation", 4)
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_chat_list.add_child(row)
 
@@ -180,7 +180,7 @@ func _add_chat_message(player_name: String, text: String, is_you: bool) -> void:
 	top.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(top)
 
-	var name_label := _body_label(player_name, 11, Color(CHAT_COLORS.get(player_name, Color.WHITE)))
+	var name_label := _body_label(player_name, 14, Color(CHAT_COLORS.get(player_name, Color.WHITE)))
 	name_label.add_theme_font_override("font", _bold_font())
 	top.add_child(name_label)
 	if is_you:
@@ -189,7 +189,7 @@ func _add_chat_message(player_name: String, text: String, is_you: bool) -> void:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(spacer)
-	top.add_child(_body_label(_short_time(), 10, Color(0.75, 0.75, 0.84, 0.58)))
+	top.add_child(_body_label(_short_time(), 12, Color(0.75, 0.75, 0.84, 0.62)))
 
 	var bubble := PanelContainer.new()
 	bubble.name = "Bubble"
@@ -197,9 +197,9 @@ func _add_chat_message(player_name: String, text: String, is_you: bool) -> void:
 	bubble.add_theme_stylebox_override("panel", _bubble_style(is_you))
 	row.add_child(bubble)
 
-	var bubble_text := _body_label(text, 11, Color(0.96, 0.96, 1.0, 0.94))
+	var bubble_text := _body_label(text, 14, Color(0.96, 0.96, 1.0, 0.96))
 	bubble_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	bubble_text.custom_minimum_size = Vector2(minf(210, maxf(72, text.length() * 7.0)), 0)
+	bubble_text.custom_minimum_size = Vector2(minf(230, maxf(90, text.length() * 8.4)), 0)
 	bubble.add_child(bubble_text)
 
 
@@ -207,7 +207,7 @@ func _title_label(text_value: String, color: Color) -> Label:
 	var label := Label.new()
 	label.text = text_value
 	label.add_theme_font_override("font", _bold_font())
-	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_font_size_override("font_size", 14)
 	label.add_theme_color_override("font_color", color)
 	return label
 
@@ -223,7 +223,7 @@ func _body_label(text_value: String, font_size: int, color: Color) -> Label:
 func _you_badge() -> PanelContainer:
 	var badge := PanelContainer.new()
 	badge.add_theme_stylebox_override("panel", _badge_style())
-	var label := _body_label("YOU", 8, Color(0.92, 0.96, 1.0))
+	var label := _body_label("YOU", 10, Color(0.92, 0.96, 1.0))
 	label.add_theme_font_override("font", _bold_font())
 	badge.add_child(label)
 	return badge
@@ -288,7 +288,7 @@ func _style_send_button(button: Button) -> void:
 	button.add_theme_stylebox_override("hover", hover)
 	button.add_theme_stylebox_override("pressed", hover)
 	button.add_theme_color_override("font_color", Color.WHITE)
-	button.add_theme_font_size_override("font_size", 10)
+	button.add_theme_font_size_override("font_size", 11)
 
 
 func _bold_font() -> SystemFont:
