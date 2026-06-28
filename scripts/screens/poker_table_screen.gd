@@ -86,8 +86,12 @@ var _rule_debug_panel: PanelContainer
 var _rule_debug_text: RichTextLabel
 var _table_session: TableSession
 var _session_log: Array[String] = []
+var _session_result_scrim: ColorRect
 var _session_result_panel: PanelContainer
 var _session_result_text: RichTextLabel
+var _session_result_avatar: TextureRect
+var _session_result_name_label: Label
+var _session_play_again_hint_label: Label
 var _session_play_again_button: Button
 var _recorded_session_hand_ids := {}
 var _session_started := false
@@ -1169,37 +1173,87 @@ func _update_launch_context_session() -> void:
 
 
 func _build_session_result_panel() -> void:
+	_session_result_scrim = _content_root.get_node_or_null("SessionResultScrim") as ColorRect
+	if _session_result_scrim == null:
+		_session_result_scrim = ColorRect.new()
+		_session_result_scrim.name = "SessionResultScrim"
+		_session_result_scrim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_session_result_scrim.color = Color(0.005, 0.003, 0.012, 0.18)
+		_session_result_scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_session_result_scrim.z_index = 41
+		_content_root.add_child(_session_result_scrim)
+	_session_result_scrim.visible = false
+
 	_session_result_panel = _content_root.get_node_or_null("SessionResultPanel") as PanelContainer
 	if _session_result_panel == null:
 		_session_result_panel = PanelContainer.new()
 		_session_result_panel.name = "SessionResultPanel"
-		_session_result_panel.position = Vector2(920, 245)
-		_session_result_panel.size = Vector2(720, 410)
+		_session_result_panel.position = Vector2(885, 220)
+		_session_result_panel.size = Vector2(790, 500)
 		_session_result_panel.custom_minimum_size = _session_result_panel.size
 		_session_result_panel.z_index = 42
 		_session_result_panel.mouse_filter = Control.MOUSE_FILTER_PASS
-		_session_result_panel.add_theme_stylebox_override("panel", _rule_debug_panel_style())
+		_session_result_panel.add_theme_stylebox_override("panel", _session_result_panel_style())
 		_content_root.add_child(_session_result_panel)
 		var margin := MarginContainer.new()
-		margin.add_theme_constant_override("margin_left", 24)
-		margin.add_theme_constant_override("margin_right", 24)
-		margin.add_theme_constant_override("margin_top", 22)
-		margin.add_theme_constant_override("margin_bottom", 22)
+		margin.add_theme_constant_override("margin_left", 30)
+		margin.add_theme_constant_override("margin_right", 30)
+		margin.add_theme_constant_override("margin_top", 28)
+		margin.add_theme_constant_override("margin_bottom", 24)
 		_session_result_panel.add_child(margin)
 		var column := VBoxContainer.new()
-		column.add_theme_constant_override("separation", 16)
+		column.add_theme_constant_override("separation", 18)
 		margin.add_child(column)
+
+		var header_row := HBoxContainer.new()
+		header_row.add_theme_constant_override("separation", 18)
+		column.add_child(header_row)
+
+		var avatar_frame := PanelContainer.new()
+		avatar_frame.custom_minimum_size = Vector2(86, 86)
+		avatar_frame.add_theme_stylebox_override("panel", _session_avatar_frame_style())
+		header_row.add_child(avatar_frame)
+		_session_result_avatar = TextureRect.new()
+		_session_result_avatar.name = "SessionResultAvatar"
+		_session_result_avatar.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_session_result_avatar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		_session_result_avatar.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		_session_result_avatar.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		_session_result_avatar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		avatar_frame.add_child(_session_result_avatar)
+
+		var title_box := VBoxContainer.new()
+		title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		title_box.add_theme_constant_override("separation", 5)
+		header_row.add_child(title_box)
+		var title_label := Label.new()
+		title_label.text = "SESSION COMPLETE"
+		title_label.add_theme_font_size_override("font_size", 34)
+		title_label.add_theme_color_override("font_color", Color(1.0, 0.92, 1.0))
+		title_box.add_child(title_label)
+		_session_result_name_label = Label.new()
+		_session_result_name_label.name = "SessionResultPlayerName"
+		_session_result_name_label.add_theme_font_size_override("font_size", 18)
+		_session_result_name_label.add_theme_color_override("font_color", Color(0.74, 0.86, 1.0, 0.86))
+		title_box.add_child(_session_result_name_label)
+
 		_session_result_text = RichTextLabel.new()
 		_session_result_text.name = "SessionResultText"
 		_session_result_text.bbcode_enabled = true
 		_session_result_text.fit_content = false
 		_session_result_text.scroll_active = false
 		_session_result_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_session_result_text.add_theme_font_size_override("normal_font_size", 22)
+		_session_result_text.add_theme_font_size_override("normal_font_size", 20)
 		_session_result_text.add_theme_color_override("default_color", Color(0.92, 0.94, 1.0))
 		_session_result_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_session_result_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		column.add_child(_session_result_text)
+		_session_play_again_hint_label = Label.new()
+		_session_play_again_hint_label.name = "PlayAgainHintLabel"
+		_session_play_again_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_session_play_again_hint_label.add_theme_font_size_override("font_size", 14)
+		_session_play_again_hint_label.add_theme_color_override("font_color", Color(1.0, 0.48, 0.70, 0.92))
+		column.add_child(_session_play_again_hint_label)
 		var row := HBoxContainer.new()
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		row.add_theme_constant_override("separation", 18)
@@ -1212,12 +1266,16 @@ func _build_session_result_panel() -> void:
 		row.add_child(play_again)
 		_session_play_again_button = play_again
 		var home_button := Button.new()
+		home_button.name = "BackHomeButton"
 		home_button.text = "BACK TO HOME"
 		home_button.custom_minimum_size = Vector2(190, 48)
 		home_button.pressed.connect(_return_home)
 		row.add_child(home_button)
 	else:
 		_session_result_text = _session_result_panel.find_child("SessionResultText", true, false) as RichTextLabel
+		_session_result_avatar = _session_result_panel.find_child("SessionResultAvatar", true, false) as TextureRect
+		_session_result_name_label = _session_result_panel.find_child("SessionResultPlayerName", true, false) as Label
+		_session_play_again_hint_label = _session_result_panel.find_child("PlayAgainHintLabel", true, false) as Label
 		_session_play_again_button = _session_result_panel.find_child("PlayAgainButton", true, false) as Button
 	_session_result_panel.visible = false
 
@@ -1230,25 +1288,43 @@ func _show_session_result_panel() -> void:
 		_session_play_again_button.name = "PlayAgainButton"
 		_session_play_again_button.disabled = not can_play_again
 		_session_play_again_button.tooltip_text = "" if can_play_again else "Not enough chips for this buy-in."
+		_apply_session_button_style(_session_play_again_button, "primary", not can_play_again)
+	var back_button: Button = _session_result_panel.find_child("BackHomeButton", true, false) as Button
+	if back_button != null:
+		_apply_session_button_style(back_button, "secondary", false)
+	if _session_play_again_hint_label != null:
+		_session_play_again_hint_label.text = "" if can_play_again else "Not enough chips for this buy-in"
+	var profile: Dictionary = TableLaunchContext.get_player_profile()
+	if _session_result_name_label != null:
+		_session_result_name_label.text = "%s  |  %s" % [PlayerProfileScript.get_player_name(profile), _session_mode_label()]
+	if _session_result_avatar != null:
+		var avatar_texture: Texture2D = AvatarLibraryScript.get_avatar_by_id(PlayerProfileScript.get_avatar_id(profile))
+		_session_result_avatar.texture = avatar_texture
+		_session_result_avatar.visible = avatar_texture != null
 	var profit_color := "#35f5c8" if _table_session.session_profit >= 0 else "#ff4f9a"
+	var reason: String = _table_session.end_reason if _table_session.end_reason != "" else "Session ended"
 	_session_result_text.text = "\n".join([
-		"[center][b]SESSION COMPLETE[/b][/center]",
+		"[center][font_size=30][color=%s][b]%+d[/b][/color][/font_size][/center]" % [profit_color, _table_session.session_profit],
+		"[center][color=#8fa8ff]Profit = Final Chips - Buy-in[/color][/center]",
 		"",
-		"Mode: %s" % _session_mode_label(),
-		"Buy-in: %s" % _format_chips(_table_session.buy_in),
-		"Blinds: %d / %d" % [_table_session.small_blind, _table_session.big_blind],
+		"[table=2][cell][color=#9aa8d8]Buy-in[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Final Chips[/color]\n[b]%s[/b][/cell]" % [
+			_format_chips(_table_session.buy_in),
+			_format_chips(_table_session.session_end_chips),
+		],
+		"[cell][color=#9aa8d8]Hands Won[/color]\n[b]%d[/b][/cell][cell][color=#9aa8d8]Biggest Pot[/color]\n[b]%s[/b][/cell][/table]" % [
+			_table_session.hands_won,
+			_format_chips(_table_session.biggest_pot),
+		],
+		"",
+		"Mode: %s    Blinds: %d / %d" % [_session_mode_label(), _table_session.small_blind, _table_session.big_blind],
 		"Hands Played: %s" % _table_session.hand_count_text(),
 		"Starting Chips: %s" % _format_chips(_table_session.session_start_chips),
-		"Final Chips: %s" % _format_chips(_table_session.session_end_chips),
-		"Profit: [color=%s]%+d[/color]" % [profit_color, _table_session.session_profit],
-		"Hands Won: %d" % _table_session.hands_won,
-		"Biggest Pot: %s" % _format_chips(_table_session.biggest_pot),
 		"Best Hand: %s" % _table_session.best_hand_desc,
 		"Last Winner: %s" % _table_session.last_winner,
-		"End Reason: %s" % (_table_session.end_reason if _table_session.end_reason != "" else "Session ended"),
-		"",
-		"[center]%s[/center]" % ("" if can_play_again else "Not enough chips to play again with this buy-in."),
+		"End Reason: %s" % reason,
 	])
+	if _session_result_scrim != null:
+		_session_result_scrim.visible = true
 	_session_result_panel.visible = true
 
 
@@ -1258,6 +1334,8 @@ func _restart_session() -> void:
 		return
 	if _session_result_panel != null:
 		_session_result_panel.visible = false
+	if _session_result_scrim != null:
+		_session_result_scrim.visible = false
 	_reset_launch_context_session_for_play_again()
 	_configure_table_flow_from_launch_context()
 	_configure_table_session_from_launch_context()
@@ -1479,6 +1557,67 @@ func _rule_debug_panel_style() -> StyleBoxFlat:
 	return style
 
 
+func _session_result_panel_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.018, 0.006, 0.036, 0.92)
+	style.border_color = Color(1.0, 0.0, 0.76, 0.62)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(22)
+	style.shadow_color = Color(0.75, 0.0, 1.0, 0.34)
+	style.shadow_size = 24
+	style.content_margin_left = 0
+	style.content_margin_right = 0
+	style.content_margin_top = 0
+	style.content_margin_bottom = 0
+	return style
+
+
+func _session_avatar_frame_style() -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.01, 0.012, 0.032, 0.86)
+	style.border_color = Color(0.60, 0.92, 1.0, 0.72)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(18)
+	style.shadow_color = Color(0.0, 0.72, 1.0, 0.20)
+	style.shadow_size = 14
+	style.content_margin_left = 6
+	style.content_margin_right = 6
+	style.content_margin_top = 6
+	style.content_margin_bottom = 6
+	return style
+
+
+func _apply_session_button_style(button: Button, variant: String, disabled: bool) -> void:
+	var accent: Color = Color(0.35, 0.95, 1.0, 0.86) if variant == "primary" else Color(0.82, 0.58, 1.0, 0.66)
+	var bg: Color = Color(0.03, 0.07, 0.13, 0.90) if variant == "primary" else Color(0.032, 0.022, 0.06, 0.82)
+	if disabled:
+		accent = Color(0.30, 0.32, 0.42, 0.42)
+		bg = Color(0.014, 0.014, 0.026, 0.68)
+	button.add_theme_stylebox_override("normal", _session_button_style(bg, accent, disabled))
+	button.add_theme_stylebox_override("hover", _session_button_style(bg.lightened(0.08), accent.lightened(0.15), disabled))
+	button.add_theme_stylebox_override("pressed", _session_button_style(bg.darkened(0.08), accent, disabled))
+	button.add_theme_stylebox_override("disabled", _session_button_style(bg, accent, true))
+	button.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0, 0.96))
+	button.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0, 1.0))
+	button.add_theme_color_override("font_disabled_color", Color(0.48, 0.50, 0.60, 0.92))
+	button.add_theme_font_size_override("font_size", 15)
+
+
+func _session_button_style(bg: Color, border: Color, disabled: bool) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = bg
+	style.border_color = border
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(18)
+	style.shadow_color = Color(border.r, border.g, border.b, 0.0 if disabled else 0.24)
+	style.shadow_size = 0 if disabled else 12
+	style.content_margin_left = 12
+	style.content_margin_right = 12
+	style.content_margin_top = 8
+	style.content_margin_bottom = 8
+	return style
+
+
 func _phase_from_args() -> String:
 	var args := _all_cmdline_args()
 	var index := args.find("--table-phase")
@@ -1519,6 +1658,9 @@ func _capture_and_quit() -> void:
 	get_tree().quit()
 
 func _return_home() -> void:
+	if _table_session != null and _table_session.is_session_over:
+		_apply_session_profit_to_profile()
+	TableLaunchContext.clear_table_session()
 	ScreenNavigator.return_home(get_tree())
 
 func _apply_launch_context(target_snapshot: Dictionary) -> void:

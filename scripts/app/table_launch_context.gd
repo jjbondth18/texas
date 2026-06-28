@@ -42,6 +42,11 @@ static func configure(mode: String = "quick_play", id: String = "mock_table_001"
 static func reset() -> void:
 	configure("quick_play", "mock_table_001", PlayerProfileScript.default_profile())
 
+static func clear_table_session() -> void:
+	table_session = {}
+	seats.clear()
+	room_id = ""
+
 static func set_player_profile(profile: Dictionary) -> void:
 	player_profile = PlayerProfileScript.normalized_dict(profile)
 
