@@ -165,7 +165,7 @@ func begin_betting_round(stage: String) -> void:
 			seat["current_bet"] = 0
 			seats[i] = seat
 	var from_seat: int = int(hand_data.get("big_blind_seat", -1)) if stage == PREFLOP else int(hand_data.get("dealer_seat", -1))
-	hand_data["current_turn_seat"] = get_next_active_seat(from_seat)
+	hand_data["current_turn_seat"] = get_next_actionable_seat(from_seat)
 	_log("%s betting round started. Turn: Seat %d." % [stage.to_upper(), int(hand_data.get("current_turn_seat", -1))])
 	_debug_rule("stage=%s current_turn=%d current_bet=%d pot=%d" % [
 		stage.to_upper(),
@@ -173,10 +173,24 @@ func begin_betting_round(stage: String) -> void:
 		int(hand_data.get("current_bet", 0)),
 		int(hand_data.get("pot", 0)),
 	])
+	if _should_auto_runout_all_in():
+		_debug_rule("stage=%s has no actionable players; auto runout" % stage.to_upper())
+		_auto_runout_to_showdown()
 
 
 func get_next_active_seat(from_seat: int) -> int:
 	var ids: Array[int] = _active_seat_ids()
+	if ids.is_empty():
+		return -1
+	ids.sort()
+	for seat_id in ids:
+		if seat_id > from_seat:
+			return seat_id
+	return ids[0]
+
+
+func get_next_actionable_seat(from_seat: int) -> int:
+	var ids: Array[int] = _players_who_can_act_ids()
 	if ids.is_empty():
 		return -1
 	ids.sort()
@@ -198,11 +212,15 @@ func advance_turn() -> Dictionary:
 	if not acted.has(current):
 		acted.append(current)
 	hand_data["acted_this_round"] = acted
+	if _should_auto_runout_all_in():
+		_debug_rule("betting round complete: all remaining contenders are all-in")
+		_auto_runout_to_showdown()
+		return to_snapshot()
 	if is_betting_round_complete():
 		_debug_rule("betting round complete: %s" % _betting_round_completion_reason())
 		advance_stage()
 	else:
-		hand_data["current_turn_seat"] = get_next_active_seat(current)
+		hand_data["current_turn_seat"] = get_next_actionable_seat(current)
 		_log("Turn advanced to Seat %d." % int(hand_data.get("current_turn_seat", -1)))
 	return to_snapshot()
 
@@ -236,6 +254,14 @@ func get_legal_actions(seat_id: int) -> Array[Dictionary]:
 	})
 	actions.append({"id": "all_in", "label": "All In", "enabled": chips > 0, "amount": chips})
 	return actions
+
+
+func force_current_hand_to_showdown() -> Dictionary:
+	if table_state in [WAITING, HAND_OVER]:
+		return to_snapshot()
+	_log("Debug: force current hand to showdown.")
+	_auto_runout_to_showdown()
+	return to_snapshot()
 
 
 func apply_player_action(seat_id: int, action: Dictionary) -> Dictionary:
@@ -325,13 +351,17 @@ func apply_player_action(seat_id: int, action: Dictionary) -> Dictionary:
 
 
 func is_betting_round_complete() -> bool:
+	if _should_auto_runout_all_in():
+		return true
 	var active_ids: Array[int] = _active_seat_ids()
 	var acted: Array = Array(hand_data.get("acted_this_round", []))
 	var current_bet: int = int(hand_data.get("current_bet", 0))
 	for seat_id in active_ids:
+		var seat: Dictionary = _seat_by_id(seat_id)
+		if String(seat.get("status", PLAYING)) == ALL_IN:
+			continue
 		if not acted.has(seat_id):
 			return false
-		var seat: Dictionary = _seat_by_id(seat_id)
 		if int(seat.get("current_bet", 0)) < current_bet and String(seat.get("status", PLAYING)) == PLAYING:
 			return false
 	return true
@@ -344,9 +374,11 @@ func _betting_round_completion_reason() -> String:
 	var acted: Array = Array(hand_data.get("acted_this_round", []))
 	var current_bet: int = int(hand_data.get("current_bet", 0))
 	for seat_id in active_ids:
+		var seat: Dictionary = _seat_by_id(seat_id)
+		if String(seat.get("status", PLAYING)) == ALL_IN:
+			continue
 		if not acted.has(seat_id):
 			return "not complete; Seat %d has not acted" % seat_id
-		var seat: Dictionary = _seat_by_id(seat_id)
 		if int(seat.get("current_bet", 0)) < current_bet and String(seat.get("status", PLAYING)) == PLAYING:
 			return "not complete; Seat %d bet %d below current_bet %d" % [seat_id, int(seat.get("current_bet", 0)), current_bet]
 	return "all active players acted and matched current_bet %d" % current_bet
@@ -380,6 +412,56 @@ func advance_stage() -> Dictionary:
 		SHOWDOWN:
 			finish_hand()
 	return to_snapshot()
+
+
+func _auto_runout_to_showdown() -> void:
+	if table_state == HAND_OVER:
+		return
+	_log("All players all-in. Running out board.")
+	if _all_in_amounts_are_unequal():
+		_debug_rule("WARNING: side pot not implemented, using simplified pot settlement.")
+	_add_collect_bets_event()
+	_clear_betting_round_state(true)
+	_runout_board_to_five_cards()
+	table_state = SHOWDOWN
+	hand_data["stage"] = SHOWDOWN
+	hand_data["current_turn_seat"] = -1
+	_log("Showdown started.")
+	_debug_rule("all-in runout complete board=%d pot=%d" % [
+		Array(hand_data.get("community_cards", [])).size(),
+		int(hand_data.get("pot", 0)),
+	])
+	finish_hand()
+
+
+func _runout_board_to_five_cards() -> void:
+	var board_count: int = Array(hand_data.get("community_cards", [])).size()
+	if board_count < 3:
+		_deal_community_cards(3 - board_count)
+		_log("Flop dealt.")
+		board_count = Array(hand_data.get("community_cards", [])).size()
+	if board_count < 4:
+		_deal_community_cards(1)
+		_log("Turn dealt.")
+		board_count = Array(hand_data.get("community_cards", [])).size()
+	if board_count < 5:
+		_deal_community_cards(1)
+		_log("River dealt.")
+
+
+func _all_in_amounts_are_unequal() -> bool:
+	var amounts: Array[int] = []
+	for seat_id in _active_contender_ids():
+		var seat: Dictionary = _seat_by_id(seat_id)
+		if String(seat.get("status", EMPTY)) == ALL_IN:
+			amounts.append(int(seat.get("current_bet", 0)))
+	if amounts.size() < 2:
+		return false
+	var first_amount: int = amounts[0]
+	for amount in amounts:
+		if amount != first_amount:
+			return true
+	return false
 
 
 func finish_hand() -> Dictionary:
@@ -506,6 +588,34 @@ func _active_seat_ids() -> Array[int]:
 		if String(data.get("status", EMPTY)) in [PLAYING, ALL_IN]:
 			result.append(int(data.get("seat_id", data.get("seat_index", 0))))
 	return result
+
+
+func _active_contender_ids() -> Array[int]:
+	var result: Array[int] = []
+	for seat in seats:
+		var data: Dictionary = seat
+		var status: String = String(data.get("status", EMPTY))
+		if status not in [EMPTY, FOLDED, OUT]:
+			result.append(int(data.get("seat_id", data.get("seat_index", 0))))
+	return result
+
+
+func _players_who_can_act_ids() -> Array[int]:
+	var result: Array[int] = []
+	for seat in seats:
+		var data: Dictionary = seat
+		if String(data.get("status", EMPTY)) == PLAYING and int(data.get("chips", 0)) > 0:
+			result.append(int(data.get("seat_id", data.get("seat_index", 0))))
+	return result
+
+
+func _should_auto_runout_all_in() -> bool:
+	if table_state not in [PREFLOP, FLOP, TURN, RIVER]:
+		return false
+	var contenders: Array[int] = _active_contender_ids()
+	if contenders.size() < 2:
+		return false
+	return _players_who_can_act_ids().is_empty()
 
 
 func _seat_by_id(seat_id: int) -> Dictionary:

@@ -439,7 +439,7 @@ func _build_quick_play_setup_panel() -> void:
 
 	_build_quick_setup_section(column, "BUY-IN", _quick_buy_in_buttons, [5000, 10000, 20000, 50000], _select_quick_buy_in)
 	_build_quick_blinds_section(column)
-	_build_quick_setup_section(column, "HAND COUNT", _quick_hand_count_buttons, [10, 20, 999], _select_quick_hand_count)
+	_build_quick_setup_section(column, "HAND COUNT", _quick_hand_count_buttons, [5, 10, 20, 999], _select_quick_hand_count)
 
 	var button_row := HBoxContainer.new()
 	button_row.alignment = BoxContainer.ALIGNMENT_CENTER

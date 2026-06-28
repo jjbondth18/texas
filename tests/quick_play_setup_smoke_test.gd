@@ -18,6 +18,10 @@ func _initialize() -> void:
 	var high_buy_in_button: Button = buy_in_buttons.get(50000) as Button
 	_require(high_buy_in_button != null and high_buy_in_button.disabled, "Buy-in above total_chips must be disabled.")
 
+	var hand_count_buttons: Dictionary = Dictionary(home.get("_quick_hand_count_buttons"))
+	var five_hand_button: Button = hand_count_buttons.get(5) as Button
+	_require(five_hand_button != null, "Quick Play setup must offer 5 hands.")
+
 	home.call("_select_quick_buy_in", 10000)
 	home.call("_select_quick_blinds", 50, 100)
 	home.call("_select_quick_hand_count", 20)

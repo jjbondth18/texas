@@ -111,6 +111,14 @@ func _ready() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
+		if event.ctrl_pressed and event.shift_pressed and event.keycode == KEY_F:
+			_force_finish_current_session()
+			get_viewport().set_input_as_handled()
+			return
+		if event.ctrl_pressed and event.shift_pressed and event.keycode == KEY_H:
+			_force_current_hand_to_showdown()
+			get_viewport().set_input_as_handled()
+			return
 		if event.ctrl_pressed and event.keycode == KEY_D:
 			_toggle_rule_debug_panel()
 			get_viewport().set_input_as_handled()
@@ -385,6 +393,33 @@ func _force_test_showdown() -> void:
 	_apply_launch_context(snapshot)
 	_refresh()
 	_schedule_ai_turns()
+
+
+func _force_current_hand_to_showdown() -> void:
+	if not _can_use_debug_start_key():
+		return
+	if String(_table_flow.table_state) == TexasTableFlowScript.WAITING:
+		_start_next_hand()
+		return
+	snapshot = _table_flow_to_ui_snapshot(_table_flow.force_current_hand_to_showdown())
+	_apply_launch_context(snapshot)
+	_refresh()
+
+
+func _force_finish_current_session() -> void:
+	if not _can_use_debug_start_key():
+		return
+	if _table_session == null:
+		_configure_table_session_from_launch_context()
+	if _table_session == null:
+		return
+	_table_session.current_table_chips = _local_table_chips()
+	_table_session.session_end_chips = _table_session.current_table_chips
+	_table_session.session_profit = _table_session.session_end_chips - _table_session.session_start_chips
+	_table_session.is_session_over = true
+	_table_session.end_reason = "Debug force finish"
+	_append_session_log("Debug: force finish current session.")
+	_enter_session_over()
 
 func _reset_test_table() -> void:
 	_ai_turn_loop_active = false
@@ -1054,7 +1089,7 @@ func _auto_start_session_if_ready() -> void:
 
 
 func _can_use_debug_start_key() -> bool:
-	return TableLaunchContext.allow_debug_tools or TableLaunchContext.is_training
+	return TableLaunchContext.allow_debug_tools or TableLaunchContext.is_training or OS.is_debug_build()
 
 
 func _can_use_space_next_hand() -> bool:
