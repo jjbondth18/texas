@@ -12,6 +12,7 @@ signal server_error(message: String)
 signal message_received(message: Dictionary)
 
 var url := "ws://127.0.0.1:8080"
+var local_player_id := ""
 var player_id := ""
 var room_id := ""
 var auto_poll := true
@@ -51,8 +52,9 @@ func send_message(message: Dictionary) -> int:
 		return ERR_UNAVAILABLE
 	return _peer.send_text(PokerProtocolScript.encode(message))
 
-func send_hello(player_name: String = "") -> int:
-	return send_message(PokerProtocolScript.hello(player_name))
+func send_hello(player_name: String = "", profile_player_id: String = "") -> int:
+	local_player_id = profile_player_id
+	return send_message(PokerProtocolScript.hello(player_name, profile_player_id))
 
 func create_room() -> int:
 	return send_message(PokerProtocolScript.create_room())

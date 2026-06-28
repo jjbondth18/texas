@@ -29,8 +29,11 @@ static func decode(payload: String) -> Dictionary:
 		return {"type": ERROR, "error": "Invalid JSON message"}
 	return parsed
 
-static func hello(player_name: String = "") -> Dictionary:
-	return _message(HELLO, {"name": player_name})
+static func hello(player_name: String = "", player_id: String = "") -> Dictionary:
+	var data := {"name": player_name}
+	if player_id != "":
+		data["player_id"] = player_id
+	return _message(HELLO, data)
 
 static func create_room() -> Dictionary:
 	return _message(CREATE_ROOM)
