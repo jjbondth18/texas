@@ -11,9 +11,11 @@ const DEFAULT_LEVEL := 24
 const DEFAULT_XP_CURRENT := 875
 const DEFAULT_XP_MAX := 1500
 const DEFAULT_TOTAL_CHIPS := 24500
-const DEFAULT_GEMS := 1250
+const DEFAULT_GEMS := 0
 const DEFAULT_TABLE_BUY_IN := 20000
-const SCHEMA_VERSION := 2
+const SCHEMA_VERSION := 3
+const DAILY_LOGIN_CHIPS := 1000
+const REPLAY_UNLOCK_COST_GEMS := 5
 
 var player_id := DEFAULT_PLAYER_ID
 var name := ""
@@ -32,6 +34,9 @@ var total_profit := 0
 var biggest_pot := 0
 var best_hand_desc := ""
 var best_session_profit := 0
+var last_daily_reward_date := ""
+var daily_reward_claimed_today := false
+var replay_unlock_cost_gems := REPLAY_UNLOCK_COST_GEMS
 
 func _init(
 	player_name: String = "",
@@ -75,6 +80,9 @@ func _init(
 	biggest_pot = int(profile_stats.get("biggest_pot", 0))
 	best_hand_desc = String(profile_stats.get("best_hand_desc", ""))
 	best_session_profit = int(profile_stats.get("best_session_profit", 0))
+	last_daily_reward_date = String(profile_stats.get("last_daily_reward_date", ""))
+	daily_reward_claimed_today = bool(profile_stats.get("daily_reward_claimed_today", false))
+	replay_unlock_cost_gems = int(profile_stats.get("replay_unlock_cost_gems", REPLAY_UNLOCK_COST_GEMS))
 
 func xp_text() -> String:
 	return "%d / %d XP" % [xp_current, xp_max]
@@ -101,6 +109,9 @@ func to_lobby_dict() -> Dictionary:
 		"biggest_pot": biggest_pot,
 		"best_hand_desc": best_hand_desc,
 		"best_session_profit": best_session_profit,
+		"last_daily_reward_date": last_daily_reward_date,
+		"daily_reward_claimed_today": daily_reward_claimed_today,
+		"replay_unlock_cost_gems": replay_unlock_cost_gems,
 	}
 
 func to_dict() -> Dictionary:
@@ -158,6 +169,9 @@ static func get_avatar_id(data: Dictionary) -> String:
 
 static func get_total_chips(data: Dictionary) -> int:
 	return int(data.get("total_chips", data.get("chips", DEFAULT_TOTAL_CHIPS)))
+
+static func get_total_gems(data: Dictionary) -> int:
+	return int(data.get("gems", DEFAULT_GEMS))
 
 static func table_buy_in(data: Dictionary) -> int:
 	return min(DEFAULT_TABLE_BUY_IN, max(get_total_chips(data), 0))

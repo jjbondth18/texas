@@ -86,7 +86,7 @@ func configure(player: Dictionary) -> void:
 	_xp_bar.max_value = max(xp_max, 1)
 	_xp_bar.value = xp_current
 	
-	var chips_val = player.get("chips", 0)
+	var chips_val = player.get("total_chips", player.get("chips", 0))
 	_chips_label.text = "%s" % _format_number(chips_val)
 	
 	var premium_val = player.get("gems", player.get("premium_currency", 0))

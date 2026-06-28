@@ -70,6 +70,7 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 	var small_blind: int = int(setup_config.get("small_blind", 25))
 	var big_blind: int = int(setup_config.get("big_blind", 50))
 	var max_hands: int = 999 if training else int(setup_config.get("max_hands", 10))
+	var buy_in_deducted: bool = bool(setup_config.get("buy_in_deducted_from_wallet", false))
 	return {
 		"mode": mode,
 		"backend_type": "local_mock",
@@ -84,6 +85,7 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 		"table_type": "training_ai" if training else mode,
 		"uses_practice_chips": training,
 		"affects_account_balance": not training,
+		"buy_in_deducted_from_wallet": buy_in_deducted,
 		"allow_debug_tools": debug_tools,
 		"ai_player_count": ai_count,
 		"max_hands": max_hands,
@@ -92,6 +94,7 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 			"table_type": "training_ai" if training else mode,
 			"uses_practice_chips": training,
 			"affects_account_balance": not training,
+			"buy_in_deducted_from_wallet": buy_in_deducted,
 			"buy_in": buy_in,
 			"starting_chips": buy_in,
 			"current_table_chips": buy_in,

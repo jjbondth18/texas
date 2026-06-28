@@ -20,6 +20,9 @@ func _init() -> void:
 	_require(migrated.has("biggest_pot"), "migration must add biggest pot field")
 	_require(migrated.has("best_session_profit"), "migration must add best session profit field")
 	_require(migrated.has("best_hand_desc"), "migration must add best hand field")
+	_require(PlayerProfileScript.get_total_gems(migrated) == 0, "migration must default missing gems to 0")
+	_require(String(migrated.get("last_daily_reward_date", "")) == "", "migration must add daily reward date")
+	_require(not bool(migrated.get("daily_reward_claimed_today", true)), "migration must default daily reward claimed to false")
 
 	print("Save manager profile migration test passed.")
 	quit(0)

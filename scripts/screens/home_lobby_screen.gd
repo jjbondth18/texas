@@ -53,6 +53,7 @@ const ScreenNavigator := preload("res://scripts/app/screen_navigator.gd")
 const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
 const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
 const LocalMockBackendScript := preload("res://scripts/services/local_mock_backend.gd")
+const StoreMockServiceScript := preload("res://scripts/services/store_mock_service.gd")
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 const MODE_IMAGES := {
@@ -157,6 +158,7 @@ func _ready() -> void:
 	
 	var lobby_vm := MockDataProvider.get_lobby_view_model()
 	_player_profile = ProfileServiceScript.new().get_current_profile()
+	_claim_daily_login_bonus()
 	lobby_vm["player"] = _player_profile
 	_top_bar.configure(_player_profile)
 	set_state(LobbyState.COLLAPSED, false)
@@ -470,6 +472,11 @@ func _build_quick_play_setup_panel() -> void:
 	_quick_chip_settings_container = VBoxContainer.new()
 	_quick_chip_settings_container.add_theme_constant_override("separation", 12)
 	column.add_child(_quick_chip_settings_container)
+	var chip_mode_note := Label.new()
+	chip_mode_note.text = "Quickly join an available public chip table with account chips."
+	chip_mode_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HomeTheme.make_font_settings(chip_mode_note, 13, HomeTheme.MUTED)
+	_quick_chip_settings_container.add_child(chip_mode_note)
 	_build_quick_setup_section(_quick_chip_settings_container, "BUY-IN", _quick_buy_in_buttons, [5000, 10000, 20000, 50000], _select_quick_buy_in)
 	_build_quick_blinds_section(_quick_chip_settings_container)
 	_build_quick_setup_section(_quick_chip_settings_container, "HAND COUNT", _quick_hand_count_buttons, [5, 10, 20, 999], _select_quick_hand_count)
@@ -548,7 +555,7 @@ func _build_quick_gem_placeholder(parent: VBoxContainer) -> void:
 	_quick_gem_placeholder_container.add_child(coming_soon_label)
 
 	var detail_label := Label.new()
-	detail_label.text = "Gem matches require secure server matchmaking and will be available in a future update."
+	detail_label.text = "Gem matches require secure server matchmaking. They will be available in a future update."
 	detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	detail_label.custom_minimum_size = Vector2(520, 0)
@@ -815,11 +822,23 @@ func _hide_quick_play_setup() -> void:
 func _start_quick_play_from_setup() -> void:
 	if _quick_play_mode != "chip":
 		return
+	if PlayerProfileScript.get_total_chips(_player_profile) < _selected_quick_buy_in:
+		_refresh_quick_play_setup_options()
+		return
+	var service := ProfileServiceScript.new()
+	var buy_in_profile: Dictionary = service.deduct_table_buy_in(_selected_quick_buy_in)
+	if buy_in_profile.is_empty():
+		_refresh_quick_play_setup_options()
+		return
+	_player_profile = buy_in_profile
+	if _top_bar != null:
+		_top_bar.configure(_player_profile)
 	var setup_config := {
 		"buy_in": _selected_quick_buy_in,
 		"small_blind": _selected_quick_small_blind,
 		"big_blind": _selected_quick_big_blind,
 		"max_hands": _selected_quick_max_hands,
+		"buy_in_deducted_from_wallet": true,
 	}
 	_hide_quick_play_setup()
 	_start_table_launch_transition("Finding a public chip table...", func() -> void:
@@ -831,7 +850,7 @@ func _update_quick_play_setup_profile() -> void:
 	var player_name := PlayerProfileScript.get_player_name(_player_profile)
 	var total_chips := PlayerProfileScript.get_total_chips(_player_profile)
 	_quick_play_setup_name_label.text = player_name
-	_quick_play_setup_chips_label.text = "Total Chips: %s" % _format_number(total_chips)
+	_quick_play_setup_chips_label.text = "Wallet Chips: %s" % _format_number(total_chips)
 	var texture: Texture2D = AvatarLibraryScript.get_avatar_by_id(PlayerProfileScript.get_avatar_id(_player_profile))
 	if texture == null:
 		var avatar_path := String(_player_profile.get("avatar", ""))
@@ -845,6 +864,10 @@ func _reload_player_profile() -> void:
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
 	_refresh_profile_panel()
+
+func _claim_daily_login_bonus() -> void:
+	var service := ProfileServiceScript.new()
+	_player_profile = service.claim_daily_login_bonus()
 
 
 func _select_default_quick_buy_in() -> void:
@@ -889,12 +912,13 @@ func _select_quick_play_mode(mode: String) -> void:
 
 func _refresh_quick_play_setup_options() -> void:
 	var is_chip_mode := _quick_play_mode == "chip"
+	var total_chips := PlayerProfileScript.get_total_chips(_player_profile)
 	if _quick_chip_settings_container != null:
 		_quick_chip_settings_container.visible = is_chip_mode
 	if _quick_gem_placeholder_container != null:
 		_quick_gem_placeholder_container.visible = not is_chip_mode
 	if _quick_start_button != null:
-		_quick_start_button.disabled = not is_chip_mode
+		_quick_start_button.disabled = not is_chip_mode or _selected_quick_buy_in > total_chips
 		_quick_start_button.text = "START TABLE" if is_chip_mode else "COMING SOON"
 		_quick_start_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if is_chip_mode else Control.CURSOR_ARROW
 		_quick_start_button.add_theme_stylebox_override("disabled", HomeTheme.make_button_style(Color(0.08, 0.06, 0.10, 0.62), Color(0.76, 0.52, 0.9, 0.28), 22))
@@ -903,7 +927,6 @@ func _refresh_quick_play_setup_options() -> void:
 		var mode := String(key_item)
 		var button: Button = _quick_mode_buttons[key_item] as Button
 		_apply_quick_mode_style(button, mode == _quick_play_mode)
-	var total_chips := PlayerProfileScript.get_total_chips(_player_profile)
 	for key_item in _quick_buy_in_buttons.keys():
 		var value: int = int(key_item)
 		var button: Button = _quick_buy_in_buttons[key_item] as Button
@@ -1300,6 +1323,10 @@ func _build_room_browser_panel() -> void:
 	sub.text = "PUBLIC CHIP TABLES - BROWSE, CREATE, OR JOIN"
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	title_box.add_child(sub)
+	var browser_note := Label.new()
+	browser_note.text = "Public chip tables. Create a table or join one manually. Quick Chip players may also be seated into these tables."
+	HomeTheme.make_font_settings(browser_note, 12, Color(0.72, 0.78, 0.94, 0.92))
+	title_box.add_child(browser_note)
 
 	var create_button := Button.new()
 	create_button.text = "CREATE PUBLIC CHIP TABLE"
@@ -1364,11 +1391,18 @@ func _build_room_browser_panel() -> void:
 		row_hbox.add_theme_constant_override("separation", 10)
 		row_margin.add_child(row_hbox)
 		
+		var name_box := VBoxContainer.new()
+		name_box.custom_minimum_size = Vector2(col_widths[0], 0)
+		name_box.add_theme_constant_override("separation", 2)
+		row_hbox.add_child(name_box)
 		var name_lbl := Label.new()
 		name_lbl.text = String(room["table_name"])
-		name_lbl.custom_minimum_size = Vector2(col_widths[0], 0)
 		HomeTheme.make_font_settings(name_lbl, 15, Color(1, 1, 1, 0.95))
-		row_hbox.add_child(name_lbl)
+		name_box.add_child(name_lbl)
+		var public_badge := Label.new()
+		public_badge.text = "PUBLIC CHIP"
+		HomeTheme.make_font_settings(public_badge, 11, HomeTheme.CYAN)
+		name_box.add_child(public_badge)
 		
 		var blinds_lbl := Label.new()
 		blinds_lbl.text = "%d / %d" % [room["small_blind"], room["big_blind"]]
@@ -1454,9 +1488,13 @@ func _build_friends_room_panel() -> void:
 	content.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "LOCAL MOCK ROOM - STEAM / SERVER BACKENDS RESERVED"
+	sub.text = "PRIVATE ROOM - SHARE THE ROOM CODE WITH FRIENDS"
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	content.add_child(sub)
+	var room_note := Label.new()
+	room_note.text = "Not listed in public tables. No Gem matches in private rooms."
+	HomeTheme.make_font_settings(room_note, 12, Color(0.72, 0.78, 0.94, 0.92))
+	content.add_child(room_note)
 
 	var room_card := PanelContainer.new()
 	room_card.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1470,6 +1508,7 @@ func _build_friends_room_panel() -> void:
 	_friends_room_id_label = _room_lobby_label("ROOM ID: -", 17, Color(1.0, 0.92, 0.72, 0.96))
 	_friends_room_seats_label = _room_lobby_label("SEATS: -", 15, Color(0.88, 0.92, 1.0, 0.92))
 	_friends_room_ready_label = _room_lobby_label("READY: -", 15, HomeTheme.PURPLE)
+	room_box.add_child(_room_lobby_label("PRIVATE ROOM", 13, HomeTheme.CYAN))
 	room_box.add_child(_friends_room_id_label)
 	room_box.add_child(_friends_room_seats_label)
 	room_box.add_child(_friends_room_ready_label)
@@ -1732,95 +1771,107 @@ func _build_store_panel() -> void:
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	title_box.add_child(sub)
 	
-	# Tabs
+	var dev_label := Label.new()
+	dev_label.text = "MOCK PURCHASE / DEV ONLY"
+	HomeTheme.make_font_settings(dev_label, 13, HomeTheme.GOLD)
+	main_vbox.add_child(dev_label)
+
 	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 15)
+	tabs.add_theme_constant_override("separation", 12)
 	main_vbox.add_child(tabs)
-	var tab_names := ["CHIPS", "REPLAY PRO", "COSMETICS", "MEMBERSHIP"]
-	for tab_name in tab_names:
-		var tab_btn := Button.new()
-		tab_btn.text = tab_name
-		tab_btn.custom_minimum_size = Vector2(140, 36)
-		tab_btn.flat = true
-		tab_btn.add_theme_stylebox_override("normal", HomeTheme.make_panel_style(Color(0.1, 0.12, 0.22, 0.25), Color(0.3, 0.35, 0.55, 0.15), 6, 1))
-		tab_btn.add_theme_color_override("font_color", Color(0.85, 0.90, 1.0))
-		tabs.add_child(tab_btn)
-		
-	# Grid Content
+	for tab_name in ["CHIPS", "GEMS"]:
+		var tab := Button.new()
+		tab.text = tab_name
+		tab.custom_minimum_size = Vector2(140, 36)
+		tab.focus_mode = Control.FOCUS_NONE
+		tab.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.66), Color(0.52, 0.78, 1.0, 0.34), 18))
+		tab.add_theme_color_override("font_color", Color(0.90, 0.94, 1.0, 0.94))
+		tabs.add_child(tab)
+
 	var grid := HBoxContainer.new()
 	grid.add_theme_constant_override("separation", 24)
 	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	main_vbox.add_child(grid)
-	
-	# Offer 1: Chips
-	var card1 := PanelContainer.new()
-	card1.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	card1.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.012, 0.016, 0.035, 0.65), Color(0.2, 0.24, 0.38, 0.25), 8, 1))
-	var c1_vbox := VBoxContainer.new()
-	c1_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	c1_vbox.add_theme_constant_override("separation", 12)
-	card1.add_child(c1_vbox)
-	var c1_title := Label.new()
-	c1_title.text = "STARTER CHIPS PACK"
-	HomeTheme.make_font_settings(c1_title, 15, HomeTheme.CYAN)
-	c1_vbox.add_child(c1_title)
-	var c1_desc := Label.new()
-	c1_desc.text = "10,000 Chips + 100 Bonus Gems"
-	c1_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	HomeTheme.make_font_settings(c1_desc, 12, HomeTheme.TEXT)
-	c1_vbox.add_child(c1_desc)
-	var c1_btn := Button.new()
-	c1_btn.text = "$4.99"
-	c1_btn.custom_minimum_size = Vector2(120, 32)
-	c1_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	c1_btn.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.08, 0.22, 0.38, 0.60), Color(0.52, 0.78, 1.0, 0.8), 16))
-	c1_vbox.add_child(c1_btn)
-	grid.add_child(card1)
-	
-	# Offer 2: Replay Pro
-	var card2 := PanelContainer.new()
-	card2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	card2.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.014, 0.008, 0.022, 0.85), Color(1.0, 0.0, 0.5, 0.45), 8, 1.5))
-	var c2_vbox := VBoxContainer.new()
-	c2_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	c2_vbox.add_theme_constant_override("separation", 12)
-	card2.add_child(c2_vbox)
-	var c2_title := Label.new()
-	c2_title.text = "REPLAY PRO MONTHLY"
-	HomeTheme.make_font_settings(c2_title, 15, HomeTheme.PINK)
-	c2_vbox.add_child(c2_title)
-	var c2_desc := Label.new()
-	c2_desc.text = "Unlock street equity timeline\n& GTO hand advisor"
-	c2_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	HomeTheme.make_font_settings(c2_desc, 12, HomeTheme.TEXT)
-	c2_vbox.add_child(c2_desc)
-	var c2_btn := Button.new()
-	c2_btn.text = "$9.99 / mo"
-	c2_btn.custom_minimum_size = Vector2(120, 32)
-	c2_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	c2_btn.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.60), Color(1.0, 0.0, 0.5, 0.8), 16))
-	c2_vbox.add_child(c2_btn)
-	grid.add_child(card2)
+
+	_add_store_currency_column(grid, "CHIPS", "Game chips for buy-ins, betting, and standard cosmetics.", [10000, 50000, 100000], "chips", HomeTheme.GOLD)
+	_add_store_currency_column(grid, "GEMS", "Premium currency reserved for replay tools and premium cosmetics.", [100, 500, 1200], "gems", HomeTheme.PINK)
+
+func _add_store_currency_column(parent: Container, title_text: String, desc_text: String, packs: Array, currency: String, accent: Color) -> void:
+	var card := PanelContainer.new()
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.012, 0.016, 0.035, 0.70), accent.darkened(0.25), 8, 1))
+	parent.add_child(card)
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 14)
+	card.add_child(vbox)
+	var title := Label.new()
+	title.text = title_text
+	HomeTheme.make_font_settings(title, 18, accent)
+	vbox.add_child(title)
+	var desc := Label.new()
+	desc.text = desc_text
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(desc, 12, HomeTheme.MUTED)
+	vbox.add_child(desc)
+	for pack_item in packs:
+		var amount: int = int(pack_item)
+		var button := Button.new()
+		button.text = "%s %s" % [_format_number(amount), title_text]
+		button.custom_minimum_size = Vector2(220, 42)
+		button.focus_mode = Control.FOCUS_NONE
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.70), accent.darkened(0.10), 18))
+		button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.035, 0.04, 0.085, 0.86), accent, 18))
+		button.pressed.connect(_show_mock_purchase_confirm.bind(currency, amount))
+		vbox.add_child(button)
+
+func _show_mock_purchase_confirm(currency: String, amount: int) -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Mock purchase?"
+	dialog.dialog_text = "MOCK PURCHASE / DEV ONLY\nAdd %s %s to your wallet?" % [_format_number(amount), currency.to_upper()]
+	dialog.confirmed.connect(_confirm_mock_purchase.bind(currency, amount, dialog))
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.popup_centered(Vector2(360, 180))
+
+func _confirm_mock_purchase(currency: String, amount: int, dialog: ConfirmationDialog) -> void:
+	var store := StoreMockServiceScript.new()
+	if currency == "gems":
+		_player_profile = store.mock_purchase_gems(amount)
+	else:
+		_player_profile = store.mock_purchase_chips(amount)
+	if _top_bar != null:
+		_top_bar.configure(_player_profile)
+	_refresh_profile_panel()
+	if dialog != null:
+		dialog.queue_free()
 
 func _build_profile_panel() -> void:
 	_profile_panel = PanelContainer.new()
 	_profile_panel.name = "ProfilePanel"
 	_profile_panel.anchor_left = 0.0
-	_profile_panel.anchor_top = 0.32
+	_profile_panel.anchor_top = 0.22
 	_profile_panel.anchor_right = 1.0
-	_profile_panel.anchor_bottom = 0.91
+	_profile_panel.anchor_bottom = 0.94
 	_profile_panel.offset_left = MAIN_LEFT
 	_profile_panel.offset_right = -MAIN_RIGHT
 	_profile_panel.mouse_filter = Control.MOUSE_FILTER_PASS
-	_profile_panel.custom_minimum_size = Vector2(0, 580)
+	_profile_panel.custom_minimum_size = Vector2(0, 700)
 	_profile_panel.visible = false
 	_profile_panel.modulate.a = 0.0
 	_profile_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.016, 0.72), Color(0.62, 0.36, 1.0, 0.28), 8, 1))
 	_lobby_ui_root.add_child(_profile_panel)
 	
+	var page_scroll := ScrollContainer.new()
+	page_scroll.name = "ProfilePageScroll"
+	page_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	page_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	page_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_profile_panel.add_child(page_scroll)
 	var main_vbox := VBoxContainer.new()
-	main_vbox.add_theme_constant_override("separation", 20)
-	_profile_panel.add_child(main_vbox)
+	main_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	main_vbox.add_theme_constant_override("separation", 16)
+	page_scroll.add_child(main_vbox)
 	
 	# Header
 	var title_box := VBoxContainer.new()
@@ -1837,7 +1888,7 @@ func _build_profile_panel() -> void:
 	# Card Body
 	var body_hbox := HBoxContainer.new()
 	body_hbox.add_theme_constant_override("separation", 24)
-	body_hbox.custom_minimum_size = Vector2(0, 214)
+	body_hbox.custom_minimum_size = Vector2(0, 204)
 	main_vbox.add_child(body_hbox)
 	
 	# Left: Player Card info
@@ -1850,7 +1901,7 @@ func _build_profile_panel() -> void:
 	card_info.add_child(c_vbox)
 	
 	var avatar_frame := PanelContainer.new()
-	avatar_frame.custom_minimum_size = Vector2(146, 146)
+	avatar_frame.custom_minimum_size = Vector2(154, 154)
 	avatar_frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	avatar_frame.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.012, 0.016, 0.038, 0.86), Color(0.60, 0.92, 1.0, 0.70), 20, 1))
 	c_vbox.add_child(avatar_frame)
@@ -1918,9 +1969,10 @@ func _build_profile_panel() -> void:
 
 	var gallery_panel := PanelContainer.new()
 	gallery_panel.name = "AvatarGalleryPanel"
+	gallery_panel.custom_minimum_size = Vector2(0, 430)
 	gallery_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	gallery_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	gallery_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.014, 0.58), Color(0.62, 0.36, 1.0, 0.30), 8, 1))
+	gallery_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.010, 0.012, 0.030, 0.78), Color(0.62, 0.36, 1.0, 0.46), 8, 1))
 	main_vbox.add_child(gallery_panel)
 	var gallery_vbox := VBoxContainer.new()
 	gallery_vbox.add_theme_constant_override("separation", 10)
@@ -1930,15 +1982,15 @@ func _build_profile_panel() -> void:
 	HomeTheme.make_font_settings(gallery_title, 16, HomeTheme.PURPLE)
 	gallery_vbox.add_child(gallery_title)
 	var gallery_scroll := ScrollContainer.new()
-	gallery_scroll.custom_minimum_size = Vector2(0, 300)
+	gallery_scroll.custom_minimum_size = Vector2(0, 370)
 	gallery_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	gallery_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	gallery_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	gallery_vbox.add_child(gallery_scroll)
 	_profile_avatar_grid = GridContainer.new()
-	_profile_avatar_grid.columns = 8
-	_profile_avatar_grid.add_theme_constant_override("h_separation", 12)
-	_profile_avatar_grid.add_theme_constant_override("v_separation", 12)
+	_profile_avatar_grid.columns = 7
+	_profile_avatar_grid.add_theme_constant_override("h_separation", 14)
+	_profile_avatar_grid.add_theme_constant_override("v_separation", 14)
 	gallery_scroll.add_child(_profile_avatar_grid)
 	_build_avatar_gallery()
 		
@@ -2045,7 +2097,7 @@ func _build_avatar_gallery() -> void:
 		var button := Button.new()
 		button.name = "Avatar_%s" % avatar_id
 		button.text = AvatarLibraryScript.display_name_for_avatar_id(avatar_id)
-		button.custom_minimum_size = Vector2(128, 158)
+		button.custom_minimum_size = Vector2(138, 174)
 		button.icon = AvatarLibraryScript.get_avatar_by_id(avatar_id)
 		button.expand_icon = true
 		button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -2073,29 +2125,29 @@ func _refresh_avatar_gallery() -> void:
 		var display_name: String = AvatarLibraryScript.display_name_for_avatar_id(avatar_id)
 		var status_text: String = "Selected" if is_selected else ("Locked" if not is_unlocked else "Unlocked")
 		button.text = "%s\n%s" % [display_name, status_text]
-		button.modulate = Color(1, 1, 1, 1) if is_unlocked else Color(0.38, 0.38, 0.46, 0.70)
+		button.modulate = Color(1.08, 1.08, 1.12, 1.0) if is_unlocked else Color(0.62, 0.62, 0.72, 0.88)
 		button.add_theme_stylebox_override("normal", _avatar_gallery_button_style(is_selected, is_unlocked, false))
 		button.add_theme_stylebox_override("hover", _avatar_gallery_button_style(is_selected, is_unlocked, true))
 		button.add_theme_stylebox_override("pressed", _avatar_gallery_button_style(is_selected, is_unlocked, true))
 		button.add_theme_stylebox_override("disabled", _avatar_gallery_button_style(false, false, false))
-		button.add_theme_color_override("font_color", Color(0.92, 0.96, 1.0, 0.92))
-		button.add_theme_color_override("font_disabled_color", Color(0.52, 0.54, 0.64, 0.86))
+		button.add_theme_color_override("font_color", Color(0.94, 0.98, 1.0, 0.98))
+		button.add_theme_color_override("font_disabled_color", Color(0.72, 0.74, 0.84, 0.92))
 
 func _avatar_gallery_button_style(selected: bool, unlocked: bool, hover: bool) -> StyleBoxFlat:
-	var bg := Color(0.018, 0.022, 0.052, 0.70)
-	var border := Color(0.40, 0.44, 0.70, 0.26)
+	var bg := Color(0.030, 0.036, 0.082, 0.84)
+	var border := Color(0.58, 0.58, 0.92, 0.42)
 	if selected:
-		bg = Color(0.08, 0.025, 0.10, 0.88)
-		border = Color(0.35, 0.95, 1.0, 0.90)
+		bg = Color(0.055, 0.075, 0.120, 0.94)
+		border = Color(0.35, 0.95, 1.0, 1.00)
 	elif not unlocked:
-		bg = Color(0.008, 0.010, 0.020, 0.58)
-		border = Color(0.18, 0.20, 0.30, 0.22)
+		bg = Color(0.018, 0.020, 0.040, 0.76)
+		border = Color(0.34, 0.34, 0.50, 0.38)
 	elif hover:
-		bg = Color(0.035, 0.040, 0.085, 0.84)
-		border = Color(0.82, 0.58, 1.0, 0.62)
+		bg = Color(0.045, 0.050, 0.105, 0.92)
+		border = Color(0.82, 0.58, 1.0, 0.76)
 	var style := HomeTheme.make_button_style(bg, border, 10)
-	style.shadow_color = Color(border.r, border.g, border.b, 0.18 if selected else 0.04)
-	style.shadow_size = 10 if selected else 4
+	style.shadow_color = Color(border.r, border.g, border.b, 0.28 if selected else 0.10)
+	style.shadow_size = 14 if selected else 6
 	return style
 
 func _on_avatar_selected(avatar_id: String) -> void:

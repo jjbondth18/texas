@@ -8,6 +8,7 @@ const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 
 static var _saved_profile: Dictionary = {}
 static var _last_unlocked_avatar_ids: Array[String] = []
+static var _last_daily_bonus_claimed := false
 
 func get_current_profile() -> Dictionary:
 	if _saved_profile.is_empty():
@@ -31,10 +32,14 @@ func apply_session_result(session_result: Dictionary) -> Dictionary:
 		return get_current_profile()
 	var profile := get_current_profile()
 	var profit: int = int(session_result.get("session_profit", session_result.get("profit", 0)))
+	var final_table_chips: int = int(session_result.get("session_end_chips", session_result.get("final_chips", 0)))
 	var total_chips: int = PlayerProfileScript.get_total_chips(profile)
 	var previous_sessions: int = int(profile.get("total_sessions_played", 0))
 	var previous_hands_won: int = int(profile.get("total_hands_won", 0))
-	profile["total_chips"] = max(total_chips + profit, 0)
+	if bool(session_result.get("buy_in_deducted_from_wallet", false)):
+		profile["total_chips"] = max(total_chips + final_table_chips, 0)
+	else:
+		profile["total_chips"] = max(total_chips + profit, 0)
 	profile["chips"] = int(profile["total_chips"])
 	profile["total_sessions_played"] = int(profile.get("total_sessions_played", 0)) + 1
 	profile["total_hands_played"] = int(profile.get("total_hands_played", 0)) + int(session_result.get("hands_played", 0))
@@ -70,12 +75,78 @@ func select_avatar(avatar_id: String) -> Dictionary:
 	save_current_profile(profile)
 	return get_current_profile()
 
+func deduct_table_buy_in(buy_in: int) -> Dictionary:
+	if buy_in <= 0:
+		return get_current_profile()
+	var profile := get_current_profile()
+	var total_chips: int = PlayerProfileScript.get_total_chips(profile)
+	if total_chips < buy_in:
+		push_warning("[ProfileService] Cannot deduct buy-in %d from wallet chips %d." % [buy_in, total_chips])
+		return {}
+	profile["total_chips"] = total_chips - buy_in
+	profile["chips"] = int(profile["total_chips"])
+	save_current_profile(profile)
+	return get_current_profile()
+
+func transfer_chips_to_table(amount: int) -> Dictionary:
+	if amount <= 0:
+		return {"success": false, "amount": 0, "profile": get_current_profile()}
+	var profile := get_current_profile()
+	var available: int = PlayerProfileScript.get_total_chips(profile)
+	var transfer_amount: int = min(amount, available)
+	if transfer_amount <= 0:
+		return {"success": false, "amount": 0, "profile": profile}
+	profile["total_chips"] = available - transfer_amount
+	profile["chips"] = int(profile["total_chips"])
+	save_current_profile(profile)
+	return {"success": true, "amount": transfer_amount, "profile": get_current_profile()}
+
+func mock_purchase_chips(amount: int) -> Dictionary:
+	if amount <= 0:
+		return get_current_profile()
+	var profile := get_current_profile()
+	var total_chips: int = PlayerProfileScript.get_total_chips(profile)
+	profile["total_chips"] = total_chips + amount
+	profile["chips"] = int(profile["total_chips"])
+	save_current_profile(profile)
+	return get_current_profile()
+
+func mock_purchase_gems(amount: int) -> Dictionary:
+	if amount <= 0:
+		return get_current_profile()
+	var profile := get_current_profile()
+	var total_gems: int = PlayerProfileScript.get_total_gems(profile)
+	profile["gems"] = total_gems + amount
+	save_current_profile(profile)
+	return get_current_profile()
+
+func claim_daily_login_bonus(today: String = "") -> Dictionary:
+	var profile := get_current_profile()
+	var date_key: String = today if today != "" else _today_key()
+	var already_claimed: bool = String(profile.get("last_daily_reward_date", "")) == date_key and bool(profile.get("daily_reward_claimed_today", false))
+	_last_daily_bonus_claimed = false
+	if already_claimed:
+		return profile
+	var total_chips: int = PlayerProfileScript.get_total_chips(profile)
+	profile["total_chips"] = total_chips + PlayerProfileScript.DAILY_LOGIN_CHIPS
+	profile["chips"] = int(profile["total_chips"])
+	profile["last_daily_reward_date"] = date_key
+	profile["daily_reward_claimed_today"] = true
+	save_current_profile(profile)
+	_last_daily_bonus_claimed = true
+	print("Daily Login Bonus: +%d Chips" % PlayerProfileScript.DAILY_LOGIN_CHIPS)
+	return get_current_profile()
+
+func was_last_daily_bonus_claimed() -> bool:
+	return _last_daily_bonus_claimed
+
 func get_last_unlocked_avatar_ids() -> Array[String]:
 	return _last_unlocked_avatar_ids.duplicate()
 
 static func reset_mock_profile() -> void:
 	_saved_profile = MockDataProviderScript.get_mock_player_profile()
 	_last_unlocked_avatar_ids.clear()
+	_last_daily_bonus_claimed = false
 
 func _unlock_avatars_for_session(profile: Dictionary, session_result: Dictionary, previous_sessions: int, previous_hands_won: int) -> Array[String]:
 	var unlocked: Array = Array(profile.get("unlocked_avatar_ids", [])).duplicate()
@@ -102,3 +173,7 @@ func _try_unlock_avatar_for_rule(rule_id: String, unlocked: Array, new_ids: Arra
 
 func is_profile_backend_available() -> bool:
 	return false
+
+func _today_key() -> String:
+	var now: Dictionary = Time.get_datetime_dict_from_system()
+	return "%04d-%02d-%02d" % [int(now.get("year", 0)), int(now.get("month", 0)), int(now.get("day", 0))]

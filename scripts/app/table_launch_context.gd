@@ -12,6 +12,7 @@ static var is_training := false
 static var table_type := "quick_play"
 static var uses_practice_chips := false
 static var affects_account_balance := true
+static var buy_in_deducted_from_wallet := false
 static var allow_debug_tools := false
 static var ai_player_count := 0
 static var max_hands := 10
@@ -30,6 +31,7 @@ static func configure(mode: String = "quick_play", id: String = "mock_table_001"
 	table_type = "training_ai" if is_training else mode
 	uses_practice_chips = is_training
 	affects_account_balance = not is_training
+	buy_in_deducted_from_wallet = bool(setup_config.get("buy_in_deducted_from_wallet", false))
 	if not profile.is_empty():
 		set_player_profile(profile)
 	buy_in = PlayerProfileScript.table_buy_in(player_profile)
@@ -74,6 +76,7 @@ static func configure_from_context(context: Dictionary) -> void:
 	table_type = String(context.get("table_type", "training_ai" if is_training else mode))
 	uses_practice_chips = bool(context.get("uses_practice_chips", is_training))
 	affects_account_balance = bool(context.get("affects_account_balance", not is_training))
+	buy_in_deducted_from_wallet = bool(context.get("buy_in_deducted_from_wallet", false))
 	allow_debug_tools = bool(context.get("allow_debug_tools", is_training))
 	ai_player_count = int(context.get("ai_player_count", 0))
 	max_hands = int(context.get("max_hands", 10))
@@ -101,6 +104,7 @@ static func get_current_table_context() -> Dictionary:
 		"table_type": table_type,
 		"uses_practice_chips": uses_practice_chips,
 		"affects_account_balance": affects_account_balance,
+		"buy_in_deducted_from_wallet": buy_in_deducted_from_wallet,
 		"allow_debug_tools": allow_debug_tools,
 		"ai_player_count": ai_player_count,
 		"max_hands": max_hands,
@@ -117,6 +121,7 @@ static func _default_table_session() -> Dictionary:
 		"table_type": table_type,
 		"uses_practice_chips": uses_practice_chips,
 		"affects_account_balance": affects_account_balance,
+		"buy_in_deducted_from_wallet": buy_in_deducted_from_wallet,
 		"buy_in": session_buy_in,
 		"starting_chips": session_buy_in,
 		"current_table_chips": session_buy_in,

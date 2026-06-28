@@ -68,7 +68,7 @@ static func _mock_player_profile():
 		875,
 		1500,
 		24500,
-		1250,
+		PlayerProfileScript.DEFAULT_GEMS,
 		LOCAL_AVATAR_PATH,
 		PlayerProfileScript.DEFAULT_PLAYER_ID,
 		LOCAL_AVATAR_ID,
@@ -78,10 +78,10 @@ static func _mock_player_profile():
 
 static func _mock_lobby_modes() -> Array:
 	return [
-		LobbyModeScript.new("quick_play", "QUICK PLAY", "Jump into a table instantly", "res://assets/home_lobby/mode_cards/mode_quick_play.png", true, "quick_play"),
-		LobbyModeScript.new("room_browser", "ROOM BROWSER", "Choose a table from the lobby", "res://assets/home_lobby/mode_cards/mode_cash_tables.png", true, "room_browser"),
-		LobbyModeScript.new("private_table", "FRIENDS ROOM", "Create a local room with friends", "res://assets/home_lobby/mode_cards/mode_private_table.png", true, "private_table"),
-		LobbyModeScript.new("training", "TRAINING", "Practice against AI and learn safely", "res://assets/home_lobby/mode_cards/mode_tournaments.png", true, "training"),
+		LobbyModeScript.new("quick_play", "QUICK PLAY", "Auto-join a public chip table", "res://assets/home_lobby/mode_cards/mode_quick_play.png", true, "quick_play"),
+		LobbyModeScript.new("room_browser", "ROOM BROWSER", "Browse public chip tables", "res://assets/home_lobby/mode_cards/mode_cash_tables.png", true, "room_browser"),
+		LobbyModeScript.new("private_table", "FRIENDS ROOM", "Private room code for friends", "res://assets/home_lobby/mode_cards/mode_private_table.png", true, "private_table"),
+		LobbyModeScript.new("training", "TRAINING", "AI practice\nPractice chips only\nNo account impact", "res://assets/home_lobby/mode_cards/mode_tournaments.png", true, "training"),
 		LobbyModeScript.new("events", "EVENTS", "Limited-time tables and special rules", "res://assets/home_lobby/mode_cards/mode_club_games.png", true, "events"),
 	]
 

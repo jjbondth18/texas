@@ -1374,6 +1374,13 @@ func _restart_session() -> void:
 		_session_result_panel.visible = false
 	if _session_result_scrim != null:
 		_session_result_scrim.visible = false
+	if _table_session != null and not (_table_session.mode == TableSessionScript.MODE_TRAINING or _table_session.uses_practice_chips):
+		var service := ProfileServiceScript.new()
+		var buy_in_profile: Dictionary = service.deduct_table_buy_in(_table_session.buy_in)
+		if buy_in_profile.is_empty():
+			_append_session_log("Play Again blocked: not enough chips for buy-in %d." % _table_session.buy_in)
+			return
+		TableLaunchContext.set_player_profile(buy_in_profile)
 	_reset_launch_context_session_for_play_again()
 	_configure_table_flow_from_launch_context()
 	_configure_table_session_from_launch_context()
@@ -1398,7 +1405,7 @@ func _apply_session_profit_to_profile() -> void:
 	var profile := service.apply_session_result(_table_session.to_dict())
 	_session_unlocked_avatar_ids = service.get_last_unlocked_avatar_ids()
 	TableLaunchContext.set_player_profile(profile)
-	_append_session_log("Profile session stats updated by %+d." % _table_session.session_profit)
+	_append_session_log("Profile wallet refunded %d table chips. Session profit %+d." % [_table_session.session_end_chips, _table_session.session_profit])
 
 
 func _reset_launch_context_session_for_play_again() -> void:
@@ -1410,6 +1417,10 @@ func _reset_launch_context_session_for_play_again() -> void:
 	TableLaunchContext.max_hands = _table_session.max_hands
 	TableLaunchContext.table_session = {
 		"mode": _table_session.mode,
+		"table_type": _table_session.table_type,
+		"uses_practice_chips": _table_session.uses_practice_chips,
+		"affects_account_balance": _table_session.affects_account_balance,
+		"buy_in_deducted_from_wallet": _table_session.buy_in_deducted_from_wallet,
 		"buy_in": _table_session.buy_in,
 		"starting_chips": _table_session.buy_in,
 		"current_table_chips": _table_session.buy_in,
@@ -1752,7 +1763,7 @@ func _apply_local_profile_to_snapshot(target_snapshot: Dictionary) -> void:
 		seat["player_name"] = local_name
 		seat["avatar_id"] = local_avatar_id
 		seat["avatar_texture"] = local_avatar_texture
-		seat["buy_in"] = PlayerProfileScript.table_buy_in(profile)
+		seat["buy_in"] = TableLaunchContext.buy_in
 		seats[i] = seat
 	target_snapshot["seats"] = seats
 	target_snapshot["local_player"] = _find_local_player(seats)
@@ -2129,8 +2140,14 @@ func _build_add_chips_panel() -> void:
 		_add_chips_panel.add_theme_stylebox_override("panel", _add_chips_panel_style())
 		_popover_layer.add_child(_add_chips_panel)
 	_add_chips_panel.name = "AddChipsPopover"
-	_prepare_popover_panel(_add_chips_panel, Vector2(278, 152))
+	_prepare_popover_panel(_add_chips_panel, Vector2(278, 246))
 	_add_chips_panel.visible = false
+	_refresh_add_chips_panel_content()
+
+
+func _refresh_add_chips_panel_content() -> void:
+	if _add_chips_panel == null:
+		return
 
 	_clear_children(_add_chips_panel)
 	var margin := MarginContainer.new()
@@ -2162,11 +2179,55 @@ func _build_add_chips_panel() -> void:
 	close_button.pressed.connect(_close_overlay_panels)
 	title_row.add_child(close_button)
 
-	for amount in ["+1,000", "+5,000", "+10,000"]:
-		var amount_label: String = String(amount)
-		var button := _top_control_button(amount, Vector2(220, 34))
-		button.pressed.connect(func() -> void: _debug_click("add chips %s" % amount_label))
+	var wallet_chips: int = PlayerProfileScript.get_total_chips(ProfileServiceScript.new().get_current_profile())
+	for option_item in [1000, 5000, 10000]:
+		var amount: int = int(option_item)
+		var label_text: String = "+%s" % _format_chips(amount)
+		var button := _top_control_button(label_text, Vector2(220, 32))
+		button.disabled = amount <= 0 or wallet_chips < amount
+		button.tooltip_text = "Transfer chips from wallet to this table."
+		var captured_amount: int = amount
+		button.pressed.connect(_add_chips_from_wallet.bind(captured_amount))
 		vbox.add_child(button)
+	var max_button := _top_control_button("MAX", Vector2(220, 32))
+	max_button.disabled = wallet_chips <= 0
+	max_button.tooltip_text = "Transfer all available wallet chips to this table."
+	max_button.pressed.connect(_add_chips_from_wallet.bind(wallet_chips))
+	vbox.add_child(max_button)
+	var hint := Label.new()
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_font_size_override("font_size", 11)
+	hint.add_theme_color_override("font_color", Color(0.72, 0.94, 0.88, 0.88))
+	hint.text = "Not enough chips. Visit Store from Home." if wallet_chips <= 0 else "Need more chips? Return to Home and visit Store."
+	vbox.add_child(hint)
+
+
+func _add_chips_from_wallet(amount: int) -> void:
+	var result: Dictionary = ProfileServiceScript.new().transfer_chips_to_table(amount)
+	if not bool(result.get("success", false)):
+		_append_session_log("Not enough chips. Visit Store from Home.")
+		_refresh_add_chips_panel_content()
+		return
+	var added: int = int(result.get("amount", 0))
+	var profile: Dictionary = Dictionary(result.get("profile", {}))
+	TableLaunchContext.set_player_profile(profile)
+	for i in range(_table_flow.seats.size()):
+		var seat: Dictionary = Dictionary(_table_flow.seats[i]).duplicate(true)
+		if not bool(seat.get("is_local", false)):
+			continue
+		seat["chips"] = int(seat.get("chips", 0)) + added
+		_table_flow.seats[i] = seat
+		break
+	if _table_session != null:
+		_table_session.current_table_chips = _local_table_chips()
+		_table_session.session_end_chips = _table_session.current_table_chips
+		_table_session.session_profit = _table_session.session_end_chips - _table_session.session_start_chips
+		_update_launch_context_session()
+	_append_session_log("%s added %s chips from wallet." % [PlayerProfileScript.get_player_name(profile), _format_chips(added)])
+	snapshot = _table_flow_to_ui_snapshot(_table_flow.to_snapshot())
+	_apply_launch_context(snapshot)
+	_refresh()
+	_refresh_add_chips_panel_content()
 
 
 func _add_volume_row(parent: Container, label_text: String, value: float) -> void:
@@ -2260,6 +2321,7 @@ func _toggle_add_chips_panel() -> void:
 		_settings_panel.visible = false
 	_add_chips_panel.visible = opening
 	if opening:
+		_refresh_add_chips_panel_content()
 		_position_popover_near_button(_add_chips_panel, _add_chips_button)
 		_animate_popover(_add_chips_panel, Vector2(0.98, 0.98), 0.14)
 
