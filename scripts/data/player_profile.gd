@@ -12,6 +12,7 @@ const DEFAULT_XP_MAX := 1500
 const DEFAULT_TOTAL_CHIPS := 24500
 const DEFAULT_GEMS := 1250
 const DEFAULT_TABLE_BUY_IN := 20000
+const SCHEMA_VERSION := 2
 
 var player_id := DEFAULT_PLAYER_ID
 var name := ""
@@ -23,6 +24,13 @@ var avatar_id := DEFAULT_AVATAR_ID
 var selected_avatar_id := DEFAULT_AVATAR_ID
 var unlocked_avatar_ids: Array[String] = []
 var balance = CurrencyBalanceScript.new()
+var total_sessions_played := 0
+var total_hands_played := 0
+var total_hands_won := 0
+var total_profit := 0
+var biggest_pot := 0
+var best_hand_desc := ""
+var best_session_profit := 0
 
 func _init(
 	player_name: String = "",
@@ -35,7 +43,8 @@ func _init(
 	profile_player_id: String = DEFAULT_PLAYER_ID,
 	profile_avatar_id: String = DEFAULT_AVATAR_ID,
 	profile_selected_avatar_id: String = "",
-	profile_unlocked_avatar_ids: Array = []
+	profile_unlocked_avatar_ids: Array = [],
+	profile_stats: Dictionary = {}
 ) -> void:
 	name = player_name
 	level = player_level
@@ -51,12 +60,20 @@ func _init(
 	if unlocked_avatar_ids.is_empty():
 		unlocked_avatar_ids.append(selected_avatar_id)
 	balance = CurrencyBalanceScript.new(player_chips, player_gems)
+	total_sessions_played = int(profile_stats.get("total_sessions_played", 0))
+	total_hands_played = int(profile_stats.get("total_hands_played", 0))
+	total_hands_won = int(profile_stats.get("total_hands_won", 0))
+	total_profit = int(profile_stats.get("total_profit", 0))
+	biggest_pot = int(profile_stats.get("biggest_pot", 0))
+	best_hand_desc = String(profile_stats.get("best_hand_desc", ""))
+	best_session_profit = int(profile_stats.get("best_session_profit", 0))
 
 func xp_text() -> String:
 	return "%d / %d XP" % [xp_current, xp_max]
 
 func to_lobby_dict() -> Dictionary:
 	return {
+		"schema_version": SCHEMA_VERSION,
 		"player_id": player_id,
 		"name": name,
 		"player_name": name,
@@ -69,6 +86,13 @@ func to_lobby_dict() -> Dictionary:
 		"avatar_id": avatar_id,
 		"selected_avatar_id": selected_avatar_id,
 		"unlocked_avatar_ids": unlocked_avatar_ids.duplicate(),
+		"total_sessions_played": total_sessions_played,
+		"total_hands_played": total_hands_played,
+		"total_hands_won": total_hands_won,
+		"total_profit": total_profit,
+		"biggest_pot": biggest_pot,
+		"best_hand_desc": best_hand_desc,
+		"best_session_profit": best_session_profit,
 	}
 
 func to_dict() -> Dictionary:
@@ -89,7 +113,8 @@ static func from_dict(data: Dictionary) -> PlayerProfile:
 		String(data.get("player_id", DEFAULT_PLAYER_ID)),
 		String(data.get("avatar_id", DEFAULT_AVATAR_ID)),
 		String(data.get("selected_avatar_id", data.get("avatar_id", DEFAULT_AVATAR_ID))),
-		Array(data.get("unlocked_avatar_ids", []))
+		Array(data.get("unlocked_avatar_ids", [])),
+		data
 	)
 
 static func default_profile() -> Dictionary:
@@ -110,6 +135,12 @@ static func default_profile() -> Dictionary:
 static func normalized_dict(data: Dictionary) -> Dictionary:
 	var profile: PlayerProfile = from_dict(data)
 	return profile.to_dict()
+
+static func win_rate(data: Dictionary) -> float:
+	var hands: int = int(data.get("total_hands_played", 0))
+	if hands <= 0:
+		return 0.0
+	return float(int(data.get("total_hands_won", 0))) / float(hands)
 
 static func get_player_name(data: Dictionary) -> String:
 	return String(data.get("player_name", data.get("name", DEFAULT_PLAYER_NAME)))

@@ -76,6 +76,10 @@ var _friends_room_context: Dictionary = {}
 var _friends_room_id_label: Label
 var _friends_room_seats_label: Label
 var _friends_room_ready_label: Label
+var _profile_avatar_rect: TextureRect
+var _profile_name_label: Label
+var _profile_level_label: Label
+var _profile_stats_labels: Dictionary = {}
 var _quick_play_setup_panel: PanelContainer
 var _quick_play_setup_avatar: TextureRect
 var _quick_play_setup_name_label: Label
@@ -140,6 +144,8 @@ func set_state(new_state: LobbyState, animated: bool = true) -> void:
 	current_state = new_state
 	if _quick_play_setup_panel != null and new_state != LobbyState.PLAY_EXPANDED:
 		_quick_play_setup_panel.visible = false
+	if new_state == LobbyState.PROFILE:
+		_reload_player_profile()
 	
 	var nav_id := "home"
 	match current_state:
@@ -704,6 +710,7 @@ func _on_mode_selected(id: String) -> void:
 func _show_quick_play_setup() -> void:
 	if _quick_play_setup_panel == null:
 		return
+	_reload_player_profile()
 	_update_quick_play_setup_profile()
 	_select_default_quick_buy_in()
 	_selected_quick_small_blind = 25
@@ -744,6 +751,12 @@ func _update_quick_play_setup_profile() -> void:
 			texture = load(avatar_path) as Texture2D
 	_quick_play_setup_avatar.texture = texture
 	_quick_play_setup_avatar.visible = texture != null
+
+func _reload_player_profile() -> void:
+	_player_profile = ProfileServiceScript.new().get_current_profile()
+	if _top_bar != null:
+		_top_bar.configure(_player_profile)
+	_refresh_profile_panel()
 
 
 func _select_default_quick_buy_in() -> void:
@@ -1652,23 +1665,30 @@ func _build_profile_panel() -> void:
 	c_vbox.add_theme_constant_override("separation", 16)
 	card_info.add_child(c_vbox)
 	
-	var avatar := ColorRect.new()
-	avatar.custom_minimum_size = Vector2(80, 80)
-	avatar.color = Color(0.42, 0.26, 0.82, 0.65)
-	avatar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	c_vbox.add_child(avatar)
-	
-	var name_label := Label.new()
-	name_label.text = "Luna0581"
-	HomeTheme.make_font_settings(name_label, 18, Color(1, 1, 1, 0.95))
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	c_vbox.add_child(name_label)
-	
-	var lvl_label := Label.new()
-	lvl_label.text = "Level 24  |  XP 875 / 1500"
-	HomeTheme.make_font_settings(lvl_label, 12, HomeTheme.MUTED)
-	lvl_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	c_vbox.add_child(lvl_label)
+	var avatar_frame := PanelContainer.new()
+	avatar_frame.custom_minimum_size = Vector2(112, 112)
+	avatar_frame.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	avatar_frame.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.012, 0.016, 0.038, 0.86), Color(0.60, 0.92, 1.0, 0.70), 20, 1))
+	c_vbox.add_child(avatar_frame)
+	_profile_avatar_rect = TextureRect.new()
+	_profile_avatar_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_profile_avatar_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_profile_avatar_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_profile_avatar_rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	_profile_avatar_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	avatar_frame.add_child(_profile_avatar_rect)
+
+	_profile_name_label = Label.new()
+	_profile_name_label.name = "ProfileNameLabel"
+	HomeTheme.make_font_settings(_profile_name_label, 22, Color(1, 1, 1, 0.95))
+	_profile_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	c_vbox.add_child(_profile_name_label)
+
+	_profile_level_label = Label.new()
+	_profile_level_label.name = "ProfileLevelLabel"
+	HomeTheme.make_font_settings(_profile_level_label, 13, HomeTheme.MUTED)
+	_profile_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	c_vbox.add_child(_profile_level_label)
 	
 	body_hbox.add_child(card_info)
 	
@@ -1685,17 +1705,24 @@ func _build_profile_panel() -> void:
 	HomeTheme.make_font_settings(s_title, 16, HomeTheme.PURPLE)
 	r_vbox.add_child(s_title)
 	
-	var stats_list := [
-		"Hands Played: 1,420",
-		"Win Rate: 54.2%",
-		"Biggest Pot Won: 42,500 Chips",
-		"Preflop Aggression: 32%"
-	]
-	for stat in stats_list:
-		var s_lbl := Label.new()
-		s_lbl.text = stat
-		HomeTheme.make_font_settings(s_lbl, 13, Color(0.85, 0.90, 1.0))
-		r_vbox.add_child(s_lbl)
+	_profile_stats_labels.clear()
+	var stats_grid := GridContainer.new()
+	stats_grid.columns = 2
+	stats_grid.add_theme_constant_override("h_separation", 12)
+	stats_grid.add_theme_constant_override("v_separation", 12)
+	r_vbox.add_child(stats_grid)
+	for stat_id in [
+		"total_chips",
+		"total_sessions_played",
+		"total_hands_played",
+		"total_hands_won",
+		"win_rate",
+		"total_profit",
+		"biggest_pot",
+		"best_session_profit",
+		"best_hand_desc",
+	]:
+		_profile_stats_labels[stat_id] = _make_profile_stat_tile(stats_grid, _profile_stat_title(stat_id))
 		
 	var ach_title := Label.new()
 	ach_title.text = "ACHIEVEMENTS"
@@ -1713,6 +1740,89 @@ func _build_profile_panel() -> void:
 		r_vbox.add_child(a_lbl)
 		
 	body_hbox.add_child(right_panel)
+	_refresh_profile_panel()
+
+func _make_profile_stat_tile(parent: Container, title_text: String) -> Label:
+	var tile := PanelContainer.new()
+	tile.custom_minimum_size = Vector2(230, 72)
+	tile.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.018, 0.022, 0.052, 0.64), Color(0.55, 0.48, 0.88, 0.30), 8, 1))
+	parent.add_child(tile)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 5)
+	tile.add_child(box)
+	var title := Label.new()
+	title.text = title_text
+	HomeTheme.make_font_settings(title, 11, HomeTheme.MUTED)
+	box.add_child(title)
+	var value := Label.new()
+	HomeTheme.make_font_settings(value, 17, Color(0.92, 0.96, 1.0))
+	box.add_child(value)
+	return value
+
+func _profile_stat_title(stat_id: String) -> String:
+	match stat_id:
+		"total_chips":
+			return "TOTAL CHIPS"
+		"total_sessions_played":
+			return "TOTAL SESSIONS"
+		"total_hands_played":
+			return "TOTAL HANDS"
+		"total_hands_won":
+			return "HANDS WON"
+		"win_rate":
+			return "WIN RATE"
+		"total_profit":
+			return "TOTAL PROFIT"
+		"biggest_pot":
+			return "BIGGEST POT"
+		"best_session_profit":
+			return "BEST SESSION PROFIT"
+		"best_hand_desc":
+			return "BEST HAND"
+		_:
+			return stat_id.to_upper()
+
+func _refresh_profile_panel() -> void:
+	if _player_profile.is_empty():
+		_player_profile = ProfileServiceScript.new().get_current_profile()
+	if _profile_name_label != null:
+		_profile_name_label.text = PlayerProfileScript.get_player_name(_player_profile)
+	if _profile_level_label != null:
+		_profile_level_label.text = "Level %d  |  XP %d / %d" % [
+			int(_player_profile.get("level", PlayerProfileScript.DEFAULT_LEVEL)),
+			int(_player_profile.get("xp_current", PlayerProfileScript.DEFAULT_XP_CURRENT)),
+			int(_player_profile.get("xp_max", PlayerProfileScript.DEFAULT_XP_MAX)),
+		]
+	if _profile_avatar_rect != null:
+		var texture: Texture2D = AvatarLibraryScript.get_avatar_by_id(PlayerProfileScript.get_avatar_id(_player_profile))
+		if texture == null:
+			var avatar_path := String(_player_profile.get("avatar", ""))
+			if avatar_path != "" and ResourceLoader.exists(avatar_path):
+				texture = load(avatar_path) as Texture2D
+		_profile_avatar_rect.texture = texture
+		_profile_avatar_rect.visible = texture != null
+	_set_profile_stat("total_chips", _format_number(PlayerProfileScript.get_total_chips(_player_profile)))
+	_set_profile_stat("total_sessions_played", _format_number(int(_player_profile.get("total_sessions_played", 0))))
+	_set_profile_stat("total_hands_played", _format_number(int(_player_profile.get("total_hands_played", 0))))
+	_set_profile_stat("total_hands_won", _format_number(int(_player_profile.get("total_hands_won", 0))))
+	_set_profile_stat("win_rate", "%.1f%%" % (PlayerProfileScript.win_rate(_player_profile) * 100.0))
+	_set_profile_stat("total_profit", _signed_number(int(_player_profile.get("total_profit", 0))))
+	_set_profile_stat("biggest_pot", _format_number(int(_player_profile.get("biggest_pot", 0))))
+	_set_profile_stat("best_session_profit", _signed_number(int(_player_profile.get("best_session_profit", 0))))
+	var best_hand := String(_player_profile.get("best_hand_desc", ""))
+	_set_profile_stat("best_hand_desc", best_hand if best_hand != "" else "-")
+
+func _set_profile_stat(stat_id: String, value: String) -> void:
+	var label: Label = _profile_stats_labels.get(stat_id) as Label
+	if label != null:
+		label.text = value
+
+func _signed_number(value: int) -> String:
+	if value == 0:
+		return "0"
+	if value > 0:
+		return "+%s" % _format_number(value)
+	return "-%s" % _format_number(abs(value))
 
 func _build_settings_panel() -> void:
 	_settings_panel = PanelContainer.new()

@@ -1353,9 +1353,9 @@ func _apply_session_profit_to_profile() -> void:
 		return
 	_profile_settlement_applied = true
 	var service := ProfileServiceScript.new()
-	var profile := service.apply_session_profit(_table_session.session_profit)
+	var profile := service.apply_session_result(_table_session.to_dict())
 	TableLaunchContext.set_player_profile(profile)
-	_append_session_log("Profile chips updated by %+d." % _table_session.session_profit)
+	_append_session_log("Profile session stats updated by %+d." % _table_session.session_profit)
 
 
 func _reset_launch_context_session_for_play_again() -> void:
