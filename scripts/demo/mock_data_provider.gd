@@ -2,6 +2,7 @@ extends RefCounted
 class_name MockDataProvider
 
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
+const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const LobbyModeScript := preload("res://scripts/data/lobby_mode.gd")
 const DailyBonusStateScript := preload("res://scripts/data/daily_bonus_state.gd")
 const RoomInfoScript := preload("res://scripts/data/room_info.gd")
@@ -72,7 +73,7 @@ static func _mock_player_profile():
 		PlayerProfileScript.DEFAULT_PLAYER_ID,
 		LOCAL_AVATAR_ID,
 		LOCAL_AVATAR_ID,
-		[LOCAL_AVATAR_ID]
+		AvatarLibraryScript.default_unlocked_avatar_ids()
 	)
 
 static func _mock_lobby_modes() -> Array:

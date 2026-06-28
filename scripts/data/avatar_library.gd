@@ -2,6 +2,14 @@ extends RefCounted
 class_name AvatarLibrary
 
 const AVATAR_ROOT := "res://assets/playersAv_cut/"
+const DEFAULT_UNLOCKED_CANDIDATES := ["4_05", "1_01", "1_02", "2_01", "6_05"]
+const UNLOCK_RULE_AVATARS := {
+	"first_session_complete": "1_03",
+	"first_hand_win": "3_01",
+	"five_hands_won": "7_01",
+	"big_pot_5000": "10_03",
+	"profitable_session": "8_01",
+}
 
 static var _avatar_ids: Array[String] = []
 static var _texture_cache: Dictionary = {}
@@ -63,6 +71,34 @@ static func default_avatar_id() -> String:
 	if ids.is_empty():
 		return ""
 	return ids[0]
+
+
+static func default_unlocked_avatar_ids() -> Array[String]:
+	var result: Array[String] = []
+	for candidate in DEFAULT_UNLOCKED_CANDIDATES:
+		var avatar_id: String = String(candidate)
+		if ResourceLoader.exists(avatar_path(avatar_id)):
+			result.append(avatar_id)
+	if result.is_empty():
+		var ids: Array[String] = load_all_avatars()
+		for index in range(min(ids.size(), 5)):
+			result.append(ids[index])
+	return result
+
+
+static func resolve_unlock_avatar_id(rule_id: String, unlocked_ids: Array) -> String:
+	var preferred: String = String(UNLOCK_RULE_AVATARS.get(rule_id, ""))
+	if preferred != "":
+		if ResourceLoader.exists(avatar_path(preferred)):
+			return "" if unlocked_ids.has(preferred) else preferred
+		for avatar_id in load_all_avatars():
+			if not unlocked_ids.has(avatar_id):
+				return avatar_id
+		return ""
+	for avatar_id in load_all_avatars():
+		if not unlocked_ids.has(avatar_id):
+			return avatar_id
+	return ""
 
 
 static func avatar_id_for_seat(seat_id: int, _is_local: bool = false) -> String:

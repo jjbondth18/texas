@@ -91,11 +91,14 @@ var _session_result_panel: PanelContainer
 var _session_result_text: RichTextLabel
 var _session_result_avatar: TextureRect
 var _session_result_name_label: Label
+var _session_unlock_avatar: TextureRect
+var _session_unlock_label: Label
 var _session_play_again_hint_label: Label
 var _session_play_again_button: Button
 var _recorded_session_hand_ids := {}
 var _session_started := false
 var _profile_settlement_applied := false
+var _session_unlocked_avatar_ids: Array[String] = []
 
 func _ready() -> void:
 	_hide_editor_guides(self)
@@ -1101,6 +1104,7 @@ func _configure_table_session_from_launch_context() -> void:
 	_auto_next_hand_enabled = _table_session.mode != TableSessionScript.MODE_TRAINING
 	_session_log.clear()
 	_recorded_session_hand_ids.clear()
+	_session_unlocked_avatar_ids.clear()
 	_session_started = false
 	_profile_settlement_applied = false
 	_append_session_log("Table session ready.")
@@ -1248,6 +1252,24 @@ func _build_session_result_panel() -> void:
 		_session_result_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_session_result_text.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		column.add_child(_session_result_text)
+		var unlock_row := HBoxContainer.new()
+		unlock_row.name = "SessionUnlockRow"
+		unlock_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		unlock_row.add_theme_constant_override("separation", 12)
+		column.add_child(unlock_row)
+		_session_unlock_avatar = TextureRect.new()
+		_session_unlock_avatar.name = "SessionUnlockAvatar"
+		_session_unlock_avatar.custom_minimum_size = Vector2(54, 54)
+		_session_unlock_avatar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		_session_unlock_avatar.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		_session_unlock_avatar.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+		_session_unlock_avatar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		unlock_row.add_child(_session_unlock_avatar)
+		_session_unlock_label = Label.new()
+		_session_unlock_label.name = "SessionUnlockLabel"
+		_session_unlock_label.add_theme_font_size_override("font_size", 15)
+		_session_unlock_label.add_theme_color_override("font_color", Color(0.35, 0.95, 1.0, 0.96))
+		unlock_row.add_child(_session_unlock_label)
 		_session_play_again_hint_label = Label.new()
 		_session_play_again_hint_label.name = "PlayAgainHintLabel"
 		_session_play_again_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1275,6 +1297,8 @@ func _build_session_result_panel() -> void:
 		_session_result_text = _session_result_panel.find_child("SessionResultText", true, false) as RichTextLabel
 		_session_result_avatar = _session_result_panel.find_child("SessionResultAvatar", true, false) as TextureRect
 		_session_result_name_label = _session_result_panel.find_child("SessionResultPlayerName", true, false) as Label
+		_session_unlock_avatar = _session_result_panel.find_child("SessionUnlockAvatar", true, false) as TextureRect
+		_session_unlock_label = _session_result_panel.find_child("SessionUnlockLabel", true, false) as Label
 		_session_play_again_hint_label = _session_result_panel.find_child("PlayAgainHintLabel", true, false) as Label
 		_session_play_again_button = _session_result_panel.find_child("PlayAgainButton", true, false) as Button
 	_session_result_panel.visible = false
@@ -1301,6 +1325,16 @@ func _show_session_result_panel() -> void:
 		var avatar_texture: Texture2D = AvatarLibraryScript.get_avatar_by_id(PlayerProfileScript.get_avatar_id(profile))
 		_session_result_avatar.texture = avatar_texture
 		_session_result_avatar.visible = avatar_texture != null
+	if _session_unlock_label != null and _session_unlock_avatar != null:
+		if _session_unlocked_avatar_ids.is_empty():
+			_session_unlock_label.visible = false
+			_session_unlock_avatar.visible = false
+		else:
+			var unlocked_id: String = _session_unlocked_avatar_ids[0]
+			_session_unlock_label.text = "New Avatar Unlocked!  %s" % unlocked_id
+			_session_unlock_label.visible = true
+			_session_unlock_avatar.texture = AvatarLibraryScript.get_avatar_by_id(unlocked_id)
+			_session_unlock_avatar.visible = _session_unlock_avatar.texture != null
 	var profit_color := "#35f5c8" if _table_session.session_profit >= 0 else "#ff4f9a"
 	var reason: String = _table_session.end_reason if _table_session.end_reason != "" else "Session ended"
 	_session_result_text.text = "\n".join([
@@ -1354,6 +1388,7 @@ func _apply_session_profit_to_profile() -> void:
 	_profile_settlement_applied = true
 	var service := ProfileServiceScript.new()
 	var profile := service.apply_session_result(_table_session.to_dict())
+	_session_unlocked_avatar_ids = service.get_last_unlocked_avatar_ids()
 	TableLaunchContext.set_player_profile(profile)
 	_append_session_log("Profile session stats updated by %+d." % _table_session.session_profit)
 

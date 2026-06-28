@@ -80,6 +80,8 @@ var _profile_avatar_rect: TextureRect
 var _profile_name_label: Label
 var _profile_level_label: Label
 var _profile_stats_labels: Dictionary = {}
+var _profile_avatar_grid: GridContainer
+var _profile_avatar_buttons: Dictionary = {}
 var _quick_play_setup_panel: PanelContainer
 var _quick_play_setup_avatar: TextureRect
 var _quick_play_setup_name_label: Label
@@ -1723,6 +1725,22 @@ func _build_profile_panel() -> void:
 		"best_hand_desc",
 	]:
 		_profile_stats_labels[stat_id] = _make_profile_stat_tile(stats_grid, _profile_stat_title(stat_id))
+
+	var gallery_title := Label.new()
+	gallery_title.text = "AVATAR GALLERY"
+	HomeTheme.make_font_settings(gallery_title, 16, HomeTheme.PURPLE)
+	r_vbox.add_child(gallery_title)
+	var gallery_scroll := ScrollContainer.new()
+	gallery_scroll.custom_minimum_size = Vector2(0, 170)
+	gallery_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	gallery_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	r_vbox.add_child(gallery_scroll)
+	_profile_avatar_grid = GridContainer.new()
+	_profile_avatar_grid.columns = 6
+	_profile_avatar_grid.add_theme_constant_override("h_separation", 10)
+	_profile_avatar_grid.add_theme_constant_override("v_separation", 10)
+	gallery_scroll.add_child(_profile_avatar_grid)
+	_build_avatar_gallery()
 		
 	var ach_title := Label.new()
 	ach_title.text = "ACHIEVEMENTS"
@@ -1811,11 +1829,78 @@ func _refresh_profile_panel() -> void:
 	_set_profile_stat("best_session_profit", _signed_number(int(_player_profile.get("best_session_profit", 0))))
 	var best_hand := String(_player_profile.get("best_hand_desc", ""))
 	_set_profile_stat("best_hand_desc", best_hand if best_hand != "" else "-")
+	_refresh_avatar_gallery()
 
 func _set_profile_stat(stat_id: String, value: String) -> void:
 	var label: Label = _profile_stats_labels.get(stat_id) as Label
 	if label != null:
 		label.text = value
+
+func _build_avatar_gallery() -> void:
+	if _profile_avatar_grid == null:
+		return
+	_profile_avatar_buttons.clear()
+	for avatar_id in AvatarLibraryScript.load_all_avatars():
+		var button := Button.new()
+		button.name = "Avatar_%s" % avatar_id
+		button.text = avatar_id
+		button.custom_minimum_size = Vector2(96, 118)
+		button.icon = AvatarLibraryScript.get_avatar_by_id(avatar_id)
+		button.expand_icon = true
+		button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		button.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+		button.clip_text = true
+		button.tooltip_text = avatar_id
+		button.focus_mode = Control.FOCUS_NONE
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		button.pressed.connect(_on_avatar_selected.bind(avatar_id))
+		_profile_avatar_grid.add_child(button)
+		_profile_avatar_buttons[avatar_id] = button
+	_refresh_avatar_gallery()
+
+func _refresh_avatar_gallery() -> void:
+	var unlocked: Array = Array(_player_profile.get("unlocked_avatar_ids", []))
+	var selected_id: String = PlayerProfileScript.get_avatar_id(_player_profile)
+	for avatar_key in _profile_avatar_buttons.keys():
+		var avatar_id: String = String(avatar_key)
+		var button: Button = _profile_avatar_buttons[avatar_key] as Button
+		if button == null:
+			continue
+		var is_unlocked: bool = unlocked.has(avatar_id)
+		var is_selected: bool = avatar_id == selected_id
+		button.disabled = not is_unlocked
+		button.text = "%s%s" % [avatar_id, "\nSELECTED" if is_selected else ("\nLOCKED" if not is_unlocked else "")]
+		button.modulate = Color(1, 1, 1, 1) if is_unlocked else Color(0.38, 0.38, 0.46, 0.70)
+		button.add_theme_stylebox_override("normal", _avatar_gallery_button_style(is_selected, is_unlocked, false))
+		button.add_theme_stylebox_override("hover", _avatar_gallery_button_style(is_selected, is_unlocked, true))
+		button.add_theme_stylebox_override("pressed", _avatar_gallery_button_style(is_selected, is_unlocked, true))
+		button.add_theme_stylebox_override("disabled", _avatar_gallery_button_style(false, false, false))
+		button.add_theme_color_override("font_color", Color(0.92, 0.96, 1.0, 0.92))
+		button.add_theme_color_override("font_disabled_color", Color(0.52, 0.54, 0.64, 0.86))
+
+func _avatar_gallery_button_style(selected: bool, unlocked: bool, hover: bool) -> StyleBoxFlat:
+	var bg := Color(0.018, 0.022, 0.052, 0.70)
+	var border := Color(0.40, 0.44, 0.70, 0.26)
+	if selected:
+		bg = Color(0.08, 0.025, 0.10, 0.88)
+		border = Color(0.35, 0.95, 1.0, 0.90)
+	elif not unlocked:
+		bg = Color(0.008, 0.010, 0.020, 0.58)
+		border = Color(0.18, 0.20, 0.30, 0.22)
+	elif hover:
+		bg = Color(0.035, 0.040, 0.085, 0.84)
+		border = Color(0.82, 0.58, 1.0, 0.62)
+	var style := HomeTheme.make_button_style(bg, border, 10)
+	style.shadow_color = Color(border.r, border.g, border.b, 0.18 if selected else 0.04)
+	style.shadow_size = 10 if selected else 4
+	return style
+
+func _on_avatar_selected(avatar_id: String) -> void:
+	var service := ProfileServiceScript.new()
+	_player_profile = service.select_avatar(avatar_id)
+	if _top_bar != null:
+		_top_bar.configure(_player_profile)
+	_refresh_profile_panel()
 
 func _signed_number(value: int) -> String:
 	if value == 0:

@@ -2,6 +2,7 @@ extends RefCounted
 class_name PlayerProfile
 
 const CurrencyBalanceScript := preload("res://scripts/data/currency_balance.gd")
+const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 
 const DEFAULT_PLAYER_ID := "local_player"
 const DEFAULT_PLAYER_NAME := "Luna0581"
@@ -56,9 +57,16 @@ func _init(
 	selected_avatar_id = profile_selected_avatar_id if profile_selected_avatar_id != "" else avatar_id
 	unlocked_avatar_ids.clear()
 	for id in profile_unlocked_avatar_ids:
-		unlocked_avatar_ids.append(String(id))
+		var unlocked_id: String = String(id)
+		if unlocked_id != "" and not unlocked_avatar_ids.has(unlocked_id):
+			unlocked_avatar_ids.append(unlocked_id)
 	if unlocked_avatar_ids.is_empty():
-		unlocked_avatar_ids.append(selected_avatar_id)
+		unlocked_avatar_ids.append_array(AvatarLibraryScript.default_unlocked_avatar_ids())
+	if unlocked_avatar_ids.is_empty():
+		unlocked_avatar_ids.append(DEFAULT_AVATAR_ID)
+	if selected_avatar_id == "" or not unlocked_avatar_ids.has(selected_avatar_id):
+		selected_avatar_id = unlocked_avatar_ids[0]
+	avatar_id = selected_avatar_id
 	balance = CurrencyBalanceScript.new(player_chips, player_gems)
 	total_sessions_played = int(profile_stats.get("total_sessions_played", 0))
 	total_hands_played = int(profile_stats.get("total_hands_played", 0))
