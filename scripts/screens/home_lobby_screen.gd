@@ -86,9 +86,14 @@ var _quick_play_setup_panel: PanelContainer
 var _quick_play_setup_avatar: TextureRect
 var _quick_play_setup_name_label: Label
 var _quick_play_setup_chips_label: Label
+var _quick_mode_buttons: Dictionary = {}
+var _quick_chip_settings_container: VBoxContainer
+var _quick_gem_placeholder_container: VBoxContainer
+var _quick_start_button: Button
 var _quick_buy_in_buttons: Dictionary = {}
 var _quick_blinds_buttons: Dictionary = {}
 var _quick_hand_count_buttons: Dictionary = {}
+var _quick_play_mode := "chip"
 var _selected_quick_buy_in := 20000
 var _selected_quick_small_blind := 25
 var _selected_quick_big_blind := 50
@@ -409,7 +414,7 @@ func _build_quick_play_setup_panel() -> void:
 	_quick_play_setup_panel.add_child(margin)
 
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 18)
+	column.add_theme_constant_override("separation", 14)
 	margin.add_child(column)
 
 	var title := Label.new()
@@ -417,6 +422,8 @@ func _build_quick_play_setup_panel() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	HomeTheme.make_font_settings(title, 28, HomeTheme.TEXT)
 	column.add_child(title)
+
+	_build_quick_mode_switch(column)
 
 	var profile_row := HBoxContainer.new()
 	profile_row.add_theme_constant_override("separation", 14)
@@ -445,9 +452,14 @@ func _build_quick_play_setup_panel() -> void:
 	HomeTheme.make_font_settings(_quick_play_setup_chips_label, 15, HomeTheme.GOLD)
 	profile_text.add_child(_quick_play_setup_chips_label)
 
-	_build_quick_setup_section(column, "BUY-IN", _quick_buy_in_buttons, [5000, 10000, 20000, 50000], _select_quick_buy_in)
-	_build_quick_blinds_section(column)
-	_build_quick_setup_section(column, "HAND COUNT", _quick_hand_count_buttons, [5, 10, 20, 999], _select_quick_hand_count)
+	_quick_chip_settings_container = VBoxContainer.new()
+	_quick_chip_settings_container.add_theme_constant_override("separation", 12)
+	column.add_child(_quick_chip_settings_container)
+	_build_quick_setup_section(_quick_chip_settings_container, "BUY-IN", _quick_buy_in_buttons, [5000, 10000, 20000, 50000], _select_quick_buy_in)
+	_build_quick_blinds_section(_quick_chip_settings_container)
+	_build_quick_setup_section(_quick_chip_settings_container, "HAND COUNT", _quick_hand_count_buttons, [5, 10, 20, 999], _select_quick_hand_count)
+
+	_build_quick_gem_placeholder(column)
 
 	var button_row := HBoxContainer.new()
 	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -455,6 +467,7 @@ func _build_quick_play_setup_panel() -> void:
 	column.add_child(button_row)
 
 	var start_button := Button.new()
+	_quick_start_button = start_button
 	start_button.text = "START TABLE"
 	start_button.custom_minimum_size = Vector2(180, 48)
 	start_button.focus_mode = Control.FOCUS_NONE
@@ -475,6 +488,57 @@ func _build_quick_play_setup_panel() -> void:
 	cancel_button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.035, 0.04, 0.085, 0.82), Color(0.78, 0.58, 1.0, 0.55), 22))
 	cancel_button.pressed.connect(_hide_quick_play_setup)
 	button_row.add_child(cancel_button)
+
+
+func _build_quick_mode_switch(parent: VBoxContainer) -> void:
+	var switch_row := HBoxContainer.new()
+	switch_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	switch_row.add_theme_constant_override("separation", 8)
+	parent.add_child(switch_row)
+
+	_add_quick_mode_button(switch_row, "chip", "CHIP TABLE")
+	_add_quick_mode_button(switch_row, "gem", "GEM MATCH")
+
+
+func _add_quick_mode_button(parent: HBoxContainer, mode: String, label: String) -> void:
+	var button := Button.new()
+	button.text = label
+	button.custom_minimum_size = Vector2(150, 36)
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.add_theme_font_size_override("font_size", 12)
+	button.pressed.connect(func() -> void: _select_quick_play_mode(mode))
+	_quick_mode_buttons[mode] = button
+	parent.add_child(button)
+
+
+func _build_quick_gem_placeholder(parent: VBoxContainer) -> void:
+	_quick_gem_placeholder_container = VBoxContainer.new()
+	_quick_gem_placeholder_container.visible = false
+	_quick_gem_placeholder_container.custom_minimum_size = Vector2(1, 204)
+	_quick_gem_placeholder_container.alignment = BoxContainer.ALIGNMENT_CENTER
+	_quick_gem_placeholder_container.add_theme_constant_override("separation", 10)
+	parent.add_child(_quick_gem_placeholder_container)
+
+	var mode_label := Label.new()
+	mode_label.text = "GEM MATCH"
+	mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HomeTheme.make_font_settings(mode_label, 20, Color(1.0, 0.78, 0.98))
+	_quick_gem_placeholder_container.add_child(mode_label)
+
+	var coming_soon_label := Label.new()
+	coming_soon_label.text = "Coming Soon"
+	coming_soon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HomeTheme.make_font_settings(coming_soon_label, 16, HomeTheme.GOLD)
+	_quick_gem_placeholder_container.add_child(coming_soon_label)
+
+	var detail_label := Label.new()
+	detail_label.text = "Gem matches require secure server matchmaking and will be available in a future update."
+	detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	detail_label.custom_minimum_size = Vector2(520, 0)
+	HomeTheme.make_font_settings(detail_label, 14, HomeTheme.MUTED)
+	_quick_gem_placeholder_container.add_child(detail_label)
 
 
 func _build_quick_setup_section(parent: VBoxContainer, title_text: String, buttons: Dictionary, values: Array, callback: Callable) -> void:
@@ -714,6 +778,7 @@ func _show_quick_play_setup() -> void:
 		return
 	_reload_player_profile()
 	_update_quick_play_setup_profile()
+	_quick_play_mode = "chip"
 	_select_default_quick_buy_in()
 	_selected_quick_small_blind = 25
 	_selected_quick_big_blind = 50
@@ -731,6 +796,8 @@ func _hide_quick_play_setup() -> void:
 
 
 func _start_quick_play_from_setup() -> void:
+	if _quick_play_mode != "chip":
+		return
 	var setup_config := {
 		"buy_in": _selected_quick_buy_in,
 		"small_blind": _selected_quick_small_blind,
@@ -794,7 +861,29 @@ func _select_quick_hand_count(value: int) -> void:
 	_refresh_quick_play_setup_options()
 
 
+func _select_quick_play_mode(mode: String) -> void:
+	if mode != "chip" and mode != "gem":
+		return
+	_quick_play_mode = mode
+	_refresh_quick_play_setup_options()
+
+
 func _refresh_quick_play_setup_options() -> void:
+	var is_chip_mode := _quick_play_mode == "chip"
+	if _quick_chip_settings_container != null:
+		_quick_chip_settings_container.visible = is_chip_mode
+	if _quick_gem_placeholder_container != null:
+		_quick_gem_placeholder_container.visible = not is_chip_mode
+	if _quick_start_button != null:
+		_quick_start_button.disabled = not is_chip_mode
+		_quick_start_button.text = "START TABLE" if is_chip_mode else "COMING SOON"
+		_quick_start_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if is_chip_mode else Control.CURSOR_ARROW
+		_quick_start_button.add_theme_stylebox_override("disabled", HomeTheme.make_button_style(Color(0.08, 0.06, 0.10, 0.62), Color(0.76, 0.52, 0.9, 0.28), 22))
+		_quick_start_button.add_theme_color_override("font_disabled_color", Color(0.78, 0.72, 0.86, 0.72))
+	for key_item in _quick_mode_buttons.keys():
+		var mode := String(key_item)
+		var button: Button = _quick_mode_buttons[key_item] as Button
+		_apply_quick_mode_style(button, mode == _quick_play_mode)
 	var total_chips := PlayerProfileScript.get_total_chips(_player_profile)
 	for key_item in _quick_buy_in_buttons.keys():
 		var value: int = int(key_item)
@@ -815,6 +904,18 @@ func _refresh_quick_play_setup_options() -> void:
 		if button == null:
 			continue
 		_apply_quick_option_style(button, value == _selected_quick_max_hands, false)
+
+
+func _apply_quick_mode_style(button: Button, selected: bool) -> void:
+	if button == null:
+		return
+	var bg := Color(0.20, 0.06, 0.17, 0.76) if selected else Color(0.018, 0.022, 0.052, 0.64)
+	var border := Color(1.0, 0.0, 0.5, 0.95) if selected else Color(0.55, 0.42, 0.95, 0.38)
+	var font := Color(1.0, 0.92, 0.98, 1.0) if selected else Color(0.70, 0.74, 0.92, 0.88)
+	button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(bg, border, 18))
+	button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.30, 0.10, 0.25, 0.86), Color(1.0, 0.0, 0.5, 1.0), 18))
+	button.add_theme_color_override("font_color", font)
+	button.add_theme_color_override("font_hover_color", Color(1.0, 0.95, 1.0, 1.0))
 
 
 func _apply_quick_option_style(button: Button, selected: bool, disabled: bool) -> void:

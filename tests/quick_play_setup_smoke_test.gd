@@ -13,6 +13,10 @@ func _initialize() -> void:
 
 	var panel: PanelContainer = home.get("_quick_play_setup_panel") as PanelContainer
 	_require(panel != null and panel.visible, "Quick Play must show setup panel instead of opening table immediately.")
+	_require(String(home.get("_quick_play_mode")) == "chip", "Quick Play setup must default to Chip Table mode.")
+
+	var mode_buttons: Dictionary = Dictionary(home.get("_quick_mode_buttons"))
+	_require(mode_buttons.has("chip") and mode_buttons.has("gem"), "Quick Play setup must offer Chip Table and Gem Match entries.")
 
 	var buy_in_buttons: Dictionary = Dictionary(home.get("_quick_buy_in_buttons"))
 	var high_buy_in_button: Button = buy_in_buttons.get(50000) as Button
@@ -29,6 +33,14 @@ func _initialize() -> void:
 	_require(int(home.get("_selected_quick_small_blind")) == 50, "Selected small blind must update.")
 	_require(int(home.get("_selected_quick_big_blind")) == 100, "Selected big blind must update.")
 	_require(int(home.get("_selected_quick_max_hands")) == 20, "Selected hand count must update.")
+
+	home.call("_select_quick_play_mode", "gem")
+	var chip_settings: VBoxContainer = home.get("_quick_chip_settings_container") as VBoxContainer
+	var gem_placeholder: VBoxContainer = home.get("_quick_gem_placeholder_container") as VBoxContainer
+	var start_button: Button = home.get("_quick_start_button") as Button
+	_require(chip_settings != null and not chip_settings.visible, "Gem Match must hide Chip Table settings.")
+	_require(gem_placeholder != null and gem_placeholder.visible, "Gem Match must show the coming soon placeholder.")
+	_require(start_button != null and start_button.disabled and start_button.text == "COMING SOON", "Gem Match must disable Start Table.")
 
 	print("Quick play setup smoke test passed.")
 	quit(0)
