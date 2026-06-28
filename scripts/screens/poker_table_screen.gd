@@ -1170,6 +1170,7 @@ func _apply_local_profile_to_snapshot(target_snapshot: Dictionary) -> void:
 func _build_top_status_bar() -> void:
 	if _top_right_action_bar != null:
 		return
+	_hide_legacy_top_center_bars()
 	_build_top_action_bar()
 	return
 
@@ -1383,7 +1384,7 @@ func _build_top_action_bar() -> void:
 	_top_bar_root.visible = true
 	_top_bar_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-	for node_name in ["BackgroundGlass", "LeftContainer", "CenterContainer", "RightContainer"]:
+	for node_name in ["BackgroundGlass", "LeftContainer", "CenterContainer", "RightContainer", "CenterSegmentedBar", "LeftSystemPill"]:
 		var old_node := _top_bar_root.get_node_or_null(node_name) as CanvasItem
 		if old_node != null:
 			old_node.visible = false
@@ -1421,6 +1422,22 @@ func _build_top_action_bar() -> void:
 	_build_popover_layer()
 	_build_settings_panel()
 	_build_add_chips_panel()
+
+func _hide_legacy_top_center_bars() -> void:
+	for root_name in ["TopBar", "TopBarRoot", "TopRoot"]:
+		var root := _content_root.get_node_or_null(root_name) as Node
+		if root == null:
+			continue
+		for node_name in ["CenterSegmentedBar", "CenterContainer", "BackgroundGlass", "LeftContainer", "RightContainer", "LeftSystemPill"]:
+			var legacy_node := root.get_node_or_null(node_name) as CanvasItem
+			if legacy_node != null:
+				legacy_node.visible = false
+	_top_status_bar = null
+	_top_table_label = null
+	_top_blinds_label = null
+	_top_hand_id_label = null
+	_top_dealer_label = null
+	_top_time_label = null
 
 
 func _clear_children(node: Node) -> void:
