@@ -53,3 +53,11 @@ All real table launches from the Home/Lobby UI pass through the same lightweight
 The transition is presentation only. It does not change public table registry selection, practice-chip isolation, account chip/gem balances, session settlement, or table context data.
 
 Gem Match remains a reserved server-required mode and does not enter the launch flow.
+
+## Mode Entry Labels
+
+- Quick Chip: auto-joins an available public chip table with account chips.
+- Table Browser: manual public chip table list for browsing, creating, and joining public tables.
+- Friends Room: private room code flow for invited friends; private rooms are not public tables.
+- Training: AI practice mode using practice chips; results do not affect account balance or ranked stats.
+- Gem Match: future secure server mode; currently reserved and unavailable.

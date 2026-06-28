@@ -46,6 +46,44 @@ func _initialize() -> void:
 	backend.create_training_table(profile)
 	_require(PublicTableRegistryScript.list_public_tables().is_empty(), "training table creation must not register a public table")
 
+	PublicTableRegistryScript.add_mock_table({
+		"table_id": "mock_private",
+		"table_name": "Private Mock",
+		"table_type": "private_room",
+		"status": "waiting",
+		"current_players": 2,
+		"max_players": 9,
+	})
+	PublicTableRegistryScript.add_mock_table({
+		"table_id": "mock_training",
+		"table_name": "Training Mock",
+		"table_type": "training_ai",
+		"status": "waiting",
+		"current_players": 1,
+		"max_players": 9,
+	})
+	_require(PublicTableRegistryScript.list_public_tables().is_empty(), "mock private and training tables must be filtered from public list")
+
+	PublicTableRegistryScript.reset()
+	PublicTableRegistryScript.create_public_table({
+		"table_id": "no_quick_join",
+		"current_players": 8,
+		"allow_quick_join": false,
+	})
+	PublicTableRegistryScript.create_public_table({
+		"table_id": "quick_join_ok",
+		"current_players": 1,
+		"allow_quick_join": true,
+	})
+	var joined_quick_ok := backend.quick_join_public_table(profile, {})
+	_require(String(joined_quick_ok.get("table_id", "")) == "quick_join_ok", "quick_join must only choose public_chip tables with allow_quick_join")
+
+	var training_context := backend.create_training_table(profile)
+	_require(String(training_context.get("mode", "")) == "training", "training context must keep training mode")
+	_require(String(training_context.get("table_type", "")) == "training_ai", "training context must use training_ai table type")
+	_require(bool(training_context.get("uses_practice_chips", false)), "training context must use practice chips")
+	_require(not bool(training_context.get("affects_account_balance", true)), "training context must not affect account balance")
+
 	PublicTableRegistryScript.reset()
 	var home := HomeScene.instantiate()
 	root.add_child(home)

@@ -473,7 +473,7 @@ func _build_quick_play_setup_panel() -> void:
 	_quick_chip_settings_container.add_theme_constant_override("separation", 12)
 	column.add_child(_quick_chip_settings_container)
 	var chip_mode_note := Label.new()
-	chip_mode_note.text = "Quickly join an available public chip table with account chips."
+	chip_mode_note.text = "PUBLIC CHIP AUTO-JOIN\nQuickly join an available public chip table with account chips."
 	chip_mode_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	HomeTheme.make_font_settings(chip_mode_note, 13, HomeTheme.MUTED)
 	_quick_chip_settings_container.add_child(chip_mode_note)
@@ -1488,7 +1488,7 @@ func _build_friends_room_panel() -> void:
 	content.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "PRIVATE ROOM - SHARE THE ROOM CODE WITH FRIENDS"
+	sub.text = "PRIVATE CASUAL ROOM - SHARE THE ROOM CODE WITH FRIENDS"
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	content.add_child(sub)
 	var room_note := Label.new()
@@ -1508,7 +1508,7 @@ func _build_friends_room_panel() -> void:
 	_friends_room_id_label = _room_lobby_label("ROOM ID: -", 17, Color(1.0, 0.92, 0.72, 0.96))
 	_friends_room_seats_label = _room_lobby_label("SEATS: -", 15, Color(0.88, 0.92, 1.0, 0.92))
 	_friends_room_ready_label = _room_lobby_label("READY: -", 15, HomeTheme.PURPLE)
-	room_box.add_child(_room_lobby_label("PRIVATE ROOM", 13, HomeTheme.CYAN))
+	room_box.add_child(_room_lobby_label("PRIVATE CASUAL", 13, HomeTheme.CYAN))
 	room_box.add_child(_friends_room_id_label)
 	room_box.add_child(_friends_room_seats_label)
 	room_box.add_child(_friends_room_ready_label)

@@ -45,6 +45,9 @@ func create_friends_room(profile: Dictionary) -> Dictionary:
 	var room_id := "FR-%04d" % (1000 + (Time.get_ticks_msec() % 9000))
 	_current_context = _build_table_context("friends_room", "mock_friends_table_%s" % room_id, room_id, profile, false, true, 3, {})
 	_current_context["table_type"] = "private_room"
+	var table_session: Dictionary = Dictionary(_current_context.get("table_session", {}))
+	table_session["table_type"] = "private_room"
+	_current_context["table_session"] = table_session
 	_current_context["room_state"] = "waiting"
 	_current_context["ready_seats"] = [5]
 	return _current_context.duplicate(true)
@@ -52,6 +55,9 @@ func create_friends_room(profile: Dictionary) -> Dictionary:
 func join_room(room_id: String, profile: Dictionary) -> Dictionary:
 	_current_context = _build_table_context("friends_room", "mock_friends_table_%s" % room_id, room_id, profile, false, true, 3, {})
 	_current_context["table_type"] = "private_room"
+	var table_session: Dictionary = Dictionary(_current_context.get("table_session", {}))
+	table_session["table_type"] = "private_room"
+	_current_context["table_session"] = table_session
 	return _current_context.duplicate(true)
 
 func leave_room() -> void:
