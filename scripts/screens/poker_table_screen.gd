@@ -1335,11 +1335,12 @@ func _show_session_result_panel() -> void:
 			_session_unlock_label.visible = true
 			_session_unlock_avatar.texture = AvatarLibraryScript.get_avatar_by_id(unlocked_id)
 			_session_unlock_avatar.visible = _session_unlock_avatar.texture != null
+	var is_practice := _table_session.mode == TableSessionScript.MODE_TRAINING or _table_session.uses_practice_chips
 	var profit_color := "#35f5c8" if _table_session.session_profit >= 0 else "#ff4f9a"
 	var reason: String = _table_session.end_reason if _table_session.end_reason != "" else "Session ended"
-	_session_result_text.text = "\n".join([
+	var result_lines: Array[String] = [
 		"[center][font_size=30][color=%s][b]%+d[/b][/color][/font_size][/center]" % [profit_color, _table_session.session_profit],
-		"[center][color=#8fa8ff]Profit = Final Chips - Buy-in[/color][/center]",
+		"[center][color=#8fa8ff]%s[/color][/center]" % ("Practice chips only. Results do not affect your account balance." if is_practice else "Profit = Final Chips - Buy-in"),
 		"",
 		"[table=2][cell][color=#9aa8d8]Buy-in[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Final Chips[/color]\n[b]%s[/b][/cell]" % [
 			_format_chips(_table_session.buy_in),
@@ -1356,7 +1357,10 @@ func _show_session_result_panel() -> void:
 		"Best Hand: %s" % _table_session.best_hand_desc,
 		"Last Winner: %s" % _table_session.last_winner,
 		"End Reason: %s" % reason,
-	])
+	]
+	if is_practice:
+		result_lines.append("Training uses practice chips only. Results do not affect your account balance.")
+	_session_result_text.text = "\n".join(result_lines)
 	if _session_result_scrim != null:
 		_session_result_scrim.visible = true
 	_session_result_panel.visible = true
@@ -1386,6 +1390,10 @@ func _apply_session_profit_to_profile() -> void:
 	if _profile_settlement_applied or _table_session == null:
 		return
 	_profile_settlement_applied = true
+	if _table_session.mode == TableSessionScript.MODE_TRAINING or _table_session.uses_practice_chips or not _table_session.affects_account_balance:
+		_session_unlocked_avatar_ids.clear()
+		_append_session_log("Training results use practice chips only; account balance and stats were not updated.")
+		return
 	var service := ProfileServiceScript.new()
 	var profile := service.apply_session_result(_table_session.to_dict())
 	_session_unlocked_avatar_ids = service.get_last_unlocked_avatar_ids()
@@ -1426,6 +1434,8 @@ func _reset_launch_context_session_for_play_again() -> void:
 func _can_play_again() -> bool:
 	if _table_session == null:
 		return false
+	if _table_session.mode == TableSessionScript.MODE_TRAINING or _table_session.uses_practice_chips:
+		return true
 	var profile := ProfileServiceScript.new().get_current_profile()
 	return PlayerProfileScript.get_total_chips(profile) >= _table_session.buy_in
 
@@ -1708,6 +1718,7 @@ func _apply_launch_context(target_snapshot: Dictionary) -> void:
 		target_snapshot["hand_history"] = history
 		var messages: Array = Array(target_snapshot.get("system_messages", [])).duplicate()
 		messages.insert(0, "Training Mode: AI opponents, no network authority")
+		messages.insert(1, "Training uses practice chips only. Results do not affect your account balance.")
 		target_snapshot["system_messages"] = messages
 		var seats: Array = Array(target_snapshot.get("seats", [])).duplicate(true)
 		for i in seats.size():

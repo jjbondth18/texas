@@ -6,6 +6,9 @@ const MODE_TRAINING := "training"
 const MODE_FRIENDS_ROOM := "friends_room"
 
 var mode := MODE_QUICK_PLAY
+var table_type := MODE_QUICK_PLAY
+var uses_practice_chips := false
+var affects_account_balance := true
 var buy_in := 20000
 var starting_chips := 20000
 var current_table_chips := 20000
@@ -27,6 +30,9 @@ var last_win_amount := 0
 
 func configure_from_context(context: Dictionary) -> void:
 	mode = String(context.get("mode", MODE_QUICK_PLAY))
+	table_type = String(context.get("table_type", "training_ai" if mode == MODE_TRAINING else mode))
+	uses_practice_chips = bool(context.get("uses_practice_chips", mode == MODE_TRAINING))
+	affects_account_balance = bool(context.get("affects_account_balance", mode != MODE_TRAINING))
 	buy_in = int(context.get("buy_in", buy_in))
 	starting_chips = int(context.get("starting_chips", buy_in))
 	current_table_chips = int(context.get("current_table_chips", starting_chips))
@@ -94,6 +100,9 @@ func hand_count_text() -> String:
 func to_dict() -> Dictionary:
 	return {
 		"mode": mode,
+		"table_type": table_type,
+		"uses_practice_chips": uses_practice_chips,
+		"affects_account_balance": affects_account_balance,
 		"buy_in": buy_in,
 		"starting_chips": starting_chips,
 		"current_table_chips": current_table_chips,

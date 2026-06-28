@@ -26,6 +26,9 @@ func apply_session_profit(profit: int) -> Dictionary:
 	return get_current_profile()
 
 func apply_session_result(session_result: Dictionary) -> Dictionary:
+	if _is_practice_session_result(session_result):
+		_last_unlocked_avatar_ids.clear()
+		return get_current_profile()
 	var profile := get_current_profile()
 	var profit: int = int(session_result.get("session_profit", session_result.get("profit", 0)))
 	var total_chips: int = PlayerProfileScript.get_total_chips(profile)
@@ -45,6 +48,15 @@ func apply_session_result(session_result: Dictionary) -> Dictionary:
 	_last_unlocked_avatar_ids = _unlock_avatars_for_session(profile, session_result, previous_sessions, previous_hands_won)
 	save_current_profile(profile)
 	return get_current_profile()
+
+func _is_practice_session_result(session_result: Dictionary) -> bool:
+	if String(session_result.get("mode", "")) == "training":
+		return true
+	if String(session_result.get("table_type", "")) == "training_ai":
+		return true
+	if bool(session_result.get("uses_practice_chips", false)):
+		return true
+	return not bool(session_result.get("affects_account_balance", true))
 
 func select_avatar(avatar_id: String) -> Dictionary:
 	var profile := get_current_profile()
