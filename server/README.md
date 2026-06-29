@@ -133,6 +133,17 @@ To reset local development data, stop the server, delete `server/data/texas_dev.
 
 When Godot connects to the local server, the `hello` response includes the server profile, wallet, unlocked avatars, and daily login result. Godot applies those values to the local `ProfileService` cache so the lobby/top bar and table wallet displays prefer the SQLite-backed chips, gems, player name, and selected avatar. The first `hello` for a UTC day shows a lightweight `Daily bonus +1000 chips` message; reconnecting on the same UTC day does not award or display another bonus.
 
+Wallet chips and table chips are separate local development balances:
+
+- `wallet.chips` is the account-style balance stored in SQLite.
+- `seat.chips` / table chips are the chips currently committed to a table seat.
+- `sit_down` uses a fixed local-dev buy-in of `1000` chips. The server deducts that amount from `wallet.chips` and puts it on the seat as table chips. Client-provided buy-in values are ignored in this first version.
+- `add_table_chips` moves chips from the server wallet to the seated player's table stack. It is not a purchase or recharge, and it is only allowed while the table is waiting or between hands.
+- `cash_out` / `leave_seat` moves remaining table chips back to the server wallet and clears the seat. It is not allowed during an active hand in this first version.
+- Hand results only change table chips. The wallet is updated later when the player cashes out.
+
+This local wallet system still has no real-money payment, recharge, order, Store, Steam, ranking, cloud deployment, or production account flow.
+
 Local profile sync test:
 
 1. Start the server:

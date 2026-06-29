@@ -6,9 +6,11 @@ const CREATE_ROOM := "create_room"
 const JOIN_ROOM := "join_room"
 const SIT_DOWN := "sit_down"
 const LEAVE_SEAT := "leave_seat"
+const CASH_OUT := "cash_out"
 const READY := "ready"
 const START_HAND := "start_hand"
 const PLAYER_ACTION := "player_action"
+const ADD_TABLE_CHIPS := "add_table_chips"
 const GET_PROFILE := "get_profile"
 const TABLE_SNAPSHOT := "table_snapshot"
 const PRIVATE_SNAPSHOT := "private_snapshot"
@@ -52,6 +54,9 @@ static func sit_down(seat_index: int, buy_in: int = 5000) -> Dictionary:
 static func leave_seat() -> Dictionary:
 	return _message(LEAVE_SEAT)
 
+static func cash_out() -> Dictionary:
+	return _message(CASH_OUT)
+
 static func ready(is_ready: bool = true) -> Dictionary:
 	return _message(READY, {"ready": is_ready})
 
@@ -63,6 +68,9 @@ static func player_action(action: String, amount: int = 0) -> Dictionary:
 	if amount > 0:
 		data["amount"] = amount
 	return _message(PLAYER_ACTION, data)
+
+static func add_table_chips(amount: int) -> Dictionary:
+	return _message(ADD_TABLE_CHIPS, {"amount": amount})
 
 static func get_profile() -> Dictionary:
 	return _message(GET_PROFILE)

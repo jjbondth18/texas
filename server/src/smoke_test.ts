@@ -25,7 +25,8 @@ wss.on("connection", (ws) => {
     try {
       manager.handle(client.id, JSON.parse(raw.toString()) as ClientMessage);
     } catch (error) {
-      ws.send(JSON.stringify({ type: "error", error: error instanceof Error ? error.message : String(error) } satisfies ServerMessage));
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      ws.send(JSON.stringify({ type: "error", error: errorMessage, error_code: errorMessage } satisfies ServerMessage));
     }
   });
   ws.on("close", () => manager.disconnect(client.id));
@@ -47,6 +48,9 @@ send(cy, { type: "join_room", room_id: roomId });
 send(ada, { type: "sit_down", room_id: roomId, seat_index: 0, buy_in: 5000 });
 send(ben, { type: "sit_down", room_id: roomId, seat_index: 1, buy_in: 5000 });
 send(cy, { type: "sit_down", room_id: roomId, seat_index: 2, buy_in: 1200 });
+send(ada, { type: "add_table_chips", room_id: roomId, amount: 4000 });
+send(ben, { type: "add_table_chips", room_id: roomId, amount: 4000 });
+send(cy, { type: "add_table_chips", room_id: roomId, amount: 200 });
 send(ada, { type: "ready", room_id: roomId, ready: true });
 send(ben, { type: "ready", room_id: roomId, ready: true });
 send(cy, { type: "ready", room_id: roomId, ready: true });

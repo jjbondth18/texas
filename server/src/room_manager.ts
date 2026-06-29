@@ -23,6 +23,8 @@ interface Room {
   clients: Set<string>;
 }
 
+const TABLE_BUY_IN = 1000;
+
 export class RoomManager {
   private clients = new Map<string, Client>();
   private rooms = new Map<string, Room>();
@@ -82,12 +84,17 @@ export class RoomManager {
         this.recordLog(`${client.id} joined ${room.id}`);
         break;
       case "sit_down":
-        this.sitDownWithWallet(room, client, numberOr(message.seat_index, 0), numberOr(message.buy_in, 1000));
+        this.sitDownWithWallet(room, client, numberOr(message.seat_index, 0));
         this.recordLog(`${client.id} sat in ${room.id} seat=${numberOr(message.seat_index, 0)}`);
         break;
+      case "add_table_chips":
+        this.addTableChips(room, client, numberOr(message.amount, 0));
+        this.recordLog(`${client.id} added table chips amount=${numberOr(message.amount, 0)} in ${room.id}`);
+        break;
       case "leave_seat":
-        room.table.leaveSeat(client.id);
-        this.recordLog(`${client.id} left seat in ${room.id}`);
+      case "cash_out":
+        this.cashOut(room, client);
+        this.recordLog(`${client.id} cashed out in ${room.id}`);
         break;
       case "ready":
         room.table.setReady(client.id, message.ready ?? true);
@@ -168,6 +175,7 @@ export class RoomManager {
             player_id: seat.playerId,
             name: seat.name,
             chips: seat.chips,
+            table_chips: seat.chips,
             current_bet: seat.currentBet,
             contribution: seat.contribution,
             status: seat.status,
@@ -230,13 +238,38 @@ export class RoomManager {
     };
   }
 
-  private sitDownWithWallet(room: Room, client: Client, seatIndex: number, requestedBuyIn: number): void {
+  private sitDownWithWallet(room: Room, client: Client, seatIndex: number): void {
     const seat = room.table.getSeat(seatIndex);
     if (!seat || seat.playerId) throw new Error("seat is not available");
     this.wallets.ensure(client.id);
-    const buyIn = Math.max(1, Math.floor(requestedBuyIn || 1000));
-    this.wallets.deductChips(client.id, buyIn);
-    room.table.sitDown(toPlayer(client), seatIndex, buyIn);
+    const wallet = this.wallets.get(client.id);
+    if (!wallet || wallet.chips < TABLE_BUY_IN) throw new Error("insufficient_chips");
+    this.wallets.deductChips(client.id, TABLE_BUY_IN);
+    room.table.sitDown(toPlayer(client), seatIndex, TABLE_BUY_IN);
+    this.sendWalletSnapshot(client, room.id);
+  }
+
+  private addTableChips(room: Room, client: Client, amount: number): void {
+    const normalized = Math.floor(amount);
+    if (normalized <= 0) throw new Error("invalid_amount");
+    const seat = room.table.getSeatByPlayer(client.id);
+    if (!seat) throw new Error("not_seated");
+    if (!room.table.canMoveTableChips()) throw new Error("cannot_add_chips_during_hand");
+    this.wallets.ensure(client.id);
+    const wallet = this.wallets.get(client.id);
+    if (!wallet || wallet.chips < normalized) throw new Error("insufficient_chips");
+    this.wallets.deductChips(client.id, normalized);
+    room.table.addTableChips(client.id, normalized);
+    this.sendWalletSnapshot(client, room.id);
+  }
+
+  private cashOut(room: Room, client: Client): void {
+    const seat = room.table.getSeatByPlayer(client.id);
+    if (!seat) throw new Error("not_seated");
+    if (!room.table.canMoveTableChips()) throw new Error("cannot_cash_out_during_hand");
+    const result = room.table.cashOut(client.id);
+    this.wallets.refundTableChips(client.id, result.amount);
+    this.sendWalletSnapshot(client, room.id);
   }
 
   private recordHandResults(room: Room): void {
@@ -266,6 +299,11 @@ export class RoomManager {
 
   private send(client: Client, message: ServerMessage): void {
     if (client.ws && client.ws.readyState === client.ws.OPEN) client.ws.send(JSON.stringify(message));
+  }
+
+  private sendWalletSnapshot(client: Client, roomId?: string): void {
+    const wallet = this.wallets.get(client.id);
+    if (wallet) this.send(client, { type: "wallet_snapshot", player_id: client.id, room_id: roomId, wallet });
   }
 
   private mustClient(playerId: string): Client {

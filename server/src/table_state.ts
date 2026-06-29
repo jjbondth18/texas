@@ -119,6 +119,32 @@ export class TableState {
     Object.assign(seat, this.emptySeat(seat.seatIndex));
   }
 
+  canMoveTableChips(): boolean {
+    return ["waiting", "hand_over"].includes(this.phase);
+  }
+
+  addTableChips(playerId: string, amount: number): void {
+    const seat = this.getSeatByPlayer(playerId);
+    if (!seat) throw new Error("not_seated");
+    if (!this.canMoveTableChips()) throw new Error("cannot_add_chips_during_hand");
+    const normalized = Math.floor(amount);
+    if (normalized <= 0) throw new Error("invalid_amount");
+    seat.chips += normalized;
+    if (seat.status === "sit_out" && seat.chips > 0) seat.status = "sitting";
+    this.addLog(`${seat.name} adds ${normalized} chips to the table.`);
+  }
+
+  cashOut(playerId: string): { playerId: string; playerName: string; amount: number } {
+    const seat = this.getSeatByPlayer(playerId);
+    if (!seat) throw new Error("not_seated");
+    if (!this.canMoveTableChips()) throw new Error("cannot_cash_out_during_hand");
+    const amount = Math.max(0, Math.floor(seat.chips));
+    const playerName = seat.name;
+    Object.assign(seat, this.emptySeat(seat.seatIndex));
+    this.addLog(`${playerName} cashes out ${amount} table chips.`);
+    return { playerId, playerName, amount };
+  }
+
   setReady(playerId: string, ready: boolean): void {
     const seat = this.getSeatByPlayer(playerId);
     if (!seat) throw new Error("player is not seated");

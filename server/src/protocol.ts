@@ -4,12 +4,20 @@ export type ClientMessageType =
   | "join_room"
   | "sit_down"
   | "leave_seat"
+  | "cash_out"
   | "ready"
   | "start_hand"
+  | "add_table_chips"
   | "player_action"
   | "get_profile";
 
 export type ServerMessageType = "hello" | "table_snapshot" | "private_snapshot" | "profile_snapshot" | "wallet_snapshot" | "error";
+export type ErrorCode =
+  | "insufficient_chips"
+  | "not_seated"
+  | "invalid_amount"
+  | "cannot_add_chips_during_hand"
+  | "cannot_cash_out_during_hand";
 export type PlayerActionType = "fold" | "check" | "call" | "bet" | "raise" | "all_in";
 export type Phase = "waiting" | "preflop" | "flop" | "turn" | "river" | "showdown" | "hand_over";
 export type SeatStatus = "empty" | "sitting" | "ready" | "playing" | "folded" | "all_in" | "sit_out" | "disconnected";
@@ -44,6 +52,7 @@ export interface ServerMessage {
   server_player_id?: string;
   room_id?: string;
   error?: string;
+  error_code?: ErrorCode | string;
   snapshot?: unknown;
   profile?: PlayerProfileSnapshot;
   wallet?: WalletSnapshot;

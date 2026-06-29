@@ -24,9 +24,62 @@ if (Number(secondProfile.total_wallet_chips) !== 11000) throw new Error("daily l
 
 const room = manager.createRoom();
 manager.handle("db_smoke_player", { type: "join_room", room_id: room.id });
-manager.handle("db_smoke_player", { type: "sit_down", room_id: room.id, seat_index: 0, buy_in: 1000 });
+manager.handle("db_smoke_player", { type: "sit_down", room_id: room.id, seat_index: 0, buy_in: 999999 });
 const afterBuyIn = manager.adminSnapshot(false);
 if (Number(afterBuyIn.total_wallet_chips) !== 10000) throw new Error("sit_down should deduct buy-in from wallet");
+if (room.table.getSeat(0)?.chips !== 1000) throw new Error("sit_down should put fixed 1000 table chips on the seat");
+
+manager.handle("db_smoke_player", { type: "add_table_chips", room_id: room.id, amount: 500 });
+const afterAdd = manager.adminSnapshot(false);
+if (Number(afterAdd.total_wallet_chips) !== 9500) throw new Error("add_table_chips should deduct wallet chips");
+if (room.table.getSeat(0)?.chips !== 1500) throw new Error("add_table_chips should increase table chips");
+
+expectThrows("insufficient_chips", () => manager.handle("db_smoke_player", { type: "add_table_chips", room_id: room.id, amount: 999999 }));
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 9500) throw new Error("failed add_table_chips should not change wallet");
+
+manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id });
+const afterCashOut = manager.adminSnapshot(false);
+if (Number(afterCashOut.total_wallet_chips) !== 11000) throw new Error("cash_out should refund remaining table chips");
+if (room.table.getSeat(0)?.playerId !== "") throw new Error("cash_out should clear the seat");
+expectThrows("not_seated", () => manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id }));
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 11000) throw new Error("repeat cash_out should not double refund");
+
+const handRoom = manager.createRoom();
+manager.handle("db_smoke_player", { type: "join_room", room_id: handRoom.id });
+manager.handle("db_smoke_player", { type: "sit_down", room_id: handRoom.id, seat_index: 0 });
+manager.handle("db_smoke_player", { type: "ready", room_id: handRoom.id, ready: true });
+const second = manager.connect();
+manager.handle(second.id, { type: "hello", player_id: "db_smoke_second", name: "DB Smoke 2" });
+manager.handle("db_smoke_second", { type: "join_room", room_id: handRoom.id });
+manager.handle("db_smoke_second", { type: "sit_down", room_id: handRoom.id, seat_index: 1 });
+manager.handle("db_smoke_second", { type: "ready", room_id: handRoom.id, ready: true });
+const beforeHandWalletTotal = Number(manager.adminSnapshot(false).total_wallet_chips);
+manager.handle("db_smoke_player", { type: "start_hand", room_id: handRoom.id });
+expectThrows("cannot_add_chips_during_hand", () => manager.handle("db_smoke_player", { type: "add_table_chips", room_id: handRoom.id, amount: 100 }));
+expectThrows("cannot_cash_out_during_hand", () => manager.handle("db_smoke_player", { type: "cash_out", room_id: handRoom.id }));
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeHandWalletTotal) throw new Error("active hand table chip operations should not change wallet");
+
+const poor = manager.connect();
+manager.handle(poor.id, { type: "hello", player_id: "db_smoke_poor", name: "DB Smoke Poor" });
+for (let i = 0; i < 11; i += 1) {
+  const poorRoom = manager.createRoom();
+  manager.handle("db_smoke_poor", { type: "join_room", room_id: poorRoom.id });
+  manager.handle("db_smoke_poor", { type: "sit_down", room_id: poorRoom.id, seat_index: 0 });
+}
+const poorRoom = manager.createRoom();
+manager.handle("db_smoke_poor", { type: "join_room", room_id: poorRoom.id });
+expectThrows("insufficient_chips", () => manager.handle("db_smoke_poor", { type: "sit_down", room_id: poorRoom.id, seat_index: 0 }));
 
 console.log("DB_SMOKE_OK");
-console.log(JSON.stringify({ db_path: process.env.TEXAS_DB_PATH, player_count: afterBuyIn.player_count, total_wallet_chips: afterBuyIn.total_wallet_chips }, null, 2));
+console.log(JSON.stringify({ db_path: process.env.TEXAS_DB_PATH, player_count: manager.adminSnapshot(false).player_count, total_wallet_chips: manager.adminSnapshot(false).total_wallet_chips }, null, 2));
+
+function expectThrows(expectedMessage: string, fn: () => void): void {
+  try {
+    fn();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message !== expectedMessage) throw new Error(`expected ${expectedMessage}, got ${message}`);
+    return;
+  }
+  throw new Error(`expected ${expectedMessage}`);
+}

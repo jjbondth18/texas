@@ -72,6 +72,9 @@ func sit_down(seat_index: int, buy_in: int = 5000) -> int:
 func leave_seat() -> int:
 	return send_message(PokerProtocolScript.leave_seat())
 
+func cash_out() -> int:
+	return send_message(PokerProtocolScript.cash_out())
+
 func ready(is_ready: bool = true) -> int:
 	return send_message(PokerProtocolScript.ready(is_ready))
 
@@ -80,6 +83,9 @@ func start_hand() -> int:
 
 func player_action(action: String, amount: int = 0) -> int:
 	return send_message(PokerProtocolScript.player_action(action, amount))
+
+func add_table_chips(amount: int) -> int:
+	return send_message(PokerProtocolScript.add_table_chips(amount))
 
 func get_profile() -> int:
 	return send_message(PokerProtocolScript.get_profile())
@@ -106,7 +112,7 @@ func _handle_message(message: Dictionary) -> void:
 		PokerProtocolScript.PRIVATE_SNAPSHOT:
 			private_snapshot_received.emit(Dictionary(message.get("snapshot", {})).duplicate(true))
 		PokerProtocolScript.ERROR:
-			server_error.emit(String(message.get("error", "Unknown server error")))
+			server_error.emit(String(message.get("error_code", message.get("error", "Unknown server error"))))
 
 func _emit_profile_payload(message: Dictionary) -> void:
 	var profile := Dictionary(message.get("profile", {})).duplicate(true)

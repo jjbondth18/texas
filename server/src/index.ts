@@ -27,7 +27,7 @@ wss.on("connection", (ws) => {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       manager.recordLog(`error ${client.id}: ${errorMessage}`);
-      send(ws, { type: "error", error: errorMessage });
+      send(ws, { type: "error", error: errorMessage, error_code: errorMessage });
     }
   });
 

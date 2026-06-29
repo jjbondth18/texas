@@ -135,6 +135,7 @@ var _server_visible_action_history: Array = []
 var _server_visible_seat_actions := {}
 var _server_visible_community_count := -1
 var _server_waiting_for_action_ack := false
+var _server_cash_out_pending_return := false
 var _server_last_slow_ui_warning_msec := 0
 var _server_visible_hand_id := 0
 
@@ -496,6 +497,10 @@ func _on_server_profile_synced(profile: Dictionary, wallet: Dictionary, unlocked
 func _on_server_wallet_synced(wallet: Dictionary) -> void:
 	var synced_profile := ProfileServiceScript.new().apply_server_wallet_snapshot(wallet)
 	TableLaunchContext.set_player_profile(synced_profile)
+	if _add_chips_panel != null and _add_chips_panel.visible:
+		_refresh_add_chips_panel_content()
+	if _server_cash_out_pending_return:
+		_complete_return_home()
 
 func _on_server_daily_login_awarded(chips: int) -> void:
 	if chips > 0:
@@ -549,6 +554,7 @@ func _on_server_private_snapshot_received(private_snapshot: Dictionary) -> void:
 func _on_server_error(message: String) -> void:
 	_server_last_error = message
 	_server_waiting_for_action_ack = false
+	_server_cash_out_pending_return = false
 	_append_session_log("Server error: %s" % message)
 	if _server_table_snapshot != null:
 		_server_latest_ui_snapshot = _server_snapshot_to_ui_snapshot(_server_table_snapshot.to_dict(), _server_private_snapshot)
@@ -2531,9 +2537,23 @@ func _capture_and_quit() -> void:
 	get_tree().quit()
 
 func _return_home() -> void:
+	if server_authoritative:
+		if _server_cash_out_pending_return:
+			return
+		if _poker_ws_client != null and _server_connected:
+			_server_cash_out_pending_return = true
+			_append_session_log("Requesting server cash out...")
+			_send_server_message(_poker_ws_client.cash_out(), "cash_out")
+			return
+		_complete_return_home()
+		return
+	_complete_return_home()
+
+
+func _complete_return_home() -> void:
 	if _poker_ws_client != null:
 		_poker_ws_client.close()
-	if _table_session != null and _table_session.is_session_over:
+	if not server_authoritative and _table_session != null and _table_session.is_session_over:
 		_apply_session_profit_to_profile()
 	TableLaunchContext.clear_table_session()
 	ScreenNavigator.return_home(get_tree())
@@ -3216,6 +3236,16 @@ func _refresh_add_chips_panel_content() -> void:
 
 
 func _add_chips_from_wallet(amount: int) -> void:
+	if server_authoritative:
+		if _poker_ws_client == null or not _server_connected:
+			_on_server_error("Cannot add chips: authoritative server is not connected.")
+			return
+		if amount <= 0:
+			_on_server_error("invalid_amount")
+			return
+		_append_session_log("Requesting server add chips: %s" % _format_chips(amount))
+		_send_server_message(_poker_ws_client.add_table_chips(amount), "add_table_chips %s" % _format_chips(amount))
+		return
 	var result: Dictionary = ProfileServiceScript.new().transfer_chips_to_table(amount)
 	if not bool(result.get("success", false)):
 		_append_session_log("Not enough wallet chips. Visit Store from Home.")
