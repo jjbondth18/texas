@@ -13,23 +13,23 @@ func _init() -> void:
 
 func _test_default_dealer_id() -> void:
 	var session := TableSessionScript.new()
-	_require(session.selected_dealer_id == "default", "selected_dealer_id must default to default")
+	_require(session.selected_dealer_id == "dealer_01_dog", "selected_dealer_id must default to the dog resource")
 
 func _test_training_can_change_dealer() -> void:
 	var session := TableSessionScript.new()
 	session.mode = TableSessionScript.MODE_TRAINING
 	session.table_type = TableSessionScript.TABLE_TYPE_TRAINING_AI
-	var changed := session.select_dealer_cosmetic("lucky_cat", _solo_ai_seats())
+	var changed := session.select_dealer_cosmetic("dealer_03_cat", _solo_ai_seats())
 	_require(changed, "training_ai must allow dealer cosmetic change")
-	_require(session.selected_dealer_id == "lucky_cat", "training dealer selection must apply")
+	_require(session.selected_dealer_id == "dealer_03_cat", "training dealer selection must apply")
 
 func _test_solo_ai_can_change_dealer() -> void:
 	var session := TableSessionScript.new()
 	var seats := _solo_ai_seats()
 	_require(session.can_change_dealer_cosmetic(seats), "local human plus AI players must allow dealer cosmetic change")
-	var changed := session.select_dealer_cosmetic("capybara", seats)
+	var changed := session.select_dealer_cosmetic("dealer_04_red_panda", seats)
 	_require(changed, "solo AI table must select dealer")
-	_require(session.selected_dealer_id == "capybara", "solo AI dealer selection must apply")
+	_require(session.selected_dealer_id == "dealer_04_red_panda", "solo AI dealer selection must apply")
 
 func _test_extra_human_blocks_dealer_change() -> void:
 	var session := TableSessionScript.new()
@@ -45,9 +45,9 @@ func _test_extra_human_blocks_dealer_change() -> void:
 		"chips": 9000,
 	})
 	_require(not session.can_change_dealer_cosmetic(seats), "another human must block dealer cosmetic changes")
-	var changed := session.select_dealer_cosmetic("raccoon", seats)
+	var changed := session.select_dealer_cosmetic("dealer_09_owl", seats)
 	_require(not changed, "multiplayer table must not select dealer")
-	_require(session.selected_dealer_id == "default", "blocked multiplayer selection must not modify selected_dealer_id")
+	_require(session.selected_dealer_id == "dealer_01_dog", "blocked multiplayer selection must not modify selected_dealer_id")
 
 func _test_dealer_change_does_not_touch_rule_or_economy_state() -> void:
 	var session := TableSessionScript.new()
@@ -57,7 +57,7 @@ func _test_dealer_change_does_not_touch_rule_or_economy_state() -> void:
 	var seats := _solo_ai_seats()
 	var before_seats := seats.duplicate(true)
 	var before_chips := session.current_table_chips
-	var changed := session.select_dealer_cosmetic("stone_golem", seats)
+	var changed := session.select_dealer_cosmetic("dealer_07_statue", seats)
 	_require(changed, "solo AI dealer change should succeed")
 	_require(dealer_button_position == 3, "dealer cosmetic change must not change dealer_button_position")
 	_require(gems == 42, "dealer cosmetic change must not change gems")

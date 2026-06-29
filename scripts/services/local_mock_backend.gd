@@ -118,7 +118,7 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 			"is_session_over": false,
 			"min_active_players": 2,
 			"status": "playing",
-			"selected_dealer_id": "default",
+			"selected_dealer_id": "dealer_01_dog",
 		},
 	}
 

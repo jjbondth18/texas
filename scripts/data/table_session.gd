@@ -1,6 +1,8 @@
 extends RefCounted
 class_name TableSession
 
+const DealerLibraryScript := preload("res://scripts/data/dealer_library.gd")
+
 const MODE_QUICK_PLAY := "quick_play"
 const MODE_TRAINING := "training"
 const MODE_FRIENDS_ROOM := "friends_room"
@@ -17,8 +19,7 @@ const TABLE_PLAYING := "playing"
 const TABLE_PAUSED := "paused"
 const TABLE_CLOSED := "closed"
 const HOST_LEFT_MOCK_MESSAGE := "Host left. Table closed safely. Account balances were not changed."
-const DEFAULT_DEALER_ID := "default"
-const AVAILABLE_DEALER_IDS := ["default", "dog", "capybara", "lucky_cat", "raccoon", "stone_golem"]
+const DEFAULT_DEALER_ID := "dealer_01_dog"
 
 var mode := MODE_QUICK_PLAY
 var table_type := MODE_QUICK_PLAY
@@ -245,7 +246,7 @@ func _is_ai_seat(seat: Dictionary) -> bool:
 	return player_id.begins_with("ai_") or player_id.begins_with("bot_") or player_name.begins_with("ai ")
 
 func _normalized_dealer_id(dealer_id: String) -> String:
-	return dealer_id if AVAILABLE_DEALER_IDS.has(dealer_id) else DEFAULT_DEALER_ID
+	return DealerLibraryScript.normalize_dealer_id(dealer_id)
 
 func hand_count_text() -> String:
 	if max_hands <= 0 or max_hands >= 999:

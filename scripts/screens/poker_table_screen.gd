@@ -19,6 +19,7 @@ const RoomInfoPanelScene := preload("res://scripts/components/table_room_info_pa
 const LayoutSchema := preload("res://scripts/dev/poker_table_layout_schema.gd")
 const TexasTableFlowScript := preload("res://scripts/core/texas_table_flow.gd")
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
+const DealerLibraryScript := preload("res://scripts/data/dealer_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 const TableSessionScript := preload("res://scripts/data/table_session.gd")
 const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
@@ -32,7 +33,6 @@ const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_
 const FLYING_CARD_BACK_PATH := "res://assets/ui/cardback/asset_02.png"
 const FLYING_CHIP_PATH := "res://assets/ui/chips/chip_stack_purple.png"
 const DEALER_DECK_PATH := "res://assets/ui/cardback/asset_03.png"
-const DEFAULT_CROUPIER_PATH := "res://assets/croupier/processed/dealer_01_dog.png"
 const ADD_CHIPS_POPOVER_SIZE := Vector2(312, 286)
 const POPOVER_LAYER_Z_INDEX := 240
 const SERVER_UI_VERBOSE_LOGS := false
@@ -277,7 +277,7 @@ func _build_animation_layer() -> void:
 
 	_croupier_display = TextureRect.new()
 	_croupier_display.name = "CroupierDisplay"
-	_croupier_display.texture = _load_texture(DEFAULT_CROUPIER_PATH)
+	_croupier_display.texture = _load_texture(DealerLibraryScript.texture_path(DealerLibraryScript.DEFAULT_DEALER_ID))
 	_croupier_display.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_croupier_display.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_croupier_display.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
@@ -2990,6 +2990,7 @@ func _raise_popover_layer() -> void:
 	_popover_layer.z_as_relative = false
 	_popover_layer.z_index = POPOVER_LAYER_Z_INDEX
 
+
 func _build_settings_panel() -> void:
 	_settings_panel = _popover_layer.get_node_or_null("SettingsPopover") as PanelContainer
 	if _settings_panel == null:
@@ -3040,7 +3041,6 @@ func _build_settings_panel() -> void:
 	_add_volume_row(vbox, "SFX Volume", 80)
 
 
-
 func _build_dealer_cosmetic_panel() -> void:
 	_dealer_cosmetic_panel = _popover_layer.get_node_or_null("DealerCosmeticPopover") as PanelContainer
 	if _dealer_cosmetic_panel == null:
@@ -3048,7 +3048,7 @@ func _build_dealer_cosmetic_panel() -> void:
 		_dealer_cosmetic_panel.add_theme_stylebox_override("panel", _top_settings_panel_style())
 		_popover_layer.add_child(_dealer_cosmetic_panel)
 	_dealer_cosmetic_panel.name = "DealerCosmeticPopover"
-	_prepare_popover_panel(_dealer_cosmetic_panel, Vector2(372, 382))
+	_prepare_popover_panel(_dealer_cosmetic_panel, Vector2(420, 430))
 	_dealer_cosmetic_panel.visible = false
 	_refresh_dealer_cosmetic_panel()
 
@@ -3084,26 +3084,49 @@ func _refresh_dealer_cosmetic_panel() -> void:
 	title_row.add_child(close_button)
 
 	var current_id := _selected_dealer_id()
+	var current_row := HBoxContainer.new()
+	current_row.add_theme_constant_override("separation", 10)
+	current_row.mouse_filter = Control.MOUSE_FILTER_PASS
+	vbox.add_child(current_row)
+
+	var current_preview := TextureRect.new()
+	current_preview.name = "CurrentDealerPreview"
+	current_preview.custom_minimum_size = Vector2(58, 58)
+	current_preview.texture = _dealer_texture_for_id(current_id)
+	current_preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	current_preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	current_preview.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	current_preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	current_row.add_child(current_preview)
+
 	var current_label := Label.new()
 	current_label.text = "Current Dealer: %s" % _dealer_display_name(current_id)
+	current_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	current_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	current_label.add_theme_font_size_override("font_size", 12)
 	current_label.add_theme_color_override("font_color", Color(0.78, 0.96, 0.92, 0.92))
-	vbox.add_child(current_label)
+	current_row.add_child(current_label)
+
+	var scroll := ScrollContainer.new()
+	scroll.name = "DealerImageCardScroll"
+	scroll.custom_minimum_size = Vector2(0, 278)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.mouse_filter = Control.MOUSE_FILTER_PASS
+	vbox.add_child(scroll)
 
 	var grid := GridContainer.new()
-	grid.columns = 2
+	grid.name = "DealerImageCardGrid"
+	grid.columns = 3
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 8)
-	vbox.add_child(grid)
-	for dealer_id in TableSessionScript.AVAILABLE_DEALER_IDS:
-		var id_text := String(dealer_id)
-		var button := _top_control_button(_dealer_display_name(id_text), Vector2(158, 42))
-		button.add_theme_font_size_override("font_size", 12)
-		var selected := id_text == current_id
-		button.add_theme_stylebox_override("normal", _dealer_option_style(selected, false))
-		button.add_theme_stylebox_override("hover", _dealer_option_style(selected, true))
-		button.add_theme_stylebox_override("pressed", _dealer_option_style(true, true))
+	scroll.add_child(grid)
+	for dealer_item in DealerLibraryScript.list_dealers():
+		var dealer := Dictionary(dealer_item)
+		var id_text := String(dealer.get("id", ""))
+		var button := _dealer_image_card_button(dealer, id_text == current_id)
 		button.pressed.connect(_select_dealer_cosmetic.bind(id_text))
 		grid.add_child(button)
 
@@ -3172,28 +3195,63 @@ func _apply_dealer_cosmetic() -> void:
 
 
 func _dealer_texture_for_id(dealer_id: String) -> Texture2D:
-	var path := DEFAULT_CROUPIER_PATH
-	if dealer_id == "dog":
-		path = DEFAULT_CROUPIER_PATH
-	return _load_texture(path)
+	return _load_texture(DealerLibraryScript.texture_path(dealer_id))
 
 
 func _dealer_display_name(dealer_id: String) -> String:
-	match dealer_id:
-		"default":
-			return "Default"
-		"dog":
-			return "Dog"
-		"capybara":
-			return "Capybara"
-		"lucky_cat":
-			return "Lucky Cat"
-		"raccoon":
-			return "Raccoon"
-		"stone_golem":
-			return "Stone Golem"
-		_:
-			return dealer_id.capitalize()
+	return DealerLibraryScript.display_name(dealer_id)
+
+
+func _dealer_image_card_button(dealer: Dictionary, selected: bool) -> Button:
+	var button := Button.new()
+	button.name = "DealerCard_%s" % String(dealer.get("id", "dealer"))
+	button.custom_minimum_size = Vector2(118, 130)
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.mouse_filter = Control.MOUSE_FILTER_STOP
+	button.focus_mode = Control.FOCUS_NONE
+	button.text = ""
+	button.tooltip_text = String(dealer.get("display_name", "Dealer"))
+	button.add_theme_stylebox_override("normal", _dealer_option_style(selected, false))
+	button.add_theme_stylebox_override("hover", _dealer_option_style(selected, true))
+	button.add_theme_stylebox_override("pressed", _dealer_option_style(true, true))
+
+	var margin := MarginContainer.new()
+	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left", 7)
+	margin.add_theme_constant_override("margin_right", 7)
+	margin.add_theme_constant_override("margin_top", 7)
+	margin.add_theme_constant_override("margin_bottom", 7)
+	button.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 5)
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	margin.add_child(vbox)
+
+	var image := TextureRect.new()
+	image.name = "DealerImage"
+	image.custom_minimum_size = Vector2(88, 82)
+	image.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	image.texture = _load_texture(String(dealer.get("texture_path", "")))
+	image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	image.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	image.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(image)
+
+	var name_label := Label.new()
+	name_label.name = "DealerName"
+	name_label.text = String(dealer.get("display_name", "Dealer"))
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_label.clip_text = true
+	name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	name_label.add_theme_font_size_override("font_size", 11)
+	name_label.add_theme_color_override("font_color", Color(0.94, 0.90, 1.0, 0.94))
+	vbox.add_child(name_label)
+	return button
 
 
 func _dealer_option_style(selected: bool, hovered: bool) -> StyleBoxFlat:
@@ -3393,8 +3451,6 @@ func _toggle_settings_panel() -> void:
 		return
 	if _add_chips_panel != null:
 		_add_chips_panel.visible = false
-	if _dealer_cosmetic_panel != null:
-		_dealer_cosmetic_panel.visible = false
 	var opening: bool = not _settings_panel.visible
 	_settings_panel.visible = opening
 	if not opening:

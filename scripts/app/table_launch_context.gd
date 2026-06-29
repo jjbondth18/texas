@@ -137,5 +137,5 @@ static func _default_table_session() -> Dictionary:
 		"biggest_pot": 0,
 		"best_hand_desc": "-",
 		"is_session_over": false,
-		"selected_dealer_id": "default",
+		"selected_dealer_id": "dealer_01_dog",
 	}
