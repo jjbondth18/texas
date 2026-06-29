@@ -47,6 +47,17 @@ func _initialize() -> void:
 	await process_frame
 
 	var add_panel: PanelContainer = table.get("_add_chips_panel") as PanelContainer
+	_require(add_panel != null and add_panel.custom_minimum_size.x <= 340.0, "Add Chips panel must stay a compact popover width.")
+	_require(add_panel.custom_minimum_size.y <= 320.0, "Add Chips panel must stay a compact popover height.")
+	_require(add_panel.anchor_left == 0.0 and add_panel.anchor_right == 0.0, "Add Chips panel must not use stretch anchors.")
+	table.call("_toggle_add_chips_panel")
+	await process_frame
+	_require(add_panel.visible, "Add Chips panel must open as a visible popover.")
+	_require(add_panel.size.x <= 340.0 and add_panel.size.y <= 380.0, "Add Chips panel must not grow into a side rail. size=%s min=%s anchors=(%s,%s,%s,%s) offsets=(%s,%s,%s,%s)" % [add_panel.size, add_panel.custom_minimum_size, add_panel.anchor_left, add_panel.anchor_top, add_panel.anchor_right, add_panel.anchor_bottom, add_panel.offset_left, add_panel.offset_top, add_panel.offset_right, add_panel.offset_bottom])
+	for label in ["+1,000", "+5,000", "+10,000", "MAX"]:
+		var option_button: Button = _find_button(add_panel, label)
+		_require(option_button != null, "Add Chips option %s must be a real Button." % label)
+		_require(option_button.size.x >= 120.0 and option_button.size.y >= 40.0, "Add Chips option %s must have a full clickable area." % label)
 	var add_texts: String = _collect_text(add_panel)
 	_require(add_texts.find("Add Chips to Table") != -1, "Add Chips panel must be table-transfer copy.")
 	_require(add_texts.find("Move chips from your wallet to this table.") != -1, "Add Chips panel must explain wallet transfer.")
@@ -75,6 +86,18 @@ func _collect_text_into(node: Node, parts: Array[String]) -> void:
 		var child_node: Node = child as Node
 		if child_node != null:
 			_collect_text_into(child_node, parts)
+
+func _find_button(node: Node, text_value: String) -> Button:
+	if node is Button and (node as Button).text == text_value:
+		return node as Button
+	for child in node.get_children():
+		var child_node: Node = child as Node
+		if child_node == null:
+			continue
+		var found: Button = _find_button(child_node, text_value)
+		if found != null:
+			return found
+	return null
 
 func _require(condition: bool, message: String) -> void:
 	if not condition:

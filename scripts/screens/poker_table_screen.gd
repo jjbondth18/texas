@@ -33,6 +33,7 @@ const FLYING_CARD_BACK_PATH := "res://assets/ui/cardback/asset_02.png"
 const FLYING_CHIP_PATH := "res://assets/ui/chips/chip_stack_purple.png"
 const DEALER_DECK_PATH := "res://assets/ui/cardback/asset_03.png"
 const DEFAULT_CROUPIER_PATH := "res://assets/croupier/processed/dealer_01_dog.png"
+const ADD_CHIPS_POPOVER_SIZE := Vector2(312, 286)
 const POPOVER_LAYER_Z_INDEX := 240
 const SERVER_UI_VERBOSE_LOGS := false
 const SERVER_UI_SLOW_APPLY_WARNING_MS := 16
@@ -2558,10 +2559,54 @@ func _return_home() -> void:
 func _complete_return_home() -> void:
 	if _poker_ws_client != null:
 		_poker_ws_client.close()
-	if not server_authoritative and _table_session != null and _table_session.is_session_over:
-		_apply_session_profit_to_profile()
+	if not server_authoritative:
+		if _table_session != null and _table_session.is_session_over:
+			_apply_session_profit_to_profile()
+		else:
+			_cash_out_remaining_table_chips_to_wallet()
 	TableLaunchContext.clear_table_session()
 	ScreenNavigator.return_home(get_tree())
+
+
+func _cash_out_remaining_table_chips_to_wallet() -> void:
+	if _profile_settlement_applied or _table_session == null:
+		return
+	if _table_session.mode == TableSessionScript.MODE_TRAINING or _table_session.uses_practice_chips or not _table_session.affects_account_balance:
+		return
+	if not _table_session.buy_in_deducted_from_wallet:
+		return
+	var refund_amount: int = max(_local_table_chips(), 0)
+	_profile_settlement_applied = true
+	if refund_amount <= 0:
+		_append_session_log("%s left table. No table chips returned to wallet." % PlayerProfileScript.get_player_name(ProfileServiceScript.new().get_current_profile()))
+		return
+	var service := ProfileServiceScript.new()
+	var profile: Dictionary = service.refund_table_chips(refund_amount)
+	TableLaunchContext.set_player_profile(profile)
+	_zero_local_table_chips()
+	if _table_session != null:
+		_table_session.current_table_chips = 0
+		_table_session.session_end_chips = 0
+		_table_session.session_profit = -_table_session.session_start_chips
+		_update_launch_context_session()
+	var player_name: String = PlayerProfileScript.get_player_name(profile)
+	if _table_flow.table_state == TexasTableFlowScript.WAITING or _table_flow.table_state == TexasTableFlowScript.HAND_OVER:
+		_append_session_log("%s left table. Returned %s chips to wallet." % [player_name, _format_chips(refund_amount)])
+	else:
+		_append_session_log("%s left during hand. Returned remaining stack %s to wallet. Committed chips stay in pot." % [player_name, _format_chips(refund_amount)])
+
+
+func _zero_local_table_chips() -> void:
+	for i in range(_table_flow.seats.size()):
+		var seat: Dictionary = Dictionary(_table_flow.seats[i]).duplicate(true)
+		if not bool(seat.get("is_local", false)):
+			continue
+		seat["chips"] = 0
+		seat["current_bet"] = 0
+		seat["status"] = "left"
+		seat["folded"] = true
+		_table_flow.seats[i] = seat
+		break
 
 func _apply_launch_context(target_snapshot: Dictionary) -> void:
 	if String(target_snapshot.get("source_model", "")) == "server_authoritative":
@@ -3170,7 +3215,7 @@ func _build_add_chips_panel() -> void:
 		_add_chips_panel.add_theme_stylebox_override("panel", _add_chips_panel_style())
 		_popover_layer.add_child(_add_chips_panel)
 	_add_chips_panel.name = "AddChipsPopover"
-	_prepare_popover_panel(_add_chips_panel, Vector2(306, 292))
+	_prepare_popover_panel(_add_chips_panel, ADD_CHIPS_POPOVER_SIZE)
 	_add_chips_panel.visible = false
 	_refresh_add_chips_panel_content()
 
@@ -3181,15 +3226,15 @@ func _refresh_add_chips_panel_content() -> void:
 
 	_clear_children(_add_chips_panel)
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 18)
-	margin.add_theme_constant_override("margin_right", 18)
-	margin.add_theme_constant_override("margin_top", 16)
-	margin.add_theme_constant_override("margin_bottom", 16)
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 14)
+	margin.add_theme_constant_override("margin_bottom", 14)
 	margin.mouse_filter = Control.MOUSE_FILTER_PASS
 	_add_chips_panel.add_child(margin)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 10)
+	vbox.add_theme_constant_override("separation", 8)
 	vbox.mouse_filter = Control.MOUSE_FILTER_PASS
 	margin.add_child(vbox)
 
@@ -3212,32 +3257,63 @@ func _refresh_add_chips_panel_content() -> void:
 	var explanation := Label.new()
 	explanation.text = "Move chips from your wallet to this table.\nThis is not a purchase."
 	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	explanation.custom_minimum_size = Vector2(260, 36)
+	explanation.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	explanation.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	explanation.add_theme_font_size_override("font_size", 11)
 	explanation.add_theme_color_override("font_color", Color(0.78, 0.96, 0.92, 0.86))
 	vbox.add_child(explanation)
 
 	var wallet_chips: int = PlayerProfileScript.get_total_chips(ProfileServiceScript.new().get_current_profile())
+	var wallet_label := Label.new()
+	wallet_label.text = "Wallet Chips: %s" % _format_chips(wallet_chips)
+	wallet_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wallet_label.add_theme_font_size_override("font_size", 12)
+	wallet_label.add_theme_color_override("font_color", Color(0.96, 0.86, 0.45, 0.94))
+	vbox.add_child(wallet_label)
+	var button_grid := GridContainer.new()
+	button_grid.columns = 2
+	button_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button_grid.mouse_filter = Control.MOUSE_FILTER_PASS
+	button_grid.add_theme_constant_override("h_separation", 10)
+	button_grid.add_theme_constant_override("v_separation", 8)
+	vbox.add_child(button_grid)
 	for option_item in [1000, 5000, 10000]:
 		var amount: int = int(option_item)
-		var label_text: String = "+%s" % _format_chips(amount)
-		var button := _top_control_button(label_text, Vector2(220, 32))
+		var button := _add_chips_option_button("+%s" % _format_chips(amount))
 		button.disabled = amount <= 0 or wallet_chips < amount
 		button.tooltip_text = "Move wallet chips to this table."
 		var captured_amount: int = amount
 		button.pressed.connect(_add_chips_from_wallet.bind(captured_amount))
-		vbox.add_child(button)
-	var max_button := _top_control_button("MAX", Vector2(220, 32))
+		button_grid.add_child(button)
+	var max_button := _add_chips_option_button("MAX")
 	max_button.disabled = wallet_chips <= 0
 	max_button.tooltip_text = "Move all available wallet chips to this table."
 	max_button.pressed.connect(_add_chips_from_wallet.bind(wallet_chips))
-	vbox.add_child(max_button)
+	button_grid.add_child(max_button)
 	var hint := Label.new()
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint.add_theme_font_size_override("font_size", 11)
+	hint.custom_minimum_size = Vector2(260, 28)
+	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hint.add_theme_font_size_override("font_size", 10)
 	hint.add_theme_color_override("font_color", Color(0.72, 0.94, 0.88, 0.88))
-	hint.text = "Not enough wallet chips. Visit Store from Home." if wallet_chips <= 0 else "Need more chips? Return to Home and visit Store."
+	hint.text = "Not enough wallet chips. Visit Store from Home." if wallet_chips <= 0 else "Need more chips? Return Home and visit Store."
 	vbox.add_child(hint)
+	_prepare_popover_panel(_add_chips_panel, ADD_CHIPS_POPOVER_SIZE)
+
+
+func _add_chips_option_button(text_value: String) -> Button:
+	var button := _top_control_button(text_value, Vector2(126, 44))
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	button.mouse_filter = Control.MOUSE_FILTER_STOP
+	button.add_theme_font_size_override("font_size", 13)
+	button.add_theme_stylebox_override("normal", _top_control_style(false, "+"))
+	button.add_theme_stylebox_override("hover", _top_control_style(true, "+"))
+	button.add_theme_stylebox_override("pressed", _top_control_style(true, "+"))
+	button.add_theme_stylebox_override("disabled", _top_control_style(false, "+").duplicate())
+	button.add_theme_color_override("font_disabled_color", Color(0.60, 0.76, 0.70, 0.62))
+	return button
 
 
 func _add_chips_from_wallet(amount: int) -> void:
@@ -3250,6 +3326,8 @@ func _add_chips_from_wallet(amount: int) -> void:
 			return
 		_append_session_log("Requesting server add chips: %s" % _format_chips(amount))
 		_send_server_message(_poker_ws_client.add_table_chips(amount), "add_table_chips %s" % _format_chips(amount))
+		if _add_chips_panel != null:
+			_add_chips_panel.visible = false
 		return
 	var result: Dictionary = ProfileServiceScript.new().transfer_chips_to_table(amount)
 	if not bool(result.get("success", false)):
@@ -3259,15 +3337,17 @@ func _add_chips_from_wallet(amount: int) -> void:
 	var added: int = int(result.get("amount", 0))
 	var profile: Dictionary = Dictionary(result.get("profile", {}))
 	TableLaunchContext.set_player_profile(profile)
+	var local_seat_updated := false
 	for i in range(_table_flow.seats.size()):
 		var seat: Dictionary = Dictionary(_table_flow.seats[i]).duplicate(true)
 		if not bool(seat.get("is_local", false)):
 			continue
 		seat["chips"] = int(seat.get("chips", 0)) + added
 		_table_flow.seats[i] = seat
+		local_seat_updated = true
 		break
 	if _table_session != null:
-		_table_session.current_table_chips = _local_table_chips()
+		_table_session.current_table_chips = _local_table_chips() if local_seat_updated else _table_session.current_table_chips + added
 		_table_session.session_end_chips = _table_session.current_table_chips
 		_table_session.session_profit = _table_session.session_end_chips - _table_session.session_start_chips
 		_update_launch_context_session()
@@ -3275,7 +3355,14 @@ func _add_chips_from_wallet(amount: int) -> void:
 	snapshot = _table_flow_to_ui_snapshot(_table_flow.to_snapshot())
 	_apply_launch_context(snapshot)
 	_refresh()
+	call_deferred("_refresh_add_chips_panel_after_transfer")
+
+
+func _refresh_add_chips_panel_after_transfer() -> void:
 	_refresh_add_chips_panel_content()
+	if _add_chips_panel != null and _add_chips_button != null:
+		_add_chips_panel.visible = true
+		_position_popover_near_button(_add_chips_panel, _add_chips_button)
 
 
 func _add_volume_row(parent: Container, label_text: String, value: float) -> void:
@@ -3333,13 +3420,22 @@ func _close_overlay_panels() -> void:
 
 
 func _prepare_popover_panel(panel: Control, panel_size: Vector2) -> void:
-	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	panel.anchor_left = 0.0
+	panel.anchor_top = 0.0
+	panel.anchor_right = 0.0
+	panel.anchor_bottom = 0.0
+	panel.offset_left = 0.0
+	panel.offset_top = 0.0
+	panel.offset_right = panel_size.x
+	panel.offset_bottom = panel_size.y
 	panel.custom_minimum_size = panel_size
 	panel.size = panel_size
 	panel.pivot_offset = panel_size * 0.5
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	panel.z_as_relative = false
 	panel.z_index = POPOVER_LAYER_Z_INDEX + 1
+	panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	panel.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 
 
 func _position_popover_near_button(popover: Control, anchor_button: Control) -> void:
@@ -3347,16 +3443,31 @@ func _position_popover_near_button(popover: Control, anchor_button: Control) -> 
 		return
 	var button_rect: Rect2 = anchor_button.get_global_rect()
 	var viewport_size: Vector2 = get_viewport_rect().size
-	var popover_size: Vector2 = popover.size
+	var popover_size: Vector2 = popover.custom_minimum_size
 	if popover_size.x <= 0.0 or popover_size.y <= 0.0:
-		popover_size = popover.custom_minimum_size
+		popover_size = ADD_CHIPS_POPOVER_SIZE
+	popover.size = popover_size
+	popover.offset_right = popover.offset_left + popover_size.x
+	popover.offset_bottom = popover.offset_top + popover_size.y
 	var target: Vector2 = Vector2(
 		button_rect.position.x + button_rect.size.x - popover_size.x,
 		button_rect.position.y + button_rect.size.y + 10.0
 	)
 	target.x = clamp(target.x, 16.0, viewport_size.x - popover_size.x - 16.0)
 	target.y = clamp(target.y, 16.0, viewport_size.y - popover_size.y - 16.0)
-	popover.global_position = target
+	var local_target := target
+	var parent_control := popover.get_parent() as Control
+	if parent_control != null:
+		local_target = parent_control.get_global_transform().affine_inverse() * target
+	popover.anchor_left = 0.0
+	popover.anchor_top = 0.0
+	popover.anchor_right = 0.0
+	popover.anchor_bottom = 0.0
+	popover.offset_left = local_target.x
+	popover.offset_top = local_target.y
+	popover.offset_right = local_target.x + popover_size.x
+	popover.offset_bottom = local_target.y + popover_size.y
+	popover.size = popover_size
 
 
 func _animate_popover(popover: Control, start_scale: Vector2, duration: float) -> void:

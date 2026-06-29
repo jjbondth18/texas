@@ -166,6 +166,16 @@ func transfer_chips_to_table(amount: int) -> Dictionary:
 	save_current_profile(profile)
 	return {"success": true, "amount": transfer_amount, "profile": get_current_profile()}
 
+func refund_table_chips(amount: int) -> Dictionary:
+	if amount <= 0:
+		return get_current_profile()
+	var profile := get_current_profile()
+	var total_chips: int = PlayerProfileScript.get_total_chips(profile)
+	profile["total_chips"] = total_chips + amount
+	profile["chips"] = int(profile["total_chips"])
+	save_current_profile(profile)
+	return get_current_profile()
+
 func mock_purchase_chips(amount: int) -> Dictionary:
 	if amount <= 0:
 		return get_current_profile()

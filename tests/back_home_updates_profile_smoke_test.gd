@@ -9,12 +9,19 @@ func _initialize() -> void:
 	ProfileServiceScript.reset_mock_profile()
 	var service := ProfileServiceScript.new()
 	var profile := service.get_current_profile()
+	var today: Dictionary = Time.get_datetime_dict_from_system()
+	profile["last_daily_reward_date"] = "%04d-%02d-%02d" % [int(today.get("year", 0)), int(today.get("month", 0)), int(today.get("day", 0))]
+	profile["daily_reward_claimed_today"] = true
+	service.save_current_profile(profile)
+	profile = service.get_current_profile()
 	var starting_chips: int = PlayerProfileScript.get_total_chips(profile)
-	TableLaunchContext.configure("quick_play", "mock_table_001", profile, {
+	var buy_in_profile: Dictionary = service.deduct_table_buy_in(20000)
+	TableLaunchContext.configure("quick_play", "mock_table_001", buy_in_profile, {
 		"buy_in": 20000,
 		"small_blind": 25,
 		"big_blind": 50,
 		"max_hands": 5,
+		"buy_in_deducted_from_wallet": true,
 	})
 
 	var table := PokerTableScene.instantiate()
@@ -27,6 +34,7 @@ func _initialize() -> void:
 	session.session_profit = 1250
 	session.session_end_chips = session.session_start_chips + 1250
 	session.current_table_chips = session.session_end_chips
+	session.buy_in_deducted_from_wallet = true
 	session.is_session_over = true
 	session.end_reason = "Hands completed"
 	table.call("_return_home")
