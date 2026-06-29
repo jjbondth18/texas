@@ -50,6 +50,7 @@ function applySeatAction(table: TableState, seat: Seat, action: PlayerActionType
       seat.acted = true;
       table.addAction({
         type: "player_action",
+        seat_id: seat.seatIndex,
         seat_index: seat.seatIndex,
         player_name: seat.name,
         action: "fold",
@@ -64,6 +65,7 @@ function applySeatAction(table: TableState, seat: Seat, action: PlayerActionType
       seat.acted = true;
       table.addAction({
         type: "player_action",
+        seat_id: seat.seatIndex,
         seat_index: seat.seatIndex,
         player_name: seat.name,
         action: "check",
@@ -78,6 +80,7 @@ function applySeatAction(table: TableState, seat: Seat, action: PlayerActionType
       seat.acted = true;
       table.addAction({
         type: "player_action",
+        seat_id: seat.seatIndex,
         seat_index: seat.seatIndex,
         player_name: seat.name,
         action: "call",
@@ -99,6 +102,7 @@ function applySeatAction(table: TableState, seat: Seat, action: PlayerActionType
       seat.lastActionAmount = seat.currentBet;
       table.addAction({
         type: "player_action",
+        seat_id: seat.seatIndex,
         seat_index: seat.seatIndex,
         player_name: seat.name,
         action,
@@ -121,6 +125,7 @@ function applySeatAction(table: TableState, seat: Seat, action: PlayerActionType
       seat.lastActionAmount = paid;
       table.addAction({
         type: "player_action",
+        seat_id: seat.seatIndex,
         seat_index: seat.seatIndex,
         player_name: seat.name,
         action: "all_in",

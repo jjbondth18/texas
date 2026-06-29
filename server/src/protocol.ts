@@ -65,9 +65,14 @@ export interface PublicSeatSnapshot {
 
 export interface ActionLogEntry {
   id: number;
+  event_id: number;
+  sequence: number;
   type: "player_action" | "phase" | "winner" | "system";
   hand_id: number;
   phase: Phase;
+  betting_round: Phase;
+  created_at: string;
+  seat_id?: number;
   seat_index?: number;
   player_name?: string;
   action?: string;

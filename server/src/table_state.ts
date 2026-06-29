@@ -72,11 +72,16 @@ export class TableState {
     if (this.log.length > 80) this.log = this.log.slice(-80);
   }
 
-  addAction(entry: Omit<ActionLogEntry, "id" | "hand_id" | "phase">): void {
+  addAction(entry: Omit<ActionLogEntry, "id" | "event_id" | "sequence" | "hand_id" | "phase" | "betting_round" | "created_at">): void {
+    const sequence = this.nextActionLogId++;
     const actionEntry: ActionLogEntry = {
-      id: this.nextActionLogId++,
+      id: sequence,
+      event_id: sequence,
+      sequence,
       hand_id: this.handId,
       phase: this.phase,
+      betting_round: this.phase,
+      created_at: new Date().toISOString(),
       ...entry,
     };
     this.recentActions.push(actionEntry);
@@ -260,19 +265,19 @@ export class TableState {
     if (this.phase === "preflop") {
       this.dealBoard(3);
       this.phase = "flop";
-      this.addAction({ type: "phase", message: `Flop: ${this.communityCards.map((card) => card.code).join(" ")}` });
+      this.addAction({ type: "phase", action: "flop", message: `Flop: ${this.communityCards.map((card) => card.code).join(" ")}` });
     } else if (this.phase === "flop") {
       this.dealBoard(1);
       this.phase = "turn";
-      this.addAction({ type: "phase", message: `Turn: ${this.communityCards[this.communityCards.length - 1]?.code ?? ""}` });
+      this.addAction({ type: "phase", action: "turn", message: `Turn: ${this.communityCards[this.communityCards.length - 1]?.code ?? ""}` });
     } else if (this.phase === "turn") {
       this.dealBoard(1);
       this.phase = "river";
-      this.addAction({ type: "phase", message: `River: ${this.communityCards[this.communityCards.length - 1]?.code ?? ""}` });
+      this.addAction({ type: "phase", action: "river", message: `River: ${this.communityCards[this.communityCards.length - 1]?.code ?? ""}` });
     } else if (this.phase === "river") {
       this.phase = "showdown";
       this.currentTurnSeat = -1;
-      this.addAction({ type: "phase", message: "Showdown." });
+      this.addAction({ type: "phase", action: "showdown", message: "Showdown." });
       return;
     }
     this.currentTurnSeat = this.nextActionableSeat(this.dealerSeat);
@@ -312,6 +317,7 @@ export class TableState {
     seat.lastActionAmount = paid;
     this.addAction({
       type: "player_action",
+      seat_id: seat.seatIndex,
       seat_index: seat.seatIndex,
       player_name: seat.name,
       action: label,

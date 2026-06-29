@@ -7,6 +7,7 @@ interface BotOptions {
   count: number;
   startSeat: number;
   buyIn: number;
+  actionDelayMs: number;
 }
 
 interface BotState {
@@ -21,6 +22,7 @@ interface BotState {
   createRoomRequested: boolean;
   setupDone: boolean;
   lastActionKey: string;
+  pendingActionKey: string;
 }
 
 const options = parseArgs(process.argv.slice(2));
@@ -55,6 +57,7 @@ async function connectBot(index: number): Promise<BotState> {
     createRoomRequested: false,
     setupDone: false,
     lastActionKey: "",
+    pendingActionKey: "",
   };
 
   bot.ws.on("message", (raw) => handleMessage(bot, JSON.parse(raw.toString()) as ServerMessage));
@@ -135,12 +138,24 @@ function maybeAct(bot: BotState): void {
   if (!["preflop", "flop", "turn", "river"].includes(bot.table.phase)) return;
   const key = `${bot.table.hand_id}:${bot.table.phase}:${bot.table.current_turn_seat}:${JSON.stringify(bot.priv.legal_actions)}`;
   if (bot.lastActionKey === key) return;
+  if (bot.pendingActionKey === key) return;
 
   const action = chooseAction(bot.priv);
   if (!action) {
     console.log(`[${bot.name}] no legal check/call/fold action available`);
     return;
   }
+  bot.pendingActionKey = key;
+  const delayMs = options.actionDelayMs + 100 + bot.index * 73 + Math.floor(Math.random() * 201);
+  console.log(`[${bot.name}] thinking ${delayMs}ms seat=${bot.priv.seat_index}`);
+  setTimeout(() => sendPlannedAction(bot, key, action), delayMs);
+}
+
+function sendPlannedAction(bot: BotState, key: string, action: { action: PlayerActionType; amount?: number }): void {
+  bot.pendingActionKey = "";
+  if (!bot.table || !bot.priv) return;
+  const currentKey = `${bot.table.hand_id}:${bot.table.phase}:${bot.table.current_turn_seat}:${JSON.stringify(bot.priv.legal_actions)}`;
+  if (currentKey !== key || bot.lastActionKey === key) return;
   bot.lastActionKey = key;
   const message: ClientMessage = {
     type: "player_action",
@@ -177,6 +192,7 @@ function parseArgs(args: string[]): BotOptions {
     count: 2,
     startSeat: 1,
     buyIn: 5000,
+    actionDelayMs: 650,
   };
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -185,6 +201,7 @@ function parseArgs(args: string[]): BotOptions {
     else if (arg === "--start-seat") parsed.startSeat = clampInt(valueAfter(args, ++i, "--start-seat"), 0, 5);
     else if (arg === "--url") parsed.url = valueAfter(args, ++i, "--url");
     else if (arg === "--buy-in") parsed.buyIn = clampInt(valueAfter(args, ++i, "--buy-in"), 1, 1000000);
+    else if (arg === "--action-delay-ms") parsed.actionDelayMs = clampInt(valueAfter(args, ++i, "--action-delay-ms"), 0, 10000);
     else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -212,7 +229,7 @@ function printHelp(): void {
   console.log(`Local poker test bots
 
 Usage:
-  npm.cmd run bot -- --room <room_id> --count 2 --start-seat 1
+  npm.cmd run bot -- --room <room_id> --count 2 --start-seat 1 --action-delay-ms 700
 
 Options:
   --room <room_id>       Existing room to join. If omitted, bot 1 creates a room.
@@ -220,5 +237,6 @@ Options:
   --start-seat <n>       First seat index. Default: 1.
   --url <ws_url>         WebSocket URL. Default: ws://127.0.0.1:8080.
   --buy-in <n>           Seat buy-in. Default: 5000.
+  --action-delay-ms <n>  Base bot action delay before jitter. Default: 650.
 `);
 }

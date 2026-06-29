@@ -6,7 +6,10 @@ export function settleHand(table: TableState): void {
   const live = table.liveSeats();
   if (live.length > 1) {
     table.runoutBoard();
-    table.phase = "showdown";
+    if (table.phase !== "showdown") {
+      table.phase = "showdown";
+      table.addAction({ type: "phase", action: "showdown", message: "Showdown." });
+    }
   }
 
   const evaluations = new Map<number, HandEvaluation>();
@@ -42,6 +45,7 @@ export function settleHand(table: TableState): void {
     table.winners.push({ seat_index: seatIndex, amount, hand_rank: record.handRank, cards: record.cards });
     table.addAction({
       type: "winner",
+      seat_id: seatIndex,
       seat_index: seatIndex,
       player_name: seat.name,
       action: "win",

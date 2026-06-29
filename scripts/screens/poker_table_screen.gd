@@ -116,6 +116,17 @@ var _server_local_player_name := ""
 var _server_local_seat_index := 0
 var _server_private_snapshot: Dictionary = {}
 var _server_last_error := ""
+var _server_latest_ui_snapshot: Dictionary = {}
+var _server_snapshot_initialized := false
+var _server_pending_action_events: Array = []
+var _server_pending_event_sequences := {}
+var _server_played_event_sequences := {}
+var _server_last_played_event_sequence := 0
+var _server_playback_running := false
+var _server_visible_action_history: Array = []
+var _server_visible_seat_actions := {}
+var _server_visible_community_count := -1
+var _server_waiting_for_action_ack := false
 
 func _ready() -> void:
 	_hide_editor_guides(self)
@@ -380,6 +391,17 @@ func _boot_server_authoritative_table() -> void:
 	_server_setup_done = false
 	_server_start_hand_requested = false
 	_server_last_error = ""
+	_server_latest_ui_snapshot = {}
+	_server_snapshot_initialized = false
+	_server_pending_action_events.clear()
+	_server_pending_event_sequences.clear()
+	_server_played_event_sequences.clear()
+	_server_last_played_event_sequence = 0
+	_server_playback_running = false
+	_server_visible_action_history = []
+	_server_visible_seat_actions.clear()
+	_server_visible_community_count = -1
+	_server_waiting_for_action_ack = false
 	_load_server_profile_identity()
 	snapshot = _empty_server_ui_snapshot("Connecting to local authoritative server...")
 	_refresh()
@@ -452,13 +474,18 @@ func _try_server_sit_ready() -> void:
 
 func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
 	_server_last_error = ""
+	_server_waiting_for_action_ack = false
 	if _server_table_snapshot == null:
 		_server_table_snapshot = ServerTableSnapshotScript.new()
 	_server_table_snapshot.apply_table_snapshot(server_snapshot)
 	_server_room_id = String(server_snapshot.get("room_id", _server_room_id))
-	snapshot = _server_snapshot_to_ui_snapshot(server_snapshot, _server_private_snapshot)
+	var next_snapshot := _server_snapshot_to_ui_snapshot(server_snapshot, _server_private_snapshot)
+	_queue_server_action_events(server_snapshot, next_snapshot)
+	_server_latest_ui_snapshot = next_snapshot.duplicate(true)
+	snapshot = _server_apply_playback_projection(_server_latest_ui_snapshot)
 	_apply_launch_context(snapshot)
 	_refresh()
+	_start_server_action_playback()
 
 func _on_server_private_snapshot_received(private_snapshot: Dictionary) -> void:
 	_server_private_snapshot = private_snapshot.duplicate(true)
@@ -466,17 +493,21 @@ func _on_server_private_snapshot_received(private_snapshot: Dictionary) -> void:
 		_server_table_snapshot = ServerTableSnapshotScript.new()
 	_server_table_snapshot.apply_private_snapshot(private_snapshot)
 	if not snapshot.is_empty() and String(snapshot.get("source_model", "")) == "server_authoritative":
-		snapshot = _server_snapshot_to_ui_snapshot(_server_table_snapshot.to_dict(), _server_private_snapshot)
+		_server_latest_ui_snapshot = _server_snapshot_to_ui_snapshot(_server_table_snapshot.to_dict(), _server_private_snapshot)
+		snapshot = _server_apply_playback_projection(_server_latest_ui_snapshot)
 		_apply_launch_context(snapshot)
 		_refresh()
 
 func _on_server_error(message: String) -> void:
 	_server_last_error = message
+	_server_waiting_for_action_ack = false
 	_append_session_log("Server error: %s" % message)
+	if _server_table_snapshot != null:
+		_server_latest_ui_snapshot = _server_snapshot_to_ui_snapshot(_server_table_snapshot.to_dict(), _server_private_snapshot)
+		snapshot = _server_apply_playback_projection(_server_latest_ui_snapshot)
 	var current_history: Array = Array(snapshot.get("hand_history", [])).duplicate()
 	current_history.append("Server error: %s" % message)
 	snapshot["hand_history"] = current_history
-	snapshot["available_actions"] = []
 	_refresh()
 
 func _send_server_message(err: int, label: String) -> void:
@@ -625,7 +656,8 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 			"Room: %s" % room_id,
 			turn_prompt,
 		],
-		"visual_events": _server_recent_actions_to_visual_events(server_snapshot),
+		"visual_events": [],
+		"server_recent_actions": Array(server_snapshot.get("recent_actions", server_snapshot.get("action_log", []))).duplicate(true),
 		"rule_debug_log": history,
 		"table_session": {},
 	}
@@ -684,6 +716,139 @@ func _server_status_to_ui_status(status: String) -> String:
 			return "out"
 	return "active"
 
+func _queue_server_action_events(server_snapshot: Dictionary, ui_snapshot: Dictionary) -> void:
+	var action_entries: Array = Array(server_snapshot.get("recent_actions", server_snapshot.get("action_log", []))).duplicate(true)
+	if not _server_snapshot_initialized:
+		_server_snapshot_initialized = true
+		_server_visible_action_history = _server_history_lines(server_snapshot, String(server_snapshot.get("room_id", _server_room_id)), Array(server_snapshot.get("side_pots", [])))
+		_server_visible_community_count = Array(ui_snapshot.get("community_cards", [])).size()
+		_seed_visible_seat_actions(Array(ui_snapshot.get("seats", [])))
+		for entry_item in action_entries:
+			var sequence := _server_event_sequence(Dictionary(entry_item))
+			if sequence <= 0:
+				continue
+			_server_played_event_sequences[sequence] = true
+			_server_last_played_event_sequence = max(_server_last_played_event_sequence, sequence)
+		return
+	action_entries.sort_custom(func(a, b): return _server_event_sequence(Dictionary(a)) < _server_event_sequence(Dictionary(b)))
+	for entry_item in action_entries:
+		var event: Dictionary = Dictionary(entry_item).duplicate(true)
+		var sequence := _server_event_sequence(event)
+		if sequence <= 0:
+			continue
+		if sequence <= _server_last_played_event_sequence:
+			continue
+		if _server_played_event_sequences.has(sequence) or _server_pending_event_sequences.has(sequence):
+			continue
+		_server_pending_action_events.append(event)
+		_server_pending_event_sequences[sequence] = true
+
+func _seed_visible_seat_actions(seats: Array) -> void:
+	_server_visible_seat_actions.clear()
+	for seat_item in seats:
+		var seat: Dictionary = Dictionary(seat_item)
+		var action_label := String(seat.get("last_action", ""))
+		if action_label == "":
+			continue
+		var seat_id := int(seat.get("seat_id", seat.get("seat_index", -1)))
+		if seat_id < 0:
+			continue
+		_server_visible_seat_actions[seat_id] = {
+			"action": action_label,
+			"amount": int(seat.get("last_action_amount", 0)),
+		}
+
+func _server_apply_playback_projection(source_snapshot: Dictionary) -> Dictionary:
+	var projected := source_snapshot.duplicate(true)
+	projected["visual_events"] = []
+	if not _server_visible_action_history.is_empty():
+		projected["hand_history"] = _server_visible_action_history.duplicate(true)
+	if _server_visible_community_count >= 0:
+		var community_cards: Array = Array(projected.get("community_cards", []))
+		projected["community_cards"] = community_cards.slice(0, min(_server_visible_community_count, community_cards.size()))
+	var projected_seats: Array = []
+	for seat_item in Array(projected.get("seats", [])):
+		var seat: Dictionary = Dictionary(seat_item).duplicate(true)
+		var seat_id := int(seat.get("seat_id", seat.get("seat_index", -1)))
+		if _server_visible_seat_actions.has(seat_id):
+			var action_data: Dictionary = Dictionary(_server_visible_seat_actions[seat_id])
+			seat["last_action"] = String(action_data.get("action", ""))
+			seat["last_action_amount"] = int(action_data.get("amount", 0))
+		else:
+			seat["last_action"] = ""
+			seat["last_action_amount"] = 0
+		projected_seats.append(seat)
+	projected["seats"] = projected_seats
+	if _server_waiting_for_action_ack:
+		projected["available_actions"] = []
+		projected["turn_prompt"] = "Waiting for server..."
+	return projected
+
+func _start_server_action_playback() -> void:
+	if _server_playback_running or _server_pending_action_events.is_empty():
+		return
+	_server_playback_running = true
+	call_deferred("_run_server_action_playback")
+
+func _run_server_action_playback() -> void:
+	while not _server_pending_action_events.is_empty():
+		var event: Dictionary = Dictionary(_server_pending_action_events.pop_front())
+		var sequence := _server_event_sequence(event)
+		_server_pending_event_sequences.erase(sequence)
+		if sequence <= 0 or _server_played_event_sequences.has(sequence):
+			continue
+		_server_played_event_sequences[sequence] = true
+		_server_last_played_event_sequence = max(_server_last_played_event_sequence, sequence)
+		_apply_server_playback_event(event)
+		if not _server_latest_ui_snapshot.is_empty():
+			snapshot = _server_apply_playback_projection(_server_latest_ui_snapshot)
+			_apply_launch_context(snapshot)
+			_refresh()
+		var delay := _server_playback_delay(event)
+		await get_tree().create_timer(delay).timeout
+	_server_playback_running = false
+	if not _server_pending_action_events.is_empty():
+		_start_server_action_playback()
+
+func _apply_server_playback_event(event: Dictionary) -> void:
+	var message := String(event.get("message", ""))
+	if message != "":
+		_server_visible_action_history.append(message)
+		if _server_visible_action_history.size() > 80:
+			_server_visible_action_history = _server_visible_action_history.slice(_server_visible_action_history.size() - 80)
+	var event_type := String(event.get("type", ""))
+	var action_id := String(event.get("action", ""))
+	if event_type == "phase":
+		_apply_server_phase_playback(action_id)
+		return
+	var seat_id := int(event.get("seat_id", event.get("seat_index", -1)))
+	if seat_id < 0:
+		return
+	var action_label := _server_action_label(action_id)
+	var amount := int(event.get("amount", 0))
+	_server_visible_seat_actions[seat_id] = {"action": action_label, "amount": amount}
+	_show_seat_action_toast(seat_id, action_label, amount)
+
+func _apply_server_phase_playback(action_id: String) -> void:
+	match action_id:
+		"flop":
+			_server_visible_community_count = max(_server_visible_community_count, 3)
+		"turn":
+			_server_visible_community_count = max(_server_visible_community_count, 4)
+		"river", "showdown":
+			_server_visible_community_count = max(_server_visible_community_count, 5)
+
+func _server_playback_delay(event: Dictionary) -> float:
+	match String(event.get("type", "")):
+		"phase":
+			return 0.58
+		"winner":
+			return 0.72
+	return 0.46
+
+func _server_event_sequence(event: Dictionary) -> int:
+	return int(event.get("sequence", event.get("event_id", event.get("id", 0))))
+
 func _server_history_lines(server_snapshot: Dictionary, room_id: String, side_pots: Array) -> Array:
 	var history: Array = []
 	for session_item in _session_log:
@@ -729,11 +894,11 @@ func _server_recent_actions_to_visual_events(server_snapshot: Dictionary) -> Arr
 		var entry_type := String(action.get("type", ""))
 		if not (entry_type in ["player_action", "winner"]):
 			continue
-		var seat_index := int(action.get("seat_index", -1))
+		var seat_index := int(action.get("seat_id", action.get("seat_index", -1)))
 		if seat_index < 0:
 			continue
 		events.append({
-			"id": 1000000 + int(action.get("id", 0)),
+			"id": 1000000 + _server_event_sequence(action),
 			"type": "player_action",
 			"seat_id": seat_index,
 			"action": _server_action_label(String(action.get("action", ""))),
@@ -1007,6 +1172,8 @@ func _refresh() -> void:
 		pot_val = int(pot_data)
 		
 	_action_bar.set_actions(Array(snapshot.get("available_actions", [])), pot_val)
+	if _action_bar.has_method("set_turn_prompt"):
+		_action_bar.call("set_turn_prompt", String(snapshot.get("turn_prompt", "BET AMOUNT")))
 	_log_panel.set_info(Array(snapshot.get("hand_history", [])), Array(snapshot.get("system_messages", [])))
 	if _room_info_panel:
 		if _room_info_panel.has_method("set_table_context"):
@@ -1051,8 +1218,10 @@ func _on_action_pressed(action: Dictionary) -> void:
 		var amount := 0
 		if action_id in ["bet", "raise"]:
 			amount = int(action.get("amount", action.get("min_amount", 0)))
+		_server_waiting_for_action_ack = true
 		_send_server_message(_poker_ws_client.player_action(action_id, amount), "player_action %s" % action_id)
 		snapshot["available_actions"] = []
+		snapshot["turn_prompt"] = "Waiting for server..."
 		_refresh()
 		return
 	if action_id in ["call", "bet", "raise", "all_in"] and not action.has("amount"):
