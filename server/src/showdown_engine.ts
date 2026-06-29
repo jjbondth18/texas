@@ -40,6 +40,14 @@ export function settleHand(table: TableState): void {
     seat.chips += amount;
     const record = records.get(seatIndex) ?? {};
     table.winners.push({ seat_index: seatIndex, amount, hand_rank: record.handRank, cards: record.cards });
+    table.addAction({
+      type: "winner",
+      seat_index: seatIndex,
+      player_name: seat.name,
+      action: "win",
+      amount,
+      message: `${seat.name} wins ${amount}${record.handRank ? ` with ${record.handRank}` : ""}.`,
+    });
   }
   for (const seat of table.seats) {
     seat.currentBet = 0;
@@ -53,7 +61,7 @@ export function settleHand(table: TableState): void {
   table.currentBet = 0;
   table.currentTurnSeat = -1;
   table.finishDisconnectedHand();
-  table.addLog(`Hand ${table.handId} settled.`);
+  table.addAction({ type: "system", message: `Hand ${table.handId} settled.` });
 }
 
 function bestSeats(seats: Seat[], evaluations: Map<number, HandEvaluation>): Seat[] {

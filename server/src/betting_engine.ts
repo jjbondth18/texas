@@ -46,20 +46,44 @@ function applySeatAction(table: TableState, seat: Seat, action: PlayerActionType
     case "fold":
       seat.status = "folded";
       seat.lastAction = "fold";
+      seat.lastActionAmount = 0;
       seat.acted = true;
-      table.addLog(`${seat.name} folds.`);
+      table.addAction({
+        type: "player_action",
+        seat_index: seat.seatIndex,
+        player_name: seat.name,
+        action: "fold",
+        amount: 0,
+        message: `${seat.name} folds.`,
+      });
       break;
     case "check":
       if (callAmount > 0) throw new Error("cannot check while facing a bet");
       seat.lastAction = "check";
+      seat.lastActionAmount = 0;
       seat.acted = true;
-      table.addLog(`${seat.name} checks.`);
+      table.addAction({
+        type: "player_action",
+        seat_index: seat.seatIndex,
+        player_name: seat.name,
+        action: "check",
+        amount: 0,
+        message: `${seat.name} checks.`,
+      });
       break;
     case "call": {
       const paid = table.commit(seat, callAmount);
       seat.lastAction = "call";
+      seat.lastActionAmount = paid;
       seat.acted = true;
-      table.addLog(`${seat.name} calls ${paid}.`);
+      table.addAction({
+        type: "player_action",
+        seat_index: seat.seatIndex,
+        player_name: seat.name,
+        action: "call",
+        amount: paid,
+        message: `${seat.name} calls ${paid}.`,
+      });
       break;
     }
     case "bet":
@@ -72,7 +96,15 @@ function applySeatAction(table: TableState, seat: Seat, action: PlayerActionType
       table.minRaiseTo = table.currentBet + table.bigBlind;
       for (const active of table.actionableSeats()) active.acted = active.seatIndex === seat.seatIndex;
       seat.lastAction = action;
-      table.addLog(`${seat.name} ${action}s to ${seat.currentBet} (${paid} paid).`);
+      seat.lastActionAmount = seat.currentBet;
+      table.addAction({
+        type: "player_action",
+        seat_index: seat.seatIndex,
+        player_name: seat.name,
+        action,
+        amount: seat.currentBet,
+        message: `${seat.name} ${action}s to ${seat.currentBet}.`,
+      });
       break;
     }
     case "all_in": {
@@ -86,7 +118,15 @@ function applySeatAction(table: TableState, seat: Seat, action: PlayerActionType
         seat.acted = true;
       }
       seat.lastAction = "all_in";
-      table.addLog(`${seat.name} is all-in for ${paid}.`);
+      seat.lastActionAmount = paid;
+      table.addAction({
+        type: "player_action",
+        seat_index: seat.seatIndex,
+        player_name: seat.name,
+        action: "all_in",
+        amount: paid,
+        message: `${seat.name} is all-in for ${paid}.`,
+      });
       break;
     }
   }

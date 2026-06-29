@@ -81,3 +81,14 @@ Each bot sends `hello`, `join_room`, `sit_down`, and `ready`. On its turn it che
    ```
 
 6. Start a hand from the Godot table, then play through preflop, flop, turn, river, showdown, and settlement. The Godot client must only render snapshots and send player actions; shuffling, dealing, betting validation, pots, winners, and chip settlement come from the server.
+
+## Official Table UI Parity Checklist
+
+Use this while testing the server-authoritative table:
+
+1. Confirm each occupied seat shows the latest server action, such as `Check`, `Call 50`, `Raise 200`, `Fold`, `All-in`, `Small Blind`, or `Big Blind`.
+2. Confirm the bottom action area says `Your Turn` only for the local player's turn, otherwise `Waiting for <player>`.
+3. Confirm Fold, Check/Call, Bet/Raise, and All-in are clickable only when the server private snapshot lists them as legal actions.
+4. Confirm Table Log updates from the server `recent_actions` / `action_log`, including blinds, player actions, street changes, and winners.
+5. Confirm bots acting through `npm.cmd run bot -- --room <room_id> --count 2 --start-seat 1` are reflected in the Godot seats, Table Log, and `http://127.0.0.1:8080/admin`.
+6. If the table is waiting with enough ready players, press `S` in the Godot table to request `start_hand`.

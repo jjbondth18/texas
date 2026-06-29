@@ -238,6 +238,12 @@ func set_actions(new_actions: Array, current_pot: int = 0) -> void:
 		_all_in_button.disabled = not bool(_all_in_action.get("enabled", true))
 
 
+func set_turn_prompt(prompt: String) -> void:
+	if _bet_title_label == null:
+		return
+	_bet_title_label.text = prompt.to_upper()
+
+
 func _build_player_info_overlay() -> void:
 	_player_name_label = _make_label("Luna0581", 24, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, true)
 	$IdentityZone.add_child(_player_name_label)

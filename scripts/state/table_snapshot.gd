@@ -18,6 +18,8 @@ var small_blind := 0
 var big_blind := 0
 var winners: Array = []
 var log: Array = []
+var recent_actions: Array = []
+var action_log: Array = []
 var private_snapshot: Dictionary = {}
 
 static func from_dict(data: Dictionary):
@@ -43,6 +45,8 @@ func apply_table_snapshot(data: Dictionary) -> void:
 	big_blind = int(data.get("big_blind", big_blind))
 	winners = Array(data.get("winners", [])).duplicate(true)
 	log = Array(data.get("log", [])).duplicate()
+	recent_actions = Array(data.get("recent_actions", data.get("action_log", []))).duplicate(true)
+	action_log = Array(data.get("action_log", recent_actions)).duplicate(true)
 
 func apply_private_snapshot(data: Dictionary) -> void:
 	private_snapshot = data.duplicate(true)
@@ -79,5 +83,7 @@ func to_dict() -> Dictionary:
 		"big_blind": big_blind,
 		"winners": winners.duplicate(true),
 		"log": log.duplicate(),
+		"recent_actions": recent_actions.duplicate(true),
+		"action_log": action_log.duplicate(true),
 		"private_snapshot": private_snapshot.duplicate(true),
 	}

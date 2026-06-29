@@ -1,4 +1,4 @@
-import type { Card, Phase, PlayerActionType, PrivateSnapshot, PublicSeatSnapshot, SeatStatus, TableSnapshot } from "./protocol.js";
+import type { ActionLogEntry, Card, Phase, PlayerActionType, PrivateSnapshot, PublicSeatSnapshot, SeatStatus, TableSnapshot } from "./protocol.js";
 import { createDeck, shuffleDeck } from "./deck.js";
 import { buildSidePots, type SidePot } from "./pot_manager.js";
 
@@ -20,6 +20,7 @@ export interface Seat {
   contribution: number;
   acted: boolean;
   lastAction: string;
+  lastActionAmount: number;
   isDealer: boolean;
   isSmallBlind: boolean;
   isBigBlind: boolean;
@@ -50,6 +51,8 @@ export class TableState {
   bigBlindSeat = -1;
   winners: WinnerRecord[] = [];
   log: string[] = [];
+  recentActions: ActionLogEntry[] = [];
+  private nextActionLogId = 1;
 
   constructor(roomId: string) {
     this.roomId = roomId;
@@ -67,6 +70,18 @@ export class TableState {
   addLog(message: string): void {
     this.log.push(message);
     if (this.log.length > 80) this.log = this.log.slice(-80);
+  }
+
+  addAction(entry: Omit<ActionLogEntry, "id" | "hand_id" | "phase">): void {
+    const actionEntry: ActionLogEntry = {
+      id: this.nextActionLogId++,
+      hand_id: this.handId,
+      phase: this.phase,
+      ...entry,
+    };
+    this.recentActions.push(actionEntry);
+    if (this.recentActions.length > 30) this.recentActions = this.recentActions.slice(-30);
+    this.addLog(actionEntry.message);
   }
 
   sitDown(player: Player, seatIndex: number, buyIn = 5000): void {
@@ -118,6 +133,7 @@ export class TableState {
       seat.contribution = 0;
       seat.acted = false;
       seat.lastAction = "";
+      seat.lastActionAmount = 0;
       seat.isDealer = false;
       seat.isSmallBlind = false;
       seat.isBigBlind = false;
@@ -133,24 +149,31 @@ export class TableState {
     this.currentBet = Math.max(...this.seats.map((seat) => seat.currentBet));
     this.minRaiseTo = this.currentBet + this.bigBlind;
     this.currentTurnSeat = this.nextActionableSeat(this.bigBlindSeat);
-    this.addLog(`Hand ${this.handId} started.`);
+    this.addAction({ type: "system", message: `Hand ${this.handId} started.` });
   }
 
   publicSnapshot(): TableSnapshot {
     return {
       room_id: this.roomId,
+      hand_state: this.phase,
+      betting_round: this.phase,
       phase: this.phase,
       hand_id: this.handId,
       seats: this.seats.map((seat): PublicSeatSnapshot => ({
+        seat_id: seat.seatIndex,
         seat_index: seat.seatIndex,
         player_id: seat.playerId,
+        player_name: seat.name,
         name: seat.name,
         chips: seat.chips,
         status: seat.status,
+        folded: seat.status === "folded",
+        all_in: seat.status === "all_in",
         disconnected: seat.disconnected,
         current_bet: seat.currentBet,
         contribution: seat.contribution,
         last_action: seat.lastAction,
+        last_action_amount: seat.lastActionAmount,
         is_dealer: seat.isDealer,
         is_small_blind: seat.isSmallBlind,
         is_big_blind: seat.isBigBlind,
@@ -169,6 +192,8 @@ export class TableState {
       big_blind: this.bigBlind,
       winners: this.winners.slice(),
       log: this.log.slice(),
+      recent_actions: this.recentActions.slice(),
+      action_log: this.recentActions.slice(),
     };
   }
 
@@ -235,19 +260,22 @@ export class TableState {
     if (this.phase === "preflop") {
       this.dealBoard(3);
       this.phase = "flop";
+      this.addAction({ type: "phase", message: `Flop: ${this.communityCards.map((card) => card.code).join(" ")}` });
     } else if (this.phase === "flop") {
       this.dealBoard(1);
       this.phase = "turn";
+      this.addAction({ type: "phase", message: `Turn: ${this.communityCards[this.communityCards.length - 1]?.code ?? ""}` });
     } else if (this.phase === "turn") {
       this.dealBoard(1);
       this.phase = "river";
+      this.addAction({ type: "phase", message: `River: ${this.communityCards[this.communityCards.length - 1]?.code ?? ""}` });
     } else if (this.phase === "river") {
       this.phase = "showdown";
       this.currentTurnSeat = -1;
+      this.addAction({ type: "phase", message: "Showdown." });
       return;
     }
     this.currentTurnSeat = this.nextActionableSeat(this.dealerSeat);
-    this.addLog(`${this.phase} started.`);
   }
 
   runoutBoard(): void {
@@ -281,7 +309,15 @@ export class TableState {
     if (!seat) return;
     const paid = this.commit(seat, amount);
     seat.lastAction = label;
-    this.addLog(`${seat.name} posts ${label} ${paid}.`);
+    seat.lastActionAmount = paid;
+    this.addAction({
+      type: "player_action",
+      seat_index: seat.seatIndex,
+      player_name: seat.name,
+      action: label,
+      amount: paid,
+      message: `${seat.name} posts ${label === "small_blind" ? "small blind" : "big blind"} ${paid}.`,
+    });
   }
 
   private dealBoard(count: number): void {
@@ -311,6 +347,7 @@ export class TableState {
       contribution: 0,
       acted: false,
       lastAction: "",
+      lastActionAmount: 0,
       isDealer: false,
       isSmallBlind: false,
       isBigBlind: false,

@@ -498,7 +498,7 @@ func _empty_server_ui_snapshot(message: String) -> Dictionary:
 		seats.append({
 			"seat_index": i,
 			"seat_id": i,
-			"visual_position": i + 1,
+			"visual_position": MockTableSimulation.visual_position_for_seat_index(i, _server_local_seat_index),
 			"player_id": _server_local_player_id if is_local else "",
 			"player_name": local_name if is_local else "Seat %d" % i,
 			"avatar_id": local_avatar_id if is_local else AvatarLibraryScript.avatar_id_for_seat(i + 1, false),
@@ -533,6 +533,7 @@ func _empty_server_ui_snapshot(message: String) -> Dictionary:
 		"local_seat_index": _server_local_seat_index,
 		"turn_seat_index": -1,
 		"turn_seconds": 15,
+		"turn_prompt": "Connecting...",
 		"available_actions": [],
 		"hand_history": [message],
 		"system_messages": ["Server authoritative mode: waiting for table_snapshot"],
@@ -542,14 +543,15 @@ func _empty_server_ui_snapshot(message: String) -> Dictionary:
 	}
 
 func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapshot: Dictionary) -> Dictionary:
-	var phase: String = String(server_snapshot.get("phase", "waiting"))
+	var phase: String = String(server_snapshot.get("betting_round", server_snapshot.get("hand_state", server_snapshot.get("phase", "waiting"))))
 	var room_id: String = String(server_snapshot.get("room_id", _server_room_id))
 	var local_server_seat: int = int(private_snapshot.get("seat_index", _server_local_seat_index))
 	_server_local_seat_index = local_server_seat
+	var current_turn_seat: int = int(server_snapshot.get("current_turn_seat", -1))
 	var seats: Array = []
 	for seat_item in Array(server_snapshot.get("seats", [])):
 		var server_seat: Dictionary = Dictionary(seat_item).duplicate(true)
-		var seat_index: int = int(server_seat.get("seat_index", 0))
+		var seat_index: int = int(server_seat.get("seat_id", server_seat.get("seat_index", 0)))
 		var is_local := seat_index == local_server_seat and String(server_seat.get("player_id", "")) != ""
 		var raw_status: String = String(server_seat.get("status", "empty"))
 		var ui_status: String = _server_status_to_ui_status(raw_status)
@@ -566,9 +568,9 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		seats.append({
 			"seat_index": seat_index,
 			"seat_id": seat_index,
-			"visual_position": seat_index + 1,
+			"visual_position": MockTableSimulation.visual_position_for_seat_index(seat_index, local_server_seat),
 			"player_id": String(server_seat.get("player_id", "")),
-			"player_name": String(server_seat.get("name", "Seat %d" % seat_index)),
+			"player_name": String(server_seat.get("player_name", server_seat.get("name", "Seat %d" % seat_index))),
 			"avatar_id": avatar_id,
 			"avatar_texture": AvatarLibraryScript.get_avatar_by_id(avatar_id),
 			"chips": int(server_seat.get("chips", 0)),
@@ -580,10 +582,10 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 			"is_dealer": bool(server_seat.get("is_dealer", false)),
 			"is_small_blind": bool(server_seat.get("is_small_blind", false)),
 			"is_big_blind": bool(server_seat.get("is_big_blind", false)),
-			"is_turn": seat_index == int(server_snapshot.get("current_turn_seat", -1)),
-			"last_action": String(server_seat.get("last_action", "")),
-			"last_action_amount": 0,
-			"last_action_seq": int(server_snapshot.get("hand_id", 0)),
+			"is_turn": seat_index == current_turn_seat,
+			"last_action": _server_action_label(String(server_seat.get("last_action", ""))),
+			"last_action_amount": int(server_seat.get("last_action_amount", 0)),
+			"last_action_seq": int(server_snapshot.get("hand_id", 0)) * 1000 + int(server_seat.get("last_action_amount", 0)),
 			"buy_in": PlayerProfileScript.table_buy_in(ProfileServiceScript.new().get_current_profile()),
 		})
 	var community_cards: Array = []
@@ -591,18 +593,14 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		community_cards.append(_server_card_to_ui_card(Dictionary(card_item), true))
 	var total_pot: int = int(server_snapshot.get("pot", 0))
 	var side_pots: Array = Array(server_snapshot.get("side_pots", [])).duplicate(true)
-	var history: Array = []
-	for session_item in _session_log:
-		history.append(session_item)
-	if room_id != "":
-		history.append("Authoritative room_id: %s" % room_id)
-	if not side_pots.is_empty():
-		history.append("Side pots: %s" % str(side_pots))
-	for log_item in Array(server_snapshot.get("log", [])):
-		history.append(log_item)
+	var history: Array = _server_history_lines(server_snapshot, room_id, side_pots)
 	if _server_last_error != "":
 		history.append("Server error: %s" % _server_last_error)
 	var local_player: Dictionary = _find_local_player(seats)
+	var available_actions: Array = _server_legal_actions_to_ui_actions(Array(private_snapshot.get("legal_actions", [])), total_pot)
+	if current_turn_seat != local_server_seat:
+		available_actions = []
+	var turn_prompt := _server_turn_message(seats, current_turn_seat, local_server_seat)
 	return {
 		"source_model": "server_authoritative",
 		"table_id": room_id if room_id != "" else "authoritative_local",
@@ -617,16 +615,17 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"seats": seats,
 		"local_player": local_player,
 		"local_seat_index": local_server_seat,
-		"turn_seat_index": int(server_snapshot.get("current_turn_seat", -1)),
+		"turn_seat_index": current_turn_seat,
 		"turn_seconds": 15,
-		"available_actions": _server_legal_actions_to_ui_actions(Array(private_snapshot.get("legal_actions", [])), total_pot),
+		"turn_prompt": turn_prompt,
+		"available_actions": available_actions,
 		"hand_history": history,
 		"system_messages": [
 			"Server authoritative mode",
 			"Room: %s" % room_id,
-			"Current turn seat: %d" % int(server_snapshot.get("current_turn_seat", -1)),
+			turn_prompt,
 		],
-		"visual_events": [],
+		"visual_events": _server_recent_actions_to_visual_events(server_snapshot),
 		"rule_debug_log": history,
 		"table_session": {},
 	}
@@ -653,6 +652,28 @@ func _server_suit_to_ui_suit(suit_code: String) -> String:
 			return "spades"
 	return suit_code
 
+func _server_action_label(action_id: String) -> String:
+	match action_id:
+		"small_blind":
+			return "SB"
+		"big_blind":
+			return "BB"
+		"all_in":
+			return "ALL-IN"
+		"win":
+			return "WIN"
+		"fold":
+			return "FOLD"
+		"check":
+			return "CHECK"
+		"call":
+			return "CALL"
+		"bet":
+			return "BET"
+		"raise":
+			return "RAISE"
+	return action_id.to_upper()
+
 func _server_status_to_ui_status(status: String) -> String:
 	match status:
 		"empty":
@@ -662,6 +683,63 @@ func _server_status_to_ui_status(status: String) -> String:
 		"sit_out", "disconnected":
 			return "out"
 	return "active"
+
+func _server_history_lines(server_snapshot: Dictionary, room_id: String, side_pots: Array) -> Array:
+	var history: Array = []
+	for session_item in _session_log:
+		history.append(session_item)
+	if room_id != "":
+		history.append("Authoritative room_id: %s" % room_id)
+	history.append("State: %s | Round: %s | Turn seat: %d" % [
+		String(server_snapshot.get("hand_state", server_snapshot.get("phase", "waiting"))),
+		String(server_snapshot.get("betting_round", server_snapshot.get("phase", "waiting"))),
+		int(server_snapshot.get("current_turn_seat", -1)),
+	])
+	if not side_pots.is_empty():
+		history.append("Side pots: %s" % str(side_pots))
+	var action_entries: Array = Array(server_snapshot.get("recent_actions", server_snapshot.get("action_log", [])))
+	if not action_entries.is_empty():
+		for action_item in action_entries:
+			var action_data: Dictionary = Dictionary(action_item)
+			var message := String(action_data.get("message", ""))
+			if message != "":
+				history.append(message)
+	else:
+		for log_item in Array(server_snapshot.get("log", [])):
+			history.append(log_item)
+	if String(server_snapshot.get("phase", "")) == "waiting":
+		history.append("Press S to Start Hand after at least two players are ready.")
+	return history
+
+func _server_turn_message(seats: Array, current_turn_seat: int, local_server_seat: int) -> String:
+	if current_turn_seat < 0:
+		return "Press S to Start Hand when players are ready."
+	if current_turn_seat == local_server_seat:
+		return "Your Turn"
+	for seat_item in seats:
+		var seat: Dictionary = Dictionary(seat_item)
+		if int(seat.get("seat_id", seat.get("seat_index", -1))) == current_turn_seat:
+			return "Waiting for %s" % String(seat.get("player_name", "seat %d" % current_turn_seat))
+	return "Waiting for seat %d" % current_turn_seat
+
+func _server_recent_actions_to_visual_events(server_snapshot: Dictionary) -> Array:
+	var events: Array = []
+	for action_item in Array(server_snapshot.get("recent_actions", server_snapshot.get("action_log", []))):
+		var action: Dictionary = Dictionary(action_item)
+		var entry_type := String(action.get("type", ""))
+		if not (entry_type in ["player_action", "winner"]):
+			continue
+		var seat_index := int(action.get("seat_index", -1))
+		if seat_index < 0:
+			continue
+		events.append({
+			"id": 1000000 + int(action.get("id", 0)),
+			"type": "player_action",
+			"seat_id": seat_index,
+			"action": _server_action_label(String(action.get("action", ""))),
+			"amount": int(action.get("amount", 0)),
+		})
+	return events
 
 func _server_legal_actions_to_ui_actions(actions: Array, pot_value: int) -> Array:
 	var result: Array = []

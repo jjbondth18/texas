@@ -43,23 +43,42 @@ export interface ServerMessage {
 }
 
 export interface PublicSeatSnapshot {
+  seat_id: number;
   seat_index: number;
   player_id: string;
+  player_name: string;
   name: string;
   chips: number;
   status: SeatStatus;
+  folded: boolean;
+  all_in: boolean;
   disconnected: boolean;
   current_bet: number;
   contribution: number;
   last_action: string;
+  last_action_amount: number;
   is_dealer: boolean;
   is_small_blind: boolean;
   is_big_blind: boolean;
   hole_card_count: number;
 }
 
+export interface ActionLogEntry {
+  id: number;
+  type: "player_action" | "phase" | "winner" | "system";
+  hand_id: number;
+  phase: Phase;
+  seat_index?: number;
+  player_name?: string;
+  action?: string;
+  amount?: number;
+  message: string;
+}
+
 export interface TableSnapshot {
   room_id: string;
+  hand_state: Phase;
+  betting_round: Phase;
   phase: Phase;
   hand_id: number;
   seats: PublicSeatSnapshot[];
@@ -76,6 +95,8 @@ export interface TableSnapshot {
   big_blind: number;
   winners: Array<{ seat_index: number; amount: number; hand_rank?: string; cards?: string[] }>;
   log: string[];
+  recent_actions: ActionLogEntry[];
+  action_log: ActionLogEntry[];
 }
 
 export interface PrivateSnapshot {
