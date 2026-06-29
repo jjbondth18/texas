@@ -25,6 +25,12 @@ var _log_list: VBoxContainer
 var _chat_list: VBoxContainer
 var _chat_input: LineEdit
 var _send_button: Button
+var _history_content: VBoxContainer
+var _history_lines: Array = []
+var _history_labels: Array[Label] = []
+var _message_lines: Array = []
+
+const MAX_HISTORY_LINES := 80
 
 
 func _ready() -> void:
@@ -127,6 +133,12 @@ func _build_chat_panel(parent: Control) -> void:
 func set_info(history: Array, messages: Array) -> void:
 	if _log_list == null:
 		return
+	if _arrays_equal(history, _history_lines) and _arrays_equal(messages, _message_lines):
+		return
+	_history_content = null
+	_history_labels.clear()
+	_history_lines = history.duplicate()
+	_message_lines = messages.duplicate()
 	for child in _log_list.get_children():
 		child.queue_free()
 
@@ -135,6 +147,27 @@ func set_info(history: Array, messages: Array) -> void:
 		_add_log_item("HAND HISTORY", _time_text(time_base, 0), history)
 	if not messages.is_empty():
 		_add_log_item("SYSTEM MESSAGES", _time_text(time_base, 5), messages)
+
+
+func append_history_line(line: String) -> void:
+	if _log_list == null or line.strip_edges() == "":
+		return
+	if not _history_lines.is_empty() and String(_history_lines.back()) == line:
+		return
+	if _history_content == null:
+		set_info([line], _message_lines)
+		return
+	_history_lines.append(line)
+	var line_label := _body_label(line, 14, Color(0.92, 0.92, 0.98, 0.94))
+	line_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_history_content.add_child(line_label)
+	_history_labels.append(line_label)
+	while _history_labels.size() > MAX_HISTORY_LINES:
+		var old_label := _history_labels.pop_front() as Label
+		if is_instance_valid(old_label):
+			old_label.queue_free()
+	if _history_lines.size() > MAX_HISTORY_LINES:
+		_history_lines = _history_lines.slice(_history_lines.size() - MAX_HISTORY_LINES)
 
 
 func _add_log_item(category: String, time_text: String, lines: Array) -> void:
@@ -158,6 +191,8 @@ func _add_log_item(category: String, time_text: String, lines: Array) -> void:
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation", 3)
 	row.add_child(content)
+	if category == "HAND HISTORY":
+		_history_content = content
 
 	var time_label := _body_label(time_text, 13, Color(0.78, 0.78, 0.88, 0.70))
 	content.add_child(time_label)
@@ -169,6 +204,17 @@ func _add_log_item(category: String, time_text: String, lines: Array) -> void:
 		var line_label := _body_label(String(item), 14, Color(0.92, 0.92, 0.98, 0.94))
 		line_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		content.add_child(line_label)
+		if category == "HAND HISTORY":
+			_history_labels.append(line_label)
+
+
+func _arrays_equal(left: Array, right: Array) -> bool:
+	if left.size() != right.size():
+		return false
+	for i in range(left.size()):
+		if String(left[i]) != String(right[i]):
+			return false
+	return true
 
 
 func _add_chat_message(player_name: String, text: String, is_you: bool) -> void:

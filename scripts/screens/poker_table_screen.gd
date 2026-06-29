@@ -34,6 +34,10 @@ const FLYING_CHIP_PATH := "res://assets/ui/chips/chip_stack_purple.png"
 const DEALER_DECK_PATH := "res://assets/ui/cardback/asset_03.png"
 const DEFAULT_CROUPIER_PATH := "res://assets/croupier/processed/dealer_01_dog.png"
 const POPOVER_LAYER_Z_INDEX := 240
+const SERVER_UI_VERBOSE_LOGS := false
+const SERVER_UI_SLOW_APPLY_WARNING_MS := 16
+const SERVER_UI_SLOW_PLAYBACK_WARNING_MS := 16
+const SERVER_UI_WARNING_THROTTLE_MS := 1000
 
 var snapshot := {}
 var server_authoritative := true
@@ -131,6 +135,7 @@ var _server_visible_action_history: Array = []
 var _server_visible_seat_actions := {}
 var _server_visible_community_count := -1
 var _server_waiting_for_action_ack := false
+var _server_last_slow_ui_warning_msec := 0
 
 func _ready() -> void:
 	_hide_editor_guides(self)
@@ -488,6 +493,7 @@ func _try_server_sit_ready() -> void:
 	_append_session_log("Press S to request start_hand from the authoritative server.")
 
 func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
+	var apply_start := Time.get_ticks_msec()
 	_server_last_error = ""
 	_server_waiting_for_action_ack = false
 	if _server_table_snapshot == null:
@@ -500,6 +506,7 @@ func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
 	snapshot = _server_apply_playback_projection(_server_latest_ui_snapshot)
 	_apply_launch_context(snapshot)
 	_refresh()
+	_warn_if_server_ui_slow("server snapshot apply", apply_start, SERVER_UI_SLOW_APPLY_WARNING_MS)
 	_start_server_action_playback()
 
 func _on_server_private_snapshot_received(private_snapshot: Dictionary) -> void:
@@ -508,10 +515,12 @@ func _on_server_private_snapshot_received(private_snapshot: Dictionary) -> void:
 		_server_table_snapshot = ServerTableSnapshotScript.new()
 	_server_table_snapshot.apply_private_snapshot(private_snapshot)
 	if not snapshot.is_empty() and String(snapshot.get("source_model", "")) == "server_authoritative":
+		var apply_start := Time.get_ticks_msec()
 		_server_latest_ui_snapshot = _server_snapshot_to_ui_snapshot(_server_table_snapshot.to_dict(), _server_private_snapshot)
 		snapshot = _server_apply_playback_projection(_server_latest_ui_snapshot)
 		_apply_launch_context(snapshot)
 		_refresh()
+		_warn_if_server_ui_slow("server private snapshot apply", apply_start, SERVER_UI_SLOW_APPLY_WARNING_MS)
 
 func _on_server_error(message: String) -> void:
 	_server_last_error = message
@@ -817,8 +826,7 @@ func _run_server_action_playback() -> void:
 		_apply_server_playback_event(event)
 		if not _server_latest_ui_snapshot.is_empty():
 			snapshot = _server_apply_playback_projection(_server_latest_ui_snapshot)
-			_apply_launch_context(snapshot)
-			_refresh()
+			_refresh_server_playback_event_ui(event)
 		var delay := _server_playback_delay(event)
 		await get_tree().create_timer(delay).timeout
 	_server_playback_running = false
@@ -860,6 +868,63 @@ func _server_playback_delay(event: Dictionary) -> float:
 		"winner":
 			return 0.72
 	return 0.46
+
+func _refresh_server_playback_event_ui(event: Dictionary) -> void:
+	var apply_start := Time.get_ticks_msec()
+	var event_type := String(event.get("type", ""))
+	var message := String(event.get("message", ""))
+	var seat_id := int(event.get("seat_id", event.get("seat_index", -1)))
+	if seat_id >= 0:
+		_refresh_projected_server_seat(seat_id)
+	if event_type == "phase":
+		_apply_community_cards(Array(snapshot.get("community_cards", [])))
+	if message != "":
+		_append_server_history_line(message)
+	_warn_if_server_ui_slow("server playback event", apply_start, SERVER_UI_SLOW_PLAYBACK_WARNING_MS)
+
+
+func _refresh_projected_server_seat(seat_id: int) -> void:
+	for seat_item in Array(snapshot.get("seats", [])):
+		var data := Dictionary(seat_item)
+		var current_seat_id := int(data.get("seat_id", data.get("seat_index", -1)))
+		if current_seat_id != seat_id:
+			continue
+		var visual_position := int(data.get("visual_position", data.get("seat_index", 0)))
+		if _seats.has(visual_position):
+			_seats[visual_position].set_seat_data(data)
+		return
+
+
+func _append_server_history_line(message: String) -> void:
+	if _log_panel == null:
+		return
+	if _log_panel.has_method("append_history_line"):
+		_log_panel.call("append_history_line", message)
+	else:
+		_log_panel.set_info(Array(snapshot.get("hand_history", [])), Array(snapshot.get("system_messages", [])))
+
+
+func _refresh_server_action_controls() -> void:
+	var pot_data = snapshot.get("pot_data", snapshot.get("pot", 0))
+	var pot_val := 0
+	if pot_data is Dictionary:
+		pot_val = int(pot_data.get("total", pot_data.get("main", 0)))
+	else:
+		pot_val = int(pot_data)
+	_action_bar.set_actions(Array(snapshot.get("available_actions", [])), pot_val)
+	if _action_bar.has_method("set_turn_prompt"):
+		_action_bar.call("set_turn_prompt", String(snapshot.get("turn_prompt", "Waiting for server...")))
+
+
+func _warn_if_server_ui_slow(label: String, start_msec: int, threshold_msec: int) -> void:
+	var elapsed := Time.get_ticks_msec() - start_msec
+	if elapsed < threshold_msec:
+		return
+	var now := Time.get_ticks_msec()
+	if now - _server_last_slow_ui_warning_msec < SERVER_UI_WARNING_THROTTLE_MS:
+		return
+	_server_last_slow_ui_warning_msec = now
+	print("%s slow: %d ms" % [label, elapsed])
 
 func _server_event_sequence(event: Dictionary) -> int:
 	return int(event.get("sequence", event.get("event_id", event.get("id", 0))))
@@ -930,7 +995,7 @@ func _server_legal_actions_to_ui_actions(actions: Array, pot_value: int) -> Arra
 			continue
 		var ui_action := {
 			"id": action_id,
-			"label": action_id.replace("_", " ").capitalize(),
+			"label": _server_action_label(action_id),
 			"enabled": true,
 		}
 		if action.has("amount"):
@@ -1237,7 +1302,7 @@ func _on_action_pressed(action: Dictionary) -> void:
 		_send_server_message(_poker_ws_client.player_action(action_id, amount), "player_action %s" % action_id)
 		snapshot["available_actions"] = []
 		snapshot["turn_prompt"] = "Waiting for server..."
-		_refresh()
+		_refresh_server_action_controls()
 		return
 	if action_id in ["call", "bet", "raise", "all_in"] and not action.has("amount"):
 		action["amount"] = int(action.get("min_amount", action.get("min", 50)))
@@ -1472,9 +1537,10 @@ func _show_seat_action_toast(seat_id: int, action_label: String, amount: int) ->
 func _play_flying_card(start: Vector2, finish: Vector2, delay: float = 0.0, deal_type: String = "deal", target_label: String = "") -> void:
 	if _flying_cards_root == null:
 		return
-	print("%s animation start" % deal_type)
-	print("DealerDealOrigin global_position=%s" % str(_dealer_origin_global()))
-	print("flying card from origin to %s: %s -> %s z=%d layer_z=%d" % [target_label, start, finish, _flying_cards_root.z_index, _animation_layer.z_index])
+	if SERVER_UI_VERBOSE_LOGS:
+		print("%s animation start" % deal_type)
+		print("DealerDealOrigin global_position=%s" % str(_dealer_origin_global()))
+		print("flying card from origin to %s: %s -> %s z=%d layer_z=%d" % [target_label, start, finish, _flying_cards_root.z_index, _animation_layer.z_index])
 	var card := TextureRect.new()
 	card.texture = _load_texture(FLYING_CARD_BACK_PATH)
 	card.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -1499,7 +1565,8 @@ func _play_flying_card(start: Vector2, finish: Vector2, delay: float = 0.0, deal
 	tween.chain().tween_interval(0.10)
 	tween.chain().tween_property(card, "modulate:a", 0.0, 0.16)
 	tween.finished.connect(func() -> void:
-		print("%s animation finished" % deal_type)
+		if SERVER_UI_VERBOSE_LOGS:
+			print("%s animation finished" % deal_type)
 		card.queue_free()
 	)
 
@@ -1530,15 +1597,17 @@ func _play_flying_chip(seat_id: int, delay: float = 0.0) -> void:
 
 
 func _play_collect_bets(event: Dictionary) -> float:
-	print("collect_all_bets_to_pot start")
-	print("collect bets animation start")
+	if SERVER_UI_VERBOSE_LOGS:
+		print("collect_all_bets_to_pot start")
+		print("collect bets animation start")
 	var bets: Array = Array(event.get("bets", []))
 	var longest_delay: float = 0.0
 	for i in range(bets.size()):
 		var bet: Dictionary = Dictionary(bets[i])
 		var seat_id: int = int(bet.get("seat_id", -1))
 		var amount: int = int(bet.get("amount", 0))
-		print("collecting seat %d bet %d" % [seat_id, amount])
+		if SERVER_UI_VERBOSE_LOGS:
+			print("collecting seat %d bet %d" % [seat_id, amount])
 		var delay: float = float(i) * 0.04
 		longest_delay = max(longest_delay, delay + 0.42)
 		_play_flying_chip(seat_id, delay)
@@ -1567,12 +1636,14 @@ func _clear_collected_bet_markers_after_delay(bets: Array, delay: float) -> void
 			_seats[visual_position].set_seat_data(data)
 	for seat_data in Array(snapshot.get("seats", [])):
 		var data := Dictionary(seat_data)
-		print("after clear: seat %d current_bet %d" % [
-			int(data.get("seat_id", data.get("seat_index", -1))),
-			int(data.get("current_bet", 0)),
-		])
-	print("collect_all_bets_to_pot finished")
-	print("collect bets animation finished")
+		if SERVER_UI_VERBOSE_LOGS:
+			print("after clear: seat %d current_bet %d" % [
+				int(data.get("seat_id", data.get("seat_index", -1))),
+				int(data.get("current_bet", 0)),
+			])
+	if SERVER_UI_VERBOSE_LOGS:
+		print("collect_all_bets_to_pot finished")
+		print("collect bets animation finished")
 
 
 func _dealer_origin() -> Vector2:

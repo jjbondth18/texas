@@ -13,6 +13,7 @@ const DEALER_BADGE := preload("res://assets/ui/neon_poker_ui_clean/dealer_badge.
 const SMALL_BLIND_BADGE := preload("res://assets/ui/neon_poker_ui_clean/small_blind_badge.png")
 const BIG_BLIND_BADGE := preload("res://assets/ui/neon_poker_ui_clean/big_blind_badge.png")
 const ACTIVE_TURN_GLOW := preload("res://assets/ui/neon_poker_ui_clean/active_turn_glow.png")
+const VERBOSE_BET_MARKER_LOGS := false
 
 var _is_empty: bool = true
 var _is_local_player: bool = false
@@ -97,17 +98,18 @@ func set_card_data(data: Dictionary) -> void:
 	var show_bet_marker: bool = _current_bet > 0 and not _is_empty
 	_update_bet_marker(show_bet_marker)
 	_layout()
-	var bet_side: String = _get_bet_marker_side(_seat_id)
-	var bet_offset: Vector2 = _bet_marker_offset()
-	print("[BetMarker] seat_id=%d bet=%d side=%s offset=%s action=%s visible=%s text=%s" % [
-		_seat_id,
-		_current_bet,
-		bet_side,
-		str(bet_offset),
-		String(data.get("last_action", "")),
-		str(_bet_marker_panel != null and _bet_marker_panel.visible),
-		_bet_label.text,
-	])
+	if VERBOSE_BET_MARKER_LOGS:
+		var bet_side: String = _get_bet_marker_side(_seat_id)
+		var bet_offset: Vector2 = _bet_marker_offset()
+		print("[BetMarker] seat_id=%d bet=%d side=%s offset=%s action=%s visible=%s text=%s" % [
+			_seat_id,
+			_current_bet,
+			bet_side,
+			str(bet_offset),
+			String(data.get("last_action", "")),
+			str(_bet_marker_panel != null and _bet_marker_panel.visible),
+			_bet_label.text,
+		])
 
 	var alpha: float = 0.46 if _is_empty else 1.0
 	_glass_background.modulate = Color(0.72, 0.74, 0.84, alpha) if _is_empty else Color.WHITE
