@@ -116,3 +116,24 @@ Use this while testing the server-authoritative table:
 4. Press `S` to request the next hand without restarting the server or bots.
 5. Confirm the new hand starts with empty community cards, cleared action labels, pot reset then blinds posted, inherited chip stacks, and rotated dealer / small blind / big blind seats.
 6. Confirm existing bots continue to act in the second hand.
+
+## Local Player Database
+
+This development server uses a local SQLite database at:
+
+```text
+server/data/texas_dev.sqlite
+```
+
+The database is local development state only. It is not a production account system, does not store emails or passwords, and is not connected to Steam, payments, orders, rankings, or any cloud database. The schema can later migrate to PostgreSQL when real backend deployment starts.
+
+On `hello`, the server creates or updates the local player profile, creates a wallet with `10000` starting chips, unlocks the default avatar, and automatically grants the first daily login bonus for the current UTC date (`+1000` chips). Repeating `hello` on the same day does not grant the bonus again.
+
+To reset local development data, stop the server, delete `server/data/texas_dev.sqlite`, and restart `npm.cmd run dev`.
+
+Database smoke test:
+
+```powershell
+cd C:\Users\jjbon\Documents\texas\server
+npm.cmd run db:smoke
+```

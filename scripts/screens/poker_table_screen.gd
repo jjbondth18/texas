@@ -459,7 +459,7 @@ func _connect_authoritative_server() -> void:
 func _on_server_connected() -> void:
 	_server_connected = true
 	_append_session_log("Connected to authoritative server.")
-	var err := _poker_ws_client.send_hello(_server_local_player_name, _server_local_player_id)
+	var err := _poker_ws_client.send_hello(_server_local_player_name, _server_local_player_id, PlayerProfileScript.get_avatar_id(ProfileServiceScript.new().get_current_profile()))
 	if err != OK:
 		_on_server_error("Failed to send hello: %s" % error_string(err))
 

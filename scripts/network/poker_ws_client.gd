@@ -52,9 +52,9 @@ func send_message(message: Dictionary) -> int:
 		return ERR_UNAVAILABLE
 	return _peer.send_text(PokerProtocolScript.encode(message))
 
-func send_hello(player_name: String = "", profile_player_id: String = "") -> int:
+func send_hello(player_name: String = "", profile_player_id: String = "", avatar_id: String = "") -> int:
 	local_player_id = profile_player_id
-	return send_message(PokerProtocolScript.hello(player_name, profile_player_id))
+	return send_message(PokerProtocolScript.hello(player_name, profile_player_id, avatar_id))
 
 func create_room() -> int:
 	return send_message(PokerProtocolScript.create_room())

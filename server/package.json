@@ -8,9 +8,12 @@
     "start": "node dist/index.js",
     "build": "tsc -p tsconfig.json",
     "smoke": "tsx src/smoke_test.ts",
+    "db:smoke": "tsx src/db_smoke_test.ts",
     "bot": "tsx src/bot.ts"
   },
   "dependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "better-sqlite3": "^12.11.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {

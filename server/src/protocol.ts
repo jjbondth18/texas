@@ -6,9 +6,10 @@ export type ClientMessageType =
   | "leave_seat"
   | "ready"
   | "start_hand"
-  | "player_action";
+  | "player_action"
+  | "get_profile";
 
-export type ServerMessageType = "hello" | "table_snapshot" | "private_snapshot" | "error";
+export type ServerMessageType = "hello" | "table_snapshot" | "private_snapshot" | "profile_snapshot" | "wallet_snapshot" | "error";
 export type PlayerActionType = "fold" | "check" | "call" | "bet" | "raise" | "all_in";
 export type Phase = "waiting" | "preflop" | "flop" | "turn" | "river" | "showdown" | "hand_over";
 export type SeatStatus = "empty" | "sitting" | "ready" | "playing" | "folded" | "all_in" | "sit_out" | "disconnected";
@@ -25,7 +26,10 @@ export interface ClientMessage {
   type: ClientMessageType;
   request_id?: string;
   room_id?: string;
+  player_id?: string;
   name?: string;
+  player_name?: string;
+  avatar_id?: string;
   seat_index?: number;
   buy_in?: number;
   ready?: boolean;
@@ -37,9 +41,32 @@ export interface ServerMessage {
   type: ServerMessageType;
   request_id?: string;
   player_id?: string;
+  server_player_id?: string;
   room_id?: string;
   error?: string;
   snapshot?: unknown;
+  profile?: PlayerProfileSnapshot;
+  wallet?: WalletSnapshot;
+  unlocked_avatar_ids?: string[];
+  daily_login_awarded?: boolean;
+  awarded_chips?: number;
+  warning?: string;
+}
+
+export interface PlayerProfileSnapshot {
+  player_id: string;
+  display_name: string;
+  avatar_id: string;
+  created_at: string;
+  updated_at: string;
+  last_login_at: string | null;
+}
+
+export interface WalletSnapshot {
+  player_id: string;
+  chips: number;
+  gems: number;
+  updated_at: string;
 }
 
 export interface PublicSeatSnapshot {

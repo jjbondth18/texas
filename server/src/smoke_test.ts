@@ -1,4 +1,7 @@
 import { WebSocket, WebSocketServer } from "ws";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ClientMessage, ServerMessage, TableSnapshot } from "./protocol.js";
 import { RoomManager } from "./room_manager.js";
 
@@ -11,6 +14,7 @@ interface TestClient {
 }
 
 const port = 18080;
+process.env.TEXAS_DB_PATH = join(mkdtempSync(join(tmpdir(), "texas-smoke-")), "texas_dev.sqlite");
 const manager = new RoomManager();
 const wss = new WebSocketServer({ host: "127.0.0.1", port });
 
