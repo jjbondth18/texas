@@ -12,9 +12,22 @@ export type ClientMessageType =
   | "get_profile"
   | "get_avatar_catalog"
   | "buy_avatar"
-  | "select_avatar";
+  | "select_avatar"
+  | "list_tables"
+  | "create_table"
+  | "join_table";
 
-export type ServerMessageType = "hello" | "table_snapshot" | "private_snapshot" | "profile_snapshot" | "wallet_snapshot" | "avatar_catalog" | "error";
+export type ServerMessageType =
+  | "hello"
+  | "table_snapshot"
+  | "private_snapshot"
+  | "profile_snapshot"
+  | "wallet_snapshot"
+  | "avatar_catalog"
+  | "table_list"
+  | "table_created"
+  | "table_joined"
+  | "error";
 export type ErrorCode =
   | "insufficient_chips"
   | "insufficient_gems"
@@ -23,6 +36,8 @@ export type ErrorCode =
   | "avatar_not_found"
   | "already_unlocked"
   | "avatar_not_unlocked"
+  | "room_not_found"
+  | "table_full"
   | "cannot_add_chips_during_hand"
   | "cannot_cash_out_during_hand";
 export type PlayerActionType = "fold" | "check" | "call" | "bet" | "raise" | "all_in";
@@ -50,6 +65,7 @@ export interface ClientMessage {
   ready?: boolean;
   action?: PlayerActionType;
   amount?: number;
+  table_name?: string;
 }
 
 export interface ServerMessage {
@@ -68,6 +84,8 @@ export interface ServerMessage {
   awarded_chips?: number;
   warning?: string;
   avatar_catalog?: AvatarCatalogItemSnapshot[];
+  tables?: PublicTableSnapshot[];
+  table?: PublicTableSnapshot;
 }
 
 export interface AvatarCatalogItemSnapshot {
@@ -93,6 +111,19 @@ export interface WalletSnapshot {
   chips: number;
   gems: number;
   updated_at: string;
+}
+
+export interface PublicTableSnapshot {
+  room_id: string;
+  table_name: string;
+  small_blind: number;
+  big_blind: number;
+  buy_in: number;
+  max_players: number;
+  seated_count: number;
+  hand_state: Phase;
+  is_public: boolean;
+  created_at: string;
 }
 
 export interface PublicSeatSnapshot {

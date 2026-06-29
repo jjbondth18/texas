@@ -1,5 +1,5 @@
 import type { WebSocket } from "ws";
-import type { ClientMessage, ServerMessage } from "./protocol.js";
+import type { ClientMessage, PublicTableSnapshot, ServerMessage } from "./protocol.js";
 import { applyPlayerAction, legalActions, processAutomaticTurns } from "./betting_engine.js";
 import { TableState, type Player } from "./table_state.js";
 import { getDatabase } from "./db/database.js";
@@ -22,9 +22,19 @@ interface Room {
   id: string;
   table: TableState;
   clients: Set<string>;
+  tableName: string;
+  smallBlind: number;
+  bigBlind: number;
+  buyIn: number;
+  maxPlayers: number;
+  isPublic: boolean;
+  createdAt: string;
 }
 
 const TABLE_BUY_IN = 1000;
+const DEFAULT_SMALL_BLIND = 10;
+const DEFAULT_BIG_BLIND = 20;
+const DEFAULT_MAX_PLAYERS = 6;
 
 export class RoomManager {
   private clients = new Map<string, Client>();
@@ -74,6 +84,29 @@ export class RoomManager {
       this.recordLog(`${client.id} created ${room.id}`);
       this.send(client, { type: "hello", request_id: message.request_id, room_id: room.id, player_id: client.id });
       this.broadcast(room);
+      return;
+    }
+    if (message.type === "list_tables") {
+      this.send(client, { type: "table_list", request_id: message.request_id, tables: this.publicTables() });
+      return;
+    }
+    if (message.type === "create_table") {
+      const room = this.createRoom({ tableName: String(message.table_name || "").trim() || undefined });
+      this.joinRoom(client, room.id);
+      const table = this.tableSnapshot(room);
+      this.recordLog(`${client.id} created public table ${room.id}`);
+      this.send(client, { type: "table_created", request_id: message.request_id, room_id: room.id, table });
+      this.send(client, { type: "table_list", tables: this.publicTables() });
+      return;
+    }
+    if (message.type === "join_table") {
+      const room = this.rooms.get(String(message.room_id || ""));
+      if (!room) throw new Error("room_not_found");
+      if (this.seatedCount(room) >= room.maxPlayers) throw new Error("table_full");
+      this.joinRoom(client, room.id);
+      const table = this.tableSnapshot(room);
+      this.recordLog(`${client.id} joined public table ${room.id}`);
+      this.send(client, { type: "table_joined", request_id: message.request_id, room_id: room.id, table });
       return;
     }
     if (message.type === "get_profile") {
@@ -138,9 +171,23 @@ export class RoomManager {
     this.broadcast(room);
   }
 
-  createRoom(): Room {
+  createRoom(options: Partial<Pick<Room, "tableName" | "smallBlind" | "bigBlind" | "buyIn" | "maxPlayers" | "isPublic">> = {}): Room {
     const id = `room_${this.nextRoomId++}`;
-    const room: Room = { id, table: new TableState(id), clients: new Set() };
+    const table = new TableState(id);
+    table.smallBlind = options.smallBlind ?? DEFAULT_SMALL_BLIND;
+    table.bigBlind = options.bigBlind ?? DEFAULT_BIG_BLIND;
+    const room: Room = {
+      id,
+      table,
+      clients: new Set(),
+      tableName: options.tableName || `Public Table ${this.nextRoomId - 1}`,
+      smallBlind: table.smallBlind,
+      bigBlind: table.bigBlind,
+      buyIn: options.buyIn ?? TABLE_BUY_IN,
+      maxPlayers: options.maxPlayers ?? DEFAULT_MAX_PLAYERS,
+      isPublic: options.isPublic ?? true,
+      createdAt: new Date().toISOString(),
+    };
     this.rooms.set(id, room);
     return room;
   }
@@ -179,10 +226,14 @@ export class RoomManager {
       total_wallet_gems: this.wallets.totalGems(),
       avatar_unlock_count: this.avatars.countUnlocks(),
       room_count: this.roomCount(),
+      table_list: this.publicTables(),
       rooms: [...this.rooms.values()].map((room) => {
         const snapshot = room.table.publicSnapshot();
         return {
           room_id: room.id,
+          table_name: room.tableName,
+          seated_count: this.seatedCount(room),
+          is_public: room.isPublic,
           connected_player_ids: [...room.clients],
           hand_state: snapshot.phase,
           betting_round: snapshot.phase,
@@ -215,6 +266,29 @@ export class RoomManager {
     const room = this.mustRoom(roomId);
     client.roomId = roomId;
     room.clients.add(client.id);
+  }
+
+  private publicTables(): PublicTableSnapshot[] {
+    return [...this.rooms.values()].filter((room) => room.isPublic).map((room) => this.tableSnapshot(room));
+  }
+
+  private tableSnapshot(room: Room): PublicTableSnapshot {
+    return {
+      room_id: room.id,
+      table_name: room.tableName,
+      small_blind: room.smallBlind,
+      big_blind: room.bigBlind,
+      buy_in: room.buyIn,
+      max_players: room.maxPlayers,
+      seated_count: this.seatedCount(room),
+      hand_state: room.table.phase,
+      is_public: room.isPublic,
+      created_at: room.createdAt,
+    };
+  }
+
+  private seatedCount(room: Room): number {
+    return room.table.seats.filter((seat) => seat.playerId !== "").length;
   }
 
   private handleHello(client: Client, message: ClientMessage): Omit<ServerMessage, "type" | "request_id" | "player_id"> {

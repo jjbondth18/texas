@@ -117,6 +117,7 @@ var _server_table_snapshot: TableSnapshot
 var _server_room_id := ""
 var _server_connected := false
 var _server_create_room_requested := false
+var _server_join_room_requested := false
 var _server_setup_done := false
 var _server_start_hand_requested := false
 var _server_local_player_id := ""
@@ -407,9 +408,10 @@ func _boot_server_authoritative_table() -> void:
 	_ai_turn_loop_active = false
 	_server_table_snapshot = ServerTableSnapshotScript.new()
 	_server_private_snapshot = {}
-	_server_room_id = ""
+	_server_room_id = String(TableLaunchContext.room_id)
 	_server_connected = false
 	_server_create_room_requested = false
+	_server_join_room_requested = false
 	_server_setup_done = false
 	_server_start_hand_requested = false
 	_server_last_error = ""
@@ -478,6 +480,9 @@ func _on_server_hello_received(player_id: String, room_id: String) -> void:
 	if room_id != "":
 		_server_room_id = room_id
 		_append_session_log("Authoritative room_id: %s" % _server_room_id)
+	if _server_room_id != "" and room_id == "" and not _server_join_room_requested:
+		_server_join_room_requested = true
+		_send_server_message(_poker_ws_client.join_room(_server_room_id), "join_room %s" % _server_room_id)
 	if _server_room_id == "" and not _server_create_room_requested:
 		_server_create_room_requested = true
 		_send_server_message(_poker_ws_client.create_room(), "create_room")

@@ -19,6 +19,7 @@ const NEON_SWEEP_SHADER_PATH := "res://shaders/neon_sweep.gdshader"
 const NAV_WIDTH := 280.0
 const MAIN_LEFT := 360.0
 const MAIN_RIGHT := 70.0
+const ROOM_BROWSER_COL_WIDTHS := [320, 200, 200, 260, 160]
 
 var current_state: LobbyState = LobbyState.COLLAPSED
 var _background_root: Control
@@ -85,6 +86,7 @@ var _friends_room_context: Dictionary = {}
 var _friends_room_id_label: Label
 var _friends_room_seats_label: Label
 var _friends_room_ready_label: Label
+var _room_browser_list_vbox: VBoxContainer
 var _profile_avatar_rect: TextureRect
 var _profile_name_label: Label
 var _profile_level_label: Label
@@ -114,6 +116,7 @@ var _profile_ws_client: PokerWsClient
 var _profile_server_connected := false
 var _avatar_catalog: Array = []
 var _avatar_catalog_by_id: Dictionary = {}
+var _server_public_tables: Array = []
 
 func _ready() -> void:
 	# Force standalone windowed mode to bypass Godot editor stretch bugs
@@ -188,6 +191,8 @@ func set_state(new_state: LobbyState, animated: bool = true) -> void:
 		_quick_play_setup_panel.visible = false
 	if new_state == LobbyState.PROFILE:
 		_reload_player_profile()
+	if new_state == LobbyState.ROOM_BROWSER:
+		_request_server_table_list()
 	
 	var nav_id := "home"
 	match current_state:
@@ -910,6 +915,9 @@ func _connect_profile_server() -> void:
 	_profile_ws_client.wallet_synced.connect(_on_profile_server_wallet_synced)
 	_profile_ws_client.daily_login_awarded.connect(_on_profile_server_daily_login_awarded)
 	_profile_ws_client.avatar_catalog_received.connect(_on_avatar_catalog_received)
+	_profile_ws_client.table_list_received.connect(_on_server_table_list_received)
+	_profile_ws_client.table_created.connect(_on_server_table_created)
+	_profile_ws_client.table_joined.connect(_on_server_table_joined)
 	_profile_ws_client.server_error.connect(_on_profile_server_error)
 	var err := _profile_ws_client.connect_to_server("ws://127.0.0.1:8080")
 	if err != OK:
@@ -923,9 +931,12 @@ func _on_profile_server_connected() -> void:
 	_profile_ws_client.send_hello(player_name, player_id, _server_avatar_id_for_client(PlayerProfileScript.get_avatar_id(_player_profile)))
 	_profile_ws_client.get_avatar_catalog()
 	_profile_ws_client.get_profile()
+	_profile_ws_client.list_tables()
 
 func _on_profile_server_disconnected() -> void:
 	_profile_server_connected = false
+	if current_state == LobbyState.ROOM_BROWSER:
+		_refresh_room_browser_rows()
 
 func _on_profile_server_profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_ids: Array) -> void:
 	_player_profile = ProfileServiceScript.new().apply_server_profile(profile, wallet, unlocked_avatar_ids)
@@ -952,6 +963,8 @@ func _on_avatar_catalog_received(catalog: Array) -> void:
 func _on_profile_server_error(message: String) -> void:
 	if message != "":
 		_show_toast("Server Profile\n%s", [message], 2.2)
+	if _is_launching_table:
+		_finish_table_launch_transition()
 
 func _refresh_profile_views_from_server() -> void:
 	if _top_bar != null:
@@ -959,6 +972,64 @@ func _refresh_profile_views_from_server() -> void:
 	_refresh_profile_panel()
 	if _quick_play_setup_panel != null and _quick_play_setup_panel.visible:
 		_update_quick_play_setup_profile()
+
+func _request_server_table_list() -> void:
+	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
+		_profile_ws_client.list_tables()
+	else:
+		_refresh_room_browser_rows()
+
+func _on_server_table_list_received(tables: Array) -> void:
+	_server_public_tables = tables.duplicate(true)
+	_refresh_room_browser_rows()
+
+func _on_server_table_created(room_id: String, table_info: Dictionary) -> void:
+	_open_server_table(room_id, table_info)
+
+func _on_server_table_joined(room_id: String, table_info: Dictionary) -> void:
+	_open_server_table(room_id, table_info)
+
+func _open_server_table(room_id: String, table_info: Dictionary) -> void:
+	if room_id == "":
+		_finish_table_launch_transition()
+		_show_toast("Server Table\nMissing room_id", [], 2.2)
+		return
+	_open_backend_table(_server_table_context(room_id, table_info))
+
+func _server_table_context(room_id: String, table_info: Dictionary) -> Dictionary:
+	var buy_in := int(table_info.get("buy_in", 1000))
+	return {
+		"mode": "quick_play",
+		"backend_type": "server_authoritative",
+		"local_player_profile": _player_profile.duplicate(true),
+		"table_id": room_id,
+		"room_id": room_id,
+		"seats": [],
+		"buy_in": buy_in,
+		"small_blind": int(table_info.get("small_blind", 10)),
+		"big_blind": int(table_info.get("big_blind", 20)),
+		"is_training": false,
+		"table_type": "public_chip",
+		"uses_practice_chips": false,
+		"affects_account_balance": true,
+		"buy_in_deducted_from_wallet": false,
+		"allow_debug_tools": true,
+		"ai_player_count": 0,
+		"max_hands": 999,
+		"table_session": {
+			"mode": "quick_play",
+			"table_type": "public_chip",
+			"uses_practice_chips": false,
+			"affects_account_balance": true,
+			"buy_in_deducted_from_wallet": false,
+			"buy_in": buy_in,
+			"starting_chips": buy_in,
+			"current_table_chips": buy_in,
+			"small_blind": int(table_info.get("small_blind", 10)),
+			"big_blind": int(table_info.get("big_blind", 20)),
+			"max_hands": 999,
+		},
+	}
 
 
 func _select_default_quick_buy_in() -> void:
@@ -1338,12 +1409,22 @@ func _process(delta: float) -> void:
 
 func _on_join_pressed(room_id: String) -> void:
 	print("Loading Poker Table: %s..." % room_id)
+	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
+		_start_table_launch_transition("Joining server table...", func() -> void:
+			_profile_ws_client.join_table(room_id)
+		)
+		return
 	_start_table_launch_transition("Joining public table...", func() -> void:
 		print("Transition complete. Poker table %s loaded." % room_id)
 		_open_backend_table(_local_backend.join_public_table(room_id, _player_profile))
 	)
 
 func _create_public_chip_table_from_browser() -> void:
+	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
+		_start_table_launch_transition("Creating server table...", func() -> void:
+			_profile_ws_client.create_table("%s's Table" % PlayerProfileScript.get_player_name(_player_profile))
+		)
+		return
 	_start_table_launch_transition("Creating public table...", func() -> void:
 		_reload_player_profile()
 		var table := _local_backend.create_public_table({
@@ -1592,6 +1673,7 @@ func _build_room_browser_panel() -> void:
 	var list_vbox := VBoxContainer.new()
 	list_vbox.add_theme_constant_override("separation", 8)
 	list_container.add_child(list_vbox)
+	_room_browser_list_vbox = list_vbox
 	
 	var header_hbox := HBoxContainer.new()
 	header_hbox.custom_minimum_size = Vector2(0, 40)
@@ -1604,7 +1686,7 @@ func _build_room_browser_panel() -> void:
 	header_pad.add_child(header_hbox)
 	list_vbox.add_child(header_pad)
 	
-	var col_widths := [320, 200, 200, 260, 160]
+	var col_widths := ROOM_BROWSER_COL_WIDTHS
 	var headers := ["ROOM NAME", "BLINDS", "PLAYERS", "BUY-IN LIMITS", ""]
 	
 	for i in range(headers.size()):
@@ -1618,93 +1700,107 @@ func _build_room_browser_panel() -> void:
 	sep.custom_minimum_size = Vector2(0, 1)
 	sep.color = Color(0.62, 0.36, 1.0, 0.18)
 	list_vbox.add_child(sep)
-	
-	var rooms := _local_backend.list_public_tables()
-	for room in rooms:
-		var row_panel := PanelContainer.new()
-		row_panel.custom_minimum_size = Vector2(0, 64)
-		row_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.008, 0.010, 0.024, 0.30), Color(0.62, 0.36, 1.0, 0.12), 6, 1))
-		list_vbox.add_child(row_panel)
-		
-		var row_margin := MarginContainer.new()
-		row_margin.add_theme_constant_override("margin_left", 20)
-		row_margin.add_theme_constant_override("margin_right", 20)
-		row_panel.add_child(row_margin)
-		
-		var row_hbox := HBoxContainer.new()
-		row_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
-		row_hbox.add_theme_constant_override("separation", 10)
-		row_margin.add_child(row_hbox)
-		
-		var name_box := VBoxContainer.new()
-		name_box.custom_minimum_size = Vector2(col_widths[0], 0)
-		name_box.add_theme_constant_override("separation", 2)
-		row_hbox.add_child(name_box)
-		var name_lbl := Label.new()
-		name_lbl.text = String(room["table_name"])
-		HomeTheme.make_font_settings(name_lbl, 15, Color(1, 1, 1, 0.95))
-		name_box.add_child(name_lbl)
-		var public_badge := Label.new()
-		public_badge.text = "PUBLIC CHIP"
-		HomeTheme.make_font_settings(public_badge, 11, HomeTheme.CYAN)
-		name_box.add_child(public_badge)
-		
-		var blinds_lbl := Label.new()
-		blinds_lbl.text = "%d / %d" % [room["small_blind"], room["big_blind"]]
-		blinds_lbl.custom_minimum_size = Vector2(col_widths[1], 0)
-		HomeTheme.make_font_settings(blinds_lbl, 14, Color(0.85, 0.90, 1.0))
-		row_hbox.add_child(blinds_lbl)
-		
-		var players_lbl := Label.new()
-		players_lbl.text = "%d / %d" % [room["current_players"], room["max_players"]]
-		players_lbl.custom_minimum_size = Vector2(col_widths[2], 0)
-		HomeTheme.make_font_settings(players_lbl, 14, Color(0.85, 0.90, 1.0))
-		row_hbox.add_child(players_lbl)
-		
-		var buyin_lbl := Label.new()
-		buyin_lbl.text = "%d Chips" % int(room["buy_in"])
-		buyin_lbl.custom_minimum_size = Vector2(col_widths[3], 0)
-		HomeTheme.make_font_settings(buyin_lbl, 14, Color(0.85, 0.90, 1.0))
-		row_hbox.add_child(buyin_lbl)
-		
-		var btn_container := CenterContainer.new()
-		btn_container.custom_minimum_size = Vector2(col_widths[4], 0)
-		row_hbox.add_child(btn_container)
-		
-		var join_btn := Button.new()
-		join_btn.text = "JOIN"
-		join_btn.custom_minimum_size = Vector2(100, 36)
-		join_btn.focus_mode = Control.FOCUS_NONE
-		join_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		
-		var style_normal := HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.60), Color(1.0, 0.0, 0.5, 0.80), 18)
-		style_normal.shadow_color = Color(1.0, 0.0, 0.5, 0.25)
-		style_normal.shadow_size = 6
-		
-		var style_hover := HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.80), Color(1.0, 0.0, 0.5, 1.0), 18)
-		style_hover.shadow_color = Color(1.0, 0.0, 0.5, 0.60)
-		style_hover.shadow_size = 14
-		
-		join_btn.add_theme_stylebox_override("normal", style_normal)
-		join_btn.add_theme_stylebox_override("hover", style_hover)
-		join_btn.add_theme_stylebox_override("pressed", style_hover)
-		join_btn.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
-		join_btn.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
-		join_btn.add_theme_font_size_override("font_size", 13)
-		join_btn.disabled = String(room.get("status", "")) == "full"
-		
-		join_btn.mouse_entered.connect(func() -> void:
-			var btn_tween := create_tween()
-			btn_tween.tween_property(join_btn, "scale", Vector2(1.06, 1.06), 0.12).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		)
-		join_btn.mouse_exited.connect(func() -> void:
-			var btn_tween := create_tween()
-			btn_tween.tween_property(join_btn, "scale", Vector2(1.0, 1.0), 0.12).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-		)
-		
-		var r_id := String(room["table_id"])
-		join_btn.pressed.connect(func() -> void: _on_join_pressed(r_id))
-		btn_container.add_child(join_btn)
+	_refresh_room_browser_rows()
+
+func _refresh_room_browser_rows() -> void:
+	if _room_browser_list_vbox == null:
+		return
+	while _room_browser_list_vbox.get_child_count() > 2:
+		var child := _room_browser_list_vbox.get_child(2)
+		_room_browser_list_vbox.remove_child(child)
+		child.queue_free()
+	var rooms := _server_public_tables if _profile_server_connected else _local_backend.list_public_tables()
+	if rooms.is_empty():
+		var empty_label := Label.new()
+		empty_label.text = "No public tables yet. Create one to start a server-authoritative room." if _profile_server_connected else "Server unavailable. Showing local mock fallback when available."
+		empty_label.custom_minimum_size = Vector2(0, 54)
+		empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		HomeTheme.make_font_settings(empty_label, 13, HomeTheme.MUTED)
+		_room_browser_list_vbox.add_child(empty_label)
+		return
+	for room_value in rooms:
+		_add_room_browser_row(_normalized_room_browser_table(Dictionary(room_value)))
+
+func _normalized_room_browser_table(room: Dictionary) -> Dictionary:
+	var room_id := String(room.get("room_id", room.get("table_id", "")))
+	var seated_count := int(room.get("seated_count", room.get("current_players", 0)))
+	var max_players := int(room.get("max_players", 6))
+	return {
+		"room_id": room_id,
+		"table_name": String(room.get("table_name", room_id if room_id != "" else "Public Table")),
+		"small_blind": int(room.get("small_blind", 10)),
+		"big_blind": int(room.get("big_blind", 20)),
+		"buy_in": int(room.get("buy_in", 1000)),
+		"seated_count": seated_count,
+		"max_players": max_players,
+		"hand_state": String(room.get("hand_state", room.get("status", "waiting"))),
+		"status": "full" if seated_count >= max_players else String(room.get("status", "")),
+	}
+
+func _add_room_browser_row(room: Dictionary) -> void:
+	var row_panel := PanelContainer.new()
+	row_panel.custom_minimum_size = Vector2(0, 64)
+	row_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.008, 0.010, 0.024, 0.30), Color(0.62, 0.36, 1.0, 0.12), 6, 1))
+	_room_browser_list_vbox.add_child(row_panel)
+	var row_margin := MarginContainer.new()
+	row_margin.add_theme_constant_override("margin_left", 20)
+	row_margin.add_theme_constant_override("margin_right", 20)
+	row_panel.add_child(row_margin)
+	var row_hbox := HBoxContainer.new()
+	row_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	row_hbox.add_theme_constant_override("separation", 10)
+	row_margin.add_child(row_hbox)
+	var name_box := VBoxContainer.new()
+	name_box.custom_minimum_size = Vector2(ROOM_BROWSER_COL_WIDTHS[0], 0)
+	name_box.add_theme_constant_override("separation", 2)
+	row_hbox.add_child(name_box)
+	var name_lbl := Label.new()
+	name_lbl.text = String(room.get("table_name", "Public Table"))
+	HomeTheme.make_font_settings(name_lbl, 15, Color(1, 1, 1, 0.95))
+	name_box.add_child(name_lbl)
+	var public_badge := Label.new()
+	public_badge.text = "SERVER PUBLIC CHIP" if _profile_server_connected else "LOCAL MOCK CHIP"
+	HomeTheme.make_font_settings(public_badge, 11, HomeTheme.CYAN)
+	name_box.add_child(public_badge)
+	var blinds_lbl := Label.new()
+	blinds_lbl.text = "%d / %d" % [int(room.get("small_blind", 10)), int(room.get("big_blind", 20))]
+	blinds_lbl.custom_minimum_size = Vector2(ROOM_BROWSER_COL_WIDTHS[1], 0)
+	HomeTheme.make_font_settings(blinds_lbl, 14, Color(0.85, 0.90, 1.0))
+	row_hbox.add_child(blinds_lbl)
+	var players_lbl := Label.new()
+	players_lbl.text = "%d / %d" % [int(room.get("seated_count", 0)), int(room.get("max_players", 6))]
+	players_lbl.custom_minimum_size = Vector2(ROOM_BROWSER_COL_WIDTHS[2], 0)
+	HomeTheme.make_font_settings(players_lbl, 14, Color(0.85, 0.90, 1.0))
+	row_hbox.add_child(players_lbl)
+	var buyin_lbl := Label.new()
+	buyin_lbl.text = "%d Chips" % int(room.get("buy_in", 1000))
+	buyin_lbl.custom_minimum_size = Vector2(ROOM_BROWSER_COL_WIDTHS[3], 0)
+	HomeTheme.make_font_settings(buyin_lbl, 14, Color(0.85, 0.90, 1.0))
+	row_hbox.add_child(buyin_lbl)
+	var btn_container := CenterContainer.new()
+	btn_container.custom_minimum_size = Vector2(ROOM_BROWSER_COL_WIDTHS[4], 0)
+	row_hbox.add_child(btn_container)
+	var join_btn := Button.new()
+	join_btn.text = "JOIN"
+	join_btn.custom_minimum_size = Vector2(100, 36)
+	join_btn.focus_mode = Control.FOCUS_NONE
+	join_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var style_normal := HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.60), Color(1.0, 0.0, 0.5, 0.80), 18)
+	style_normal.shadow_color = Color(1.0, 0.0, 0.5, 0.25)
+	style_normal.shadow_size = 6
+	var style_hover := HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.80), Color(1.0, 0.0, 0.5, 1.0), 18)
+	style_hover.shadow_color = Color(1.0, 0.0, 0.5, 0.60)
+	style_hover.shadow_size = 14
+	join_btn.add_theme_stylebox_override("normal", style_normal)
+	join_btn.add_theme_stylebox_override("hover", style_hover)
+	join_btn.add_theme_stylebox_override("pressed", style_hover)
+	join_btn.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
+	join_btn.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
+	join_btn.add_theme_font_size_override("font_size", 13)
+	join_btn.disabled = String(room.get("status", "")) == "full"
+	var r_id := String(room.get("room_id", ""))
+	join_btn.pressed.connect(func() -> void: _on_join_pressed(r_id))
+	btn_container.add_child(join_btn)
 
 func _build_friends_room_panel() -> void:
 	_friends_room_panel = PanelContainer.new()

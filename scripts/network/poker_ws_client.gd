@@ -10,6 +10,9 @@ signal profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_i
 signal wallet_synced(wallet: Dictionary)
 signal daily_login_awarded(chips: int)
 signal avatar_catalog_received(catalog: Array)
+signal table_list_received(tables: Array)
+signal table_created(room_id: String, table_info: Dictionary)
+signal table_joined(room_id: String, table_info: Dictionary)
 signal table_snapshot_received(snapshot: Dictionary)
 signal private_snapshot_received(snapshot: Dictionary)
 signal server_error(message: String)
@@ -100,6 +103,16 @@ func buy_avatar(avatar_id: String) -> int:
 func select_avatar(avatar_id: String) -> int:
 	return send_message(PokerProtocolScript.select_avatar(avatar_id))
 
+func list_tables() -> int:
+	return send_message(PokerProtocolScript.list_tables())
+
+func create_table(table_name: String = "") -> int:
+	return send_message(PokerProtocolScript.create_table(table_name))
+
+func join_table(target_room_id: String) -> int:
+	room_id = target_room_id
+	return send_message(PokerProtocolScript.join_table(target_room_id))
+
 func _handle_message(message: Dictionary) -> void:
 	message_received.emit(message)
 	var type_value := String(message.get("type", ""))
@@ -117,6 +130,16 @@ func _handle_message(message: Dictionary) -> void:
 				wallet_synced.emit(wallet)
 		PokerProtocolScript.AVATAR_CATALOG:
 			avatar_catalog_received.emit(Array(message.get("avatar_catalog", [])).duplicate(true))
+		PokerProtocolScript.TABLE_LIST:
+			table_list_received.emit(Array(message.get("tables", [])).duplicate(true))
+		PokerProtocolScript.TABLE_CREATED:
+			var created_table := Dictionary(message.get("table", {})).duplicate(true)
+			room_id = String(message.get("room_id", created_table.get("room_id", room_id)))
+			table_created.emit(room_id, created_table)
+		PokerProtocolScript.TABLE_JOINED:
+			var joined_table := Dictionary(message.get("table", {})).duplicate(true)
+			room_id = String(message.get("room_id", joined_table.get("room_id", room_id)))
+			table_joined.emit(room_id, joined_table)
 		PokerProtocolScript.TABLE_SNAPSHOT:
 			var snapshot := Dictionary(message.get("snapshot", {})).duplicate(true)
 			room_id = String(message.get("room_id", snapshot.get("room_id", room_id)))

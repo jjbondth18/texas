@@ -83,6 +83,28 @@ Each bot sends `hello`, `join_room`, `sit_down`, and `ready`. On its turn it wai
 
 6. Start a hand from the Godot table, then play through preflop, flop, turn, river, showdown, and settlement. The Godot client must only render snapshots and send player actions; shuffling, dealing, betting validation, pots, winners, and chip settlement come from the server.
 
+## Server-Authoritative Lobby Table List
+
+The local server owns the public table lobby in development:
+
+- `list_tables` returns public rooms with `room_id`, `table_name`, blinds, buy-in, seated count, hand state, and creation time.
+- `create_table` creates a public local-dev table using default `10 / 20` blinds, `1000` buy-in, and `6` max players.
+- `join_table` checks the room exists and is not full, then attaches the websocket client to that room. It does not sit the player down; the official poker table screen still performs `sit_down` and `ready` after launch.
+- `room_not_found` and `table_full` are returned as server errors for invalid joins.
+
+Lobby test:
+
+1. Start the server with `npm.cmd run dev`.
+2. Run Godot and open Play -> public tables / room browser.
+3. Confirm the lobby requests the server table list. If the server is unavailable, Godot keeps the local mock fallback instead of crashing.
+4. Click Create Public Chip Table. Godot sends `create_table`, receives `table_created`, and opens the official poker table with that `room_id`.
+5. Or click Join on an existing server table. Godot sends `join_table`, receives `table_joined`, and opens the official poker table with that `room_id`.
+6. In the poker table log, copy the `room_id` and add bots:
+
+   ```powershell
+   npm.cmd run bot -- --room <room_id> --count 2 --start-seat 1
+   ```
+
 ## Official Table UI Parity Checklist
 
 Use this while testing the server-authoritative table:

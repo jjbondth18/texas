@@ -15,11 +15,17 @@ const GET_PROFILE := "get_profile"
 const GET_AVATAR_CATALOG := "get_avatar_catalog"
 const BUY_AVATAR := "buy_avatar"
 const SELECT_AVATAR := "select_avatar"
+const LIST_TABLES := "list_tables"
+const CREATE_TABLE := "create_table"
+const JOIN_TABLE := "join_table"
 const TABLE_SNAPSHOT := "table_snapshot"
 const PRIVATE_SNAPSHOT := "private_snapshot"
 const PROFILE_SNAPSHOT := "profile_snapshot"
 const WALLET_SNAPSHOT := "wallet_snapshot"
 const AVATAR_CATALOG := "avatar_catalog"
+const TABLE_LIST := "table_list"
+const TABLE_CREATED := "table_created"
+const TABLE_JOINED := "table_joined"
 const ERROR := "error"
 
 const ACTION_FOLD := "fold"
@@ -87,6 +93,18 @@ static func buy_avatar(avatar_id: String) -> Dictionary:
 
 static func select_avatar(avatar_id: String) -> Dictionary:
 	return _message(SELECT_AVATAR, {"avatar_id": avatar_id})
+
+static func list_tables() -> Dictionary:
+	return _message(LIST_TABLES)
+
+static func create_table(table_name: String = "") -> Dictionary:
+	var data := {}
+	if table_name != "":
+		data["table_name"] = table_name
+	return _message(CREATE_TABLE, data)
+
+static func join_table(room_id: String) -> Dictionary:
+	return _message(JOIN_TABLE, {"room_id": room_id})
 
 static func _message(type_value: String, extra: Dictionary = {}) -> Dictionary:
 	var result := {"type": type_value}
