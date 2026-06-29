@@ -36,6 +36,8 @@ var _replay_panel: PanelContainer
 var _store_panel: PanelContainer
 var _profile_panel: PanelContainer
 var _settings_panel: PanelContainer
+var _social_panel: PanelContainer
+var _help_panel: PanelContainer
 var _welcome_pack: PanelContainer
 var _daily_bonus: Control
 var _mode_cards: Array[ModeCard] = []
@@ -124,6 +126,8 @@ func _ready() -> void:
 	_build_store_panel()
 	_build_profile_panel()
 	_build_settings_panel()
+	_build_social_panel()
+	_build_help_panel()
 	_build_quick_play_setup_panel()
 	
 	_fade_overlay = ColorRect.new()
@@ -275,6 +279,8 @@ func _build_layout() -> void:
 	_top_bar.offset_right = -24
 	_top_bar.offset_top = 18
 	_top_bar.offset_bottom = 82
+	_top_bar.social_requested.connect(_show_social_panel)
+	_top_bar.help_requested.connect(_show_help_panel)
 	_top_bar.exit_requested.connect(_quit_game)
 	_lobby_ui_root.add_child(_top_bar)
 
@@ -1315,6 +1321,150 @@ func _show_toast(format_text: String, args: Array = [], hold_seconds: float = 1.
 
 func _show_coming_soon(label: String) -> void:
 	_show_toast("%s - Coming Soon", [label])
+
+func _build_social_panel() -> void:
+	_social_panel = _create_home_modal("SocialPanel", Vector2(520, 260))
+	var column := _modal_column(_social_panel)
+	var title := Label.new()
+	title.text = "SOCIAL"
+	HomeTheme.make_font_settings(title, 24, Color(1, 1, 1, 0.96))
+	column.add_child(title)
+	var copy := Label.new()
+	copy.text = "Friends and messages will be available in a future update."
+	copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(copy, 15, Color(0.82, 0.86, 1.0, 0.92))
+	column.add_child(copy)
+	column.add_child(_modal_spacer())
+	var close_button := _modal_button("Close")
+	close_button.pressed.connect(func() -> void:
+		_social_panel.visible = false
+	)
+	column.add_child(close_button)
+
+func _build_help_panel() -> void:
+	_help_panel = _create_home_modal("HelpRulesPanel", Vector2(760, 620))
+	var column := _modal_column(_help_panel)
+	var title := Label.new()
+	title.text = "HELP & RULES"
+	HomeTheme.make_font_settings(title, 24, Color(1, 1, 1, 0.96))
+	column.add_child(title)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	column.add_child(scroll)
+	var content := VBoxContainer.new()
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 14)
+	scroll.add_child(content)
+	_add_help_section(content, "Poker Basics", [
+		"Each player gets 2 private cards.",
+		"Use community cards to make the best 5-card hand.",
+		"Betting rounds: Pre-Flop, Flop, Turn, River.",
+	])
+	_add_help_section(content, "Hand Rankings", [
+		"Royal Flush",
+		"Straight Flush",
+		"Four of a Kind",
+		"Full House",
+		"Flush",
+		"Straight",
+		"Three of a Kind",
+		"Two Pair",
+		"One Pair",
+		"High Card",
+	])
+	_add_help_section(content, "Game Modes", [
+		"Quick Chip auto-joins a public chip table.",
+		"Table Browser lets you choose public chip tables.",
+		"Friends Room is private and uses a room code.",
+		"Training uses practice chips only.",
+		"Gem Match is Coming Soon and requires secure server matchmaking.",
+	])
+	_add_help_section(content, "Chips & Gems", [
+		"Chips are used for public table buy-ins and betting.",
+		"Gems are reserved for future premium features such as Replay access.",
+		"Add Chips moves chips from wallet to table. It is not a purchase.",
+	])
+	_add_help_section(content, "Table Rules", [
+		"Leaving during a hand folds your hand.",
+		"Chips already committed stay in the pot.",
+		"Timeout may auto-check or auto-fold.",
+		"Repeated timeouts may put you in Sit Out.",
+	])
+
+	var close_button := _modal_button("Close")
+	close_button.pressed.connect(func() -> void:
+		_help_panel.visible = false
+	)
+	column.add_child(close_button)
+
+func _show_social_panel() -> void:
+	if _social_panel != null:
+		_help_panel.visible = false
+		_social_panel.visible = true
+
+func _show_help_panel() -> void:
+	if _help_panel != null:
+		_social_panel.visible = false
+		_help_panel.visible = true
+
+func _create_home_modal(panel_name: String, size: Vector2) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.name = panel_name
+	panel.anchor_left = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -size.x * 0.5
+	panel.offset_top = -size.y * 0.5
+	panel.offset_right = size.x * 0.5
+	panel.offset_bottom = size.y * 0.5
+	panel.z_index = 70
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.visible = false
+	panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.018, 0.94), Color(0.62, 0.36, 1.0, 0.52), 10, 1))
+	_lobby_ui_root.add_child(panel)
+	return panel
+
+func _modal_column(panel: PanelContainer) -> VBoxContainer:
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 22)
+	margin.add_theme_constant_override("margin_bottom", 22)
+	panel.add_child(margin)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 14)
+	margin.add_child(column)
+	return column
+
+func _add_help_section(parent: VBoxContainer, section_title: String, lines: Array[String]) -> void:
+	var title := Label.new()
+	title.text = section_title
+	HomeTheme.make_font_settings(title, 16, Color(1.0, 0.58, 0.92, 0.98))
+	parent.add_child(title)
+	for line in lines:
+		var label := Label.new()
+		label.text = "- %s" % line
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		HomeTheme.make_font_settings(label, 13, Color(0.82, 0.86, 1.0, 0.92))
+		parent.add_child(label)
+
+func _modal_spacer() -> Control:
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	return spacer
+
+func _modal_button(label_text: String) -> Button:
+	var button := Button.new()
+	button.text = label_text
+	button.custom_minimum_size = Vector2(132, 38)
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.72), Color(0.62, 0.36, 1.0, 0.55), 8))
+	button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.040, 0.046, 0.094, 0.92), Color(1.0, 0.28, 0.78, 0.90), 8))
+	return button
 
 func _build_room_browser_panel() -> void:
 	_room_browser_panel = PanelContainer.new()

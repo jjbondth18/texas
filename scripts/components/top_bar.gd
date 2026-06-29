@@ -2,6 +2,8 @@ extends PanelContainer
 class_name TopBar
 
 signal exit_requested
+signal social_requested
+signal help_requested
 
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 
@@ -57,10 +59,16 @@ func _ready() -> void:
 
 	_chips_label = _currency_pill(row, "CHIPS", HomeTheme.GOLD)
 	_premium_label = _currency_pill(row, "GEMS", HomeTheme.PINK)
-	for text in ["+", "FR", "MSG", "SET"]:
-		row.add_child(_top_icon(text))
+	var social_button := _top_icon("SOCIAL")
+	social_button.name = "SocialButton"
+	social_button.pressed.connect(func() -> void: social_requested.emit())
+	row.add_child(social_button)
+	var help_button := _top_icon("HELP")
+	help_button.name = "HelpButton"
+	help_button.pressed.connect(func() -> void: help_requested.emit())
+	row.add_child(help_button)
 	var exit_button := _top_icon("EXIT")
-	exit_button.custom_minimum_size = Vector2(58, 40)
+	exit_button.name = "ExitButton"
 	exit_button.pressed.connect(func() -> void: exit_requested.emit())
 	row.add_child(exit_button)
 
@@ -144,7 +152,7 @@ func _currency_style(color: Color, hovered: bool) -> StyleBoxFlat:
 func _top_icon(text: String) -> Button:
 	var button := Button.new()
 	button.text = text
-	button.custom_minimum_size = Vector2(40, 40)
+	button.custom_minimum_size = Vector2(86, 40)
 	button.focus_mode = Control.FOCUS_NONE
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	button.add_theme_font_size_override("font_size", 12)
