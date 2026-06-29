@@ -13,6 +13,7 @@ var pot_amount: int = 0
 var _fold_action: Dictionary
 var _check_call_action: Dictionary
 var _raise_action: Dictionary
+var _all_in_action: Dictionary
 
 @onready var chips_label: Label = $IdentityZone/ChipsLabel
 @onready var profit_label: Label = $IdentityZone/ProfitLabel
@@ -134,7 +135,7 @@ func _ready() -> void:
 	_pot_half_button.pressed.connect(func(): _set_raise_fraction(0.5))
 	_pot_two_thirds_button.pressed.connect(func(): _set_raise_fraction(0.67))
 	_pot_button.pressed.connect(func(): _set_raise_fraction(1.0))
-	_all_in_button.pressed.connect(func(): _h_slider.value = _h_slider.max_value)
+	_all_in_button.pressed.connect(_on_all_in_pressed)
 
 
 func set_local_player_info(local: Dictionary, phase: String = "preflop") -> void:
@@ -175,6 +176,7 @@ func set_actions(new_actions: Array, current_pot: int = 0) -> void:
 	_fold_action = {}
 	_check_call_action = {}
 	_raise_action = {}
+	_all_in_action = {}
 
 	for action in actions:
 		var action_id := String(action.get("id", ""))
@@ -188,6 +190,8 @@ func set_actions(new_actions: Array, current_pot: int = 0) -> void:
 				_check_call_action = action
 		elif action_id in ["bet", "raise"]:
 			_raise_action = action
+		elif action_id == "all_in":
+			_all_in_action = action
 
 	if not _fold_action.is_empty():
 		_fold_button.disabled = not bool(_fold_action.get("enabled", true))
@@ -229,6 +233,9 @@ func set_actions(new_actions: Array, current_pot: int = 0) -> void:
 			btn.disabled = true
 		_raise_confirm_button.text = "RAISE"
 		_raise_value_label.text = "0"
+
+	if not _all_in_action.is_empty():
+		_all_in_button.disabled = not bool(_all_in_action.get("enabled", true))
 
 
 func _build_player_info_overlay() -> void:
@@ -570,6 +577,13 @@ func _on_raise_confirm_pressed() -> void:
 		var action_data := _raise_action.duplicate(true)
 		action_data["amount"] = int(_h_slider.value)
 		action_pressed.emit(action_data)
+
+
+func _on_all_in_pressed() -> void:
+	if not _all_in_action.is_empty() and bool(_all_in_action.get("enabled", true)):
+		action_pressed.emit(_all_in_action.duplicate(true))
+		return
+	_h_slider.value = _h_slider.max_value
 
 
 func _set_raise_fraction(fraction: float) -> void:

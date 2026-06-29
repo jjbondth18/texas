@@ -53,3 +53,31 @@ start-seat: 1
 ```
 
 Each bot sends `hello`, `join_room`, `sit_down`, and `ready`. On its turn it checks when possible, otherwise calls, otherwise folds. Bots are only for local development testing.
+
+## Official Godot Table Local Multiplayer Test
+
+1. Start the authoritative server:
+
+   ```powershell
+   cd C:\Users\jjbon\Documents\texas\server
+   npm.cmd run dev
+   ```
+
+2. Open the local admin dashboard:
+
+   ```text
+   http://127.0.0.1:8080/admin
+   ```
+
+3. Run the official Godot poker table screen or the normal project entry. The table uses `server_authoritative = true` by default and connects to `ws://127.0.0.1:8080`.
+
+4. Read the `room_id` from the Godot table log or UI debug output.
+
+5. Start local bots in that room:
+
+   ```powershell
+   cd C:\Users\jjbon\Documents\texas\server
+   npm.cmd run bot -- --room <room_id> --count 2 --start-seat 1
+   ```
+
+6. Start a hand from the Godot table, then play through preflop, flop, turn, river, showdown, and settlement. The Godot client must only render snapshots and send player actions; shuffling, dealing, betting validation, pots, winners, and chip settlement come from the server.

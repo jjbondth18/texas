@@ -22,8 +22,12 @@ const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 const TableSessionScript := preload("res://scripts/data/table_session.gd")
 const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
+const PokerWsClientScript := preload("res://scripts/network/poker_ws_client.gd")
+const PokerProtocolScript := preload("res://scripts/network/poker_protocol.gd")
+const ServerTableSnapshotScript := preload("res://scripts/state/table_snapshot.gd")
 
 const DESIGN_SIZE := Vector2(2560, 1000)
+const LOCAL_SERVER_URL := "ws://127.0.0.1:8080"
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
 const FLYING_CARD_BACK_PATH := "res://assets/ui/cardback/asset_02.png"
 const FLYING_CHIP_PATH := "res://assets/ui/chips/chip_stack_purple.png"
@@ -31,6 +35,7 @@ const DEALER_DECK_PATH := "res://assets/ui/cardback/asset_03.png"
 const DEFAULT_CROUPIER_PATH := "res://assets/croupier/processed/dealer_01_dog.png"
 
 var snapshot := {}
+var server_authoritative := true
 var _table_flow: TexasTableFlow = TexasTableFlowScript.new()
 @onready var _content_root: Control = $UIFloatingLayer
 @onready var _table_surface_layer: Control = $TableSurfaceLayer
@@ -99,6 +104,18 @@ var _recorded_session_hand_ids := {}
 var _session_started := false
 var _profile_settlement_applied := false
 var _session_unlocked_avatar_ids: Array[String] = []
+var _poker_ws_client: PokerWsClient
+var _server_table_snapshot: TableSnapshot
+var _server_room_id := ""
+var _server_connected := false
+var _server_create_room_requested := false
+var _server_setup_done := false
+var _server_start_hand_requested := false
+var _server_local_player_id := ""
+var _server_local_player_name := ""
+var _server_local_seat_index := 0
+var _server_private_snapshot: Dictionary = {}
+var _server_last_error := ""
 
 func _ready() -> void:
 	_hide_editor_guides(self)
@@ -112,8 +129,11 @@ func _ready() -> void:
 	_build_scene()
 	_configure_table_flow_from_launch_context()
 	_configure_table_session_from_launch_context()
-	_load_phase(_phase_from_args())
-	call_deferred("_auto_start_session_if_ready")
+	if server_authoritative:
+		_boot_server_authoritative_table()
+	else:
+		_load_phase(_phase_from_args())
+		call_deferred("_auto_start_session_if_ready")
 	_apply_capture_args()
 
 func _input(event: InputEvent) -> void:
@@ -350,10 +370,330 @@ func _load_phase(phase: String) -> void:
 	_apply_launch_context(snapshot)
 	_refresh()
 
+func _boot_server_authoritative_table() -> void:
+	_ai_turn_loop_active = false
+	_server_table_snapshot = ServerTableSnapshotScript.new()
+	_server_private_snapshot = {}
+	_server_room_id = ""
+	_server_connected = false
+	_server_create_room_requested = false
+	_server_setup_done = false
+	_server_start_hand_requested = false
+	_server_last_error = ""
+	_load_server_profile_identity()
+	snapshot = _empty_server_ui_snapshot("Connecting to local authoritative server...")
+	_refresh()
+	_connect_authoritative_server()
+
+func _load_server_profile_identity() -> void:
+	var profile: Dictionary = ProfileServiceScript.new().get_current_profile()
+	if profile.is_empty():
+		profile = TableLaunchContext.get_player_profile()
+	_server_local_player_id = String(profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID))
+	if _server_local_player_id == "":
+		_server_local_player_id = PlayerProfileScript.DEFAULT_PLAYER_ID
+	_server_local_player_name = PlayerProfileScript.get_player_name(profile)
+	if _server_local_player_name == "":
+		_server_local_player_name = PlayerProfileScript.DEFAULT_PLAYER_NAME
+
+func _connect_authoritative_server() -> void:
+	if _poker_ws_client == null:
+		_poker_ws_client = PokerWsClientScript.new()
+		_poker_ws_client.name = "AuthoritativePokerWsClient"
+		_poker_ws_client.connected.connect(_on_server_connected)
+		_poker_ws_client.disconnected.connect(_on_server_disconnected)
+		_poker_ws_client.hello_received.connect(_on_server_hello_received)
+		_poker_ws_client.table_snapshot_received.connect(_on_server_table_snapshot_received)
+		_poker_ws_client.private_snapshot_received.connect(_on_server_private_snapshot_received)
+		_poker_ws_client.server_error.connect(_on_server_error)
+		add_child(_poker_ws_client)
+	var err := _poker_ws_client.connect_to_server(LOCAL_SERVER_URL)
+	if err != OK:
+		_on_server_error("Connect failed: %s" % error_string(err))
+		return
+	_append_session_log("Connecting to authoritative server %s" % LOCAL_SERVER_URL)
+
+func _on_server_connected() -> void:
+	_server_connected = true
+	_append_session_log("Connected to authoritative server.")
+	var err := _poker_ws_client.send_hello(_server_local_player_name, _server_local_player_id)
+	if err != OK:
+		_on_server_error("Failed to send hello: %s" % error_string(err))
+
+func _on_server_disconnected() -> void:
+	_server_connected = false
+	_server_setup_done = false
+	_on_server_error("Disconnected from authoritative server.")
+
+func _on_server_hello_received(player_id: String, room_id: String) -> void:
+	if player_id != "":
+		_append_session_log("Server player id: %s" % player_id)
+	if room_id != "":
+		_server_room_id = room_id
+		_append_session_log("Authoritative room_id: %s" % _server_room_id)
+	if _server_room_id == "" and not _server_create_room_requested:
+		_server_create_room_requested = true
+		_send_server_message(_poker_ws_client.create_room(), "create_room")
+		return
+	_try_server_sit_ready()
+
+func _try_server_sit_ready() -> void:
+	if _server_setup_done or _server_room_id == "" or _poker_ws_client == null:
+		return
+	_server_setup_done = true
+	var buy_in: int = PlayerProfileScript.table_buy_in(ProfileServiceScript.new().get_current_profile())
+	if buy_in <= 0:
+		buy_in = 5000
+	_append_session_log("Authoritative room_id: %s" % _server_room_id)
+	_send_server_message(_poker_ws_client.sit_down(_server_local_seat_index, buy_in), "sit_down seat %d" % _server_local_seat_index)
+	_send_server_message(_poker_ws_client.ready(true), "ready")
+	_append_session_log("Start bots with: npm.cmd run bot -- --room %s --count 2 --start-seat 1" % _server_room_id)
+	_append_session_log("Press S to request start_hand from the authoritative server.")
+
+func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
+	_server_last_error = ""
+	if _server_table_snapshot == null:
+		_server_table_snapshot = ServerTableSnapshotScript.new()
+	_server_table_snapshot.apply_table_snapshot(server_snapshot)
+	_server_room_id = String(server_snapshot.get("room_id", _server_room_id))
+	snapshot = _server_snapshot_to_ui_snapshot(server_snapshot, _server_private_snapshot)
+	_apply_launch_context(snapshot)
+	_refresh()
+
+func _on_server_private_snapshot_received(private_snapshot: Dictionary) -> void:
+	_server_private_snapshot = private_snapshot.duplicate(true)
+	if _server_table_snapshot == null:
+		_server_table_snapshot = ServerTableSnapshotScript.new()
+	_server_table_snapshot.apply_private_snapshot(private_snapshot)
+	if not snapshot.is_empty() and String(snapshot.get("source_model", "")) == "server_authoritative":
+		snapshot = _server_snapshot_to_ui_snapshot(_server_table_snapshot.to_dict(), _server_private_snapshot)
+		_apply_launch_context(snapshot)
+		_refresh()
+
+func _on_server_error(message: String) -> void:
+	_server_last_error = message
+	_append_session_log("Server error: %s" % message)
+	var current_history: Array = Array(snapshot.get("hand_history", [])).duplicate()
+	current_history.append("Server error: %s" % message)
+	snapshot["hand_history"] = current_history
+	snapshot["available_actions"] = []
+	_refresh()
+
+func _send_server_message(err: int, label: String) -> void:
+	if err == OK:
+		_append_session_log("Sent server %s" % label)
+	else:
+		_on_server_error("%s failed: %s" % [label, error_string(err)])
+
+func _empty_server_ui_snapshot(message: String) -> Dictionary:
+	var profile: Dictionary = ProfileServiceScript.new().get_current_profile()
+	var local_name: String = PlayerProfileScript.get_player_name(profile)
+	if local_name == "":
+		local_name = PlayerProfileScript.DEFAULT_PLAYER_NAME
+	var local_avatar_id: String = PlayerProfileScript.get_avatar_id(profile)
+	var local_chips: int = PlayerProfileScript.table_buy_in(profile)
+	var seats: Array = []
+	for i in range(6):
+		var is_local := i == _server_local_seat_index
+		seats.append({
+			"seat_index": i,
+			"seat_id": i,
+			"visual_position": i + 1,
+			"player_id": _server_local_player_id if is_local else "",
+			"player_name": local_name if is_local else "Seat %d" % i,
+			"avatar_id": local_avatar_id if is_local else AvatarLibraryScript.avatar_id_for_seat(i + 1, false),
+			"avatar_texture": AvatarLibraryScript.get_avatar_by_id(local_avatar_id if is_local else AvatarLibraryScript.avatar_id_for_seat(i + 1, false)),
+			"chips": local_chips if is_local else 0,
+			"current_bet": 0,
+			"status": "active" if is_local else "empty",
+			"raw_status": "connecting" if is_local else "empty",
+			"cards": [],
+			"is_local": is_local,
+			"is_dealer": false,
+			"is_small_blind": false,
+			"is_big_blind": false,
+			"is_turn": false,
+			"last_action": "",
+			"buy_in": local_chips,
+		})
+	var local_player: Dictionary = _find_local_player(seats)
+	return {
+		"source_model": "server_authoritative",
+		"table_id": _server_room_id if _server_room_id != "" else "authoritative_local",
+		"table_name": "Authoritative Local Table",
+		"hand_id": "waiting",
+		"blinds_text": "25 / 50",
+		"phase": "waiting",
+		"room_state": "waiting",
+		"pot": 0,
+		"pot_data": {"main": 0, "side_pots": []},
+		"community_cards": [],
+		"seats": seats,
+		"local_player": local_player,
+		"local_seat_index": _server_local_seat_index,
+		"turn_seat_index": -1,
+		"turn_seconds": 15,
+		"available_actions": [],
+		"hand_history": [message],
+		"system_messages": ["Server authoritative mode: waiting for table_snapshot"],
+		"visual_events": [],
+		"rule_debug_log": [],
+		"table_session": {},
+	}
+
+func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapshot: Dictionary) -> Dictionary:
+	var phase: String = String(server_snapshot.get("phase", "waiting"))
+	var room_id: String = String(server_snapshot.get("room_id", _server_room_id))
+	var local_server_seat: int = int(private_snapshot.get("seat_index", _server_local_seat_index))
+	_server_local_seat_index = local_server_seat
+	var seats: Array = []
+	for seat_item in Array(server_snapshot.get("seats", [])):
+		var server_seat: Dictionary = Dictionary(seat_item).duplicate(true)
+		var seat_index: int = int(server_seat.get("seat_index", 0))
+		var is_local := seat_index == local_server_seat and String(server_seat.get("player_id", "")) != ""
+		var raw_status: String = String(server_seat.get("status", "empty"))
+		var ui_status: String = _server_status_to_ui_status(raw_status)
+		var avatar_id: String = AvatarLibraryScript.avatar_id_for_seat(seat_index + 1, is_local)
+		if is_local:
+			avatar_id = PlayerProfileScript.get_avatar_id(ProfileServiceScript.new().get_current_profile())
+		var cards: Array = []
+		if is_local:
+			for card_item in Array(private_snapshot.get("hole_cards", [])):
+				cards.append(_server_card_to_ui_card(Dictionary(card_item), true))
+		else:
+			for _i in range(int(server_seat.get("hole_card_count", 0))):
+				cards.append({"rank": "", "suit": "", "face_up": false})
+		seats.append({
+			"seat_index": seat_index,
+			"seat_id": seat_index,
+			"visual_position": seat_index + 1,
+			"player_id": String(server_seat.get("player_id", "")),
+			"player_name": String(server_seat.get("name", "Seat %d" % seat_index)),
+			"avatar_id": avatar_id,
+			"avatar_texture": AvatarLibraryScript.get_avatar_by_id(avatar_id),
+			"chips": int(server_seat.get("chips", 0)),
+			"current_bet": int(server_seat.get("current_bet", 0)),
+			"status": ui_status,
+			"raw_status": raw_status,
+			"cards": cards,
+			"is_local": is_local,
+			"is_dealer": bool(server_seat.get("is_dealer", false)),
+			"is_small_blind": bool(server_seat.get("is_small_blind", false)),
+			"is_big_blind": bool(server_seat.get("is_big_blind", false)),
+			"is_turn": seat_index == int(server_snapshot.get("current_turn_seat", -1)),
+			"last_action": String(server_seat.get("last_action", "")),
+			"last_action_amount": 0,
+			"last_action_seq": int(server_snapshot.get("hand_id", 0)),
+			"buy_in": PlayerProfileScript.table_buy_in(ProfileServiceScript.new().get_current_profile()),
+		})
+	var community_cards: Array = []
+	for card_item in Array(server_snapshot.get("community_cards", [])):
+		community_cards.append(_server_card_to_ui_card(Dictionary(card_item), true))
+	var total_pot: int = int(server_snapshot.get("pot", 0))
+	var side_pots: Array = Array(server_snapshot.get("side_pots", [])).duplicate(true)
+	var history: Array = []
+	for session_item in _session_log:
+		history.append(session_item)
+	if room_id != "":
+		history.append("Authoritative room_id: %s" % room_id)
+	if not side_pots.is_empty():
+		history.append("Side pots: %s" % str(side_pots))
+	for log_item in Array(server_snapshot.get("log", [])):
+		history.append(log_item)
+	if _server_last_error != "":
+		history.append("Server error: %s" % _server_last_error)
+	var local_player: Dictionary = _find_local_player(seats)
+	return {
+		"source_model": "server_authoritative",
+		"table_id": room_id if room_id != "" else "authoritative_local",
+		"table_name": "Authoritative Local Table",
+		"hand_id": "hand_%s" % str(server_snapshot.get("hand_id", 0)),
+		"blinds_text": "%d / %d" % [int(server_snapshot.get("small_blind", 25)), int(server_snapshot.get("big_blind", 50))],
+		"phase": phase,
+		"room_state": phase,
+		"pot": total_pot,
+		"pot_data": {"main": total_pot, "side_pots": side_pots, "total": total_pot},
+		"community_cards": community_cards,
+		"seats": seats,
+		"local_player": local_player,
+		"local_seat_index": local_server_seat,
+		"turn_seat_index": int(server_snapshot.get("current_turn_seat", -1)),
+		"turn_seconds": 15,
+		"available_actions": _server_legal_actions_to_ui_actions(Array(private_snapshot.get("legal_actions", [])), total_pot),
+		"hand_history": history,
+		"system_messages": [
+			"Server authoritative mode",
+			"Room: %s" % room_id,
+			"Current turn seat: %d" % int(server_snapshot.get("current_turn_seat", -1)),
+		],
+		"visual_events": [],
+		"rule_debug_log": history,
+		"table_session": {},
+	}
+
+func _server_card_to_ui_card(card: Dictionary, face_up: bool) -> Dictionary:
+	var rank: String = String(card.get("rank", ""))
+	var suit_code: String = String(card.get("suit", ""))
+	return {
+		"rank": rank,
+		"suit": _server_suit_to_ui_suit(suit_code),
+		"code": String(card.get("code", "%s%s" % [rank, suit_code])),
+		"face_up": face_up,
+	}
+
+func _server_suit_to_ui_suit(suit_code: String) -> String:
+	match suit_code:
+		"C":
+			return "clubs"
+		"D":
+			return "diamonds"
+		"H":
+			return "hearts"
+		"S":
+			return "spades"
+	return suit_code
+
+func _server_status_to_ui_status(status: String) -> String:
+	match status:
+		"empty":
+			return "empty"
+		"folded":
+			return "folded"
+		"sit_out", "disconnected":
+			return "out"
+	return "active"
+
+func _server_legal_actions_to_ui_actions(actions: Array, pot_value: int) -> Array:
+	var result: Array = []
+	for action_item in actions:
+		var action: Dictionary = Dictionary(action_item)
+		var action_id: String = String(action.get("action", ""))
+		if action_id == "":
+			continue
+		var ui_action := {
+			"id": action_id,
+			"label": action_id.replace("_", " ").capitalize(),
+			"enabled": true,
+		}
+		if action.has("amount"):
+			ui_action["amount"] = int(action.get("amount", 0))
+		if action.has("min_amount"):
+			ui_action["min_amount"] = int(action.get("min_amount", 0))
+			ui_action["max_amount"] = int(action.get("max_amount", action.get("min_amount", 0)))
+		result.append(ui_action)
+	return result
+
 func _start_test_hand() -> void:
 	_start_next_hand()
 
 func _start_next_hand() -> void:
+	if server_authoritative:
+		if _poker_ws_client == null or not _server_connected:
+			_on_server_error("Cannot start hand: authoritative server is not connected.")
+			return
+		_server_start_hand_requested = true
+		_send_server_message(_poker_ws_client.start_hand(), "start_hand")
+		return
 	if _table_session == null:
 		_configure_table_session_from_launch_context()
 	if _table_session != null and not _table_session.can_start_next_hand():
@@ -384,12 +724,18 @@ func _start_next_hand() -> void:
 	_schedule_ai_turns()
 
 func _advance_test_stage() -> void:
+	if server_authoritative:
+		_append_session_log("Client-side stage advance is disabled in server authoritative mode.")
+		return
 	snapshot = _table_flow_to_ui_snapshot(_table_flow.advance_stage())
 	_apply_launch_context(snapshot)
 	_refresh()
 	_schedule_ai_turns()
 
 func _force_test_showdown() -> void:
+	if server_authoritative:
+		_append_session_log("Client-side showdown is disabled in server authoritative mode.")
+		return
 	if String(_table_flow.table_state) == TexasTableFlowScript.WAITING:
 		_sync_launch_profile_to_table_flow()
 		_table_flow.start_new_hand()
@@ -406,6 +752,9 @@ func _force_test_showdown() -> void:
 
 
 func _force_current_hand_to_showdown() -> void:
+	if server_authoritative:
+		_append_session_log("Force showdown is disabled in server authoritative mode.")
+		return
 	if not _can_use_debug_start_key():
 		return
 	if String(_table_flow.table_state) == TexasTableFlowScript.WAITING:
@@ -417,6 +766,9 @@ func _force_current_hand_to_showdown() -> void:
 
 
 func _force_finish_current_session() -> void:
+	if server_authoritative:
+		_append_session_log("Force finish is disabled in server authoritative mode.")
+		return
 	if not _can_use_debug_start_key():
 		return
 	if _table_session == null:
@@ -432,6 +784,9 @@ func _force_finish_current_session() -> void:
 	_enter_session_over()
 
 func _reset_test_table() -> void:
+	if server_authoritative:
+		_boot_server_authoritative_table()
+		return
 	_ai_turn_loop_active = false
 	_hand_over_sequence_active = false
 	_next_hand_ready = true
@@ -611,6 +966,17 @@ func _refresh() -> void:
 
 func _on_action_pressed(action: Dictionary) -> void:
 	var action_id := String(action.get("id", ""))
+	if server_authoritative:
+		if _poker_ws_client == null or not _server_connected:
+			_on_server_error("Cannot send action: authoritative server is not connected.")
+			return
+		var amount := 0
+		if action_id in ["bet", "raise"]:
+			amount = int(action.get("amount", action.get("min_amount", 0)))
+		_send_server_message(_poker_ws_client.player_action(action_id, amount), "player_action %s" % action_id)
+		snapshot["available_actions"] = []
+		_refresh()
+		return
 	if action_id in ["call", "bet", "raise", "all_in"] and not action.has("amount"):
 		action["amount"] = int(action.get("min_amount", action.get("min", 50)))
 	if String(snapshot.get("source_model", "")) == "texas_table_flow":
@@ -623,6 +989,8 @@ func _on_action_pressed(action: Dictionary) -> void:
 	_schedule_ai_turns()
 
 func _schedule_ai_turns() -> void:
+	if server_authoritative:
+		return
 	if _ai_turn_loop_active:
 		return
 	if String(snapshot.get("source_model", "")) != "texas_table_flow":
@@ -1518,6 +1886,9 @@ func _toggle_rule_debug_panel() -> void:
 func _refresh_rule_debug_panel() -> void:
 	if _rule_debug_panel == null or _rule_debug_text == null or not _rule_debug_panel.visible:
 		return
+	if server_authoritative:
+		_rule_debug_text.text = _server_rule_debug_text()
+		return
 	if _table_flow == null:
 		_rule_debug_text.text = "NO DEBUG DATA\nmissing texas_table_flow"
 		push_warning("PokerRuleDebugPanel refresh skipped: texas_table_flow missing.")
@@ -1596,6 +1967,38 @@ func _refresh_rule_debug_panel() -> void:
 	for i in range(start_index, debug_log.size()):
 		lines.append(String(debug_log[i]))
 	_rule_debug_text.text = "\n".join(lines)
+
+func _server_rule_debug_text() -> String:
+	var lines: Array[String] = []
+	lines.append("SERVER AUTHORITATIVE DEBUG  (Ctrl+D hide/show)")
+	lines.append("connected=%s room_id=%s local_seat=%d" % [str(_server_connected), _server_room_id if _server_room_id != "" else "-", _server_local_seat_index])
+	lines.append("state=%s hand=%s current_turn=%d pot=%d" % [
+		String(snapshot.get("phase", "waiting")),
+		String(snapshot.get("hand_id", "-")),
+		int(snapshot.get("turn_seat_index", -1)),
+		int(snapshot.get("pot", 0)),
+	])
+	if _server_last_error != "":
+		lines.append("last_error=%s" % _server_last_error)
+	lines.append("")
+	lines.append("SEATS")
+	for seat_item in Array(snapshot.get("seats", [])):
+		var seat: Dictionary = Dictionary(seat_item)
+		lines.append("Seat %d | %s | chips=%d | bet=%d | status=%s | turn=%s" % [
+			int(seat.get("seat_index", -1)),
+			String(seat.get("player_name", "")),
+			int(seat.get("chips", 0)),
+			int(seat.get("current_bet", 0)),
+			String(seat.get("raw_status", seat.get("status", ""))),
+			str(bool(seat.get("is_turn", false))),
+		])
+	lines.append("")
+	lines.append("SERVER LOG")
+	var history: Array = Array(snapshot.get("hand_history", []))
+	var start_index: int = max(history.size() - 18, 0)
+	for i in range(start_index, history.size()):
+		lines.append(String(history[i]))
+	return "\n".join(lines)
 
 
 func _debug_seat_status(seat: Dictionary) -> String:
@@ -1719,12 +2122,18 @@ func _capture_and_quit() -> void:
 	get_tree().quit()
 
 func _return_home() -> void:
+	if _poker_ws_client != null:
+		_poker_ws_client.close()
 	if _table_session != null and _table_session.is_session_over:
 		_apply_session_profit_to_profile()
 	TableLaunchContext.clear_table_session()
 	ScreenNavigator.return_home(get_tree())
 
 func _apply_launch_context(target_snapshot: Dictionary) -> void:
+	if String(target_snapshot.get("source_model", "")) == "server_authoritative":
+		target_snapshot["connection_status"] = "LOCAL AUTHORITATIVE SERVER"
+		_apply_local_profile_to_snapshot(target_snapshot)
+		return
 	if TableLaunchContext.is_training or TableLaunchContext.launch_mode == "training":
 		target_snapshot["table_id"] = TableLaunchContext.table_id
 		target_snapshot["table_name"] = "Training Table"
