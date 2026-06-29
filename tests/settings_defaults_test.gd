@@ -16,8 +16,10 @@ func _init() -> void:
 	_require(float(settings.get("sfx_volume", 0.0)) == 0.8, "default sfx volume must be 0.8")
 	_require(not bool(settings.get("mute_all", true)), "default mute all must be off")
 	_require(bool(settings.get("show_hand_hints", false)), "default hand hints must be on")
+	_require(bool(settings.get("confirm_big_bets", false)), "default confirm big bets must be on")
 	_require(String(settings.get("animation_speed", "")) == "normal", "default animation speed must be normal")
-	_require(String(settings.get("network_mode", "")) == "local_mock", "default network mode must be local mock")
+	_require(not settings.has("network_mode"), "defaults must not expose network mode")
+	_require(not settings.has("server_region"), "defaults must not expose server region")
 
 	var after := profile_service.get_current_profile()
 	_require(PlayerProfileScript.get_total_chips(after) == PlayerProfileScript.get_total_chips(before), "settings defaults must not change chips")

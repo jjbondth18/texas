@@ -10,6 +10,9 @@ func _init() -> void:
 		"master_volume": 0.42,
 		"animation_speed": "fast",
 		"reduce_motion": true,
+		"confirm_big_bets": false,
+		"network_mode": "future_server",
+		"cloud_sync": true,
 	})
 
 	SettingsServiceScript.reset_for_tests(path, false)
@@ -17,7 +20,10 @@ func _init() -> void:
 	_require(absf(float(loaded.get("master_volume", 0.0)) - 0.42) < 0.001, "saved master volume must load")
 	_require(String(loaded.get("animation_speed", "")) == "fast", "saved animation speed must load")
 	_require(bool(loaded.get("reduce_motion", false)), "saved reduce motion must load")
+	_require(not bool(loaded.get("confirm_big_bets", true)), "saved confirm big bets must load")
 	_require(float(loaded.get("music_volume", 0.0)) == 0.8, "unspecified settings must keep defaults")
+	_require(not loaded.has("network_mode"), "deprecated network mode must be ignored")
+	_require(not loaded.has("cloud_sync"), "deprecated cloud sync must be ignored")
 
 	SettingsServiceScript.reset_for_tests(path)
 	print("Settings save load test passed.")

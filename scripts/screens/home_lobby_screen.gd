@@ -2191,14 +2191,14 @@ func _signed_number(value: int) -> String:
 func _build_settings_panel() -> void:
 	_settings_panel = PanelContainer.new()
 	_settings_panel.name = "SettingsPanel"
-	_settings_panel.anchor_left = 0.0
-	_settings_panel.anchor_top = 0.24
-	_settings_panel.anchor_right = 1.0
-	_settings_panel.anchor_bottom = 0.91
-	_settings_panel.offset_left = MAIN_LEFT
-	_settings_panel.offset_right = -MAIN_RIGHT
+	_settings_panel.anchor_left = 0.5
+	_settings_panel.anchor_top = 0.16
+	_settings_panel.anchor_right = 0.5
+	_settings_panel.anchor_bottom = 0.88
+	_settings_panel.offset_left = -430
+	_settings_panel.offset_right = 430
 	_settings_panel.mouse_filter = Control.MOUSE_FILTER_PASS
-	_settings_panel.custom_minimum_size = Vector2(0, 580)
+	_settings_panel.custom_minimum_size = Vector2(860, 560)
 	_settings_panel.visible = false
 	_settings_panel.modulate.a = 0.0
 	_settings_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.016, 0.72), Color(0.62, 0.36, 1.0, 0.28), 8, 1))
@@ -2220,15 +2220,11 @@ func _build_settings_panel() -> void:
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	title_box.add_child(sub)
 
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	main_vbox.add_child(scroll)
-
 	var content := VBoxContainer.new()
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation", 10)
-	scroll.add_child(content)
+	main_vbox.add_child(content)
 
 	var master_slider := _add_settings_slider(content, "AUDIO", "Master Volume", float(settings.get("master_volume", 1.0)))
 	var music_slider := _add_settings_slider(content, "", "Music Volume", float(settings.get("music_volume", 0.8)))
@@ -2236,7 +2232,6 @@ func _build_settings_panel() -> void:
 	var mute_all := _add_settings_checkbox(content, "", "Mute All", bool(settings.get("mute_all", false)))
 
 	var show_hand_hints := _add_settings_checkbox(content, "GAMEPLAY", "Show Hand Hints", bool(settings.get("show_hand_hints", true)))
-	var auto_muck := _add_settings_checkbox(content, "", "Auto Muck Losing Hands", bool(settings.get("auto_muck_losing_hands", true)))
 	var confirm_big_bets := _add_settings_checkbox(content, "", "Confirm Big Bets", bool(settings.get("confirm_big_bets", true)))
 	var animation_speed := _add_settings_option(content, "", "Animation Speed", [
 		{"label": "Slow", "value": "slow"},
@@ -2244,34 +2239,12 @@ func _build_settings_panel() -> void:
 		{"label": "Fast", "value": "fast"},
 	], String(settings.get("animation_speed", "normal")))
 
-	var window_mode := _add_settings_option(content, "DISPLAY", "Window Mode", [
-		{"label": "Windowed", "value": "windowed"},
-		{"label": "Fullscreen", "value": "fullscreen"},
-		{"label": "Borderless", "value": "borderless"},
-	], String(settings.get("window_mode", "windowed")), "Saved locally. Apply on restart.")
+	var reduce_motion := _add_settings_checkbox(content, "DISPLAY", "Reduce Motion", bool(settings.get("reduce_motion", false)))
 	var ui_scale := _add_settings_option(content, "", "UI Scale", [
-		{"label": "90%", "value": 0.9},
 		{"label": "100%", "value": 1.0},
 		{"label": "110%", "value": 1.1},
 		{"label": "120%", "value": 1.2},
-	], float(settings.get("ui_scale", 1.0)), "Saved locally. Future UI scale system will read this.")
-	var reduce_motion := _add_settings_checkbox(content, "", "Reduce Motion", bool(settings.get("reduce_motion", false)))
-
-	var show_player_name := _add_settings_checkbox(content, "ACCOUNT & PRIVACY", "Show Player Name", bool(settings.get("show_player_name", true)))
-	var allow_friend_invites := _add_settings_checkbox(content, "", "Allow Friend Invites", bool(settings.get("allow_friend_invites", true)))
-	_add_settings_placeholder(content, "", "Data / Cloud Sync", "Coming Soon")
-	_add_settings_placeholder(content, "", "Account Binding", "Coming Soon")
-
-	var server_region := _add_settings_option(content, "ADVANCED", "Server Region", [
-		{"label": "Auto", "value": "auto"},
-		{"label": "US East", "value": "us_east"},
-		{"label": "US West", "value": "us_west"},
-		{"label": "Asia", "value": "asia"},
-	], String(settings.get("server_region", "auto")), "Saved locally only.")
-	var network_mode := _add_settings_option(content, "", "Network Mode", [
-		{"label": "Local Mock", "value": "local_mock"},
-		{"label": "Future Server - Coming Soon", "value": "future_server", "disabled": true},
-	], String(settings.get("network_mode", "local_mock")), "Future Server: Coming Soon")
+	], float(settings.get("ui_scale", 1.0)), "Saved locally. Applied in future UI scale pass.")
 
 	var footer := HBoxContainer.new()
 	footer.alignment = BoxContainer.ALIGNMENT_END
@@ -2290,21 +2263,15 @@ func _build_settings_panel() -> void:
 	var apply_button := _settings_button("Apply")
 	apply_button.pressed.connect(func() -> void:
 		var next_settings := {
-			"master_volume": float(master_slider.value) / 100.0,
-			"music_volume": float(music_slider.value) / 100.0,
-			"sfx_volume": float(sfx_slider.value) / 100.0,
+			"master_volume": float(master_slider.value),
+			"music_volume": float(music_slider.value),
+			"sfx_volume": float(sfx_slider.value),
 			"mute_all": mute_all.button_pressed,
 			"show_hand_hints": show_hand_hints.button_pressed,
-			"auto_muck_losing_hands": auto_muck.button_pressed,
 			"confirm_big_bets": confirm_big_bets.button_pressed,
 			"animation_speed": String(animation_speed.get_meta("selected_value")),
-			"window_mode": String(window_mode.get_meta("selected_value")),
 			"ui_scale": float(ui_scale.get_meta("selected_value")),
 			"reduce_motion": reduce_motion.button_pressed,
-			"show_player_name": show_player_name.button_pressed,
-			"allow_friend_invites": allow_friend_invites.button_pressed,
-			"server_region": String(server_region.get_meta("selected_value")),
-			"network_mode": String(network_mode.get_meta("selected_value")),
 		}
 		var saved := _settings_service.save_settings(next_settings)
 		_apply_settings(saved)
@@ -2343,10 +2310,10 @@ func _add_settings_slider(parent: VBoxContainer, section_title: String, label_te
 	var row := _settings_row(parent, label_text)
 	var slider := HSlider.new()
 	slider.min_value = 0
-	slider.max_value = 100
-	slider.step = 1
-	slider.value = round(clampf(value, 0.0, 1.0) * 100.0)
-	slider.custom_minimum_size = Vector2(240, 34)
+	slider.max_value = 1
+	slider.step = 0.01
+	slider.value = clampf(value, 0.0, 1.0)
+	slider.custom_minimum_size = Vector2(190, 34)
 	row.add_child(slider)
 	return slider
 
@@ -2385,14 +2352,6 @@ func _add_settings_option(parent: VBoxContainer, section_title: String, label_te
 	)
 	row.add_child(option)
 	return option
-
-func _add_settings_placeholder(parent: VBoxContainer, section_title: String, label_text: String, value_text: String) -> void:
-	_add_settings_section_label(parent, section_title)
-	var row := _settings_row(parent, label_text)
-	var label := Label.new()
-	label.text = value_text
-	HomeTheme.make_font_settings(label, 13, HomeTheme.GOLD)
-	row.add_child(label)
 
 func _add_settings_section_label(parent: VBoxContainer, section_title: String) -> void:
 	if section_title == "":

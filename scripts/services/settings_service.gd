@@ -9,16 +9,10 @@ const DEFAULTS := {
 	"sfx_volume": 0.8,
 	"mute_all": false,
 	"show_hand_hints": true,
-	"auto_muck_losing_hands": true,
 	"confirm_big_bets": true,
 	"animation_speed": "normal",
-	"window_mode": "windowed",
 	"ui_scale": 1.0,
 	"reduce_motion": false,
-	"show_player_name": true,
-	"allow_friend_invites": true,
-	"server_region": "auto",
-	"network_mode": "local_mock",
 }
 
 static var _settings_cache: Dictionary = {}
@@ -45,9 +39,9 @@ func reset_defaults() -> Dictionary:
 func apply_safe_settings(settings: Dictionary) -> void:
 	var normalized := normalize_settings(settings)
 	var master := 0.0 if bool(normalized.get("mute_all", false)) else float(normalized.get("master_volume", 1.0))
-	_apply_bus_volume("Master", master)
-	_apply_bus_volume("Music", float(normalized.get("music_volume", 0.8)))
-	_apply_bus_volume("SFX", float(normalized.get("sfx_volume", 0.8)))
+	_apply_bus_volume("Master", master, false)
+	_apply_bus_volume("Music", float(normalized.get("music_volume", 0.8)), true)
+	_apply_bus_volume("SFX", float(normalized.get("sfx_volume", 0.8)), true)
 
 static func default_settings() -> Dictionary:
 	return DEFAULTS.duplicate(true)
@@ -63,16 +57,10 @@ static func normalize_settings(settings: Dictionary) -> Dictionary:
 	normalized["sfx_volume"] = clampf(float(normalized.get("sfx_volume", 0.8)), 0.0, 1.0)
 	normalized["mute_all"] = bool(normalized.get("mute_all", false))
 	normalized["show_hand_hints"] = bool(normalized.get("show_hand_hints", true))
-	normalized["auto_muck_losing_hands"] = bool(normalized.get("auto_muck_losing_hands", true))
 	normalized["confirm_big_bets"] = bool(normalized.get("confirm_big_bets", true))
 	normalized["animation_speed"] = _normalized_choice(String(normalized.get("animation_speed", "normal")), ["slow", "normal", "fast"], "normal")
-	normalized["window_mode"] = _normalized_choice(String(normalized.get("window_mode", "windowed")), ["windowed", "fullscreen", "borderless"], "windowed")
 	normalized["ui_scale"] = _normalized_ui_scale(float(normalized.get("ui_scale", 1.0)))
 	normalized["reduce_motion"] = bool(normalized.get("reduce_motion", false))
-	normalized["show_player_name"] = bool(normalized.get("show_player_name", true))
-	normalized["allow_friend_invites"] = bool(normalized.get("allow_friend_invites", true))
-	normalized["server_region"] = _normalized_choice(String(normalized.get("server_region", "auto")), ["auto", "us_east", "us_west", "asia"], "auto")
-	normalized["network_mode"] = _normalized_choice(String(normalized.get("network_mode", "local_mock")), ["local_mock", "future_server"], "local_mock")
 	return normalized
 
 static func reset_for_tests(path: String = "", remove_file: bool = true) -> void:
@@ -91,10 +79,14 @@ func _read_settings_file() -> Dictionary:
 		settings[key] = config.get_value("settings", String(key), DEFAULTS[key])
 	return normalize_settings(settings)
 
-func _apply_bus_volume(bus_name: String, volume: float) -> void:
+func _apply_bus_volume(bus_name: String, volume: float, create_if_missing: bool) -> void:
 	var bus_index := AudioServer.get_bus_index(bus_name)
 	if bus_index < 0:
-		return
+		if not create_if_missing:
+			return
+		bus_index = AudioServer.get_bus_count()
+		AudioServer.add_bus(bus_index)
+		AudioServer.set_bus_name(bus_index, bus_name)
 	var safe_volume := clampf(volume, 0.0, 1.0)
 	AudioServer.set_bus_volume_db(bus_index, -80.0 if safe_volume <= 0.0 else linear_to_db(safe_volume))
 

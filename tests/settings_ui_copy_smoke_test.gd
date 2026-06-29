@@ -13,10 +13,10 @@ func _initialize() -> void:
 	await process_frame
 
 	var visible_copy := _collect_visible_copy(home)
-	for required in ["SETTINGS", "AUDIO", "GAMEPLAY", "DISPLAY", "ACCOUNT & PRIVACY", "ADVANCED"]:
+	for required in ["SETTINGS", "AUDIO", "GAMEPLAY", "DISPLAY"]:
 		_require(visible_copy.contains(required), "Settings panel must include %s" % required)
-	for required in ["Cloud Sync", "Account Binding", "Coming Soon", "Future Server: Coming Soon"]:
-		_require(visible_copy.contains(required), "Settings panel must include placeholder copy: %s" % required)
+	for removed in ["Server Region", "Network Mode", "Cloud Sync", "Account Binding", "ACCOUNT & PRIVACY", "ADVANCED", "Coming Soon"]:
+		_require(not visible_copy.contains(removed), "Settings panel must not show unused copy: %s" % removed)
 	_require(not visible_copy.contains("Real Server Enabled"), "Settings copy must not imply a real server is enabled")
 	_require(not visible_copy.contains("Real Cloud Sync"), "Settings copy must not imply real cloud sync is enabled")
 	_require(not visible_copy.contains("Real Payment"), "Settings copy must not imply real payment")
