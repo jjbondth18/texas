@@ -6,6 +6,9 @@ const PokerProtocolScript := preload("res://scripts/network/poker_protocol.gd")
 signal connected()
 signal disconnected()
 signal hello_received(player_id: String, room_id: String)
+signal profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_ids: Array)
+signal wallet_synced(wallet: Dictionary)
+signal daily_login_awarded(chips: int)
 signal table_snapshot_received(snapshot: Dictionary)
 signal private_snapshot_received(snapshot: Dictionary)
 signal server_error(message: String)
@@ -78,6 +81,9 @@ func start_hand() -> int:
 func player_action(action: String, amount: int = 0) -> int:
 	return send_message(PokerProtocolScript.player_action(action, amount))
 
+func get_profile() -> int:
+	return send_message(PokerProtocolScript.get_profile())
+
 func _handle_message(message: Dictionary) -> void:
 	message_received.emit(message)
 	var type_value := String(message.get("type", ""))
@@ -85,7 +91,14 @@ func _handle_message(message: Dictionary) -> void:
 		PokerProtocolScript.HELLO:
 			player_id = String(message.get("player_id", player_id))
 			room_id = String(message.get("room_id", room_id))
+			_emit_profile_payload(message)
 			hello_received.emit(player_id, room_id)
+		PokerProtocolScript.PROFILE_SNAPSHOT:
+			_emit_profile_payload(message)
+		PokerProtocolScript.WALLET_SNAPSHOT:
+			var wallet := Dictionary(message.get("wallet", {})).duplicate(true)
+			if not wallet.is_empty():
+				wallet_synced.emit(wallet)
 		PokerProtocolScript.TABLE_SNAPSHOT:
 			var snapshot := Dictionary(message.get("snapshot", {})).duplicate(true)
 			room_id = String(message.get("room_id", snapshot.get("room_id", room_id)))
@@ -94,3 +107,14 @@ func _handle_message(message: Dictionary) -> void:
 			private_snapshot_received.emit(Dictionary(message.get("snapshot", {})).duplicate(true))
 		PokerProtocolScript.ERROR:
 			server_error.emit(String(message.get("error", "Unknown server error")))
+
+func _emit_profile_payload(message: Dictionary) -> void:
+	var profile := Dictionary(message.get("profile", {})).duplicate(true)
+	var wallet := Dictionary(message.get("wallet", {})).duplicate(true)
+	var unlocked := Array(message.get("unlocked_avatar_ids", []))
+	if not profile.is_empty() or not wallet.is_empty() or not unlocked.is_empty():
+		profile_synced.emit(profile, wallet, unlocked)
+	if not wallet.is_empty():
+		wallet_synced.emit(wallet)
+	if bool(message.get("daily_login_awarded", false)):
+		daily_login_awarded.emit(int(message.get("awarded_chips", 0)))

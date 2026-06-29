@@ -446,6 +446,9 @@ func _connect_authoritative_server() -> void:
 		_poker_ws_client.connected.connect(_on_server_connected)
 		_poker_ws_client.disconnected.connect(_on_server_disconnected)
 		_poker_ws_client.hello_received.connect(_on_server_hello_received)
+		_poker_ws_client.profile_synced.connect(_on_server_profile_synced)
+		_poker_ws_client.wallet_synced.connect(_on_server_wallet_synced)
+		_poker_ws_client.daily_login_awarded.connect(_on_server_daily_login_awarded)
 		_poker_ws_client.table_snapshot_received.connect(_on_server_table_snapshot_received)
 		_poker_ws_client.private_snapshot_received.connect(_on_server_private_snapshot_received)
 		_poker_ws_client.server_error.connect(_on_server_error)
@@ -479,6 +482,26 @@ func _on_server_hello_received(player_id: String, room_id: String) -> void:
 		_send_server_message(_poker_ws_client.create_room(), "create_room")
 		return
 	_try_server_sit_ready()
+
+func _on_server_profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_ids: Array) -> void:
+	var synced_profile := ProfileServiceScript.new().apply_server_profile_snapshot(profile, wallet, unlocked_avatar_ids, false)
+	TableLaunchContext.set_player_profile(synced_profile)
+	_load_server_profile_identity()
+	if not wallet.is_empty():
+		_append_session_log("Server wallet synced: %s chips, %s gems." % [
+			_format_chips(PlayerProfileScript.get_total_chips(synced_profile)),
+			_format_chips(PlayerProfileScript.get_total_gems(synced_profile)),
+		])
+
+func _on_server_wallet_synced(wallet: Dictionary) -> void:
+	var synced_profile := ProfileServiceScript.new().apply_server_wallet_snapshot(wallet)
+	TableLaunchContext.set_player_profile(synced_profile)
+
+func _on_server_daily_login_awarded(chips: int) -> void:
+	if chips > 0:
+		var synced_profile := ProfileServiceScript.new().apply_server_profile_snapshot({}, {}, [], true)
+		TableLaunchContext.set_player_profile(synced_profile)
+		_append_session_log("Daily bonus +%s chips" % _format_chips(chips))
 
 func _try_server_sit_ready() -> void:
 	if _server_setup_done or _server_room_id == "" or _poker_ws_client == null:

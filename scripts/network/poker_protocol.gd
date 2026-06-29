@@ -9,8 +9,11 @@ const LEAVE_SEAT := "leave_seat"
 const READY := "ready"
 const START_HAND := "start_hand"
 const PLAYER_ACTION := "player_action"
+const GET_PROFILE := "get_profile"
 const TABLE_SNAPSHOT := "table_snapshot"
 const PRIVATE_SNAPSHOT := "private_snapshot"
+const PROFILE_SNAPSHOT := "profile_snapshot"
+const WALLET_SNAPSHOT := "wallet_snapshot"
 const ERROR := "error"
 
 const ACTION_FOLD := "fold"
@@ -60,6 +63,9 @@ static func player_action(action: String, amount: int = 0) -> Dictionary:
 	if amount > 0:
 		data["amount"] = amount
 	return _message(PLAYER_ACTION, data)
+
+static func get_profile() -> Dictionary:
+	return _message(GET_PROFILE)
 
 static func _message(type_value: String, extra: Dictionary = {}) -> Dictionary:
 	var result := {"type": type_value}

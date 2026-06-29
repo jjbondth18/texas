@@ -9,6 +9,7 @@ const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 static var _saved_profile: Dictionary = {}
 static var _last_unlocked_avatar_ids: Array[String] = []
 static var _last_daily_bonus_claimed := false
+static var _server_profile_synced := false
 
 func get_current_profile() -> Dictionary:
 	if _saved_profile.is_empty():
@@ -17,6 +18,49 @@ func get_current_profile() -> Dictionary:
 
 func save_current_profile(profile: Dictionary) -> void:
 	_saved_profile = SaveManagerScript.profile_to_save_data(profile).get("player_profile", {})
+
+func apply_server_profile_snapshot(profile_snapshot: Dictionary, wallet_snapshot: Dictionary = {}, unlocked_avatar_ids: Array = [], daily_login_awarded: bool = false) -> Dictionary:
+	var profile := get_current_profile()
+	if not profile_snapshot.is_empty():
+		profile["player_id"] = String(profile_snapshot.get("player_id", profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID)))
+		var display_name := String(profile_snapshot.get("display_name", profile_snapshot.get("player_name", profile_snapshot.get("name", "")))).strip_edges()
+		if display_name != "":
+			profile["name"] = display_name
+			profile["player_name"] = display_name
+		var avatar_id := _client_avatar_id_for_server_id(String(profile_snapshot.get("avatar_id", PlayerProfileScript.get_avatar_id(profile))))
+		profile["avatar_id"] = avatar_id
+		profile["selected_avatar_id"] = avatar_id
+		profile["avatar"] = AvatarLibraryScript.avatar_path(avatar_id)
+	if not wallet_snapshot.is_empty():
+		profile["total_chips"] = int(wallet_snapshot.get("chips", PlayerProfileScript.get_total_chips(profile)))
+		profile["chips"] = int(profile["total_chips"])
+		profile["gems"] = int(wallet_snapshot.get("gems", PlayerProfileScript.get_total_gems(profile)))
+	if not unlocked_avatar_ids.is_empty():
+		var normalized_unlocked := _normalize_server_avatar_ids(unlocked_avatar_ids)
+		profile["unlocked_avatar_ids"] = normalized_unlocked
+		var selected_id: String = PlayerProfileScript.get_avatar_id(profile)
+		if not normalized_unlocked.has(selected_id):
+			profile["selected_avatar_id"] = normalized_unlocked[0]
+			profile["avatar_id"] = normalized_unlocked[0]
+			profile["avatar"] = AvatarLibraryScript.avatar_path(normalized_unlocked[0])
+	if daily_login_awarded:
+		profile["last_daily_reward_date"] = _today_key()
+		profile["daily_reward_claimed_today"] = true
+	_server_profile_synced = true
+	_last_daily_bonus_claimed = daily_login_awarded
+	save_current_profile(profile)
+	return get_current_profile()
+
+func apply_server_wallet_snapshot(wallet_snapshot: Dictionary) -> Dictionary:
+	if wallet_snapshot.is_empty():
+		return get_current_profile()
+	var profile := get_current_profile()
+	profile["total_chips"] = int(wallet_snapshot.get("chips", PlayerProfileScript.get_total_chips(profile)))
+	profile["chips"] = int(profile["total_chips"])
+	profile["gems"] = int(wallet_snapshot.get("gems", PlayerProfileScript.get_total_gems(profile)))
+	_server_profile_synced = true
+	save_current_profile(profile)
+	return get_current_profile()
 
 func apply_session_profit(profit: int) -> Dictionary:
 	var profile := get_current_profile()
@@ -122,6 +166,9 @@ func mock_purchase_gems(amount: int) -> Dictionary:
 
 func claim_daily_login_bonus(today: String = "") -> Dictionary:
 	var profile := get_current_profile()
+	if _server_profile_synced:
+		_last_daily_bonus_claimed = false
+		return profile
 	var date_key: String = today if today != "" else _today_key()
 	var already_claimed: bool = String(profile.get("last_daily_reward_date", "")) == date_key and bool(profile.get("daily_reward_claimed_today", false))
 	_last_daily_bonus_claimed = false
@@ -147,6 +194,7 @@ static func reset_mock_profile() -> void:
 	_saved_profile = MockDataProviderScript.get_mock_player_profile()
 	_last_unlocked_avatar_ids.clear()
 	_last_daily_bonus_claimed = false
+	_server_profile_synced = false
 
 func _unlock_avatars_for_session(profile: Dictionary, session_result: Dictionary, previous_sessions: int, previous_hands_won: int) -> Array[String]:
 	var unlocked: Array = Array(profile.get("unlocked_avatar_ids", [])).duplicate()
@@ -172,7 +220,25 @@ func _try_unlock_avatar_for_rule(rule_id: String, unlocked: Array, new_ids: Arra
 	new_ids.append(avatar_id)
 
 func is_profile_backend_available() -> bool:
-	return false
+	return _server_profile_synced
+
+func _normalize_server_avatar_ids(unlocked_avatar_ids: Array) -> Array[String]:
+	var result: Array[String] = []
+	for item in unlocked_avatar_ids:
+		var avatar_id := _client_avatar_id_for_server_id(String(item))
+		if avatar_id != "" and not result.has(avatar_id):
+			result.append(avatar_id)
+	if result.is_empty():
+		result.append_array(AvatarLibraryScript.default_unlocked_avatar_ids())
+	return result
+
+func _client_avatar_id_for_server_id(server_avatar_id: String) -> String:
+	var avatar_id := server_avatar_id.strip_edges()
+	if avatar_id == "" or avatar_id == "default":
+		avatar_id = PlayerProfileScript.DEFAULT_AVATAR_ID
+	if not ResourceLoader.exists(AvatarLibraryScript.avatar_path(avatar_id)):
+		avatar_id = PlayerProfileScript.DEFAULT_AVATAR_ID
+	return avatar_id
 
 func _today_key() -> String:
 	var now: Dictionary = Time.get_datetime_dict_from_system()

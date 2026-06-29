@@ -131,6 +131,27 @@ On `hello`, the server creates or updates the local player profile, creates a wa
 
 To reset local development data, stop the server, delete `server/data/texas_dev.sqlite`, and restart `npm.cmd run dev`.
 
+When Godot connects to the local server, the `hello` response includes the server profile, wallet, unlocked avatars, and daily login result. Godot applies those values to the local `ProfileService` cache so the lobby/top bar and table wallet displays prefer the SQLite-backed chips, gems, player name, and selected avatar. The first `hello` for a UTC day shows a lightweight `Daily bonus +1000 chips` message; reconnecting on the same UTC day does not award or display another bonus.
+
+Local profile sync test:
+
+1. Start the server:
+
+   ```powershell
+   cd C:\Users\jjbon\Documents\texas\server
+   npm.cmd run dev
+   ```
+
+2. To reset the local database, stop the server and delete:
+
+   ```text
+   C:\Users\jjbon\Documents\texas\server\data\texas_dev.sqlite
+   ```
+
+3. Run Godot and connect through the official server-authoritative table or the Local Server Test panel.
+4. Confirm the Godot log shows the server profile/wallet sync and, on the first UTC-day connection, `Daily bonus +1000 chips`.
+5. Return to the lobby and confirm the top bar/profile panel show the server wallet chips, gems, player name, and avatar. Reconnect on the same UTC day and confirm the daily bonus is not repeated.
+
 Database smoke test:
 
 ```powershell

@@ -150,6 +150,9 @@ func _ensure_client() -> void:
 	_client.connected.connect(_on_connected)
 	_client.disconnected.connect(_on_disconnected)
 	_client.hello_received.connect(_on_hello_received)
+	_client.profile_synced.connect(_on_profile_synced)
+	_client.wallet_synced.connect(_on_wallet_synced)
+	_client.daily_login_awarded.connect(_on_daily_login_awarded)
 	_client.table_snapshot_received.connect(_on_table_snapshot_received)
 	_client.private_snapshot_received.connect(_on_private_snapshot_received)
 	_client.server_error.connect(_on_server_error)
@@ -167,7 +170,8 @@ func _on_connect_pressed() -> void:
 func _on_connected() -> void:
 	_set_status("Connected")
 	_append_event("Connected. Sending hello.")
-	_send_or_show(_client.send_hello(_player_name_edit.text.strip_edges(), _local_player_id), "hello")
+	var profile: Dictionary = _profile_service.get_current_profile()
+	_send_or_show(_client.send_hello(_player_name_edit.text.strip_edges(), _local_player_id, PlayerProfileScript.get_avatar_id(profile)), "hello")
 
 func _on_disconnected() -> void:
 	_set_status("Disconnected")
@@ -179,6 +183,21 @@ func _on_hello_received(player_id: String, room_id: String) -> void:
 		_room_id_edit.text = room_id
 	_update_player_id_label()
 	_append_event("Hello received. server_player_id=%s room_id=%s" % [player_id, room_id])
+
+func _on_profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_ids: Array) -> void:
+	var synced_profile := _profile_service.apply_server_profile_snapshot(profile, wallet, unlocked_avatar_ids, false)
+	_append_event("Profile synced. chips=%s gems=%s" % [
+		PlayerProfileScript.get_total_chips(synced_profile),
+		PlayerProfileScript.get_total_gems(synced_profile),
+	])
+
+func _on_wallet_synced(wallet: Dictionary) -> void:
+	_profile_service.apply_server_wallet_snapshot(wallet)
+
+func _on_daily_login_awarded(chips: int) -> void:
+	if chips > 0:
+		_profile_service.apply_server_profile_snapshot({}, {}, [], true)
+		_append_event("Daily bonus +%s chips" % chips)
 
 func _on_create_room_pressed() -> void:
 	_send_or_show(_client.create_room() if is_instance_valid(_client) else ERR_UNAVAILABLE, "create_room")

@@ -257,6 +257,8 @@ export class RoomManager {
       const client = this.clients.get(playerId);
       if (!client) continue;
       this.send(client, { type: "table_snapshot", room_id: room.id, snapshot });
+      const wallet = this.wallets.get(playerId);
+      if (wallet) this.send(client, { type: "wallet_snapshot", room_id: room.id, wallet });
       const privateSnapshot = room.table.privateSnapshot(playerId, legalActions(room.table, playerId));
       if (privateSnapshot) this.send(client, { type: "private_snapshot", room_id: room.id, snapshot: privateSnapshot });
     }
