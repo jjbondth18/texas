@@ -33,6 +33,7 @@ const FLYING_CARD_BACK_PATH := "res://assets/ui/cardback/asset_02.png"
 const FLYING_CHIP_PATH := "res://assets/ui/chips/chip_stack_purple.png"
 const DEALER_DECK_PATH := "res://assets/ui/cardback/asset_03.png"
 const DEFAULT_CROUPIER_PATH := "res://assets/croupier/processed/dealer_01_dog.png"
+const POPOVER_LAYER_Z_INDEX := 240
 
 var snapshot := {}
 var server_authoritative := true
@@ -2733,13 +2734,23 @@ func _build_popover_layer() -> void:
 	_popover_layer.name = "PopoverLayer"
 	_popover_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_popover_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_popover_layer.z_index = 10
+	_popover_layer.z_as_relative = false
+	_popover_layer.z_index = POPOVER_LAYER_Z_INDEX
 	_popover_layer.visible = true
+	_raise_popover_layer()
 	for node_name in ["ModalMask", "BlurScrim", "ModalContainer"]:
 		var old_node := _popover_layer.get_node_or_null(node_name) as CanvasItem
 		if old_node != null:
 			old_node.visible = false
 
+
+func _raise_popover_layer() -> void:
+	if _popover_layer == null or _content_root == null:
+		return
+	if _popover_layer.get_parent() == _content_root:
+		_content_root.move_child(_popover_layer, _content_root.get_child_count() - 1)
+	_popover_layer.z_as_relative = false
+	_popover_layer.z_index = POPOVER_LAYER_Z_INDEX
 
 func _build_settings_panel() -> void:
 	_settings_panel = _popover_layer.get_node_or_null("SettingsPopover") as PanelContainer
@@ -2954,6 +2965,8 @@ func _prepare_popover_panel(panel: Control, panel_size: Vector2) -> void:
 	panel.size = panel_size
 	panel.pivot_offset = panel_size * 0.5
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.z_as_relative = false
+	panel.z_index = POPOVER_LAYER_Z_INDEX + 1
 
 
 func _position_popover_near_button(popover: Control, anchor_button: Control) -> void:
@@ -2988,6 +3001,8 @@ func _toggle_add_chips_panel() -> void:
 	var opening: bool = not _add_chips_panel.visible
 	if _settings_panel != null:
 		_settings_panel.visible = false
+	_raise_popover_layer()
+	_add_chips_panel.move_to_front()
 	_add_chips_panel.visible = opening
 	if opening:
 		_refresh_add_chips_panel_content()
