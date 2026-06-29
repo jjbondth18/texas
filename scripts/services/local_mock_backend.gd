@@ -118,6 +118,7 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 			"is_session_over": false,
 			"min_active_players": 2,
 			"status": "playing",
+			"selected_dealer_id": "default",
 		},
 	}
 
@@ -180,5 +181,6 @@ func _build_mock_seats(profile: Dictionary, buy_in: int, ai_count: int) -> Array
 			"is_small_blind": false,
 			"is_big_blind": false,
 			"is_local": is_local,
+			"is_ai": has_player and not is_local,
 		})
 	return seats

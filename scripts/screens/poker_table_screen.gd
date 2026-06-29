@@ -69,9 +69,11 @@ var _top_time_label: Label
 var _top_right_action_bar: HBoxContainer
 var _settings_button: Button
 var _add_chips_button: Button
+var _dealer_cosmetic_button: Button
 var _settings_panel: PanelContainer
 var _popover_layer: Control
 var _add_chips_panel: PanelContainer
+var _dealer_cosmetic_panel: PanelContainer
 var _ai_turn_loop_active: bool = false
 var _ai_rng := RandomNumberGenerator.new()
 var _animation_layer: Control
@@ -79,6 +81,7 @@ var _flying_cards_root: Control
 var _flying_chips_root: Control
 var _dealer_deck_icon: TextureRect
 var _croupier_display: TextureRect
+var _dealer_cosmetic_name_label: Label
 var _seen_visual_event_ids := {}
 var _visual_pause_until_msec: int = 0
 var _hand_over_sequence_active: bool = false
@@ -273,6 +276,14 @@ func _build_animation_layer() -> void:
 	_croupier_display.size = Vector2(280, 280)
 	_croupier_display.z_index = 118
 	_animation_layer.add_child(_croupier_display)
+	_dealer_cosmetic_name_label = Label.new()
+	_dealer_cosmetic_name_label.name = "DealerCosmeticName"
+	_dealer_cosmetic_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_dealer_cosmetic_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_dealer_cosmetic_name_label.add_theme_font_size_override("font_size", 13)
+	_dealer_cosmetic_name_label.add_theme_color_override("font_color", Color(0.94, 0.86, 1.0, 0.92))
+	_dealer_cosmetic_name_label.z_index = 119
+	_animation_layer.add_child(_dealer_cosmetic_name_label)
 
 	_flying_cards_root = Control.new()
 	_flying_cards_root.name = "FlyingCardsRoot"
@@ -307,6 +318,9 @@ func _position_croupier_display() -> void:
 		return
 	var label_center: Vector2 = _animation_layer_local_from_global(_dealer_label.get_global_rect().get_center())
 	_croupier_display.position = label_center + Vector2(-_croupier_display.size.x * 0.5, -238.0)
+	if _dealer_cosmetic_name_label != null:
+		_dealer_cosmetic_name_label.position = _croupier_display.position + Vector2(42, 228)
+		_dealer_cosmetic_name_label.size = Vector2(196, 28)
 	print("[CroupierDisplay] global_position=%s size=%s" % [
 		str(_croupier_display.get_global_rect().position),
 		str(_croupier_display.size),
@@ -1718,6 +1732,7 @@ func _configure_table_session_from_launch_context() -> void:
 	var context: Dictionary = TableLaunchContext.get_current_table_context()
 	_table_session = TableSessionScript.from_context(context)
 	_auto_next_hand_enabled = _table_session.mode != TableSessionScript.MODE_TRAINING
+	_apply_dealer_cosmetic()
 	_session_log.clear()
 	_recorded_session_hand_ids.clear()
 	_session_unlocked_avatar_ids.clear()
@@ -2060,6 +2075,7 @@ func _reset_launch_context_session_for_play_again() -> void:
 		"end_reason": "",
 		"last_winner": "-",
 		"last_win_amount": 0,
+		"selected_dealer_id": _table_session.selected_dealer_id,
 	}
 
 
@@ -2680,6 +2696,12 @@ func _build_top_action_bar() -> void:
 	settings_button.pressed.connect(_toggle_settings_panel)
 	_top_right_action_bar.add_child(settings_button)
 
+	var dealer_button := _top_control_button("DEALER", Vector2(118, 56))
+	_dealer_cosmetic_button = dealer_button
+	dealer_button.tooltip_text = "Choose dealer character."
+	dealer_button.pressed.connect(_toggle_dealer_cosmetic_panel)
+	_top_right_action_bar.add_child(dealer_button)
+
 	var add_chips_button := _top_control_button("ADD CHIPS", Vector2(150, 56))
 	_add_chips_button = add_chips_button
 	add_chips_button.tooltip_text = "Move wallet chips to this table."
@@ -2688,6 +2710,7 @@ func _build_top_action_bar() -> void:
 
 	_build_popover_layer()
 	_build_settings_panel()
+	_build_dealer_cosmetic_panel()
 	_build_add_chips_panel()
 
 func _hide_legacy_top_center_bars() -> void:
@@ -2800,6 +2823,171 @@ func _build_settings_panel() -> void:
 	_add_volume_row(vbox, "Master Volume", 85)
 	_add_volume_row(vbox, "Music Volume", 70)
 	_add_volume_row(vbox, "SFX Volume", 80)
+
+
+
+func _build_dealer_cosmetic_panel() -> void:
+	_dealer_cosmetic_panel = _popover_layer.get_node_or_null("DealerCosmeticPopover") as PanelContainer
+	if _dealer_cosmetic_panel == null:
+		_dealer_cosmetic_panel = PanelContainer.new()
+		_dealer_cosmetic_panel.add_theme_stylebox_override("panel", _top_settings_panel_style())
+		_popover_layer.add_child(_dealer_cosmetic_panel)
+	_dealer_cosmetic_panel.name = "DealerCosmeticPopover"
+	_prepare_popover_panel(_dealer_cosmetic_panel, Vector2(372, 382))
+	_dealer_cosmetic_panel.visible = false
+	_refresh_dealer_cosmetic_panel()
+
+
+func _refresh_dealer_cosmetic_panel() -> void:
+	if _dealer_cosmetic_panel == null:
+		return
+	_clear_children(_dealer_cosmetic_panel)
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 14)
+	margin.add_theme_constant_override("margin_bottom", 14)
+	margin.mouse_filter = Control.MOUSE_FILTER_PASS
+	_dealer_cosmetic_panel.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	vbox.mouse_filter = Control.MOUSE_FILTER_PASS
+	margin.add_child(vbox)
+
+	var title_row := HBoxContainer.new()
+	title_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(title_row)
+	var title := Label.new()
+	title.text = "Choose Dealer"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 14)
+	title.add_theme_color_override("font_color", Color(0.92, 0.90, 1.0))
+	title_row.add_child(title)
+	var close_button := _top_control_button("X", Vector2(34, 30))
+	close_button.pressed.connect(_close_overlay_panels)
+	title_row.add_child(close_button)
+
+	var current_id := _selected_dealer_id()
+	var current_label := Label.new()
+	current_label.text = "Current Dealer: %s" % _dealer_display_name(current_id)
+	current_label.add_theme_font_size_override("font_size", 12)
+	current_label.add_theme_color_override("font_color", Color(0.78, 0.96, 0.92, 0.92))
+	vbox.add_child(current_label)
+
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	vbox.add_child(grid)
+	for dealer_id in TableSessionScript.AVAILABLE_DEALER_IDS:
+		var id_text := String(dealer_id)
+		var button := _top_control_button(_dealer_display_name(id_text), Vector2(158, 42))
+		button.add_theme_font_size_override("font_size", 12)
+		var selected := id_text == current_id
+		button.add_theme_stylebox_override("normal", _dealer_option_style(selected, false))
+		button.add_theme_stylebox_override("hover", _dealer_option_style(selected, true))
+		button.add_theme_stylebox_override("pressed", _dealer_option_style(true, true))
+		button.pressed.connect(_select_dealer_cosmetic.bind(id_text))
+		grid.add_child(button)
+
+
+func _toggle_dealer_cosmetic_panel() -> void:
+	if not _can_change_dealer_cosmetic():
+		_append_session_log("Dealer can only be changed in solo/AI tables.")
+		return
+	if _dealer_cosmetic_panel == null:
+		return
+	if _settings_panel != null:
+		_settings_panel.visible = false
+	if _add_chips_panel != null:
+		_add_chips_panel.visible = false
+	var opening: bool = not _dealer_cosmetic_panel.visible
+	_dealer_cosmetic_panel.visible = opening
+	if not opening:
+		return
+	_refresh_dealer_cosmetic_panel()
+	_position_popover_near_button(_dealer_cosmetic_panel, _dealer_cosmetic_button)
+	_animate_popover(_dealer_cosmetic_panel, Vector2(0.95, 0.95), 0.18)
+
+
+func _select_dealer_cosmetic(dealer_id: String) -> void:
+	if _table_session == null:
+		_configure_table_session_from_launch_context()
+	if _table_session == null:
+		return
+	var before_chips := _local_table_chips()
+	if not _table_session.select_dealer_cosmetic(dealer_id, _dealer_rule_seats()):
+		_append_session_log("Dealer can only be changed in solo/AI tables.")
+		return
+	_update_launch_context_session()
+	_apply_dealer_cosmetic()
+	_refresh_dealer_cosmetic_panel()
+	if _local_table_chips() != before_chips:
+		_append_session_log("Dealer change ignored chip state mismatch.")
+		return
+	_append_session_log("Dealer changed.")
+
+
+func _can_change_dealer_cosmetic() -> bool:
+	if _table_session == null:
+		_configure_table_session_from_launch_context()
+	return _table_session != null and _table_session.can_change_dealer_cosmetic(_dealer_rule_seats())
+
+
+func _dealer_rule_seats() -> Array:
+	if _table_flow != null and not _table_flow.seats.is_empty():
+		return _table_flow.seats
+	return Array(snapshot.get("seats", []))
+
+
+func _selected_dealer_id() -> String:
+	if _table_session == null:
+		return TableSessionScript.DEFAULT_DEALER_ID
+	return _table_session.selected_dealer_id
+
+
+func _apply_dealer_cosmetic() -> void:
+	var dealer_id := _selected_dealer_id()
+	if _croupier_display != null:
+		_croupier_display.texture = _dealer_texture_for_id(dealer_id)
+	if _dealer_cosmetic_name_label != null:
+		_dealer_cosmetic_name_label.text = _dealer_display_name(dealer_id)
+
+
+func _dealer_texture_for_id(dealer_id: String) -> Texture2D:
+	var path := DEFAULT_CROUPIER_PATH
+	if dealer_id == "dog":
+		path = DEFAULT_CROUPIER_PATH
+	return _load_texture(path)
+
+
+func _dealer_display_name(dealer_id: String) -> String:
+	match dealer_id:
+		"default":
+			return "Default"
+		"dog":
+			return "Dog"
+		"capybara":
+			return "Capybara"
+		"lucky_cat":
+			return "Lucky Cat"
+		"raccoon":
+			return "Raccoon"
+		"stone_golem":
+			return "Stone Golem"
+		_:
+			return dealer_id.capitalize()
+
+
+func _dealer_option_style(selected: bool, hovered: bool) -> StyleBoxFlat:
+	var bg := Color(0.018, 0.022, 0.052, 0.68 if not hovered else 0.88)
+	var border := Color(0.62, 0.36, 1.0, 0.52 if not selected else 0.94)
+	if selected:
+		bg = Color(0.050, 0.040, 0.092, 0.94)
+		border = Color(1.0, 0.28, 0.78, 0.95)
+	return HomeTheme.make_button_style(bg, border, 8)
 
 
 func _build_add_chips_panel() -> void:
@@ -2938,6 +3126,8 @@ func _toggle_settings_panel() -> void:
 		return
 	if _add_chips_panel != null:
 		_add_chips_panel.visible = false
+	if _dealer_cosmetic_panel != null:
+		_dealer_cosmetic_panel.visible = false
 	var opening: bool = not _settings_panel.visible
 	_settings_panel.visible = opening
 	if not opening:
@@ -2957,6 +3147,9 @@ func _close_overlay_panels() -> void:
 	if _add_chips_panel != null:
 		_add_chips_panel.visible = false
 		_add_chips_panel.scale = Vector2.ONE
+	if _dealer_cosmetic_panel != null:
+		_dealer_cosmetic_panel.visible = false
+		_dealer_cosmetic_panel.scale = Vector2.ONE
 
 
 func _prepare_popover_panel(panel: Control, panel_size: Vector2) -> void:
@@ -3001,6 +3194,8 @@ func _toggle_add_chips_panel() -> void:
 	var opening: bool = not _add_chips_panel.visible
 	if _settings_panel != null:
 		_settings_panel.visible = false
+	if _dealer_cosmetic_panel != null:
+		_dealer_cosmetic_panel.visible = false
 	_raise_popover_layer()
 	_add_chips_panel.move_to_front()
 	_add_chips_panel.visible = opening

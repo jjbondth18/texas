@@ -17,6 +17,8 @@ const TABLE_PLAYING := "playing"
 const TABLE_PAUSED := "paused"
 const TABLE_CLOSED := "closed"
 const HOST_LEFT_MOCK_MESSAGE := "Host left. Table closed safely. Account balances were not changed."
+const DEFAULT_DEALER_ID := "default"
+const AVAILABLE_DEALER_IDS := ["default", "dog", "capybara", "lucky_cat", "raccoon", "stone_golem"]
 
 var mode := MODE_QUICK_PLAY
 var table_type := MODE_QUICK_PLAY
@@ -47,6 +49,7 @@ var pending_cash_out := 0
 var pending_refund := 0
 var last_auto_action := ""
 var host_left_message := ""
+var selected_dealer_id := DEFAULT_DEALER_ID
 
 func configure_from_context(context: Dictionary) -> void:
 	mode = String(context.get("mode", MODE_QUICK_PLAY))
@@ -78,6 +81,7 @@ func configure_from_context(context: Dictionary) -> void:
 	pending_refund = int(context.get("pending_refund", 0))
 	last_auto_action = String(context.get("last_auto_action", ""))
 	host_left_message = String(context.get("host_left_message", ""))
+	selected_dealer_id = _normalized_dealer_id(String(context.get("selected_dealer_id", DEFAULT_DEALER_ID)))
 
 func can_start_next_hand() -> bool:
 	if is_session_over:
@@ -208,6 +212,41 @@ func apply_host_leave_mock() -> Dictionary:
 		"affects_account_balance": false,
 	}
 
+func can_change_dealer_cosmetic(seats: Array) -> bool:
+	if mode == MODE_TRAINING or table_type == TABLE_TYPE_TRAINING_AI:
+		return true
+	return human_player_count(seats) <= 1
+
+func select_dealer_cosmetic(dealer_id: String, seats: Array) -> bool:
+	if not can_change_dealer_cosmetic(seats):
+		return false
+	selected_dealer_id = _normalized_dealer_id(dealer_id)
+	return true
+
+func human_player_count(seats: Array) -> int:
+	var count := 0
+	for seat_item in seats:
+		var seat := Dictionary(seat_item)
+		if not bool(seat.get("occupied", false)):
+			continue
+		var status_text := String(seat.get("status", ""))
+		if status_text in ["", "empty", "left", "out"]:
+			continue
+		if _is_ai_seat(seat):
+			continue
+		count += 1
+	return count
+
+func _is_ai_seat(seat: Dictionary) -> bool:
+	if bool(seat.get("is_ai", false)) or bool(seat.get("is_bot", false)):
+		return true
+	var player_id := String(seat.get("player_id", "")).to_lower()
+	var player_name := String(seat.get("player_name", seat.get("name", ""))).to_lower()
+	return player_id.begins_with("ai_") or player_id.begins_with("bot_") or player_name.begins_with("ai ")
+
+func _normalized_dealer_id(dealer_id: String) -> String:
+	return dealer_id if AVAILABLE_DEALER_IDS.has(dealer_id) else DEFAULT_DEALER_ID
+
 func hand_count_text() -> String:
 	if max_hands <= 0 or max_hands >= 999:
 		return "%d / unlimited" % max(current_hand_index, hands_played)
@@ -244,6 +283,7 @@ func to_dict() -> Dictionary:
 		"pending_refund": pending_refund,
 		"last_auto_action": last_auto_action,
 		"host_left_message": host_left_message,
+		"selected_dealer_id": selected_dealer_id,
 	}
 
 static func from_context(context: Dictionary) -> TableSession:
