@@ -35,3 +35,21 @@ npm.cmd run dev
 ```
 
 Do not use `DEV_SHOW_PRIVATE_CARDS=true` outside local development.
+
+## Local Test Bots
+
+When Godot F6 can only keep one client window open, run local bots to fill seats in the same room:
+
+```powershell
+npm.cmd run bot -- --room room_1 --count 2 --start-seat 1
+```
+
+Defaults:
+
+```text
+url: ws://127.0.0.1:8080
+count: 2
+start-seat: 1
+```
+
+Each bot sends `hello`, `join_room`, `sit_down`, and `ready`. On its turn it checks when possible, otherwise calls, otherwise folds. Bots are only for local development testing.
