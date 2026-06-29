@@ -33,6 +33,15 @@ export interface WinnerRecord {
   cards?: string[];
 }
 
+export interface HandResultRecord {
+  seat_index: number;
+  player_name: string;
+  before_chips: number;
+  after_chips: number;
+  delta: number;
+  award: number;
+}
+
 export class TableState {
   readonly roomId: string;
   readonly maxSeats = 6;
@@ -50,9 +59,11 @@ export class TableState {
   smallBlindSeat = -1;
   bigBlindSeat = -1;
   winners: WinnerRecord[] = [];
+  lastHandResults: HandResultRecord[] = [];
   log: string[] = [];
   recentActions: ActionLogEntry[] = [];
   private nextActionLogId = 1;
+  private handStartChips = new Map<number, number>();
 
   constructor(roomId: string) {
     this.roomId = roomId;
@@ -122,6 +133,7 @@ export class TableState {
   }
 
   startHand(seed = Date.now()): void {
+    if (!["waiting", "hand_over"].includes(this.phase)) throw new Error("cannot start a new hand while a hand is active");
     const eligible = this.seats.filter((seat) => ["ready", "sitting"].includes(seat.status) && seat.chips > 0 && !seat.disconnected);
     if (eligible.length < 2) throw new Error("at least two connected seated players are required");
     this.handId += 1;
@@ -132,6 +144,8 @@ export class TableState {
     this.minRaiseTo = this.bigBlind;
     this.currentTurnSeat = -1;
     this.winners = [];
+    this.lastHandResults = [];
+    this.handStartChips = new Map(eligible.map((seat) => [seat.seatIndex, seat.chips]));
     for (const seat of this.seats) {
       seat.holeCards = [];
       seat.currentBet = 0;
@@ -145,6 +159,7 @@ export class TableState {
       if (eligible.includes(seat)) seat.status = "playing";
       else if (seat.playerId && seat.chips > 0) seat.status = seat.disconnected ? "disconnected" : "sit_out";
     }
+    this.addAction({ type: "system", message: `----- Hand ${this.handId} -----` });
     this.assignButtonAndBlinds();
     this.postBlind(this.smallBlindSeat, this.smallBlind, "small_blind");
     this.postBlind(this.bigBlindSeat, this.bigBlind, "big_blind");
@@ -196,6 +211,7 @@ export class TableState {
       small_blind: this.smallBlind,
       big_blind: this.bigBlind,
       winners: this.winners.slice(),
+      last_hand_results: this.lastHandResults.slice(),
       log: this.log.slice(),
       recent_actions: this.recentActions.slice(),
       action_log: this.recentActions.slice(),
@@ -208,10 +224,15 @@ export class TableState {
     return {
       room_id: this.roomId,
       player_id: playerId,
+      hand_id: this.handId,
       seat_index: seat.seatIndex,
       hole_cards: seat.holeCards.slice(),
       legal_actions: legalActions,
     };
+  }
+
+  handStartChipCount(seatIndex: number): number | undefined {
+    return this.handStartChips.get(seatIndex);
   }
 
   getSeat(seatIndex: number): Seat | undefined {

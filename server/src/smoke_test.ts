@@ -84,6 +84,7 @@ while (lastSnapshot()?.phase !== "hand_over" && guard < 80) {
 
 const finalSnapshot = lastSnapshot();
 if (!finalSnapshot || finalSnapshot.phase !== "hand_over") throw new Error("smoke test did not reach hand_over");
+if (!finalSnapshot.last_hand_results || finalSnapshot.last_hand_results.length < 2) throw new Error("missing last hand chip results");
 
 const chipChanges = finalSnapshot.seats
   .filter((seat) => seat.player_id)
@@ -95,10 +96,31 @@ const chipChanges = finalSnapshot.seats
     delta: seat.chips - (before.get(seat.seat_index) ?? 0),
   }));
 
+const handOneDealer = finalSnapshot.dealer_seat;
+const handOneSmallBlind = finalSnapshot.small_blind_seat;
+const inheritedStacks = new Map(finalSnapshot.seats.map((seat) => [seat.seat_index, seat.chips]));
+
+send(ada, { type: "start_hand", room_id: roomId });
+const nextHandSnapshot = await waitForSnapshot((snapshot) => snapshot.hand_id === finalSnapshot.hand_id + 1 && snapshot.phase === "preflop");
+if (nextHandSnapshot.community_cards.length !== 0) throw new Error("next hand should start with no community cards");
+if (nextHandSnapshot.pot <= 0) throw new Error("next hand should post blinds into the pot");
+if (nextHandSnapshot.dealer_seat === handOneDealer && nextHandSnapshot.seats.filter((seat) => seat.player_id && seat.chips > 0).length > 2) {
+  throw new Error("dealer button did not rotate for the next hand");
+}
+if (nextHandSnapshot.small_blind_seat === handOneSmallBlind && nextHandSnapshot.seats.filter((seat) => seat.player_id && seat.chips > 0).length > 2) {
+  throw new Error("small blind did not rotate for the next hand");
+}
+for (const seat of nextHandSnapshot.seats.filter((item) => item.player_id)) {
+  const previous = inheritedStacks.get(seat.seat_index) ?? 0;
+  if (seat.chips > previous) throw new Error(`seat ${seat.seat_index} chips did not inherit previous settlement`);
+}
+
 console.log("FINAL_TABLE_SNAPSHOT");
 console.log(JSON.stringify(finalSnapshot, null, 2));
 console.log("CHIP_CHANGES");
 console.log(JSON.stringify(chipChanges, null, 2));
+console.log("NEXT_HAND_SNAPSHOT");
+console.log(JSON.stringify(nextHandSnapshot, null, 2));
 
 for (const client of clients) client.ws.close();
 wss.close();

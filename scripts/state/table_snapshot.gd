@@ -17,6 +17,7 @@ var big_blind_seat := -1
 var small_blind := 0
 var big_blind := 0
 var winners: Array = []
+var last_hand_results: Array = []
 var log: Array = []
 var recent_actions: Array = []
 var action_log: Array = []
@@ -44,6 +45,7 @@ func apply_table_snapshot(data: Dictionary) -> void:
 	small_blind = int(data.get("small_blind", small_blind))
 	big_blind = int(data.get("big_blind", big_blind))
 	winners = Array(data.get("winners", [])).duplicate(true)
+	last_hand_results = Array(data.get("last_hand_results", [])).duplicate(true)
 	log = Array(data.get("log", [])).duplicate()
 	recent_actions = Array(data.get("recent_actions", data.get("action_log", []))).duplicate(true)
 	action_log = Array(data.get("action_log", recent_actions)).duplicate(true)
@@ -82,6 +84,7 @@ func to_dict() -> Dictionary:
 		"small_blind": small_blind,
 		"big_blind": big_blind,
 		"winners": winners.duplicate(true),
+		"last_hand_results": last_hand_results.duplicate(true),
 		"log": log.duplicate(),
 		"recent_actions": recent_actions.duplicate(true),
 		"action_log": action_log.duplicate(true),

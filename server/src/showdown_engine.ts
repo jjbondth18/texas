@@ -37,6 +37,7 @@ export function settleHand(table: TableState): void {
   }
 
   table.winners = [];
+  const awardsBySeat = new Map(awards);
   for (const [seatIndex, amount] of awards) {
     const seat = table.getSeat(seatIndex);
     if (!seat) continue;
@@ -51,6 +52,26 @@ export function settleHand(table: TableState): void {
       action: "win",
       amount,
       message: `${seat.name} wins ${amount}${record.handRank ? ` with ${record.handRank}` : ""}.`,
+    });
+  }
+  table.lastHandResults = table.seats
+    .filter((seat) => seat.playerId && table.handStartChipCount(seat.seatIndex) !== undefined)
+    .map((seat) => {
+      const before = table.handStartChipCount(seat.seatIndex) ?? seat.chips;
+      return {
+        seat_index: seat.seatIndex,
+        player_name: seat.name,
+        before_chips: before,
+        after_chips: seat.chips,
+        delta: seat.chips - before,
+        award: awardsBySeat.get(seat.seatIndex) ?? 0,
+      };
+    });
+  for (const result of table.lastHandResults) {
+    const sign = result.delta >= 0 ? "+" : "";
+    table.addAction({
+      type: "system",
+      message: `${result.player_name} stack ${result.before_chips} -> ${result.after_chips} (${sign}${result.delta}).`,
     });
   }
   for (const seat of table.seats) {

@@ -99,6 +99,7 @@ export interface TableSnapshot {
   small_blind: number;
   big_blind: number;
   winners: Array<{ seat_index: number; amount: number; hand_rank?: string; cards?: string[] }>;
+  last_hand_results: Array<{ seat_index: number; player_name: string; before_chips: number; after_chips: number; delta: number; award: number }>;
   log: string[];
   recent_actions: ActionLogEntry[];
   action_log: ActionLogEntry[];
@@ -107,6 +108,7 @@ export interface TableSnapshot {
 export interface PrivateSnapshot {
   room_id: string;
   player_id: string;
+  hand_id: number;
   seat_index: number;
   hole_cards: Card[];
   legal_actions: Array<{ action: PlayerActionType; amount?: number; min_amount?: number; max_amount?: number }>;

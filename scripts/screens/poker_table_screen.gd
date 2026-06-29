@@ -136,6 +136,7 @@ var _server_visible_seat_actions := {}
 var _server_visible_community_count := -1
 var _server_waiting_for_action_ack := false
 var _server_last_slow_ui_warning_msec := 0
+var _server_visible_hand_id := 0
 
 func _ready() -> void:
 	_hide_editor_guides(self)
@@ -600,6 +601,9 @@ func _empty_server_ui_snapshot(message: String) -> Dictionary:
 func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapshot: Dictionary) -> Dictionary:
 	var phase: String = String(server_snapshot.get("betting_round", server_snapshot.get("hand_state", server_snapshot.get("phase", "waiting"))))
 	var room_id: String = String(server_snapshot.get("room_id", _server_room_id))
+	var server_hand_id := int(server_snapshot.get("hand_id", 0))
+	var private_hand_id := int(private_snapshot.get("hand_id", -1))
+	var private_matches_hand := private_hand_id == server_hand_id
 	var local_server_seat: int = int(private_snapshot.get("seat_index", _server_local_seat_index))
 	_server_local_seat_index = local_server_seat
 	var current_turn_seat: int = int(server_snapshot.get("current_turn_seat", -1))
@@ -614,7 +618,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		if is_local:
 			avatar_id = PlayerProfileScript.get_avatar_id(ProfileServiceScript.new().get_current_profile())
 		var cards: Array = []
-		if is_local:
+		if is_local and private_matches_hand:
 			for card_item in Array(private_snapshot.get("hole_cards", [])):
 				cards.append(_server_card_to_ui_card(Dictionary(card_item), true))
 		else:
@@ -655,12 +659,12 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	var available_actions: Array = _server_legal_actions_to_ui_actions(Array(private_snapshot.get("legal_actions", [])), total_pot)
 	if current_turn_seat != local_server_seat:
 		available_actions = []
-	var turn_prompt := _server_turn_message(seats, current_turn_seat, local_server_seat)
+	var turn_prompt := _server_turn_message(seats, current_turn_seat, local_server_seat, phase)
 	return {
 		"source_model": "server_authoritative",
 		"table_id": room_id if room_id != "" else "authoritative_local",
 		"table_name": "Authoritative Local Table",
-		"hand_id": "hand_%s" % str(server_snapshot.get("hand_id", 0)),
+		"hand_id": "hand_%s" % str(server_hand_id),
 		"blinds_text": "%d / %d" % [int(server_snapshot.get("small_blind", 25)), int(server_snapshot.get("big_blind", 50))],
 		"phase": phase,
 		"room_state": phase,
@@ -682,6 +686,9 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		],
 		"visual_events": [],
 		"server_recent_actions": Array(server_snapshot.get("recent_actions", server_snapshot.get("action_log", []))).duplicate(true),
+		"server_hand_id": server_hand_id,
+		"server_winners": Array(server_snapshot.get("winners", [])).duplicate(true),
+		"server_last_hand_results": Array(server_snapshot.get("last_hand_results", [])).duplicate(true),
 		"rule_debug_log": history,
 		"table_session": {},
 	}
@@ -742,8 +749,10 @@ func _server_status_to_ui_status(status: String) -> String:
 
 func _queue_server_action_events(server_snapshot: Dictionary, ui_snapshot: Dictionary) -> void:
 	var action_entries: Array = Array(server_snapshot.get("recent_actions", server_snapshot.get("action_log", []))).duplicate(true)
+	var hand_id := int(server_snapshot.get("hand_id", 0))
 	if not _server_snapshot_initialized:
 		_server_snapshot_initialized = true
+		_server_visible_hand_id = hand_id
 		_server_visible_action_history = _server_history_lines(server_snapshot, String(server_snapshot.get("room_id", _server_room_id)), Array(server_snapshot.get("side_pots", [])))
 		_server_visible_community_count = Array(ui_snapshot.get("community_cards", [])).size()
 		_seed_visible_seat_actions(Array(ui_snapshot.get("seats", [])))
@@ -754,6 +763,8 @@ func _queue_server_action_events(server_snapshot: Dictionary, ui_snapshot: Dicti
 			_server_played_event_sequences[sequence] = true
 			_server_last_played_event_sequence = max(_server_last_played_event_sequence, sequence)
 		return
+	if hand_id != _server_visible_hand_id:
+		_reset_server_visible_hand_state(hand_id)
 	action_entries.sort_custom(func(a, b): return _server_event_sequence(Dictionary(a)) < _server_event_sequence(Dictionary(b)))
 	for entry_item in action_entries:
 		var event: Dictionary = Dictionary(entry_item).duplicate(true)
@@ -766,6 +777,12 @@ func _queue_server_action_events(server_snapshot: Dictionary, ui_snapshot: Dicti
 			continue
 		_server_pending_action_events.append(event)
 		_server_pending_event_sequences[sequence] = true
+
+func _reset_server_visible_hand_state(hand_id: int) -> void:
+	_server_visible_hand_id = hand_id
+	_server_visible_seat_actions.clear()
+	_server_visible_community_count = 0
+	_reset_visual_hand_state()
 
 func _seed_visible_seat_actions(seats: Array) -> void:
 	_server_visible_seat_actions.clear()
@@ -942,22 +959,49 @@ func _server_history_lines(server_snapshot: Dictionary, room_id: String, side_po
 	])
 	if not side_pots.is_empty():
 		history.append("Side pots: %s" % str(side_pots))
+	var explicit_history_messages := {}
+	if String(server_snapshot.get("phase", "")) == "hand_over":
+		for winner_item in Array(server_snapshot.get("winners", [])):
+			var winner: Dictionary = Dictionary(winner_item)
+			var winner_name := _server_player_name_for_seat(server_snapshot, int(winner.get("seat_index", winner.get("seat_id", -1))))
+			var hand_rank := String(winner.get("hand_rank", ""))
+			var suffix := " with %s" % hand_rank if hand_rank != "" else ""
+			var winner_line := "%s wins %d%s." % [winner_name, int(winner.get("amount", 0)), suffix]
+			history.append(winner_line)
+			explicit_history_messages[winner_line] = true
+		for result_item in Array(server_snapshot.get("last_hand_results", [])):
+			var result: Dictionary = Dictionary(result_item)
+			var delta := int(result.get("delta", 0))
+			var sign := "+" if delta >= 0 else ""
+			var result_line := "%s stack %d -> %d (%s%d)." % [
+				String(result.get("player_name", "Seat %d" % int(result.get("seat_index", -1)))),
+				int(result.get("before_chips", 0)),
+				int(result.get("after_chips", 0)),
+				sign,
+				delta,
+			]
+			history.append(result_line)
+			explicit_history_messages[result_line] = true
 	var action_entries: Array = Array(server_snapshot.get("recent_actions", server_snapshot.get("action_log", [])))
 	if not action_entries.is_empty():
 		for action_item in action_entries:
 			var action_data: Dictionary = Dictionary(action_item)
 			var message := String(action_data.get("message", ""))
-			if message != "":
+			if message != "" and not explicit_history_messages.has(message):
 				history.append(message)
 	else:
 		for log_item in Array(server_snapshot.get("log", [])):
 			history.append(log_item)
 	if String(server_snapshot.get("phase", "")) == "waiting":
 		history.append("Press S to Start Hand after at least two players are ready.")
+	elif String(server_snapshot.get("phase", "")) == "hand_over":
+		history.append("Hand over. Press S to Start Next Hand.")
 	return history
 
-func _server_turn_message(seats: Array, current_turn_seat: int, local_server_seat: int) -> String:
+func _server_turn_message(seats: Array, current_turn_seat: int, local_server_seat: int, phase: String = "") -> String:
 	if current_turn_seat < 0:
+		if phase == "hand_over":
+			return "Hand Over - Press S to Start Next Hand"
 		return "Press S to Start Hand when players are ready."
 	if current_turn_seat == local_server_seat:
 		return "Your Turn"
@@ -966,6 +1010,13 @@ func _server_turn_message(seats: Array, current_turn_seat: int, local_server_sea
 		if int(seat.get("seat_id", seat.get("seat_index", -1))) == current_turn_seat:
 			return "Waiting for %s" % String(seat.get("player_name", "seat %d" % current_turn_seat))
 	return "Waiting for seat %d" % current_turn_seat
+
+func _server_player_name_for_seat(server_snapshot: Dictionary, seat_index: int) -> String:
+	for seat_item in Array(server_snapshot.get("seats", [])):
+		var seat: Dictionary = Dictionary(seat_item)
+		if int(seat.get("seat_id", seat.get("seat_index", -1))) == seat_index:
+			return String(seat.get("player_name", seat.get("name", "Seat %d" % seat_index)))
+	return "Seat %d" % seat_index
 
 func _server_recent_actions_to_visual_events(server_snapshot: Dictionary) -> Array:
 	var events: Array = []

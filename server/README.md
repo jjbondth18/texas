@@ -107,3 +107,12 @@ Use this while testing the server-authoritative table:
 
 5. Start a hand, click a player action, and confirm bot actions arrive with short spacing instead of all in one frame.
 6. Confirm Godot shows seat action labels and Table Log entries one by one, and public cards no longer appear in the same frame as every pending action.
+
+## Server Next Hand Flow Test
+
+1. Play one server-authoritative hand through `hand_over`.
+2. Confirm the Godot Table Log shows the winner rows and stack changes, for example `Luna wins 120` and `Luna stack 5000 -> 5120 (+120)`.
+3. Confirm the bottom action prompt says `Hand Over - Press S to Start Next Hand`.
+4. Press `S` to request the next hand without restarting the server or bots.
+5. Confirm the new hand starts with empty community cards, cleared action labels, pot reset then blinds posted, inherited chip stacks, and rotated dealer / small blind / big blind seats.
+6. Confirm existing bots continue to act in the second hand.
