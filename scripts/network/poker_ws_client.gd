@@ -9,6 +9,7 @@ signal hello_received(player_id: String, room_id: String)
 signal profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_ids: Array)
 signal wallet_synced(wallet: Dictionary)
 signal daily_login_awarded(chips: int)
+signal avatar_catalog_received(catalog: Array)
 signal table_snapshot_received(snapshot: Dictionary)
 signal private_snapshot_received(snapshot: Dictionary)
 signal server_error(message: String)
@@ -90,6 +91,15 @@ func add_table_chips(amount: int) -> int:
 func get_profile() -> int:
 	return send_message(PokerProtocolScript.get_profile())
 
+func get_avatar_catalog() -> int:
+	return send_message(PokerProtocolScript.get_avatar_catalog())
+
+func buy_avatar(avatar_id: String) -> int:
+	return send_message(PokerProtocolScript.buy_avatar(avatar_id))
+
+func select_avatar(avatar_id: String) -> int:
+	return send_message(PokerProtocolScript.select_avatar(avatar_id))
+
 func _handle_message(message: Dictionary) -> void:
 	message_received.emit(message)
 	var type_value := String(message.get("type", ""))
@@ -105,6 +115,8 @@ func _handle_message(message: Dictionary) -> void:
 			var wallet := Dictionary(message.get("wallet", {})).duplicate(true)
 			if not wallet.is_empty():
 				wallet_synced.emit(wallet)
+		PokerProtocolScript.AVATAR_CATALOG:
+			avatar_catalog_received.emit(Array(message.get("avatar_catalog", [])).duplicate(true))
 		PokerProtocolScript.TABLE_SNAPSHOT:
 			var snapshot := Dictionary(message.get("snapshot", {})).duplicate(true)
 			room_id = String(message.get("room_id", snapshot.get("room_id", room_id)))

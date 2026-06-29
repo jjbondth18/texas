@@ -18,4 +18,9 @@ export class AvatarRepository {
     const row = this.db.prepare("SELECT 1 AS found FROM avatar_unlocks WHERE player_id = ? AND avatar_id = ?").get(playerId, avatarId);
     return Boolean(row);
   }
+
+  countUnlocks(): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS count FROM avatar_unlocks").get() as { count: number } | undefined;
+    return Number(row?.count ?? 0);
+  }
 }

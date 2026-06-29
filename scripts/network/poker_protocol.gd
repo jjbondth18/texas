@@ -12,10 +12,14 @@ const START_HAND := "start_hand"
 const PLAYER_ACTION := "player_action"
 const ADD_TABLE_CHIPS := "add_table_chips"
 const GET_PROFILE := "get_profile"
+const GET_AVATAR_CATALOG := "get_avatar_catalog"
+const BUY_AVATAR := "buy_avatar"
+const SELECT_AVATAR := "select_avatar"
 const TABLE_SNAPSHOT := "table_snapshot"
 const PRIVATE_SNAPSHOT := "private_snapshot"
 const PROFILE_SNAPSHOT := "profile_snapshot"
 const WALLET_SNAPSHOT := "wallet_snapshot"
+const AVATAR_CATALOG := "avatar_catalog"
 const ERROR := "error"
 
 const ACTION_FOLD := "fold"
@@ -74,6 +78,15 @@ static func add_table_chips(amount: int) -> Dictionary:
 
 static func get_profile() -> Dictionary:
 	return _message(GET_PROFILE)
+
+static func get_avatar_catalog() -> Dictionary:
+	return _message(GET_AVATAR_CATALOG)
+
+static func buy_avatar(avatar_id: String) -> Dictionary:
+	return _message(BUY_AVATAR, {"avatar_id": avatar_id})
+
+static func select_avatar(avatar_id: String) -> Dictionary:
+	return _message(SELECT_AVATAR, {"avatar_id": avatar_id})
 
 static func _message(type_value: String, extra: Dictionary = {}) -> Dictionary:
 	var result := {"type": type_value}

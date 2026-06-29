@@ -59,6 +59,7 @@ const StoreMockServiceScript := preload("res://scripts/services/store_mock_servi
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 const SettingsServiceScript := preload("res://scripts/services/settings_service.gd")
+const PokerWsClientScript := preload("res://scripts/network/poker_ws_client.gd")
 const MODE_IMAGES := {
 	"quick_play": "res://assets/home_lobby/mode_cards/mode_quick_play.png",
 	"room_browser": "res://assets/home_lobby/mode_cards/mode_cash_tables.png",
@@ -108,6 +109,11 @@ var _selected_quick_buy_in := 20000
 var _selected_quick_small_blind := 25
 var _selected_quick_big_blind := 50
 var _selected_quick_max_hands := 10
+var server_authoritative_profile := true
+var _profile_ws_client: PokerWsClient
+var _profile_server_connected := false
+var _avatar_catalog: Array = []
+var _avatar_catalog_by_id: Dictionary = {}
 
 func _ready() -> void:
 	# Force standalone windowed mode to bypass Godot editor stretch bugs
@@ -167,7 +173,10 @@ func _ready() -> void:
 	
 	var lobby_vm := MockDataProvider.get_lobby_view_model()
 	_player_profile = ProfileServiceScript.new().get_current_profile()
-	_claim_daily_login_bonus()
+	if server_authoritative_profile:
+		_connect_profile_server()
+	else:
+		_claim_daily_login_bonus()
 	lobby_vm["player"] = _player_profile
 	_top_bar.configure(_player_profile)
 	set_state(LobbyState.COLLAPSED, false)
@@ -888,6 +897,68 @@ func _claim_daily_login_bonus() -> void:
 	_player_profile = service.claim_daily_login_bonus()
 	if service.was_last_daily_bonus_claimed():
 		_show_toast("Daily Login Bonus\n+%s Chips", [_format_number(PlayerProfileScript.DAILY_LOGIN_CHIPS)], 2.6)
+
+func _connect_profile_server() -> void:
+	if _profile_ws_client != null:
+		return
+	_profile_ws_client = PokerWsClientScript.new()
+	_profile_ws_client.name = "ProfileWalletWsClient"
+	add_child(_profile_ws_client)
+	_profile_ws_client.connected.connect(_on_profile_server_connected)
+	_profile_ws_client.disconnected.connect(_on_profile_server_disconnected)
+	_profile_ws_client.profile_synced.connect(_on_profile_server_profile_synced)
+	_profile_ws_client.wallet_synced.connect(_on_profile_server_wallet_synced)
+	_profile_ws_client.daily_login_awarded.connect(_on_profile_server_daily_login_awarded)
+	_profile_ws_client.avatar_catalog_received.connect(_on_avatar_catalog_received)
+	_profile_ws_client.server_error.connect(_on_profile_server_error)
+	var err := _profile_ws_client.connect_to_server("ws://127.0.0.1:8080")
+	if err != OK:
+		_profile_server_connected = false
+		push_warning("[HomeLobby] Could not connect profile server: %s" % error_string(err))
+
+func _on_profile_server_connected() -> void:
+	_profile_server_connected = true
+	var player_id := String(_player_profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID))
+	var player_name := PlayerProfileScript.get_player_name(_player_profile)
+	_profile_ws_client.send_hello(player_name, player_id, _server_avatar_id_for_client(PlayerProfileScript.get_avatar_id(_player_profile)))
+	_profile_ws_client.get_avatar_catalog()
+	_profile_ws_client.get_profile()
+
+func _on_profile_server_disconnected() -> void:
+	_profile_server_connected = false
+
+func _on_profile_server_profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_ids: Array) -> void:
+	_player_profile = ProfileServiceScript.new().apply_server_profile(profile, wallet, unlocked_avatar_ids)
+	_refresh_profile_views_from_server()
+
+func _on_profile_server_wallet_synced(wallet: Dictionary) -> void:
+	_player_profile = ProfileServiceScript.new().apply_wallet_snapshot(wallet)
+	_refresh_profile_views_from_server()
+
+func _on_profile_server_daily_login_awarded(chips: int) -> void:
+	if chips > 0:
+		_show_toast("Daily Bonus\n+%s Chips", [_format_number(chips)], 2.6)
+
+func _on_avatar_catalog_received(catalog: Array) -> void:
+	_avatar_catalog = catalog.duplicate(true)
+	_avatar_catalog_by_id.clear()
+	for item_value in _avatar_catalog:
+		var item := Dictionary(item_value)
+		var avatar_id := String(item.get("avatar_id", ""))
+		if avatar_id != "":
+			_avatar_catalog_by_id[avatar_id] = item
+	_refresh_avatar_gallery()
+
+func _on_profile_server_error(message: String) -> void:
+	if message != "":
+		_show_toast("Server Profile\n%s", [message], 2.2)
+
+func _refresh_profile_views_from_server() -> void:
+	if _top_bar != null:
+		_top_bar.configure(_player_profile)
+	_refresh_profile_panel()
+	if _quick_play_setup_panel != null and _quick_play_setup_panel.visible:
+		_update_quick_play_setup_profile()
 
 
 func _select_default_quick_buy_in() -> void:
@@ -2000,6 +2071,9 @@ func _add_store_currency_column(parent: Container, title_text: String, desc_text
 		vbox.add_child(button)
 
 func _show_mock_purchase_confirm(currency: String, amount: int) -> void:
+	if server_authoritative_profile and _profile_server_connected:
+		_show_toast("Store purchases\nAvatar unlocks are handled by the server profile.", [], 2.4)
+		return
 	var dialog := ConfirmationDialog.new()
 	dialog.title = "Mock purchase?"
 	dialog.dialog_text = "MOCK PURCHASE / DEV ONLY\nThis is a mock purchase for development only.\nAdd %s %s to your wallet?" % [_format_number(amount), currency.to_upper()]
@@ -2295,10 +2369,18 @@ func _refresh_avatar_gallery() -> void:
 			continue
 		var is_unlocked: bool = unlocked.has(avatar_id)
 		var is_selected: bool = avatar_id == selected_id
-		button.disabled = not is_unlocked
+		button.disabled = not is_unlocked and not _profile_server_connected
 		var display_name: String = AvatarLibraryScript.display_name_for_avatar_id(avatar_id)
-		var status_text: String = "Selected" if is_selected else ("Locked" if not is_unlocked else "Unlocked")
+		var status_text := "Unlocked"
+		if is_selected:
+			status_text = "Selected"
+		elif not is_unlocked:
+			if _profile_server_connected:
+				status_text = "Buy %s" % _avatar_price_text(avatar_id)
+			else:
+				status_text = "Locked"
 		button.text = "%s\n%s" % [display_name, status_text]
+		button.tooltip_text = "%s\n%s" % [avatar_id, status_text]
 		button.modulate = Color(1.08, 1.08, 1.12, 1.0) if is_unlocked else Color(0.62, 0.62, 0.72, 0.88)
 		button.add_theme_stylebox_override("normal", _avatar_gallery_button_style(is_selected, is_unlocked, false))
 		button.add_theme_stylebox_override("hover", _avatar_gallery_button_style(is_selected, is_unlocked, true))
@@ -2325,11 +2407,41 @@ func _avatar_gallery_button_style(selected: bool, unlocked: bool, hover: bool) -
 	return style
 
 func _on_avatar_selected(avatar_id: String) -> void:
+	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
+		var unlocked: Array = Array(_player_profile.get("unlocked_avatar_ids", []))
+		if unlocked.has(avatar_id):
+			_profile_ws_client.select_avatar(_server_avatar_id_for_client(avatar_id))
+			_show_toast("Avatar\nSelecting on server...", [], 1.4)
+		else:
+			_profile_ws_client.buy_avatar(_server_avatar_id_for_client(avatar_id))
+			_show_toast("Avatar\nPurchase request sent...", [], 1.4)
+		return
 	var service := ProfileServiceScript.new()
 	_player_profile = service.select_avatar(avatar_id)
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
 	_refresh_profile_panel()
+
+func _avatar_price_text(avatar_id: String) -> String:
+	var item := _catalog_item_for_avatar(avatar_id)
+	if item.is_empty():
+		return "Locked"
+	var currency := String(item.get("currency", "free"))
+	if currency == "chips":
+		return "%s Chips" % _format_number(int(item.get("price_chips", 0)))
+	if currency == "gems":
+		return "%s Gems" % _format_number(int(item.get("price_gems", 0)))
+	return "Free"
+
+func _catalog_item_for_avatar(avatar_id: String) -> Dictionary:
+	var server_avatar_id := _server_avatar_id_for_client(avatar_id)
+	return Dictionary(_avatar_catalog_by_id.get(server_avatar_id, {}))
+
+func _server_avatar_id_for_client(avatar_id: String) -> String:
+	var normalized := avatar_id.strip_edges()
+	if normalized == "" or normalized == PlayerProfileScript.DEFAULT_AVATAR_ID:
+		return "default"
+	return normalized
 
 func _signed_number(value: int) -> String:
 	if value == 0:

@@ -16,33 +16,44 @@ if (!helloClient) throw new Error("hello did not migrate client to requested pla
 const firstProfile = manager.adminSnapshot(false);
 if (Number(firstProfile.player_count) !== 1) throw new Error("expected one player after hello");
 if (Number(firstProfile.total_wallet_chips) !== 11000) throw new Error("expected 10000 initial chips plus 1000 daily login chips");
+if (Number(firstProfile.avatar_unlock_count) !== 1) throw new Error("new player should unlock the default avatar");
+
+manager.handle("db_smoke_player", { type: "buy_avatar", avatar_id: "1_01" });
+const afterAvatarBuy = manager.adminSnapshot(false);
+if (Number(afterAvatarBuy.total_wallet_chips) !== 9500) throw new Error("buy_avatar should deduct chips from wallet");
+if (Number(afterAvatarBuy.avatar_unlock_count) !== 2) throw new Error("buy_avatar should write avatar unlock");
+expectThrows("already_unlocked", () => manager.handle("db_smoke_player", { type: "buy_avatar", avatar_id: "1_01" }));
+expectThrows("insufficient_gems", () => manager.handle("db_smoke_player", { type: "buy_avatar", avatar_id: "1_03" }));
+expectThrows("avatar_not_unlocked", () => manager.handle("db_smoke_player", { type: "select_avatar", avatar_id: "2_01" }));
+manager.handle("db_smoke_player", { type: "select_avatar", avatar_id: "1_01" });
+if (manager.getClient("db_smoke_player")?.avatarId !== "1_01") throw new Error("select_avatar should update selected profile avatar");
 
 manager.handle("db_smoke_player", { type: "hello", player_id: "db_smoke_player", name: "DB Smoke", avatar_id: "default" });
 const secondProfile = manager.adminSnapshot(false);
 if (Number(secondProfile.player_count) !== 1) throw new Error("second hello should not create another player");
-if (Number(secondProfile.total_wallet_chips) !== 11000) throw new Error("daily login should not award twice on the same day");
+if (Number(secondProfile.total_wallet_chips) !== 9500) throw new Error("daily login should not award twice on the same day");
 
 const room = manager.createRoom();
 manager.handle("db_smoke_player", { type: "join_room", room_id: room.id });
 manager.handle("db_smoke_player", { type: "sit_down", room_id: room.id, seat_index: 0, buy_in: 999999 });
 const afterBuyIn = manager.adminSnapshot(false);
-if (Number(afterBuyIn.total_wallet_chips) !== 10000) throw new Error("sit_down should deduct buy-in from wallet");
+if (Number(afterBuyIn.total_wallet_chips) !== 8500) throw new Error("sit_down should deduct buy-in from wallet");
 if (room.table.getSeat(0)?.chips !== 1000) throw new Error("sit_down should put fixed 1000 table chips on the seat");
 
 manager.handle("db_smoke_player", { type: "add_table_chips", room_id: room.id, amount: 500 });
 const afterAdd = manager.adminSnapshot(false);
-if (Number(afterAdd.total_wallet_chips) !== 9500) throw new Error("add_table_chips should deduct wallet chips");
+if (Number(afterAdd.total_wallet_chips) !== 8000) throw new Error("add_table_chips should deduct wallet chips");
 if (room.table.getSeat(0)?.chips !== 1500) throw new Error("add_table_chips should increase table chips");
 
 expectThrows("insufficient_chips", () => manager.handle("db_smoke_player", { type: "add_table_chips", room_id: room.id, amount: 999999 }));
-if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 9500) throw new Error("failed add_table_chips should not change wallet");
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 8000) throw new Error("failed add_table_chips should not change wallet");
 
 manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id });
 const afterCashOut = manager.adminSnapshot(false);
-if (Number(afterCashOut.total_wallet_chips) !== 11000) throw new Error("cash_out should refund remaining table chips");
+if (Number(afterCashOut.total_wallet_chips) !== 9500) throw new Error("cash_out should refund remaining table chips");
 if (room.table.getSeat(0)?.playerId !== "") throw new Error("cash_out should clear the seat");
 expectThrows("not_seated", () => manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id }));
-if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 11000) throw new Error("repeat cash_out should not double refund");
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 9500) throw new Error("repeat cash_out should not double refund");
 
 const handRoom = manager.createRoom();
 manager.handle("db_smoke_player", { type: "join_room", room_id: handRoom.id });

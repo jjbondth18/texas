@@ -32,6 +32,13 @@ export class PlayerRepository {
     return this.find(playerId)!;
   }
 
+  setAvatar(playerId: string, avatarId: string, now = new Date().toISOString()): PlayerProfileRecord {
+    this.db.prepare("UPDATE players SET avatar_id = ?, updated_at = ? WHERE player_id = ?").run(avatarId, now, playerId);
+    const profile = this.find(playerId);
+    if (!profile) throw new Error("player not found");
+    return profile;
+  }
+
   count(): number {
     const row = this.db.prepare("SELECT COUNT(*) AS count FROM players").get() as { count: number } | undefined;
     return Number(row?.count ?? 0);

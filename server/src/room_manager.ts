@@ -8,6 +8,7 @@ import { LoginBonusRepository } from "./db/login_bonus_repository.js";
 import { PlayerRepository } from "./db/player_repository.js";
 import { ResultRepository } from "./db/result_repository.js";
 import { WalletRepository } from "./db/wallet_repository.js";
+import { AVATAR_CATALOG, findAvatarCatalogItem } from "./avatar_catalog.js";
 
 interface Client {
   id: string;
@@ -75,6 +76,26 @@ export class RoomManager {
       this.broadcast(room);
       return;
     }
+    if (message.type === "get_profile") {
+      this.send(client, { type: "profile_snapshot", request_id: message.request_id, ...this.profilePayload(client.id) });
+      return;
+    }
+    if (message.type === "get_avatar_catalog") {
+      this.send(client, { type: "avatar_catalog", request_id: message.request_id, avatar_catalog: AVATAR_CATALOG });
+      return;
+    }
+    if (message.type === "buy_avatar") {
+      this.buyAvatar(client, String(message.avatar_id || ""));
+      this.recordLog(`${client.id} bought avatar=${normalizeAvatarId(String(message.avatar_id || ""))}`);
+      this.send(client, { type: "profile_snapshot", request_id: message.request_id, ...this.profilePayload(client.id) });
+      return;
+    }
+    if (message.type === "select_avatar") {
+      this.selectAvatar(client, String(message.avatar_id || ""));
+      this.recordLog(`${client.id} selected avatar=${normalizeAvatarId(String(message.avatar_id || ""))}`);
+      this.send(client, { type: "profile_snapshot", request_id: message.request_id, ...this.profilePayload(client.id) });
+      return;
+    }
     const roomId = message.room_id || client.roomId;
     if (!roomId) throw new Error("room_id is required");
     const room = this.mustRoom(roomId);
@@ -110,9 +131,6 @@ export class RoomManager {
         applyPlayerAction(room.table, client.id, message.action, numberOr(message.amount, 0));
         this.recordLog(`${client.id} action=${message.action} amount=${numberOr(message.amount, 0)} in ${room.id}`);
         break;
-      case "get_profile":
-        this.send(client, { type: "profile_snapshot", request_id: message.request_id, ...this.profilePayload(client.id) });
-        return;
       default:
         throw new Error(`unsupported message: ${message.type}`);
     }
@@ -158,6 +176,8 @@ export class RoomManager {
       active_websocket_connections: this.activeConnectionCount(),
       player_count: this.players.count(),
       total_wallet_chips: this.wallets.totalChips(),
+      total_wallet_gems: this.wallets.totalGems(),
+      avatar_unlock_count: this.avatars.countUnlocks(),
       room_count: this.roomCount(),
       rooms: [...this.rooms.values()].map((room) => {
         const snapshot = room.table.publicSnapshot();
@@ -206,7 +226,7 @@ export class RoomManager {
       this.clients.set(client.id, client);
     }
     const displayName = String(message.player_name || message.name || client.name || client.id).trim() || client.id;
-    const requestedAvatarId = String(message.avatar_id || client.avatarId || "default").trim() || "default";
+    const requestedAvatarId = normalizeAvatarId(String(message.avatar_id || client.avatarId || "default"));
     this.players.upsert(client.id, displayName, "default");
     this.wallets.ensure(client.id);
     this.avatars.unlockAvatar(client.id, "default");
@@ -236,6 +256,33 @@ export class RoomManager {
       wallet,
       unlocked_avatar_ids: this.avatars.getUnlockedAvatars(playerId),
     };
+  }
+
+  private buyAvatar(client: Client, avatarIdRaw: string): void {
+    const avatarId = normalizeAvatarId(avatarIdRaw);
+    const item = findAvatarCatalogItem(avatarId);
+    if (!item) throw new Error("avatar_not_found");
+    if (this.avatars.hasAvatar(client.id, avatarId)) throw new Error("already_unlocked");
+    this.wallets.ensure(client.id);
+    const wallet = this.wallets.get(client.id);
+    if (!wallet) throw new Error("wallet not found");
+    if (item.currency === "chips") {
+      if (wallet.chips < item.price_chips) throw new Error("insufficient_chips");
+      this.wallets.deductChips(client.id, item.price_chips);
+    } else if (item.currency === "gems") {
+      if (wallet.gems < item.price_gems) throw new Error("insufficient_gems");
+      this.wallets.deductGems(client.id, item.price_gems);
+    }
+    this.avatars.unlockAvatar(client.id, avatarId);
+    this.sendWalletSnapshot(client, client.roomId);
+  }
+
+  private selectAvatar(client: Client, avatarIdRaw: string): void {
+    const avatarId = normalizeAvatarId(avatarIdRaw);
+    if (!findAvatarCatalogItem(avatarId)) throw new Error("avatar_not_found");
+    if (!this.avatars.hasAvatar(client.id, avatarId)) throw new Error("avatar_not_unlocked");
+    const profile = this.players.setAvatar(client.id, avatarId);
+    client.avatarId = profile.avatar_id;
   }
 
   private sitDownWithWallet(room: Room, client: Client, seatIndex: number): void {
@@ -330,4 +377,9 @@ function numberOr(value: unknown, fallback: number): number {
 function normalizePlayerId(value: string): string {
   const trimmed = String(value || "").trim();
   return trimmed.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64) || `player_${Date.now()}`;
+}
+
+function normalizeAvatarId(value: string): string {
+  const trimmed = String(value || "").trim();
+  return trimmed === "4_05" ? "default" : trimmed || "default";
 }

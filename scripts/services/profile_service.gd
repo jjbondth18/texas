@@ -62,6 +62,27 @@ func apply_server_wallet_snapshot(wallet_snapshot: Dictionary) -> Dictionary:
 	save_current_profile(profile)
 	return get_current_profile()
 
+func apply_server_profile(profile_snapshot: Dictionary, wallet_snapshot: Dictionary = {}, unlocked_avatar_ids: Array = []) -> Dictionary:
+	return apply_server_profile_snapshot(profile_snapshot, wallet_snapshot, unlocked_avatar_ids)
+
+func apply_wallet_snapshot(wallet_snapshot: Dictionary) -> Dictionary:
+	return apply_server_wallet_snapshot(wallet_snapshot)
+
+func apply_avatar_unlocks(unlocked_avatar_ids: Array) -> Dictionary:
+	if unlocked_avatar_ids.is_empty():
+		return get_current_profile()
+	var profile := get_current_profile()
+	var normalized_unlocked := _normalize_server_avatar_ids(unlocked_avatar_ids)
+	profile["unlocked_avatar_ids"] = normalized_unlocked
+	var selected_id: String = PlayerProfileScript.get_avatar_id(profile)
+	if not normalized_unlocked.has(selected_id):
+		profile["selected_avatar_id"] = normalized_unlocked[0]
+		profile["avatar_id"] = normalized_unlocked[0]
+		profile["avatar"] = AvatarLibraryScript.avatar_path(normalized_unlocked[0])
+	_server_profile_synced = true
+	save_current_profile(profile)
+	return get_current_profile()
+
 func apply_session_profit(profit: int) -> Dictionary:
 	var profile := get_current_profile()
 	var total_chips: int = PlayerProfileScript.get_total_chips(profile)

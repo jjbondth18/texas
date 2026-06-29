@@ -144,6 +144,19 @@ Wallet chips and table chips are separate local development balances:
 
 This local wallet system still has no real-money payment, recharge, order, Store, Steam, ranking, cloud deployment, or production account flow.
 
+## Local Avatar Store
+
+The current Store/Profile avatar flow is also local-development only:
+
+- Avatar catalog data is a small static server catalog.
+- Avatar unlocks are persisted in SQLite `avatar_unlocks`.
+- New players automatically unlock the `default` avatar.
+- `buy_avatar` validates the avatar id, ownership, and server wallet balance before deducting chips or gems.
+- `select_avatar` only accepts avatars already unlocked by that player and stores the selected avatar on the server player profile.
+- Godot treats server `profile_snapshot`, `wallet_snapshot`, and `unlocked_avatar_ids` as authoritative display cache data.
+
+This Store path only buys virtual avatar unlocks with local dev chips/gems. There is still no real-money payment, chip recharge, order, Steam, ranking, cloud deployment, or production account flow. Delete `server/data/texas_dev.sqlite` to reset local player wallet/profile/avatar state.
+
 Local profile sync test:
 
 1. Start the server:
@@ -162,6 +175,8 @@ Local profile sync test:
 3. Run Godot and connect through the official server-authoritative table or the Local Server Test panel.
 4. Confirm the Godot log shows the server profile/wallet sync and, on the first UTC-day connection, `Daily bonus +1000 chips`.
 5. Return to the lobby and confirm the top bar/profile panel show the server wallet chips, gems, player name, and avatar. Reconnect on the same UTC day and confirm the daily bonus is not repeated.
+6. Open the Profile avatar picker, click a locked avatar, and confirm Godot sends `buy_avatar` instead of locally deducting chips. After success, confirm wallet chips/gems and the unlocked state update from the returned server snapshots.
+7. Click an unlocked avatar and confirm Godot sends `select_avatar`; the selected avatar should refresh from the server profile snapshot.
 
 Database smoke test:
 

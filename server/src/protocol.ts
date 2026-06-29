@@ -9,13 +9,20 @@ export type ClientMessageType =
   | "start_hand"
   | "add_table_chips"
   | "player_action"
-  | "get_profile";
+  | "get_profile"
+  | "get_avatar_catalog"
+  | "buy_avatar"
+  | "select_avatar";
 
-export type ServerMessageType = "hello" | "table_snapshot" | "private_snapshot" | "profile_snapshot" | "wallet_snapshot" | "error";
+export type ServerMessageType = "hello" | "table_snapshot" | "private_snapshot" | "profile_snapshot" | "wallet_snapshot" | "avatar_catalog" | "error";
 export type ErrorCode =
   | "insufficient_chips"
+  | "insufficient_gems"
   | "not_seated"
   | "invalid_amount"
+  | "avatar_not_found"
+  | "already_unlocked"
+  | "avatar_not_unlocked"
   | "cannot_add_chips_during_hand"
   | "cannot_cash_out_during_hand";
 export type PlayerActionType = "fold" | "check" | "call" | "bet" | "raise" | "all_in";
@@ -60,6 +67,16 @@ export interface ServerMessage {
   daily_login_awarded?: boolean;
   awarded_chips?: number;
   warning?: string;
+  avatar_catalog?: AvatarCatalogItemSnapshot[];
+}
+
+export interface AvatarCatalogItemSnapshot {
+  avatar_id: string;
+  display_name: string;
+  price_chips: number;
+  price_gems: number;
+  currency: "chips" | "gems" | "free";
+  is_default: boolean;
 }
 
 export interface PlayerProfileSnapshot {

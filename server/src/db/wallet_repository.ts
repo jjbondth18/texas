@@ -35,12 +35,26 @@ export class WalletRepository {
     return this.get(playerId)!;
   }
 
+  deductGems(playerId: string, amount: number, now = new Date().toISOString()): WalletRecord {
+    const normalized = Math.max(0, Math.floor(amount));
+    const wallet = this.get(playerId);
+    if (!wallet) throw new Error("wallet not found");
+    if (wallet.gems < normalized) throw new Error("insufficient_gems");
+    this.db.prepare("UPDATE wallets SET gems = gems - ?, updated_at = ? WHERE player_id = ?").run(normalized, now, playerId);
+    return this.get(playerId)!;
+  }
+
   refundTableChips(playerId: string, amount: number, now = new Date().toISOString()): WalletRecord {
     return this.addChips(playerId, Math.max(0, Math.floor(amount)), now);
   }
 
   totalChips(): number {
     const row = this.db.prepare("SELECT COALESCE(SUM(chips), 0) AS total FROM wallets").get() as { total: number } | undefined;
+    return Number(row?.total ?? 0);
+  }
+
+  totalGems(): number {
+    const row = this.db.prepare("SELECT COALESCE(SUM(gems), 0) AS total FROM wallets").get() as { total: number } | undefined;
     return Number(row?.total ?? 0);
   }
 }
