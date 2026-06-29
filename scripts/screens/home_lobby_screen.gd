@@ -56,6 +56,7 @@ const LocalMockBackendScript := preload("res://scripts/services/local_mock_backe
 const StoreMockServiceScript := preload("res://scripts/services/store_mock_service.gd")
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
+const SettingsServiceScript := preload("res://scripts/services/settings_service.gd")
 const MODE_IMAGES := {
 	"quick_play": "res://assets/home_lobby/mode_cards/mode_quick_play.png",
 	"room_browser": "res://assets/home_lobby/mode_cards/mode_cash_tables.png",
@@ -76,6 +77,7 @@ var _toast_label: Label
 var _toast_tween: Tween
 var _player_profile: Dictionary = {}
 var _local_backend: LocalMockBackend
+var _settings_service: SettingsService
 var _friends_room_context: Dictionary = {}
 var _friends_room_id_label: Label
 var _friends_room_seats_label: Label
@@ -111,6 +113,7 @@ func _ready() -> void:
 	DisplayServer.window_set_size(Vector2i(1920, 1080))
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	_local_backend = LocalMockBackendScript.new()
+	_settings_service = SettingsServiceScript.new()
 	_build_background()
 	_build_foreground()
 	_build_layout()
@@ -156,6 +159,7 @@ func _ready() -> void:
 	)
 	add_child(_bgm_player)
 	_bgm_player.play()
+	_apply_settings(_settings_service.load_settings())
 	
 	var lobby_vm := MockDataProvider.get_lobby_view_model()
 	_player_profile = ProfileServiceScript.new().get_current_profile()
@@ -2188,7 +2192,7 @@ func _build_settings_panel() -> void:
 	_settings_panel = PanelContainer.new()
 	_settings_panel.name = "SettingsPanel"
 	_settings_panel.anchor_left = 0.0
-	_settings_panel.anchor_top = 0.32
+	_settings_panel.anchor_top = 0.24
 	_settings_panel.anchor_right = 1.0
 	_settings_panel.anchor_bottom = 0.91
 	_settings_panel.offset_left = MAIN_LEFT
@@ -2200,11 +2204,11 @@ func _build_settings_panel() -> void:
 	_settings_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.016, 0.72), Color(0.62, 0.36, 1.0, 0.28), 8, 1))
 	_lobby_ui_root.add_child(_settings_panel)
 	
+	var settings := _settings_service.load_settings()
 	var main_vbox := VBoxContainer.new()
-	main_vbox.add_theme_constant_override("separation", 20)
+	main_vbox.add_theme_constant_override("separation", 12)
 	_settings_panel.add_child(main_vbox)
-	
-	# Header
+
 	var title_box := VBoxContainer.new()
 	main_vbox.add_child(title_box)
 	var title := Label.new()
@@ -2212,52 +2216,219 @@ func _build_settings_panel() -> void:
 	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
 	title_box.add_child(title)
 	var sub := Label.new()
-	sub.text = "CONFIGURE PERFORMANCE, GRAPHICS & MOTION"
+	sub.text = "LOCAL PREFERENCES ONLY. ECONOMY, TABLE RULES, AND SERVER MODE ARE UNCHANGED."
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	title_box.add_child(sub)
-	
-	# Body
-	var body_panel := PanelContainer.new()
-	body_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	body_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.012, 0.50), Color(0.2, 0.24, 0.38, 0.25), 8, 1))
-	main_vbox.add_child(body_panel)
-	
-	var grid := VBoxContainer.new()
-	grid.add_theme_constant_override("separation", 24)
-	grid.alignment = BoxContainer.ALIGNMENT_CENTER
-	body_panel.add_child(grid)
-	
-	# Settings Option 1: Motion Intensity
-	var motion_hbox := HBoxContainer.new()
-	motion_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	motion_hbox.add_theme_constant_override("separation", 30)
-	grid.add_child(motion_hbox)
-	
-	var motion_lbl := Label.new()
-	motion_lbl.text = "MOTION INTENSITY"
-	HomeTheme.make_font_settings(motion_lbl, 15, Color(1, 1, 1, 0.9))
-	motion_hbox.add_child(motion_lbl)
-	
-	var btn_hbox := HBoxContainer.new()
-	btn_hbox.add_theme_constant_override("separation", 10)
-	motion_hbox.add_child(btn_hbox)
-	
-	var intensities := ["LOW", "MEDIUM", "HIGH"]
-	for intens in intensities:
-		var btn := Button.new()
-		btn.text = intens
-		btn.custom_minimum_size = Vector2(100, 36)
-		btn.focus_mode = Control.FOCUS_NONE
-		btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		btn.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.008, 0.010, 0.024, 0.35), Color(0.62, 0.36, 1.0, 0.5), 18))
-		btn.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.65), Color(0.62, 0.36, 1.0, 1.0), 18))
-		btn_hbox.add_child(btn)
-		
-		# Connect to dynamically toggle motion based on selection
-		btn.pressed.connect(func() -> void:
-			if intens == "LOW":
-				set_background_motion_enabled(false)
-			else:
-				set_background_motion_enabled(true)
-			print("Motion Intensity set to %s" % intens)
-		)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	main_vbox.add_child(scroll)
+
+	var content := VBoxContainer.new()
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_theme_constant_override("separation", 10)
+	scroll.add_child(content)
+
+	var master_slider := _add_settings_slider(content, "AUDIO", "Master Volume", float(settings.get("master_volume", 1.0)))
+	var music_slider := _add_settings_slider(content, "", "Music Volume", float(settings.get("music_volume", 0.8)))
+	var sfx_slider := _add_settings_slider(content, "", "SFX Volume", float(settings.get("sfx_volume", 0.8)))
+	var mute_all := _add_settings_checkbox(content, "", "Mute All", bool(settings.get("mute_all", false)))
+
+	var show_hand_hints := _add_settings_checkbox(content, "GAMEPLAY", "Show Hand Hints", bool(settings.get("show_hand_hints", true)))
+	var auto_muck := _add_settings_checkbox(content, "", "Auto Muck Losing Hands", bool(settings.get("auto_muck_losing_hands", true)))
+	var confirm_big_bets := _add_settings_checkbox(content, "", "Confirm Big Bets", bool(settings.get("confirm_big_bets", true)))
+	var animation_speed := _add_settings_option(content, "", "Animation Speed", [
+		{"label": "Slow", "value": "slow"},
+		{"label": "Normal", "value": "normal"},
+		{"label": "Fast", "value": "fast"},
+	], String(settings.get("animation_speed", "normal")))
+
+	var window_mode := _add_settings_option(content, "DISPLAY", "Window Mode", [
+		{"label": "Windowed", "value": "windowed"},
+		{"label": "Fullscreen", "value": "fullscreen"},
+		{"label": "Borderless", "value": "borderless"},
+	], String(settings.get("window_mode", "windowed")), "Saved locally. Apply on restart.")
+	var ui_scale := _add_settings_option(content, "", "UI Scale", [
+		{"label": "90%", "value": 0.9},
+		{"label": "100%", "value": 1.0},
+		{"label": "110%", "value": 1.1},
+		{"label": "120%", "value": 1.2},
+	], float(settings.get("ui_scale", 1.0)), "Saved locally. Future UI scale system will read this.")
+	var reduce_motion := _add_settings_checkbox(content, "", "Reduce Motion", bool(settings.get("reduce_motion", false)))
+
+	var show_player_name := _add_settings_checkbox(content, "ACCOUNT & PRIVACY", "Show Player Name", bool(settings.get("show_player_name", true)))
+	var allow_friend_invites := _add_settings_checkbox(content, "", "Allow Friend Invites", bool(settings.get("allow_friend_invites", true)))
+	_add_settings_placeholder(content, "", "Data / Cloud Sync", "Coming Soon")
+	_add_settings_placeholder(content, "", "Account Binding", "Coming Soon")
+
+	var server_region := _add_settings_option(content, "ADVANCED", "Server Region", [
+		{"label": "Auto", "value": "auto"},
+		{"label": "US East", "value": "us_east"},
+		{"label": "US West", "value": "us_west"},
+		{"label": "Asia", "value": "asia"},
+	], String(settings.get("server_region", "auto")), "Saved locally only.")
+	var network_mode := _add_settings_option(content, "", "Network Mode", [
+		{"label": "Local Mock", "value": "local_mock"},
+		{"label": "Future Server - Coming Soon", "value": "future_server", "disabled": true},
+	], String(settings.get("network_mode", "local_mock")), "Future Server: Coming Soon")
+
+	var footer := HBoxContainer.new()
+	footer.alignment = BoxContainer.ALIGNMENT_END
+	footer.add_theme_constant_override("separation", 10)
+	main_vbox.add_child(footer)
+
+	var reset_button := _settings_button("Reset Defaults")
+	reset_button.pressed.connect(func() -> void:
+		var defaults := _settings_service.reset_defaults()
+		_refresh_settings_panel()
+		_apply_settings(defaults)
+		_show_toast("Settings reset. Profile and wallet were not changed.")
+	)
+	footer.add_child(reset_button)
+
+	var apply_button := _settings_button("Apply")
+	apply_button.pressed.connect(func() -> void:
+		var next_settings := {
+			"master_volume": float(master_slider.value) / 100.0,
+			"music_volume": float(music_slider.value) / 100.0,
+			"sfx_volume": float(sfx_slider.value) / 100.0,
+			"mute_all": mute_all.button_pressed,
+			"show_hand_hints": show_hand_hints.button_pressed,
+			"auto_muck_losing_hands": auto_muck.button_pressed,
+			"confirm_big_bets": confirm_big_bets.button_pressed,
+			"animation_speed": String(animation_speed.get_meta("selected_value")),
+			"window_mode": String(window_mode.get_meta("selected_value")),
+			"ui_scale": float(ui_scale.get_meta("selected_value")),
+			"reduce_motion": reduce_motion.button_pressed,
+			"show_player_name": show_player_name.button_pressed,
+			"allow_friend_invites": allow_friend_invites.button_pressed,
+			"server_region": String(server_region.get_meta("selected_value")),
+			"network_mode": String(network_mode.get_meta("selected_value")),
+		}
+		var saved := _settings_service.save_settings(next_settings)
+		_apply_settings(saved)
+		_show_toast("Settings saved locally.")
+	)
+	footer.add_child(apply_button)
+
+	var close_button := _settings_button("Close")
+	close_button.pressed.connect(func() -> void:
+		set_state(LobbyState.COLLAPSED)
+	)
+	footer.add_child(close_button)
+
+func _refresh_settings_panel() -> void:
+	if _settings_panel == null:
+		return
+	_settings_panel.queue_free()
+	_settings_panel = null
+	_build_settings_panel()
+	if current_state == LobbyState.SETTINGS:
+		_settings_panel.visible = true
+		_settings_panel.modulate.a = 1.0
+
+func _apply_settings(settings: Dictionary) -> void:
+	var normalized := SettingsServiceScript.normalize_settings(settings)
+	if _settings_service != null:
+		_settings_service.apply_safe_settings(normalized)
+	set_background_motion_enabled(not bool(normalized.get("reduce_motion", false)))
+	if _bgm_player != null:
+		var master := 0.0 if bool(normalized.get("mute_all", false)) else float(normalized.get("master_volume", 1.0))
+		var lobby_music_volume := clampf(master * float(normalized.get("music_volume", 0.8)), 0.0, 1.0)
+		_bgm_player.volume_db = -80.0 if lobby_music_volume <= 0.0 else linear_to_db(lobby_music_volume)
+
+func _add_settings_slider(parent: VBoxContainer, section_title: String, label_text: String, value: float) -> HSlider:
+	_add_settings_section_label(parent, section_title)
+	var row := _settings_row(parent, label_text)
+	var slider := HSlider.new()
+	slider.min_value = 0
+	slider.max_value = 100
+	slider.step = 1
+	slider.value = round(clampf(value, 0.0, 1.0) * 100.0)
+	slider.custom_minimum_size = Vector2(240, 34)
+	row.add_child(slider)
+	return slider
+
+func _add_settings_checkbox(parent: VBoxContainer, section_title: String, label_text: String, value: bool) -> CheckBox:
+	_add_settings_section_label(parent, section_title)
+	var row := _settings_row(parent, label_text)
+	var checkbox := CheckBox.new()
+	checkbox.button_pressed = value
+	checkbox.text = "On" if value else "Off"
+	checkbox.focus_mode = Control.FOCUS_NONE
+	checkbox.toggled.connect(func(enabled: bool) -> void:
+		checkbox.text = "On" if enabled else "Off"
+	)
+	row.add_child(checkbox)
+	return checkbox
+
+func _add_settings_option(parent: VBoxContainer, section_title: String, label_text: String, options: Array, selected_value: Variant, note: String = "") -> OptionButton:
+	_add_settings_section_label(parent, section_title)
+	var row := _settings_row(parent, label_text, note)
+	var option := OptionButton.new()
+	option.custom_minimum_size = Vector2(230, 34)
+	option.focus_mode = Control.FOCUS_NONE
+	var selected_index := 0
+	for i in range(options.size()):
+		var item := Dictionary(options[i])
+		option.add_item(String(item.get("label", "")), i)
+		option.set_item_metadata(i, item.get("value", ""))
+		if bool(item.get("disabled", false)):
+			option.set_item_disabled(i, true)
+		if item.get("value", "") == selected_value:
+			selected_index = i
+	option.select(selected_index)
+	option.set_meta("selected_value", option.get_item_metadata(selected_index))
+	option.item_selected.connect(func(index: int) -> void:
+		option.set_meta("selected_value", option.get_item_metadata(index))
+	)
+	row.add_child(option)
+	return option
+
+func _add_settings_placeholder(parent: VBoxContainer, section_title: String, label_text: String, value_text: String) -> void:
+	_add_settings_section_label(parent, section_title)
+	var row := _settings_row(parent, label_text)
+	var label := Label.new()
+	label.text = value_text
+	HomeTheme.make_font_settings(label, 13, HomeTheme.GOLD)
+	row.add_child(label)
+
+func _add_settings_section_label(parent: VBoxContainer, section_title: String) -> void:
+	if section_title == "":
+		return
+	var label := Label.new()
+	label.text = section_title
+	HomeTheme.make_font_settings(label, 13, Color(1.0, 0.58, 0.92, 0.98))
+	parent.add_child(label)
+
+func _settings_row(parent: VBoxContainer, label_text: String, note: String = "") -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_constant_override("separation", 14)
+	parent.add_child(row)
+
+	var text_box := VBoxContainer.new()
+	text_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(text_box)
+	var label := Label.new()
+	label.text = label_text
+	HomeTheme.make_font_settings(label, 14, Color(0.92, 0.94, 1.0, 0.95))
+	text_box.add_child(label)
+	if note != "":
+		var note_label := Label.new()
+		note_label.text = note
+		HomeTheme.make_font_settings(note_label, 11, HomeTheme.MUTED)
+		text_box.add_child(note_label)
+	return row
+
+func _settings_button(label_text: String) -> Button:
+	var button := Button.new()
+	button.text = label_text
+	button.custom_minimum_size = Vector2(130, 38)
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.72), Color(0.62, 0.36, 1.0, 0.55), 8))
+	button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.040, 0.046, 0.094, 0.92), Color(1.0, 0.28, 0.78, 0.90), 8))
+	button.add_theme_stylebox_override("pressed", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.96), Color(0.52, 0.78, 1.0, 0.90), 8))
+	return button
