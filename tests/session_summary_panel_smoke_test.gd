@@ -41,7 +41,9 @@ func _initialize() -> void:
 	var play_again: Button = table.get("_session_play_again_button") as Button
 	_require(panel != null and panel.visible, "session summary panel must be visible")
 	_require(text != null and text.text.find("SESSION COMPLETE") == -1, "title should be a dedicated label, not debug-only text")
-	_require(text != null and text.text.find("Final Chips") != -1, "summary must include final chips")
+	_require(text != null and text.text.find("Final Table Chips") != -1, "summary must include final table chips")
+	_require(text.text.find("Returned to Wallet") != -1, "summary must include returned-to-wallet amount")
+	_require(text.text.find("Session Profit") != -1, "summary must label session profit")
 	_require(text.text.find("Hands Won") != -1, "summary must include hands won")
 	_require(text.text.find("+3450") != -1, "summary must include positive profit")
 	_require(avatar != null and avatar.visible and avatar.texture != null, "summary must show local player avatar")

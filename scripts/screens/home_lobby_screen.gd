@@ -91,6 +91,7 @@ var _quick_play_setup_panel: PanelContainer
 var _quick_play_setup_avatar: TextureRect
 var _quick_play_setup_name_label: Label
 var _quick_play_setup_chips_label: Label
+var _quick_play_setup_hint_label: Label
 var _quick_mode_buttons: Dictionary = {}
 var _quick_chip_settings_container: VBoxContainer
 var _quick_gem_placeholder_container: VBoxContainer
@@ -468,6 +469,13 @@ func _build_quick_play_setup_panel() -> void:
 	_quick_play_setup_chips_label = Label.new()
 	HomeTheme.make_font_settings(_quick_play_setup_chips_label, 15, HomeTheme.GOLD)
 	profile_text.add_child(_quick_play_setup_chips_label)
+
+	_quick_play_setup_hint_label = Label.new()
+	_quick_play_setup_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_quick_play_setup_hint_label.custom_minimum_size = Vector2(420, 0)
+	_quick_play_setup_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HomeTheme.make_font_settings(_quick_play_setup_hint_label, 13, HomeTheme.MUTED)
+	column.add_child(_quick_play_setup_hint_label)
 
 	_quick_chip_settings_container = VBoxContainer.new()
 	_quick_chip_settings_container.add_theme_constant_override("separation", 12)
@@ -868,6 +876,8 @@ func _reload_player_profile() -> void:
 func _claim_daily_login_bonus() -> void:
 	var service := ProfileServiceScript.new()
 	_player_profile = service.claim_daily_login_bonus()
+	if service.was_last_daily_bonus_claimed():
+		_show_toast("Daily Login Bonus\n+%s Chips", [_format_number(PlayerProfileScript.DAILY_LOGIN_CHIPS)], 2.6)
 
 
 func _select_default_quick_buy_in() -> void:
@@ -923,6 +933,13 @@ func _refresh_quick_play_setup_options() -> void:
 		_quick_start_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if is_chip_mode else Control.CURSOR_ARROW
 		_quick_start_button.add_theme_stylebox_override("disabled", HomeTheme.make_button_style(Color(0.08, 0.06, 0.10, 0.62), Color(0.76, 0.52, 0.9, 0.28), 22))
 		_quick_start_button.add_theme_color_override("font_disabled_color", Color(0.78, 0.72, 0.86, 0.72))
+	if _quick_play_setup_hint_label != null:
+		if not is_chip_mode:
+			_quick_play_setup_hint_label.text = "Gem matches will use Gems in a future secure matchmaking update."
+		elif _selected_quick_buy_in > total_chips:
+			_quick_play_setup_hint_label.text = "Not enough wallet chips.\nBuy-in will be moved from wallet to table. Unused table chips return to wallet after the session."
+		else:
+			_quick_play_setup_hint_label.text = "Buy-in will be moved from wallet to table.\nUnused table chips return to wallet after the session."
 	for key_item in _quick_mode_buttons.keys():
 		var mode := String(key_item)
 		var button: Button = _quick_mode_buttons[key_item] as Button
@@ -1277,20 +1294,23 @@ func _build_toast() -> void:
 	HomeTheme.make_font_settings(_toast_label, 15, Color(0.96, 0.92, 1.0, 0.96))
 	_lobby_ui_root.add_child(_toast_label)
 
-func _show_coming_soon(label: String) -> void:
+func _show_toast(format_text: String, args: Array = [], hold_seconds: float = 1.75) -> void:
 	if _toast_label == null:
 		return
-	_toast_label.text = "%s - Coming Soon" % label
+	_toast_label.text = format_text % args if not args.is_empty() else format_text
 	_toast_label.visible = true
 	if _toast_tween:
 		_toast_tween.kill()
 	_toast_tween = create_tween()
 	_toast_tween.tween_property(_toast_label, "modulate:a", 1.0, 0.12)
-	_toast_tween.tween_interval(1.75)
+	_toast_tween.tween_interval(hold_seconds)
 	_toast_tween.tween_property(_toast_label, "modulate:a", 0.0, 0.18)
 	_toast_tween.tween_callback(func() -> void:
 		_toast_label.visible = false
 	)
+
+func _show_coming_soon(label: String) -> void:
+	_show_toast("%s - Coming Soon", [label])
 
 func _build_room_browser_panel() -> void:
 	_room_browser_panel = PanelContainer.new()
@@ -1763,11 +1783,11 @@ func _build_store_panel() -> void:
 	var title_box := VBoxContainer.new()
 	main_vbox.add_child(title_box)
 	var title := Label.new()
-	title.text = "POKER CLUB STORE"
+	title.text = "STORE"
 	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
 	title_box.add_child(title)
 	var sub := Label.new()
-	sub.text = "GET CHIPS, PREMIUM ACCESS & EXCLUSIVE COSMETICS"
+	sub.text = "Mock wallet packs for local development testing."
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	title_box.add_child(sub)
 	
@@ -1793,8 +1813,8 @@ func _build_store_panel() -> void:
 	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	main_vbox.add_child(grid)
 
-	_add_store_currency_column(grid, "CHIPS", "Game chips for buy-ins, betting, and standard cosmetics.", [10000, 50000, 100000], "chips", HomeTheme.GOLD)
-	_add_store_currency_column(grid, "GEMS", "Premium currency reserved for replay tools and premium cosmetics.", [100, 500, 1200], "gems", HomeTheme.PINK)
+	_add_store_currency_column(grid, "CHIPS", "Mock Purchase Chips\nDEV ONLY\nGame chips are used for buy-ins, betting, and standard cosmetics.", [10000, 50000, 100000], "chips", HomeTheme.GOLD)
+	_add_store_currency_column(grid, "GEMS", "Mock Purchase Gems\nDEV ONLY\nGems are used for premium features such as replay access in future versions.", [100, 500, 1200], "gems", HomeTheme.PINK)
 
 func _add_store_currency_column(parent: Container, title_text: String, desc_text: String, packs: Array, currency: String, accent: Color) -> void:
 	var card := PanelContainer.new()
@@ -1805,7 +1825,7 @@ func _add_store_currency_column(parent: Container, title_text: String, desc_text
 	vbox.add_theme_constant_override("separation", 14)
 	card.add_child(vbox)
 	var title := Label.new()
-	title.text = title_text
+	title.text = "Mock Purchase %s" % title_text.capitalize()
 	HomeTheme.make_font_settings(title, 18, accent)
 	vbox.add_child(title)
 	var desc := Label.new()
@@ -1816,7 +1836,7 @@ func _add_store_currency_column(parent: Container, title_text: String, desc_text
 	for pack_item in packs:
 		var amount: int = int(pack_item)
 		var button := Button.new()
-		button.text = "%s %s" % [_format_number(amount), title_text]
+		button.text = "Mock Buy %s %s" % [_format_number(amount), title_text.capitalize()]
 		button.custom_minimum_size = Vector2(220, 42)
 		button.focus_mode = Control.FOCUS_NONE
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -1828,7 +1848,7 @@ func _add_store_currency_column(parent: Container, title_text: String, desc_text
 func _show_mock_purchase_confirm(currency: String, amount: int) -> void:
 	var dialog := ConfirmationDialog.new()
 	dialog.title = "Mock purchase?"
-	dialog.dialog_text = "MOCK PURCHASE / DEV ONLY\nAdd %s %s to your wallet?" % [_format_number(amount), currency.to_upper()]
+	dialog.dialog_text = "MOCK PURCHASE / DEV ONLY\nThis is a mock purchase for development only.\nAdd %s %s to your wallet?" % [_format_number(amount), currency.to_upper()]
 	dialog.confirmed.connect(_confirm_mock_purchase.bind(currency, amount, dialog))
 	dialog.canceled.connect(dialog.queue_free)
 	add_child(dialog)

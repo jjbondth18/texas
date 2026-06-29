@@ -14,6 +14,11 @@ func _initialize() -> void:
 	var panel: PanelContainer = home.get("_quick_play_setup_panel") as PanelContainer
 	_require(panel != null and panel.visible, "Quick Play must show setup panel instead of opening table immediately.")
 	_require(String(home.get("_quick_play_mode")) == "chip", "Quick Play setup must default to Chip Table mode.")
+	var chips_label: Label = home.get("_quick_play_setup_chips_label") as Label
+	var hint_label: Label = home.get("_quick_play_setup_hint_label") as Label
+	_require(chips_label != null and chips_label.text.find("Wallet Chips:") != -1, "Quick Play setup must show wallet chips.")
+	_require(hint_label != null and hint_label.text.find("Buy-in will be moved from wallet to table.") != -1, "Quick Play setup must explain buy-in wallet transfer.")
+	_require(hint_label.text.find("Unused table chips return to wallet after the session.") != -1, "Quick Play setup must explain unused table chip return.")
 
 	var mode_buttons: Dictionary = Dictionary(home.get("_quick_mode_buttons"))
 	_require(mode_buttons.has("chip") and mode_buttons.has("gem"), "Quick Play setup must offer Chip Table and Gem Match entries.")
@@ -21,6 +26,10 @@ func _initialize() -> void:
 	var buy_in_buttons: Dictionary = Dictionary(home.get("_quick_buy_in_buttons"))
 	var high_buy_in_button: Button = buy_in_buttons.get(50000) as Button
 	_require(high_buy_in_button != null and high_buy_in_button.disabled, "Buy-in above total_chips must be disabled.")
+	home.set("_selected_quick_buy_in", 50000)
+	home.call("_refresh_quick_play_setup_options")
+	_require(hint_label.text.find("Not enough wallet chips.") != -1, "Quick Play setup must explain insufficient wallet chips.")
+	home.call("_select_quick_buy_in", 10000)
 
 	var hand_count_buttons: Dictionary = Dictionary(home.get("_quick_hand_count_buttons"))
 	var five_hand_button: Button = hand_count_buttons.get(5) as Button

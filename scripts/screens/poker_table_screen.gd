@@ -1340,11 +1340,16 @@ func _show_session_result_panel() -> void:
 	var reason: String = _table_session.end_reason if _table_session.end_reason != "" else "Session ended"
 	var result_lines: Array[String] = [
 		"[center][font_size=30][color=%s][b]%+d[/b][/color][/font_size][/center]" % [profit_color, _table_session.session_profit],
-		"[center][color=#8fa8ff]%s[/color][/center]" % ("Practice chips only. Results do not affect your account balance." if is_practice else "Profit = Final Chips - Buy-in"),
+		"[center][color=#8fa8ff]%s[/color][/center]" % ("Practice chips only. Results do not affect your account balance." if is_practice else "Buy-in moved from wallet to table. Final table chips returned to wallet."),
 		"",
-		"[table=2][cell][color=#9aa8d8]Buy-in[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Final Chips[/color]\n[b]%s[/b][/cell]" % [
+		"[table=2][cell][color=#9aa8d8]Buy-in[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Final Table Chips[/color]\n[b]%s[/b][/cell]" % [
 			_format_chips(_table_session.buy_in),
 			_format_chips(_table_session.session_end_chips),
+		],
+		"[cell][color=#9aa8d8]Returned to Wallet[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Session Profit[/color]\n[color=%s][b]%+d[/b][/color][/cell]" % [
+			_format_chips(_table_session.session_end_chips),
+			profit_color,
+			_table_session.session_profit,
 		],
 		"[cell][color=#9aa8d8]Hands Won[/color]\n[b]%d[/b][/cell][cell][color=#9aa8d8]Biggest Pot[/color]\n[b]%s[/b][/cell][/table]" % [
 			_table_session.hands_won,
@@ -2020,7 +2025,7 @@ func _build_top_action_bar() -> void:
 
 	var add_chips_button := _top_control_button("ADD CHIPS", Vector2(150, 56))
 	_add_chips_button = add_chips_button
-	add_chips_button.tooltip_text = "Add chips"
+	add_chips_button.tooltip_text = "Move wallet chips to this table."
 	add_chips_button.pressed.connect(_toggle_add_chips_panel)
 	_top_right_action_bar.add_child(add_chips_button)
 
@@ -2140,7 +2145,7 @@ func _build_add_chips_panel() -> void:
 		_add_chips_panel.add_theme_stylebox_override("panel", _add_chips_panel_style())
 		_popover_layer.add_child(_add_chips_panel)
 	_add_chips_panel.name = "AddChipsPopover"
-	_prepare_popover_panel(_add_chips_panel, Vector2(278, 246))
+	_prepare_popover_panel(_add_chips_panel, Vector2(306, 292))
 	_add_chips_panel.visible = false
 	_refresh_add_chips_panel_content()
 
@@ -2164,7 +2169,7 @@ func _refresh_add_chips_panel_content() -> void:
 	margin.add_child(vbox)
 
 	var title := Label.new()
-	title.text = "ADD CHIPS"
+	title.text = "Add Chips to Table"
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size", 13)
@@ -2179,33 +2184,41 @@ func _refresh_add_chips_panel_content() -> void:
 	close_button.pressed.connect(_close_overlay_panels)
 	title_row.add_child(close_button)
 
+	var explanation := Label.new()
+	explanation.text = "Move chips from your wallet to this table.\nThis is not a purchase."
+	explanation.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	explanation.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	explanation.add_theme_font_size_override("font_size", 11)
+	explanation.add_theme_color_override("font_color", Color(0.78, 0.96, 0.92, 0.86))
+	vbox.add_child(explanation)
+
 	var wallet_chips: int = PlayerProfileScript.get_total_chips(ProfileServiceScript.new().get_current_profile())
 	for option_item in [1000, 5000, 10000]:
 		var amount: int = int(option_item)
 		var label_text: String = "+%s" % _format_chips(amount)
 		var button := _top_control_button(label_text, Vector2(220, 32))
 		button.disabled = amount <= 0 or wallet_chips < amount
-		button.tooltip_text = "Transfer chips from wallet to this table."
+		button.tooltip_text = "Move wallet chips to this table."
 		var captured_amount: int = amount
 		button.pressed.connect(_add_chips_from_wallet.bind(captured_amount))
 		vbox.add_child(button)
 	var max_button := _top_control_button("MAX", Vector2(220, 32))
 	max_button.disabled = wallet_chips <= 0
-	max_button.tooltip_text = "Transfer all available wallet chips to this table."
+	max_button.tooltip_text = "Move all available wallet chips to this table."
 	max_button.pressed.connect(_add_chips_from_wallet.bind(wallet_chips))
 	vbox.add_child(max_button)
 	var hint := Label.new()
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_font_size_override("font_size", 11)
 	hint.add_theme_color_override("font_color", Color(0.72, 0.94, 0.88, 0.88))
-	hint.text = "Not enough chips. Visit Store from Home." if wallet_chips <= 0 else "Need more chips? Return to Home and visit Store."
+	hint.text = "Not enough wallet chips. Visit Store from Home." if wallet_chips <= 0 else "Need more chips? Return to Home and visit Store."
 	vbox.add_child(hint)
 
 
 func _add_chips_from_wallet(amount: int) -> void:
 	var result: Dictionary = ProfileServiceScript.new().transfer_chips_to_table(amount)
 	if not bool(result.get("success", false)):
-		_append_session_log("Not enough chips. Visit Store from Home.")
+		_append_session_log("Not enough wallet chips. Visit Store from Home.")
 		_refresh_add_chips_panel_content()
 		return
 	var added: int = int(result.get("amount", 0))
