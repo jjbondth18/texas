@@ -18,6 +18,8 @@ func run() -> void:
 	var joined := PublicTableRegistryScript.join_public_table("warmup_create_waiting", {"player_id": "creator"})
 	assert(int(joined.get("current_players", 0)) == 1)
 	assert(String(joined.get("status", "")) == "waiting_for_players")
+	assert(bool(joined.get("is_ai_warmup", false)) == false)
+	assert(Array(joined.get("warmup_ai_player_ids", [])).is_empty())
 
 	var warmup := PublicTableRegistryScript.start_ai_warmup("warmup_create_waiting", 3)
 	assert(bool(warmup.get("is_ai_warmup", false)) == true)

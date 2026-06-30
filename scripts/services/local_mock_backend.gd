@@ -237,6 +237,12 @@ func _build_public_table_seats(table: Dictionary, profile: Dictionary, buy_in: i
 		var seat: Dictionary = Dictionary(seats[i]).duplicate(true)
 		if bool(seat.get("is_local", false)):
 			seat["chips"] = buy_in
+			seat["table_stack"] = buy_in
+			seat["status"] = TableSeatScript.SITTING
+			seat["occupied"] = true
+			seat["connected"] = true
+			seat["is_ai"] = false
+			seat["warmup_ai"] = false
 			seats[i] = seat
 			continue
 		if ai_index < warmup_ids.size():
@@ -245,8 +251,10 @@ func _build_public_table_seats(table: Dictionary, profile: Dictionary, buy_in: i
 			seat["player_name"] = "Warm-up AI %d" % (ai_index + 1)
 			seat["avatar_id"] = AvatarLibraryScript.avatar_id_for_seat(seat_id, false)
 			seat["chips"] = buy_in
+			seat["table_stack"] = buy_in
 			seat["status"] = TableSeatScript.SITTING
 			seat["occupied"] = true
+			seat["connected"] = true
 			seat["is_ai"] = true
 			seat["warmup_ai"] = true
 			ai_index += 1
@@ -256,8 +264,10 @@ func _build_public_table_seats(table: Dictionary, profile: Dictionary, buy_in: i
 			seat["player_name"] = "Public Player %d" % (real_index + 1)
 			seat["avatar_id"] = AvatarLibraryScript.avatar_id_for_seat(real_seat_id, false)
 			seat["chips"] = buy_in
+			seat["table_stack"] = buy_in
 			seat["status"] = TableSeatScript.SITTING
 			seat["occupied"] = true
+			seat["connected"] = true
 			seat["is_ai"] = false
 			seat["warmup_ai"] = false
 			real_index += 1

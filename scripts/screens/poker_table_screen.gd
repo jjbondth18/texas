@@ -121,6 +121,10 @@ var _session_play_again_button: Button
 var _hand_result_banner: PanelContainer
 var _hand_result_title_label: Label
 var _hand_result_body_label: Label
+var _public_waiting_panel: PanelContainer
+var _public_waiting_title_label: Label
+var _public_waiting_body_label: Label
+var _public_waiting_button: Button
 var _recorded_session_hand_ids := {}
 var _session_started := false
 var _profile_settlement_applied := false
@@ -226,6 +230,7 @@ func _build_scene() -> void:
 	_build_rule_debug_panel()
 	_build_session_result_panel()
 	_build_hand_result_banner()
+	_build_public_waiting_panel()
 	
 	# Setup seats map from static scene nodes
 	_seats[1] = $TableSurfaceLayer/TableLayer/SeatLayer/Seat1Panel
@@ -308,6 +313,49 @@ func _build_hand_result_banner() -> void:
 	box.add_child(_hand_result_body_label)
 
 	_content_root.add_child(_hand_result_banner)
+
+func _build_public_waiting_panel() -> void:
+	_public_waiting_panel = PanelContainer.new()
+	_public_waiting_panel.name = "PublicWaitingPanel"
+	_public_waiting_panel.visible = false
+	_public_waiting_panel.z_index = 240
+	_public_waiting_panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	_public_waiting_panel.size = Vector2(520, 190)
+	_public_waiting_panel.position = Vector2((DESIGN_SIZE.x - _public_waiting_panel.size.x) * 0.5, 332.0)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.010, 0.008, 0.026, 0.86)
+	style.border_color = Color(0.95, 0.15, 0.72, 0.58)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(14)
+	style.shadow_color = Color(0.95, 0.15, 0.72, 0.26)
+	style.shadow_size = 18
+	_public_waiting_panel.add_theme_stylebox_override("panel", style)
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 18)
+	margin.add_theme_constant_override("margin_bottom", 18)
+	_public_waiting_panel.add_child(margin)
+	var box := VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 10)
+	margin.add_child(box)
+	_public_waiting_title_label = Label.new()
+	_public_waiting_title_label.text = "WAITING FOR PLAYERS"
+	_public_waiting_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_public_waiting_title_label.add_theme_font_size_override("font_size", 22)
+	_public_waiting_title_label.add_theme_color_override("font_color", Color(1.0, 0.94, 1.0, 0.98))
+	box.add_child(_public_waiting_title_label)
+	_public_waiting_body_label = Label.new()
+	_public_waiting_body_label.text = "1 / 6 seated\nStart AI warm-up while waiting.\nWarm-up uses practice chips and does not affect your wallet."
+	_public_waiting_body_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_public_waiting_body_label.add_theme_font_size_override("font_size", 14)
+	_public_waiting_body_label.add_theme_color_override("font_color", Color(0.72, 0.78, 1.0, 0.92))
+	box.add_child(_public_waiting_body_label)
+	_public_waiting_button = _top_control_button("START AI WARM-UP", Vector2(210, 42))
+	_public_waiting_button.pressed.connect(_start_public_ai_warmup)
+	box.add_child(_public_waiting_button)
+	_content_root.add_child(_public_waiting_panel)
 
 func _layout() -> void:
 	if _content_root == null:
@@ -2255,9 +2303,25 @@ func _is_public_ai_warmup() -> bool:
 	return _is_public_chip_table() and (TableLaunchContext.is_ai_warmup or (_table_session != null and _table_session.is_ai_warmup))
 
 func _refresh_public_waiting_controls() -> void:
+	var should_show := _should_show_public_warmup_entry()
 	if _ai_warmup_button != null:
-		_ai_warmup_button.visible = _is_public_waiting_for_real_players() and not _is_public_ai_warmup()
+		_ai_warmup_button.visible = should_show
 		_ai_warmup_button.disabled = not _ai_warmup_button.visible
+	if _public_waiting_panel != null:
+		_public_waiting_panel.visible = should_show
+	if _public_waiting_button != null:
+		_public_waiting_button.disabled = not should_show
+	if _public_waiting_body_label != null and should_show:
+		_public_waiting_body_label.text = "%d / 6 seated\nStart AI warm-up while waiting.\nWarm-up uses practice chips and does not affect your wallet." % _real_public_player_count_from_flow()
+
+func _should_show_public_warmup_entry() -> bool:
+	if not _is_public_waiting_for_real_players() or _is_public_ai_warmup():
+		return false
+	if String(_table_flow.table_state) != TexasTableFlowScript.WAITING:
+		return false
+	if not _has_local_public_seat():
+		return false
+	return _real_public_player_count_from_flow() == 1
 
 func _start_public_ai_warmup() -> void:
 	if not _is_public_waiting_for_real_players() or _is_public_ai_warmup():
@@ -2379,6 +2443,18 @@ func _real_public_player_count_from_flow() -> int:
 			continue
 		count += 1
 	return count
+
+func _has_local_public_seat() -> bool:
+	for seat_item in _table_flow.seats:
+		var seat: Dictionary = Dictionary(seat_item)
+		if not bool(seat.get("is_local", false)):
+			continue
+		if not bool(seat.get("occupied", false)):
+			return false
+		if String(seat.get("status", "")) == TexasTableFlowScript.EMPTY:
+			return false
+		return String(seat.get("player_id", "")) != ""
+	return false
 
 
 func _session_hand_count_text() -> String:

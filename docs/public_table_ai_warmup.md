@@ -6,9 +6,11 @@ Public Chip tables are real-player public tables. When fewer than two real playe
 
 - Creates a clean `public_chip` table.
 - Seats the creator as a real player.
+- The creator is visible on the Poker Table while the table is waiting.
+- The creator's table stack starts at the selected buy-in.
 - Leaves the table in `waiting_for_players`.
 - Does not spawn AI automatically.
-- The poker table can show `START AI WARM-UP` so the creator can practice while waiting.
+- The poker table shows `START AI WARM-UP` only when the creator is seated, exactly one real player is present, the table is still waiting, and AI warm-up has not started.
 
 ## AI Warm-up
 
