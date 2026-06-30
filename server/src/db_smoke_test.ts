@@ -219,9 +219,11 @@ if ((warmupRoom.table.getSeatByPlayer("warmup_player")?.chips ?? 0) !== warmupBa
 warmupMessages.length = 0;
 manager.handle("warmup_player", { type: "start_ai_warmup", room_id: warmupRoom.id });
 const repeatedWarmup = warmupMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "start_ai_warmup_result") as
-  | { type: string; ok?: boolean; reason?: string }
+  | { type: string; ok?: boolean; reason?: string; room_id?: string }
   | undefined;
-if (!repeatedWarmup || repeatedWarmup.ok !== false || repeatedWarmup.reason !== "already_playing") throw new Error("active warm-up should reject repeated start_ai_warmup");
+if (!repeatedWarmup || repeatedWarmup.ok !== true || repeatedWarmup.room_id !== warmupRoom.id) throw new Error("hand-over warm-up should allow start_ai_warmup as next warm-up hand");
+if (warmupRoom.table.phase === "hand_over") throw new Error("next warm-up hand should leave hand_over");
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeWarmupWallet) throw new Error("next warm-up hand should not change account wallet chips");
 const normalOnePlayer = manager.connect();
 manager.handle(normalOnePlayer.id, { type: "hello", player_id: "normal_one_player", name: "Normal One" });
 const normalOnePlayerRoom = manager.createRoom();

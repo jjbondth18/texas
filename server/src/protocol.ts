@@ -225,6 +225,7 @@ export interface TableSnapshot {
   current_bet: number;
   min_raise_to: number;
   current_turn_seat: number;
+  current_turn_player_id?: string;
   dealer_seat: number;
   small_blind_seat: number;
   big_blind_seat: number;

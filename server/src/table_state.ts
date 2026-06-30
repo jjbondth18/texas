@@ -246,6 +246,7 @@ export class TableState {
       current_bet: this.currentBet,
       min_raise_to: this.minRaiseTo,
       current_turn_seat: this.currentTurnSeat,
+      current_turn_player_id: this.getSeat(this.currentTurnSeat)?.playerId ?? "",
       dealer_seat: this.dealerSeat,
       small_blind_seat: this.smallBlindSeat,
       big_blind_seat: this.bigBlindSeat,
