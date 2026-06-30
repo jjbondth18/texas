@@ -70,7 +70,7 @@ async function connectBot(index: number): Promise<BotState> {
   });
 
   console.log(`[${bot.name}] connected; seat=${bot.seat}`);
-  send(bot, { type: "hello", name: bot.name });
+  send(bot, { type: "hello", player_id: `bot_${index + 1}`, name: bot.name });
   return bot;
 }
 

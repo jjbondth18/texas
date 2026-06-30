@@ -38,6 +38,7 @@ export type ErrorCode =
   | "avatar_not_unlocked"
   | "room_not_found"
   | "table_full"
+  | "invalid_table_config"
   | "cannot_add_chips_during_hand"
   | "cannot_cash_out_during_hand";
 export type PlayerActionType = "fold" | "check" | "call" | "bet" | "raise" | "all_in";
@@ -62,6 +63,11 @@ export interface ClientMessage {
   avatar_id?: string;
   seat_index?: number;
   buy_in?: number;
+  small_blind?: number;
+  big_blind?: number;
+  hand_count?: number | string;
+  max_players?: number;
+  is_public?: boolean;
   ready?: boolean;
   action?: PlayerActionType;
   amount?: number;
@@ -119,6 +125,7 @@ export interface PublicTableSnapshot {
   small_blind: number;
   big_blind: number;
   buy_in: number;
+  hand_count: number;
   max_players: number;
   seated_count: number;
   hand_state: Phase;
@@ -168,6 +175,7 @@ export interface TableSnapshot {
   room_id: string;
   table_info?: PublicTableSnapshot;
   buy_in?: number;
+  hand_count?: number;
   hand_state: Phase;
   betting_round: Phase;
   phase: Phase;

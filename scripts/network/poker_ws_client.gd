@@ -106,8 +106,8 @@ func select_avatar(avatar_id: String) -> int:
 func list_tables() -> int:
 	return send_message(PokerProtocolScript.list_tables())
 
-func create_table(table_name: String = "") -> int:
-	return send_message(PokerProtocolScript.create_table(table_name))
+func create_table(table_name: String = "", config: Dictionary = {}) -> int:
+	return send_message(PokerProtocolScript.create_table(table_name, config))
 
 func join_table(target_room_id: String) -> int:
 	room_id = target_room_id

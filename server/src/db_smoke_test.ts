@@ -37,16 +37,16 @@ const room = manager.createRoom();
 manager.handle("db_smoke_player", { type: "join_room", room_id: room.id });
 manager.handle("db_smoke_player", { type: "sit_down", room_id: room.id, seat_index: 0, buy_in: 999999 });
 const afterBuyIn = manager.adminSnapshot(false);
-if (Number(afterBuyIn.total_wallet_chips) !== 8500) throw new Error("sit_down should deduct buy-in from wallet");
-if (room.table.getSeat(0)?.chips !== 1000) throw new Error("sit_down should put fixed 1000 table chips on the seat");
+if (Number(afterBuyIn.total_wallet_chips) !== 4500) throw new Error("sit_down should deduct room buy-in from wallet");
+if (room.table.getSeat(0)?.chips !== 5000) throw new Error("sit_down should put room buy-in table chips on the seat");
 
 manager.handle("db_smoke_player", { type: "add_table_chips", room_id: room.id, amount: 500 });
 const afterAdd = manager.adminSnapshot(false);
-if (Number(afterAdd.total_wallet_chips) !== 8000) throw new Error("add_table_chips should deduct wallet chips");
-if (room.table.getSeat(0)?.chips !== 1500) throw new Error("add_table_chips should increase table chips");
+if (Number(afterAdd.total_wallet_chips) !== 4000) throw new Error("add_table_chips should deduct wallet chips");
+if (room.table.getSeat(0)?.chips !== 5500) throw new Error("add_table_chips should increase table chips");
 
 expectThrows("insufficient_chips", () => manager.handle("db_smoke_player", { type: "add_table_chips", room_id: room.id, amount: 999999 }));
-if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 8000) throw new Error("failed add_table_chips should not change wallet");
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 4000) throw new Error("failed add_table_chips should not change wallet");
 
 manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id });
 const afterCashOut = manager.adminSnapshot(false);
@@ -72,14 +72,29 @@ if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeHandWallet
 
 const poor = manager.connect();
 manager.handle(poor.id, { type: "hello", player_id: "db_smoke_poor", name: "DB Smoke Poor" });
-for (let i = 0; i < 11; i += 1) {
-  const poorRoom = manager.createRoom();
-  manager.handle("db_smoke_poor", { type: "join_room", room_id: poorRoom.id });
-  manager.handle("db_smoke_poor", { type: "sit_down", room_id: poorRoom.id, seat_index: 0 });
-}
-const poorRoom = manager.createRoom();
+const poorRoom = manager.createRoom({ buyIn: 50000, smallBlind: 100, bigBlind: 200, handCount: 20 });
 manager.handle("db_smoke_poor", { type: "join_room", room_id: poorRoom.id });
 expectThrows("insufficient_chips", () => manager.handle("db_smoke_poor", { type: "sit_down", room_id: poorRoom.id, seat_index: 0 }));
+
+const configClient = manager.connect();
+manager.handle(configClient.id, { type: "hello", player_id: "db_smoke_config", name: "DB Smoke Config" });
+manager.handle("db_smoke_config", {
+  type: "create_table",
+  table_name: "Config Test",
+  buy_in: 10000,
+  small_blind: 50,
+  big_blind: 100,
+  hand_count: 20,
+});
+const configAdmin = manager.adminSnapshot(false);
+const configTables = configAdmin.table_list as Array<Record<string, unknown>>;
+const configTable = configTables.find((table) => table.table_name === "Config Test");
+if (!configTable) throw new Error("create_table should add a public table");
+if (Number(configTable.buy_in) !== 10000) throw new Error("create_table should preserve selected buy-in");
+if (Number(configTable.small_blind) !== 50 || Number(configTable.big_blind) !== 100) throw new Error("create_table should preserve selected blinds");
+if (Number(configTable.hand_count) !== 20) throw new Error("create_table should preserve selected hand count");
+expectThrows("invalid_table_config", () => manager.handle("db_smoke_config", { type: "create_table", buy_in: 12345, small_blind: 25, big_blind: 50, hand_count: 10 }));
+expectThrows("invalid_table_config", () => manager.handle("db_smoke_config", { type: "create_table", buy_in: 10000, small_blind: 10, big_blind: 20, hand_count: 10 }));
 
 console.log("DB_SMOKE_OK");
 console.log(JSON.stringify({ db_path: process.env.TEXAS_DB_PATH, player_count: manager.adminSnapshot(false).player_count, total_wallet_chips: manager.adminSnapshot(false).total_wallet_chips }, null, 2));

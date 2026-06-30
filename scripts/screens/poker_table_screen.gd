@@ -29,7 +29,7 @@ const ServerTableSnapshotScript := preload("res://scripts/state/table_snapshot.g
 
 const DESIGN_SIZE := Vector2(2560, 1000)
 const LOCAL_SERVER_URL := "ws://127.0.0.1:8080"
-const SERVER_DEFAULT_BUY_IN := 1000
+const SERVER_DEFAULT_BUY_IN := 5000
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
 const FLYING_CARD_BACK_PATH := "res://assets/ui/cardback/asset_02.png"
 const FLYING_CHIP_PATH := "res://assets/ui/chips/chip_stack_purple.png"
@@ -454,6 +454,8 @@ func _connect_authoritative_server() -> void:
 		_poker_ws_client.profile_synced.connect(_on_server_profile_synced)
 		_poker_ws_client.wallet_synced.connect(_on_server_wallet_synced)
 		_poker_ws_client.daily_login_awarded.connect(_on_server_daily_login_awarded)
+		_poker_ws_client.table_created.connect(_on_server_table_created)
+		_poker_ws_client.table_joined.connect(_on_server_table_joined)
 		_poker_ws_client.table_snapshot_received.connect(_on_server_table_snapshot_received)
 		_poker_ws_client.private_snapshot_received.connect(_on_server_private_snapshot_received)
 		_poker_ws_client.server_error.connect(_on_server_error)
@@ -487,7 +489,7 @@ func _on_server_hello_received(player_id: String, room_id: String) -> void:
 		_send_server_message(_poker_ws_client.join_room(_server_room_id), "join_room %s" % _server_room_id)
 	if _server_room_id == "" and not _server_create_room_requested:
 		_server_create_room_requested = true
-		_send_server_message(_poker_ws_client.create_room(), "create_room")
+		_send_server_message(_poker_ws_client.create_table(_server_create_table_name(), _server_create_table_config()), "create_table")
 		return
 	_try_server_sit_ready()
 
@@ -527,6 +529,72 @@ func _try_server_sit_ready() -> void:
 	_send_server_message(_poker_ws_client.ready(true), "ready")
 	_append_session_log("Start bots with: npm.cmd run bot -- --room %s --count 2 --start-seat 1" % _server_room_id)
 	_append_session_log("Press S to request start_hand from the authoritative server.")
+
+func _server_create_table_name() -> String:
+	var player_name := PlayerProfileScript.get_player_name(ProfileServiceScript.new().get_current_profile())
+	if player_name == "":
+		player_name = _server_local_player_name
+	return "%s's Table" % player_name
+
+func _server_create_table_config() -> Dictionary:
+	var hand_count := TableLaunchContext.max_hands
+	if hand_count >= 999:
+		hand_count = 0
+	var buy_in := TableLaunchContext.buy_in
+	var wallet_chips := PlayerProfileScript.get_total_chips(ProfileServiceScript.new().get_current_profile())
+	if not [5000, 10000, 20000, 50000].has(buy_in) or buy_in > wallet_chips:
+		buy_in = 5000
+		for option in [5000, 10000, 20000, 50000]:
+			var value := int(option)
+			if value <= wallet_chips:
+				buy_in = value
+	return {
+		"buy_in": buy_in,
+		"small_blind": TableLaunchContext.small_blind,
+		"big_blind": TableLaunchContext.big_blind,
+		"hand_count": hand_count,
+		"max_players": 6,
+		"is_public": true,
+	}
+
+func _on_server_table_created(room_id: String, table_info: Dictionary) -> void:
+	_apply_server_table_info(room_id, table_info)
+	_try_server_sit_ready()
+
+func _on_server_table_joined(room_id: String, table_info: Dictionary) -> void:
+	_apply_server_table_info(room_id, table_info)
+	_try_server_sit_ready()
+
+func _apply_server_table_info(room_id: String, table_info: Dictionary) -> void:
+	if room_id != "":
+		_server_room_id = room_id
+		_append_session_log("Authoritative room_id: %s" % _server_room_id)
+	var buy_in := int(table_info.get("buy_in", TableLaunchContext.buy_in))
+	var small_blind := int(table_info.get("small_blind", TableLaunchContext.small_blind))
+	var big_blind := int(table_info.get("big_blind", TableLaunchContext.big_blind))
+	var max_hands := int(table_info.get("hand_count", TableLaunchContext.max_hands))
+	if max_hands <= 0:
+		max_hands = 999
+	TableLaunchContext.buy_in = buy_in
+	TableLaunchContext.small_blind = small_blind
+	TableLaunchContext.big_blind = big_blind
+	TableLaunchContext.max_hands = max_hands
+	if _table_session != null:
+		_table_session.buy_in = buy_in
+		_table_session.starting_chips = buy_in
+		_table_session.current_table_chips = buy_in
+		_table_session.session_start_chips = buy_in
+		_table_session.session_end_chips = buy_in
+		_table_session.session_profit = 0
+		_table_session.small_blind = small_blind
+		_table_session.big_blind = big_blind
+		_table_session.max_hands = max_hands
+	_append_session_log("Server table config: buy-in %s, blinds %s / %s, hands %s." % [
+		_format_chips(buy_in),
+		str(small_blind),
+		str(big_blind),
+		"Unlimited" if max_hands >= 999 else str(max_hands),
+	])
 
 func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
 	var apply_start := Time.get_ticks_msec()
@@ -643,6 +711,8 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	var server_buy_in: int = int(server_snapshot.get("buy_in", table_info.get("buy_in", SERVER_DEFAULT_BUY_IN)))
 	if server_buy_in <= 0:
 		server_buy_in = SERVER_DEFAULT_BUY_IN
+	var server_small_blind := int(table_info.get("small_blind", server_snapshot.get("small_blind", 25)))
+	var server_big_blind := int(table_info.get("big_blind", server_snapshot.get("big_blind", 50)))
 	var server_hand_id := int(server_snapshot.get("hand_id", 0))
 	var private_hand_id := int(private_snapshot.get("hand_id", -1))
 	var private_matches_hand := private_hand_id == server_hand_id
@@ -711,7 +781,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"buy_in": server_buy_in,
 		"table_info": table_info,
 		"hand_id": "hand_%s" % str(server_hand_id),
-		"blinds_text": "%d / %d" % [int(server_snapshot.get("small_blind", 25)), int(server_snapshot.get("big_blind", 50))],
+		"blinds_text": "%d / %d" % [server_small_blind, server_big_blind],
 		"phase": phase,
 		"room_state": phase,
 		"pot": total_pot,

@@ -857,6 +857,13 @@ func _start_quick_play_from_setup() -> void:
 	if PlayerProfileScript.get_total_chips(_player_profile) < _selected_quick_buy_in:
 		_refresh_quick_play_setup_options()
 		return
+	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
+		var table_name := "%s's Table" % PlayerProfileScript.get_player_name(_player_profile)
+		_hide_quick_play_setup()
+		_start_table_launch_transition("Creating server table...", func() -> void:
+			_profile_ws_client.create_table(table_name, _quick_server_table_config())
+		)
+		return
 	var service := ProfileServiceScript.new()
 	var buy_in_profile: Dictionary = service.deduct_table_buy_in(_selected_quick_buy_in)
 	if buy_in_profile.is_empty():
@@ -876,6 +883,20 @@ func _start_quick_play_from_setup() -> void:
 	_start_table_launch_transition("Finding a public chip table...", func() -> void:
 		_open_backend_table(_local_backend.quick_join_public_table(_player_profile, setup_config))
 	)
+
+
+func _quick_server_table_config() -> Dictionary:
+	var hand_count := _selected_quick_max_hands
+	if hand_count >= 999:
+		hand_count = 0
+	return {
+		"buy_in": _selected_quick_buy_in,
+		"small_blind": _selected_quick_small_blind,
+		"big_blind": _selected_quick_big_blind,
+		"hand_count": hand_count,
+		"max_players": 6,
+		"is_public": true,
+	}
 
 
 func _update_quick_play_setup_profile() -> void:
@@ -997,7 +1018,12 @@ func _open_server_table(room_id: String, table_info: Dictionary) -> void:
 	_open_backend_table(_server_table_context(room_id, table_info))
 
 func _server_table_context(room_id: String, table_info: Dictionary) -> Dictionary:
-	var buy_in := int(table_info.get("buy_in", 1000))
+	var buy_in := int(table_info.get("buy_in", 5000))
+	var small_blind := int(table_info.get("small_blind", 25))
+	var big_blind := int(table_info.get("big_blind", 50))
+	var max_hands := int(table_info.get("hand_count", table_info.get("max_hands", 10)))
+	if max_hands <= 0:
+		max_hands = 999
 	return {
 		"mode": "quick_play",
 		"backend_type": "server_authoritative",
@@ -1006,8 +1032,8 @@ func _server_table_context(room_id: String, table_info: Dictionary) -> Dictionar
 		"room_id": room_id,
 		"seats": [],
 		"buy_in": buy_in,
-		"small_blind": int(table_info.get("small_blind", 10)),
-		"big_blind": int(table_info.get("big_blind", 20)),
+		"small_blind": small_blind,
+		"big_blind": big_blind,
 		"is_training": false,
 		"table_type": "public_chip",
 		"uses_practice_chips": false,
@@ -1015,7 +1041,7 @@ func _server_table_context(room_id: String, table_info: Dictionary) -> Dictionar
 		"buy_in_deducted_from_wallet": false,
 		"allow_debug_tools": true,
 		"ai_player_count": 0,
-		"max_hands": 999,
+		"max_hands": max_hands,
 		"table_session": {
 			"mode": "quick_play",
 			"table_type": "public_chip",
@@ -1025,9 +1051,9 @@ func _server_table_context(room_id: String, table_info: Dictionary) -> Dictionar
 			"buy_in": buy_in,
 			"starting_chips": buy_in,
 			"current_table_chips": buy_in,
-			"small_blind": int(table_info.get("small_blind", 10)),
-			"big_blind": int(table_info.get("big_blind", 20)),
-			"max_hands": 999,
+			"small_blind": small_blind,
+			"big_blind": big_blind,
+			"max_hands": max_hands,
 		},
 	}
 
@@ -1422,7 +1448,14 @@ func _on_join_pressed(room_id: String) -> void:
 func _create_public_chip_table_from_browser() -> void:
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
 		_start_table_launch_transition("Creating server table...", func() -> void:
-			_profile_ws_client.create_table("%s's Table" % PlayerProfileScript.get_player_name(_player_profile))
+			_profile_ws_client.create_table("%s's Table" % PlayerProfileScript.get_player_name(_player_profile), {
+				"buy_in": 10000,
+				"small_blind": 25,
+				"big_blind": 50,
+				"hand_count": 10,
+				"max_players": 6,
+				"is_public": true,
+			})
 		)
 		return
 	_start_table_launch_transition("Creating public table...", func() -> void:

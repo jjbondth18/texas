@@ -26,15 +26,21 @@ interface Room {
   smallBlind: number;
   bigBlind: number;
   buyIn: number;
+  handCount: number;
   maxPlayers: number;
   isPublic: boolean;
   createdAt: string;
 }
 
-const TABLE_BUY_IN = 1000;
-const DEFAULT_SMALL_BLIND = 10;
-const DEFAULT_BIG_BLIND = 20;
+const DEFAULT_TABLE_BUY_IN = 5000;
+const DEFAULT_SMALL_BLIND = 25;
+const DEFAULT_BIG_BLIND = 50;
+const DEFAULT_HAND_COUNT = 10;
 const DEFAULT_MAX_PLAYERS = 6;
+const DEV_BOT_MIN_WALLET_CHIPS = 50000;
+const ALLOWED_BUY_INS = new Set([5000, 10000, 20000, 50000]);
+const ALLOWED_BLIND_PAIRS = new Set(["25/50", "50/100", "100/200"]);
+const ALLOWED_HAND_COUNTS = new Set([0, 5, 10, 20]);
 
 export class RoomManager {
   private clients = new Map<string, Client>();
@@ -91,7 +97,7 @@ export class RoomManager {
       return;
     }
     if (message.type === "create_table") {
-      const room = this.createRoom({ tableName: String(message.table_name || "").trim() || undefined });
+      const room = this.createRoom(this.tableConfigFromMessage(message));
       this.joinRoom(client, room.id);
       const table = this.tableSnapshot(room);
       this.recordLog(`${client.id} created public table ${room.id}`);
@@ -171,7 +177,7 @@ export class RoomManager {
     this.broadcast(room);
   }
 
-  createRoom(options: Partial<Pick<Room, "tableName" | "smallBlind" | "bigBlind" | "buyIn" | "maxPlayers" | "isPublic">> = {}): Room {
+  createRoom(options: Partial<Pick<Room, "tableName" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "maxPlayers" | "isPublic">> = {}): Room {
     const id = `room_${this.nextRoomId++}`;
     const table = new TableState(id);
     table.smallBlind = options.smallBlind ?? DEFAULT_SMALL_BLIND;
@@ -183,7 +189,8 @@ export class RoomManager {
       tableName: options.tableName || `Public Table ${this.nextRoomId - 1}`,
       smallBlind: table.smallBlind,
       bigBlind: table.bigBlind,
-      buyIn: options.buyIn ?? TABLE_BUY_IN,
+      buyIn: options.buyIn ?? DEFAULT_TABLE_BUY_IN,
+      handCount: options.handCount ?? DEFAULT_HAND_COUNT,
       maxPlayers: options.maxPlayers ?? DEFAULT_MAX_PLAYERS,
       isPublic: options.isPublic ?? true,
       createdAt: new Date().toISOString(),
@@ -232,6 +239,10 @@ export class RoomManager {
         return {
           room_id: room.id,
           table_name: room.tableName,
+          small_blind: room.smallBlind,
+          big_blind: room.bigBlind,
+          buy_in: room.buyIn,
+          hand_count: room.handCount,
           seated_count: this.seatedCount(room),
           is_public: room.isPublic,
           connected_player_ids: [...room.clients],
@@ -279,6 +290,7 @@ export class RoomManager {
       small_blind: room.smallBlind,
       big_blind: room.bigBlind,
       buy_in: room.buyIn,
+      hand_count: room.handCount,
       max_players: room.maxPlayers,
       seated_count: this.seatedCount(room),
       hand_state: room.table.phase,
@@ -307,6 +319,7 @@ export class RoomManager {
     const avatarId = this.avatars.hasAvatar(client.id, requestedAvatarId) ? requestedAvatarId : "default";
     const profile = this.players.upsert(client.id, displayName, avatarId);
     const daily = this.loginBonus.claimTodayIfNeeded(client.id);
+    this.ensureDevBotWallet(client.id);
     const wallet = this.wallets.get(client.id)!;
     const unlocked = this.avatars.getUnlockedAvatars(client.id);
     client.name = profile.display_name;
@@ -364,9 +377,9 @@ export class RoomManager {
     if (!seat || seat.playerId) throw new Error("seat is not available");
     this.wallets.ensure(client.id);
     const wallet = this.wallets.get(client.id);
-    if (!wallet || wallet.chips < TABLE_BUY_IN) throw new Error("insufficient_chips");
-    this.wallets.deductChips(client.id, TABLE_BUY_IN);
-    room.table.sitDown(toPlayer(client), seatIndex, TABLE_BUY_IN);
+    if (!wallet || wallet.chips < room.buyIn) throw new Error("insufficient_chips");
+    this.wallets.deductChips(client.id, room.buyIn);
+    room.table.sitDown(toPlayer(client), seatIndex, room.buyIn);
     this.sendWalletSnapshot(client, room.id);
   }
 
@@ -409,6 +422,7 @@ export class RoomManager {
     const snapshot = {
       ...room.table.publicSnapshot(),
       buy_in: room.buyIn,
+      hand_count: room.handCount,
       table_info: this.tableSnapshot(room),
     };
     for (const playerId of room.clients) {
@@ -431,6 +445,34 @@ export class RoomManager {
     if (wallet) this.send(client, { type: "wallet_snapshot", player_id: client.id, room_id: roomId, wallet });
   }
 
+  private tableConfigFromMessage(message: ClientMessage): Partial<Pick<Room, "tableName" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "maxPlayers" | "isPublic">> {
+    const buyIn = Math.floor(numberOr(message.buy_in, DEFAULT_TABLE_BUY_IN));
+    const smallBlind = Math.floor(numberOr(message.small_blind, DEFAULT_SMALL_BLIND));
+    const bigBlind = Math.floor(numberOr(message.big_blind, DEFAULT_BIG_BLIND));
+    const handCount = normalizeHandCount(message.hand_count, DEFAULT_HAND_COUNT);
+    const maxPlayers = Math.floor(numberOr(message.max_players, DEFAULT_MAX_PLAYERS));
+    if (!ALLOWED_BUY_INS.has(buyIn)) throw new Error("invalid_table_config");
+    if (!ALLOWED_BLIND_PAIRS.has(`${smallBlind}/${bigBlind}`)) throw new Error("invalid_table_config");
+    if (!ALLOWED_HAND_COUNTS.has(handCount)) throw new Error("invalid_table_config");
+    if (maxPlayers < 2 || maxPlayers > DEFAULT_MAX_PLAYERS) throw new Error("invalid_table_config");
+    return {
+      tableName: String(message.table_name || "").trim() || undefined,
+      smallBlind,
+      bigBlind,
+      buyIn,
+      handCount,
+      maxPlayers,
+      isPublic: message.is_public ?? true,
+    };
+  }
+
+  private ensureDevBotWallet(playerId: string): void {
+    if (!playerId.startsWith("bot_") && !playerId.startsWith("LocalBot")) return;
+    const wallet = this.wallets.get(playerId);
+    if (!wallet || wallet.chips >= DEV_BOT_MIN_WALLET_CHIPS) return;
+    this.wallets.addChips(playerId, DEV_BOT_MIN_WALLET_CHIPS - wallet.chips);
+  }
+
   private mustClient(playerId: string): Client {
     const client = this.clients.get(playerId);
     if (!client) throw new Error("unknown client");
@@ -450,6 +492,12 @@ function toPlayer(client: Client): Player {
 
 function numberOr(value: unknown, fallback: number): number {
   return Number.isFinite(Number(value)) ? Number(value) : fallback;
+}
+
+function normalizeHandCount(value: unknown, fallback: number): number {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (String(value).trim().toLowerCase() === "unlimited") return 0;
+  return Math.floor(numberOr(value, fallback));
 }
 
 function normalizePlayerId(value: string): string {

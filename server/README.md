@@ -88,7 +88,9 @@ Each bot sends `hello`, `join_room`, `sit_down`, and `ready`. On its turn it wai
 The local server owns the public table lobby in development:
 
 - `list_tables` returns public rooms with `room_id`, `table_name`, blinds, buy-in, seated count, hand state, and creation time.
-- `create_table` creates a public local-dev table using default `10 / 20` blinds, `1000` buy-in, and `6` max players.
+- `create_table` creates a public local-dev table from the requested table config after server whitelist validation.
+- Allowed local table configs are buy-ins `5000`, `10000`, `20000`, or `50000`; blinds `25 / 50`, `50 / 100`, or `100 / 200`; and hand counts `5`, `10`, `20`, or `0` / `unlimited`.
+- If no config is supplied, the development fallback is `25 / 50` blinds, `5000` buy-in, `10` hands, and `6` max players.
 - `join_table` checks the room exists and is not full, then attaches the websocket client to that room. It does not sit the player down; the official poker table screen still performs `sit_down` and `ready` after launch.
 - `room_not_found` and `table_full` are returned as server errors for invalid joins.
 
@@ -159,7 +161,7 @@ Wallet chips and table chips are separate local development balances:
 
 - `wallet.chips` is the account-style balance stored in SQLite.
 - `seat.chips` / table chips are the chips currently committed to a table seat.
-- `sit_down` uses a fixed local-dev buy-in of `1000` chips. The server deducts that amount from `wallet.chips` and puts it on the seat as table chips. Client-provided buy-in values are ignored in this first version.
+- `sit_down` uses the room's server-validated buy-in. The server deducts that amount from `wallet.chips` and puts it on the seat as table chips. Client-provided `sit_down` buy-in values are ignored; only the room table config controls the buy-in.
 - `add_table_chips` moves chips from the server wallet to the seated player's table stack. It is not a purchase or recharge, and it is only allowed while the table is waiting or between hands.
 - `cash_out` / `leave_seat` moves remaining table chips back to the server wallet and clears the seat. It is not allowed during an active hand in this first version.
 - Hand results only change table chips. The wallet is updated later when the player cashes out.

@@ -97,10 +97,12 @@ static func select_avatar(avatar_id: String) -> Dictionary:
 static func list_tables() -> Dictionary:
 	return _message(LIST_TABLES)
 
-static func create_table(table_name: String = "") -> Dictionary:
+static func create_table(table_name: String = "", config: Dictionary = {}) -> Dictionary:
 	var data := {}
 	if table_name != "":
 		data["table_name"] = table_name
+	for key in config.keys():
+		data[key] = config[key]
 	return _message(CREATE_TABLE, data)
 
 static func join_table(room_id: String) -> Dictionary:
