@@ -124,6 +124,28 @@ if (Number(configTable.small_blind) !== 50 || Number(configTable.big_blind) !== 
 if (Number(configTable.hand_count) !== 20) throw new Error("create_table should preserve selected hand count");
 expectThrows("invalid_table_config", () => manager.handle("db_smoke_config", { type: "create_table", buy_in: 12345, small_blind: 25, big_blind: 50, hand_count: 10 }));
 expectThrows("invalid_table_config", () => manager.handle("db_smoke_config", { type: "create_table", buy_in: 10000, small_blind: 10, big_blind: 20, hand_count: 10 }));
+
+const canonicalClient = manager.connect();
+manager.handle(canonicalClient.id, { type: "hello", auth_provider: "steam", external_id: "steam_canonical_flow", name: "Canonical Flow" });
+const canonicalPlayerId = canonicalClient.id;
+if (canonicalPlayerId === "steam_canonical_flow" || canonicalPlayerId === "local_player") throw new Error("steam canonical player_id should be an internal server id");
+const identityRoom = manager.createRoom();
+manager.handle(canonicalPlayerId, { type: "join_room", room_id: identityRoom.id, player_id: "local_player" });
+manager.handle(canonicalPlayerId, { type: "sit_down", room_id: identityRoom.id, seat_index: 0, player_id: "local_player" });
+const canonicalSeat = identityRoom.table.getSeat(0);
+if (canonicalSeat?.playerId !== canonicalPlayerId) throw new Error("sit_down must use connection canonical player_id, not payload player_id");
+manager.handle(canonicalPlayerId, { type: "ready", room_id: identityRoom.id, player_id: "local_player", ready: true });
+const canonicalSecond = manager.connect();
+manager.handle(canonicalSecond.id, { type: "hello", player_id: "canonical_second", name: "Canonical Second" });
+manager.handle("canonical_second", { type: "join_room", room_id: identityRoom.id });
+manager.handle("canonical_second", { type: "sit_down", room_id: identityRoom.id, seat_index: 1 });
+manager.handle("canonical_second", { type: "ready", room_id: identityRoom.id, ready: true });
+manager.handle(canonicalPlayerId, { type: "start_hand", room_id: identityRoom.id, player_id: "local_player" });
+const spectator = manager.connect();
+manager.handle(spectator.id, { type: "hello", player_id: "canonical_spectator", name: "Canonical Spectator" });
+manager.handle("canonical_spectator", { type: "join_room", room_id: identityRoom.id });
+expectThrows("player is not seated", () => manager.handle("canonical_spectator", { type: "ready", room_id: identityRoom.id, player_id: canonicalPlayerId, ready: true }));
+
 const steamClient = manager.connect();
 manager.handle(steamClient.id, { type: "hello", auth_provider: "steam", external_id: "steam_76561198000000000", name: "Steam Smoke" });
 if (countRows("player_identities", "provider = 'steam' AND external_id = 'steam_76561198000000000'") !== 1) throw new Error("steam provider should create identity");

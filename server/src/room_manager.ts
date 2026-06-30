@@ -92,7 +92,7 @@ export class RoomManager {
       const room = this.createRoom();
       this.joinRoom(client, room.id);
       this.recordLog(`${client.id} created ${room.id}`);
-      this.send(client, { type: "hello", request_id: message.request_id, room_id: room.id, player_id: client.id });
+      this.send(client, { type: "hello", request_id: message.request_id, room_id: room.id, player_id: client.id, server_player_id: client.id });
       this.broadcast(room);
       return;
     }
@@ -148,7 +148,7 @@ export class RoomManager {
         this.recordLog(`${client.id} joined ${room.id}`);
         break;
       case "sit_down":
-        this.sitDownWithWallet(room, client, numberOr(message.seat_index, 0));
+        this.sitDownWithWallet(room, client, numberOr(message.seat_index, 0), String(message.player_id || ""));
         this.recordLog(`${client.id} sat in ${room.id} seat=${numberOr(message.seat_index, 0)}`);
         break;
       case "add_table_chips":
@@ -161,16 +161,19 @@ export class RoomManager {
         this.recordLog(`${client.id} cashed out in ${room.id}`);
         break;
       case "ready":
+        this.requireSeated(room, client, message, "ready");
         room.table.setReady(client.id, message.ready ?? true);
         this.recordLog(`${client.id} ready=${message.ready ?? true} in ${room.id}`);
         break;
       case "start_hand":
+        this.requireSeated(room, client, message, "start_hand");
         room.table.startHand();
         processAutomaticTurns(room.table);
         this.recordLog(`${client.id} started hand in ${room.id}`);
         break;
       case "player_action":
         if (!message.action) throw new Error("action is required");
+        this.requireSeated(room, client, message, "player_action");
         applyPlayerAction(room.table, client.id, message.action, numberOr(message.amount, 0));
         this.recordLog(`${client.id} action=${message.action} amount=${numberOr(message.amount, 0)} in ${room.id}`);
         break;
@@ -391,7 +394,7 @@ export class RoomManager {
     client.avatarId = profile.avatar_id;
   }
 
-  private sitDownWithWallet(room: Room, client: Client, seatIndex: number): void {
+  private sitDownWithWallet(room: Room, client: Client, seatIndex: number, payloadPlayerId = ""): void {
     const seat = room.table.getSeat(seatIndex);
     if (!seat || seat.playerId) throw new Error("seat is not available");
     this.wallets.ensure(client.id);
@@ -400,8 +403,24 @@ export class RoomManager {
     this.wallets.deductChips(client.id, room.buyIn, { reason: "table_buy_in", relatedRoomId: room.id });
     room.table.sitDown(toPlayer(client), seatIndex, room.buyIn);
     const occupiedCount = this.occupiedSeatCount(room);
-    this.recordLog(`sit_down room=${room.id} player=${client.id} seat=${seatIndex} chips=${room.buyIn} occupied=${occupiedCount}`);
+    const acceptedSeat = room.table.getSeat(seatIndex);
+    this.recordLog(
+      `sit_down accepted room_id=${room.id} connection_player_id=${client.id} payload_player_id=${payloadPlayerId || "-"} seat_index=${seatIndex} seat_player_id=${acceptedSeat?.playerId || "-"} occupied_count=${occupiedCount}`,
+    );
     this.sendWalletSnapshot(client, room.id);
+  }
+
+  private requireSeated(room: Room, client: Client, message: ClientMessage, command: string): void {
+    if (room.table.getSeatByPlayer(client.id)) return;
+    this.recordNotSeated(room, client, message, command);
+    throw new Error("player is not seated");
+  }
+
+  private recordNotSeated(room: Room, client: Client, message: ClientMessage, command: string): void {
+    const seatPlayerIds = room.table.seats.map((seat) => seat.playerId || "-").join(",");
+    this.recordLog(
+      `player is not seated command=${command} room_id=${room.id} connection_player_id=${client.id} payload_player_id=${String(message.player_id || "-")} seat_player_ids=[${seatPlayerIds}]`,
+    );
   }
 
   private addTableChips(room: Room, client: Client, amount: number): void {

@@ -63,6 +63,11 @@ static func clear_table_session() -> void:
 	seats.clear()
 	room_id = ""
 
+static func set_seats(value: Array) -> void:
+	seats = []
+	for seat in value:
+		seats.append(Dictionary(seat).duplicate(true))
+
 static func set_player_profile(profile: Dictionary) -> void:
 	player_profile = PlayerProfileScript.normalized_dict(profile)
 
@@ -99,9 +104,7 @@ static func configure_from_context(context: Dictionary) -> void:
 	buy_in = int(context.get("buy_in", PlayerProfileScript.DEFAULT_TABLE_BUY_IN))
 	small_blind = int(context.get("small_blind", 25))
 	big_blind = int(context.get("big_blind", 50))
-	seats = []
-	for seat in Array(context.get("seats", [])):
-		seats.append(Dictionary(seat).duplicate(true))
+	set_seats(Array(context.get("seats", [])))
 	set_player_profile(Dictionary(context.get("local_player_profile", PlayerProfileScript.default_profile())))
 	table_session = Dictionary(context.get("table_session", _default_table_session())).duplicate(true)
 

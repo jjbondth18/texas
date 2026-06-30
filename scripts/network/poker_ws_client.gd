@@ -126,10 +126,14 @@ func _handle_message(message: Dictionary) -> void:
 	var type_value := String(message.get("type", ""))
 	match type_value:
 		PokerProtocolScript.HELLO:
-			player_id = String(message.get("player_id", player_id))
+			var canonical_player_id := String(message.get("server_player_id", message.get("player_id", player_id)))
+			if canonical_player_id != "":
+				player_id = canonical_player_id
 			room_id = String(message.get("room_id", room_id))
 			_emit_profile_payload(message)
-			hello_received.emit(player_id, room_id)
+			var is_authenticated_hello := message.has("server_player_id") or message.has("profile") or message.has("wallet") or message.has("unlocked_avatar_ids")
+			if is_authenticated_hello or room_id != "":
+				hello_received.emit(player_id, room_id)
 		PokerProtocolScript.PROFILE_SNAPSHOT:
 			_emit_profile_payload(message)
 		PokerProtocolScript.WALLET_SNAPSHOT:
