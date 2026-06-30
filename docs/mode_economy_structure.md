@@ -62,6 +62,34 @@ Gem Match remains a reserved server-required mode and does not enter the launch 
 - Training: AI practice mode using practice chips; results do not affect account balance or ranked stats.
 - Gem Match: future secure server mode; currently reserved and unavailable.
 
+## Quick vs Table Browser vs Friends Room
+
+Quick Play is the fast path. It only asks the player to choose between:
+
+- Chip Table: auto-join a public chip table using the default public chip table config.
+- Gem Match: reserved and unavailable until secure server matchmaking exists.
+
+Quick Play does not expose Buy-in, Blinds, Hand Count, Gem buy-in, or room creation settings. If the wallet cannot cover the default public chip table buy-in, Quick Play shows "Not enough wallet chips" and does not enter a table.
+
+Table Browser is the manual public chip table flow.
+
+- Existing public tables can be joined directly.
+- Joining an existing public table does not open the create setup panel.
+- Creating a public table opens a `CREATE PUBLIC TABLE` setup panel first.
+- Public table setup supports Buy-in, Blinds, Hand Count, and Max Players where supported.
+- Created tables use `table_type = "public_chip"`.
+- Public chip tables do not support Gem Match or Gem buy-in.
+- Quick Chip auto-join can seat players into the same public chip table registry.
+
+Friends Room is the private casual room flow.
+
+- Private rooms are created with a room code.
+- Creating a private room opens a `CREATE PRIVATE ROOM` setup panel first.
+- Private room setup supports Starting Stack / Buy-in, Blinds, Hand Count, and Max Players where supported.
+- Private rooms use `table_type = "private_room"` or `private_casual`.
+- Private rooms are not listed in the public table registry and are not selected by Quick Chip.
+- Private rooms do not support Gem Match or Gem buy-in.
+
 ## Leave / Timeout / Sit Out Rules
 
 These rules describe the local/mock table behavior and the target contract for the future server-authoritative table.

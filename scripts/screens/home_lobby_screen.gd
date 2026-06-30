@@ -20,6 +20,13 @@ const NAV_WIDTH := 280.0
 const MAIN_LEFT := 360.0
 const MAIN_RIGHT := 70.0
 const ROOM_BROWSER_COL_WIDTHS := [320, 200, 200, 260, 160]
+const DEFAULT_QUICK_PUBLIC_TABLE_CONFIG := {
+	"buy_in": 10000,
+	"small_blind": 50,
+	"big_blind": 100,
+	"max_hands": 10,
+	"max_players": 9,
+}
 
 var current_state: LobbyState = LobbyState.COLLAPSED
 var _background_root: Control
@@ -111,6 +118,22 @@ var _selected_quick_buy_in := 20000
 var _selected_quick_small_blind := 25
 var _selected_quick_big_blind := 50
 var _selected_quick_max_hands := 10
+var _public_table_setup_panel: PanelContainer
+var _private_room_setup_panel: PanelContainer
+var _public_table_setup_values := {
+	"buy_in": 10000,
+	"small_blind": 50,
+	"big_blind": 100,
+	"max_hands": 10,
+	"max_players": 6,
+}
+var _private_room_setup_values := {
+	"buy_in": 20000,
+	"small_blind": 50,
+	"big_blind": 100,
+	"max_hands": 10,
+	"max_players": 6,
+}
 var server_authoritative_profile := true
 var _profile_ws_client: PokerWsClient
 var _profile_server_connected := false
@@ -138,6 +161,7 @@ func _ready() -> void:
 	_build_social_panel()
 	_build_help_panel()
 	_build_quick_play_setup_panel()
+	_build_table_creation_setup_panels()
 	
 	_fade_overlay = ColorRect.new()
 	_fade_overlay.name = "FadeOverlay"
@@ -503,15 +527,16 @@ func _build_quick_play_setup_panel() -> void:
 
 	_quick_chip_settings_container = VBoxContainer.new()
 	_quick_chip_settings_container.add_theme_constant_override("separation", 12)
+	_quick_chip_settings_container.custom_minimum_size = Vector2(1, 168)
+	_quick_chip_settings_container.alignment = BoxContainer.ALIGNMENT_CENTER
 	column.add_child(_quick_chip_settings_container)
 	var chip_mode_note := Label.new()
-	chip_mode_note.text = "PUBLIC CHIP AUTO-JOIN\nQuickly join an available public chip table with account chips."
+	chip_mode_note.text = "CHIP TABLE\nAuto-join a public chip table."
 	chip_mode_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	chip_mode_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	chip_mode_note.custom_minimum_size = Vector2(520, 0)
 	HomeTheme.make_font_settings(chip_mode_note, 13, HomeTheme.MUTED)
 	_quick_chip_settings_container.add_child(chip_mode_note)
-	_build_quick_setup_section(_quick_chip_settings_container, "BUY-IN", _quick_buy_in_buttons, [5000, 10000, 20000, 50000], _select_quick_buy_in)
-	_build_quick_blinds_section(_quick_chip_settings_container)
-	_build_quick_setup_section(_quick_chip_settings_container, "HAND COUNT", _quick_hand_count_buttons, [5, 10, 20, 999], _select_quick_hand_count)
 
 	_build_quick_gem_placeholder(column)
 
@@ -522,7 +547,7 @@ func _build_quick_play_setup_panel() -> void:
 
 	var start_button := Button.new()
 	_quick_start_button = start_button
-	start_button.text = "START TABLE"
+	start_button.text = "JOIN QUICK TABLE"
 	start_button.custom_minimum_size = Vector2(180, 48)
 	start_button.focus_mode = Control.FOCUS_NONE
 	start_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -593,6 +618,187 @@ func _build_quick_gem_placeholder(parent: VBoxContainer) -> void:
 	detail_label.custom_minimum_size = Vector2(520, 0)
 	HomeTheme.make_font_settings(detail_label, 14, HomeTheme.MUTED)
 	_quick_gem_placeholder_container.add_child(detail_label)
+
+
+func _build_table_creation_setup_panels() -> void:
+	_public_table_setup_panel = _create_table_setup_panel("PublicTableSetupPanel")
+	_private_room_setup_panel = _create_table_setup_panel("PrivateRoomSetupPanel")
+
+
+func _create_table_setup_panel(panel_name: String) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.name = panel_name
+	panel.anchor_left = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -330
+	panel.offset_top = -270
+	panel.offset_right = 330
+	panel.offset_bottom = 270
+	panel.z_index = 62
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.visible = false
+	panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.018, 0.94), Color(0.9, 0.26, 1.0, 0.45), 12, 1))
+	_lobby_ui_root.add_child(panel)
+	return panel
+
+
+func _show_public_table_setup() -> void:
+	_render_table_creation_setup_panel(_public_table_setup_panel, true)
+	_show_table_creation_setup_panel(_public_table_setup_panel)
+
+
+func _show_private_room_setup() -> void:
+	_render_table_creation_setup_panel(_private_room_setup_panel, false)
+	_show_table_creation_setup_panel(_private_room_setup_panel)
+
+
+func _show_table_creation_setup_panel(panel: PanelContainer) -> void:
+	if panel == null:
+		return
+	if _public_table_setup_panel != null and _public_table_setup_panel != panel:
+		_public_table_setup_panel.visible = false
+	if _private_room_setup_panel != null and _private_room_setup_panel != panel:
+		_private_room_setup_panel.visible = false
+	panel.visible = true
+	panel.modulate.a = 0.0
+	var tween := create_tween()
+	tween.tween_property(panel, "modulate:a", 1.0, 0.14).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+
+func _hide_table_creation_setup_panels() -> void:
+	if _public_table_setup_panel != null:
+		_public_table_setup_panel.visible = false
+	if _private_room_setup_panel != null:
+		_private_room_setup_panel.visible = false
+
+
+func _render_table_creation_setup_panel(panel: PanelContainer, public_table: bool) -> void:
+	if panel == null:
+		return
+	_clear_node_children(panel)
+	var values: Dictionary = _public_table_setup_values if public_table else _private_room_setup_values
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 26)
+	margin.add_theme_constant_override("margin_right", 26)
+	margin.add_theme_constant_override("margin_top", 22)
+	margin.add_theme_constant_override("margin_bottom", 22)
+	panel.add_child(margin)
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 12)
+	margin.add_child(column)
+
+	var title := Label.new()
+	title.text = "CREATE PUBLIC TABLE" if public_table else "CREATE PRIVATE ROOM"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HomeTheme.make_font_settings(title, 23, HomeTheme.TEXT)
+	column.add_child(title)
+
+	var note := Label.new()
+	note.text = "Public chip table. No Gem matches." if public_table else "Private casual room. Not listed in public tables. No Gem matches."
+	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(note, 12, HomeTheme.MUTED)
+	column.add_child(note)
+
+	_add_table_setup_option_row(column, values, "buy_in", "BUY-IN" if public_table else "STARTING STACK / BUY-IN", [5000, 10000, 20000, 50000], public_table)
+	_add_blinds_setup_option_row(column, values, public_table)
+	_add_table_setup_option_row(column, values, "max_hands", "HAND COUNT", [5, 10, 20, 999], public_table)
+	_add_table_setup_option_row(column, values, "max_players", "MAX PLAYERS", [2, 6, 9], public_table)
+
+	var buttons := HBoxContainer.new()
+	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
+	buttons.add_theme_constant_override("separation", 14)
+	column.add_child(buttons)
+
+	var confirm := Button.new()
+	confirm.text = "CREATE" if public_table else "CREATE ROOM"
+	confirm.custom_minimum_size = Vector2(160, 44)
+	confirm.focus_mode = Control.FOCUS_NONE
+	confirm.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	confirm.add_theme_font_size_override("font_size", 14)
+	confirm.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.68), Color(1.0, 0.0, 0.5, 0.85), 22))
+	confirm.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.86), Color(1.0, 0.0, 0.5, 1.0), 22))
+	confirm.pressed.connect(Callable(self, "_confirm_public_table_setup") if public_table else Callable(self, "_confirm_private_room_setup"))
+	buttons.add_child(confirm)
+
+	var cancel := Button.new()
+	cancel.text = "CANCEL"
+	cancel.custom_minimum_size = Vector2(128, 44)
+	cancel.focus_mode = Control.FOCUS_NONE
+	cancel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	cancel.add_theme_font_size_override("font_size", 13)
+	cancel.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.58), Color(0.36, 0.42, 0.7, 0.28), 22))
+	cancel.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.035, 0.04, 0.085, 0.82), Color(0.78, 0.58, 1.0, 0.55), 22))
+	cancel.pressed.connect(_hide_table_creation_setup_panels)
+	buttons.add_child(cancel)
+
+
+func _add_table_setup_option_row(parent: VBoxContainer, values: Dictionary, key: String, label_text: String, options: Array, public_table: bool) -> void:
+	var label := Label.new()
+	label.text = label_text
+	HomeTheme.make_font_settings(label, 12, HomeTheme.MUTED)
+	parent.add_child(label)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	parent.add_child(row)
+	for option_item in options:
+		var option_value: int = int(option_item)
+		var button := _table_setup_option_button(_table_setup_option_label(key, option_value), int(values.get(key, 0)) == option_value)
+		button.pressed.connect(func() -> void:
+			values[key] = option_value
+			_render_table_creation_setup_panel(_public_table_setup_panel if public_table else _private_room_setup_panel, public_table)
+		)
+		row.add_child(button)
+
+
+func _add_blinds_setup_option_row(parent: VBoxContainer, values: Dictionary, public_table: bool) -> void:
+	var label := Label.new()
+	label.text = "BLINDS"
+	HomeTheme.make_font_settings(label, 12, HomeTheme.MUTED)
+	parent.add_child(label)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	parent.add_child(row)
+	for blind_pair in [[25, 50], [50, 100], [100, 200]]:
+		var small: int = int(blind_pair[0])
+		var big: int = int(blind_pair[1])
+		var selected := int(values.get("small_blind", 0)) == small and int(values.get("big_blind", 0)) == big
+		var button := _table_setup_option_button("%d / %d" % [small, big], selected)
+		button.pressed.connect(func() -> void:
+			values["small_blind"] = small
+			values["big_blind"] = big
+			_render_table_creation_setup_panel(_public_table_setup_panel if public_table else _private_room_setup_panel, public_table)
+		)
+		row.add_child(button)
+
+
+func _table_setup_option_button(label_text: String, selected: bool) -> Button:
+	var button := Button.new()
+	button.text = label_text
+	button.custom_minimum_size = Vector2(132, 38)
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.add_theme_font_size_override("font_size", 12)
+	button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.20, 0.06, 0.17, 0.76) if selected else Color(0.018, 0.022, 0.052, 0.64), Color(1.0, 0.0, 0.5, 0.95) if selected else Color(0.55, 0.42, 0.95, 0.38), 18))
+	button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.86), Color(1.0, 0.0, 0.5, 1.0), 18))
+	return button
+
+
+func _table_setup_option_label(key: String, value: int) -> String:
+	if key == "max_hands":
+		return "Unlimited" if value >= 999 else "%d hands" % value
+	if key == "max_players":
+		return "%d players" % value
+	return _format_number(value)
+
+
+func _clear_node_children(node: Node) -> void:
+	for child in node.get_children():
+		node.remove_child(child)
+		child.queue_free()
 
 
 func _build_quick_setup_section(parent: VBoxContainer, title_text: String, buttons: Dictionary, values: Array, callback: Callable) -> void:
@@ -823,7 +1029,7 @@ func _on_mode_selected(id: String) -> void:
 		"room_browser":
 			set_state(LobbyState.ROOM_BROWSER)
 		"private_table":
-			_open_friends_room_lobby()
+			set_state(LobbyState.FRIENDS_ROOM)
 		"events":
 			_show_coming_soon("EVENTS")
 		_:
@@ -835,10 +1041,10 @@ func _show_quick_play_setup() -> void:
 	_reload_player_profile()
 	_update_quick_play_setup_profile()
 	_quick_play_mode = "chip"
-	_select_default_quick_buy_in()
-	_selected_quick_small_blind = 25
-	_selected_quick_big_blind = 50
-	_selected_quick_max_hands = 10
+	_selected_quick_buy_in = int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("buy_in", 10000))
+	_selected_quick_small_blind = int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("small_blind", 50))
+	_selected_quick_big_blind = int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("big_blind", 100))
+	_selected_quick_max_hands = int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("max_hands", 10))
 	_refresh_quick_play_setup_options()
 	_quick_play_setup_panel.visible = true
 	_quick_play_setup_panel.modulate.a = 0.0
@@ -854,7 +1060,8 @@ func _hide_quick_play_setup() -> void:
 func _start_quick_play_from_setup() -> void:
 	if _quick_play_mode != "chip":
 		return
-	if PlayerProfileScript.get_total_chips(_player_profile) < _selected_quick_buy_in:
+	var default_buy_in: int = int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("buy_in", 10000))
+	if PlayerProfileScript.get_total_chips(_player_profile) < default_buy_in:
 		_refresh_quick_play_setup_options()
 		return
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
@@ -865,7 +1072,7 @@ func _start_quick_play_from_setup() -> void:
 		)
 		return
 	var service := ProfileServiceScript.new()
-	var buy_in_profile: Dictionary = service.deduct_table_buy_in(_selected_quick_buy_in)
+	var buy_in_profile: Dictionary = service.deduct_table_buy_in(default_buy_in)
 	if buy_in_profile.is_empty():
 		_refresh_quick_play_setup_options()
 		return
@@ -873,10 +1080,11 @@ func _start_quick_play_from_setup() -> void:
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
 	var setup_config := {
-		"buy_in": _selected_quick_buy_in,
-		"small_blind": _selected_quick_small_blind,
-		"big_blind": _selected_quick_big_blind,
-		"max_hands": _selected_quick_max_hands,
+		"buy_in": default_buy_in,
+		"small_blind": int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("small_blind", 50)),
+		"big_blind": int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("big_blind", 100)),
+		"max_hands": int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("max_hands", 10)),
+		"max_players": int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("max_players", 9)),
 		"buy_in_deducted_from_wallet": true,
 	}
 	_hide_quick_play_setup()
@@ -886,15 +1094,15 @@ func _start_quick_play_from_setup() -> void:
 
 
 func _quick_server_table_config() -> Dictionary:
-	var hand_count := _selected_quick_max_hands
+	var hand_count: int = int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("max_hands", 10))
 	if hand_count >= 999:
 		hand_count = 0
 	return {
-		"buy_in": _selected_quick_buy_in,
-		"small_blind": _selected_quick_small_blind,
-		"big_blind": _selected_quick_big_blind,
+		"buy_in": int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("buy_in", 10000)),
+		"small_blind": int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("small_blind", 50)),
+		"big_blind": int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("big_blind", 100)),
 		"hand_count": hand_count,
-		"max_players": 6,
+		"max_players": int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("max_players", 9)),
 		"is_public": true,
 	}
 
@@ -1101,46 +1309,28 @@ func _select_quick_play_mode(mode: String) -> void:
 func _refresh_quick_play_setup_options() -> void:
 	var is_chip_mode := _quick_play_mode == "chip"
 	var total_chips := PlayerProfileScript.get_total_chips(_player_profile)
+	var default_buy_in: int = int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("buy_in", 10000))
 	if _quick_chip_settings_container != null:
 		_quick_chip_settings_container.visible = is_chip_mode
 	if _quick_gem_placeholder_container != null:
 		_quick_gem_placeholder_container.visible = not is_chip_mode
 	if _quick_start_button != null:
-		_quick_start_button.disabled = not is_chip_mode or _selected_quick_buy_in > total_chips
-		_quick_start_button.text = "START TABLE" if is_chip_mode else "COMING SOON"
+		_quick_start_button.disabled = not is_chip_mode or default_buy_in > total_chips
+		_quick_start_button.text = "JOIN QUICK TABLE" if is_chip_mode else "COMING SOON"
 		_quick_start_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if is_chip_mode else Control.CURSOR_ARROW
 		_quick_start_button.add_theme_stylebox_override("disabled", HomeTheme.make_button_style(Color(0.08, 0.06, 0.10, 0.62), Color(0.76, 0.52, 0.9, 0.28), 22))
 		_quick_start_button.add_theme_color_override("font_disabled_color", Color(0.78, 0.72, 0.86, 0.72))
 	if _quick_play_setup_hint_label != null:
 		if not is_chip_mode:
 			_quick_play_setup_hint_label.text = "Gem matches will use Gems in a future secure matchmaking update."
-		elif _selected_quick_buy_in > total_chips:
-			_quick_play_setup_hint_label.text = "Not enough wallet chips.\nBuy-in will be moved from wallet to table. Unused table chips return to wallet after the session."
+		elif default_buy_in > total_chips:
+			_quick_play_setup_hint_label.text = "Not enough wallet chips."
 		else:
-			_quick_play_setup_hint_label.text = "Buy-in will be moved from wallet to table.\nUnused table chips return to wallet after the session."
+			_quick_play_setup_hint_label.text = "Auto-join a public chip table."
 	for key_item in _quick_mode_buttons.keys():
 		var mode := String(key_item)
 		var button: Button = _quick_mode_buttons[key_item] as Button
 		_apply_quick_mode_style(button, mode == _quick_play_mode)
-	for key_item in _quick_buy_in_buttons.keys():
-		var value: int = int(key_item)
-		var button: Button = _quick_buy_in_buttons[key_item] as Button
-		if button == null:
-			continue
-		var disabled: bool = value > total_chips
-		_apply_quick_option_style(button, value == _selected_quick_buy_in, disabled)
-	for key_item in _quick_blinds_buttons.keys():
-		var key: String = String(key_item)
-		var button: Button = _quick_blinds_buttons[key_item] as Button
-		if button == null:
-			continue
-		_apply_quick_option_style(button, key == "%d/%d" % [_selected_quick_small_blind, _selected_quick_big_blind], false)
-	for key_item in _quick_hand_count_buttons.keys():
-		var value: int = int(key_item)
-		var button: Button = _quick_hand_count_buttons[key_item] as Button
-		if button == null:
-			continue
-		_apply_quick_option_style(button, value == _selected_quick_max_hands, false)
 
 
 func _apply_quick_mode_style(button: Button, selected: bool) -> void:
@@ -1246,6 +1436,68 @@ func _open_friends_room_lobby() -> void:
 	_friends_room_context = _local_backend.create_friends_room(_player_profile)
 	_update_friends_room_panel()
 	set_state(LobbyState.FRIENDS_ROOM)
+
+
+func _confirm_public_table_setup() -> void:
+	_hide_table_creation_setup_panels()
+	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
+		_start_table_launch_transition("Creating public table...", func() -> void:
+			_profile_ws_client.create_table("%s's Table" % PlayerProfileScript.get_player_name(_player_profile), {
+				"buy_in": int(_public_table_setup_values.get("buy_in", 10000)),
+				"small_blind": int(_public_table_setup_values.get("small_blind", 50)),
+				"big_blind": int(_public_table_setup_values.get("big_blind", 100)),
+				"hand_count": _normalized_hand_count_for_context(int(_public_table_setup_values.get("max_hands", 10))),
+				"max_players": int(_public_table_setup_values.get("max_players", 6)),
+				"is_public": true,
+			})
+		)
+		return
+	_reload_player_profile()
+	var buy_in: int = int(_public_table_setup_values.get("buy_in", 10000))
+	if PlayerProfileScript.get_total_chips(_player_profile) < buy_in:
+		_show_toast("Not enough wallet chips.")
+		return
+	_start_table_launch_transition("Creating public table...", func() -> void:
+		var table := _local_backend.create_public_table(_public_table_config_from_values(_public_table_setup_values))
+		_join_public_chip_table_after_wallet_check(String(table.get("table_id", "")))
+	)
+
+
+func _confirm_private_room_setup() -> void:
+	_hide_table_creation_setup_panels()
+	_start_table_launch_transition("Creating private room...", func() -> void:
+		_friends_room_context = _local_backend.create_friends_room(_player_profile, _private_room_config_from_values())
+		_open_backend_table(_friends_room_context)
+	)
+
+
+func _public_table_config_from_values(values: Dictionary) -> Dictionary:
+	var small_blind: int = int(values.get("small_blind", 50))
+	var big_blind: int = int(values.get("big_blind", 100))
+	return {
+		"table_name": "Public Chip %d/%d" % [small_blind, big_blind],
+		"small_blind": small_blind,
+		"big_blind": big_blind,
+		"buy_in": int(values.get("buy_in", 10000)),
+		"hand_count": int(values.get("max_hands", 10)),
+		"max_players": int(values.get("max_players", 6)),
+		"created_by": String(_player_profile.get("player_id", "local_player")),
+		"allow_quick_join": true,
+	}
+
+
+func _private_room_config_from_values() -> Dictionary:
+	return {
+		"buy_in": int(_private_room_setup_values.get("buy_in", 20000)),
+		"small_blind": int(_private_room_setup_values.get("small_blind", 50)),
+		"big_blind": int(_private_room_setup_values.get("big_blind", 100)),
+		"max_hands": int(_private_room_setup_values.get("max_hands", 10)),
+		"max_players": int(_private_room_setup_values.get("max_players", 6)),
+	}
+
+
+func _normalized_hand_count_for_context(value: int) -> int:
+	return 0 if value >= 999 else value
 
 func set_background_motion_enabled(value: bool) -> void:
 	background_motion_enabled = value
@@ -1442,33 +1694,49 @@ func _on_join_pressed(room_id: String) -> void:
 		return
 	_start_table_launch_transition("Joining public table...", func() -> void:
 		print("Transition complete. Poker table %s loaded." % room_id)
-		_open_backend_table(_local_backend.join_public_table(room_id, _player_profile))
+		_join_public_chip_table_after_wallet_check(room_id)
 	)
 
 func _create_public_chip_table_from_browser() -> void:
-	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
-		_start_table_launch_transition("Creating server table...", func() -> void:
-			_profile_ws_client.create_table("%s's Table" % PlayerProfileScript.get_player_name(_player_profile), {
-				"buy_in": 10000,
-				"small_blind": 25,
-				"big_blind": 50,
-				"hand_count": 10,
-				"max_players": 6,
-				"is_public": true,
-			})
-		)
+	_show_public_table_setup()
+
+
+func _join_public_chip_table_after_wallet_check(room_id: String) -> void:
+	if room_id == "":
+		_finish_table_launch_transition()
+		_show_coming_soon("TABLE")
 		return
-	_start_table_launch_transition("Creating public table...", func() -> void:
-		_reload_player_profile()
-		var table := _local_backend.create_public_table({
-			"small_blind": 25,
-			"big_blind": 50,
-			"buy_in": 10000,
-			"hand_count": 10,
-			"created_by": String(_player_profile.get("player_id", "local_player")),
-		})
-		_open_backend_table(_local_backend.join_public_table(String(table.get("table_id", "")), _player_profile))
-	)
+	var table_info := _find_public_table_info(room_id)
+	var buy_in: int = int(table_info.get("buy_in", 10000))
+	_reload_player_profile()
+	if PlayerProfileScript.get_total_chips(_player_profile) < buy_in:
+		_finish_table_launch_transition()
+		_show_toast("Not enough wallet chips.")
+		return
+	var service := ProfileServiceScript.new()
+	var buy_in_profile: Dictionary = service.deduct_table_buy_in(buy_in)
+	if buy_in_profile.is_empty():
+		_finish_table_launch_transition()
+		_show_toast("Not enough wallet chips.")
+		return
+	_player_profile = buy_in_profile
+	if _top_bar != null:
+		_top_bar.configure(_player_profile)
+	var context := _local_backend.join_public_table(room_id, _player_profile)
+	context["buy_in_deducted_from_wallet"] = true
+	var table_session: Dictionary = Dictionary(context.get("table_session", {}))
+	table_session["buy_in_deducted_from_wallet"] = true
+	context["table_session"] = table_session
+	_open_backend_table(context)
+
+
+func _find_public_table_info(room_id: String) -> Dictionary:
+	var rooms := _server_public_tables if _profile_server_connected else _local_backend.list_public_tables()
+	for room_value in rooms:
+		var room := _normalized_room_browser_table(Dictionary(room_value))
+		if String(room.get("room_id", "")) == room_id:
+			return room
+	return {}
 
 func _build_toast() -> void:
 	_toast_label = Label.new()
@@ -1688,14 +1956,14 @@ func _build_room_browser_panel() -> void:
 	title_box.add_child(browser_note)
 
 	var create_button := Button.new()
-	create_button.text = "CREATE PUBLIC CHIP TABLE"
+	create_button.text = "CREATE PUBLIC TABLE"
 	create_button.custom_minimum_size = Vector2(240, 38)
 	create_button.focus_mode = Control.FOCUS_NONE
 	create_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	create_button.add_theme_font_size_override("font_size", 13)
 	create_button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.60), Color(1.0, 0.0, 0.5, 0.80), 18))
 	create_button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.80), Color(1.0, 0.0, 0.5, 1.0), 18))
-	create_button.pressed.connect(_create_public_chip_table_from_browser)
+	create_button.pressed.connect(_show_public_table_setup)
 	title_box.add_child(create_button)
 	
 	var list_container := PanelContainer.new()
@@ -1892,7 +2160,7 @@ func _build_friends_room_panel() -> void:
 	room_box.add_child(button_row)
 
 	var start_button := Button.new()
-	start_button.text = "START MOCK TABLE"
+	start_button.text = "CREATE PRIVATE ROOM"
 	start_button.custom_minimum_size = Vector2(190, 42)
 	start_button.focus_mode = Control.FOCUS_NONE
 	start_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -1900,11 +2168,7 @@ func _build_friends_room_panel() -> void:
 	start_button.add_theme_color_override("font_color", Color(1, 1, 1, 0.96))
 	start_button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.60), Color(1.0, 0.0, 0.5, 0.80), 21))
 	start_button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.82), Color(1.0, 0.0, 0.5, 1.0), 21))
-	start_button.pressed.connect(func() -> void:
-		_start_table_launch_transition("Creating private room...", func() -> void:
-			_open_backend_table(_friends_room_context)
-		)
-	)
+	start_button.pressed.connect(_show_private_room_setup)
 	button_row.add_child(start_button)
 
 	var back_button := Button.new()

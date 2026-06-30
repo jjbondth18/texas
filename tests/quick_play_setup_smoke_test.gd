@@ -17,31 +17,17 @@ func _initialize() -> void:
 	var chips_label: Label = home.get("_quick_play_setup_chips_label") as Label
 	var hint_label: Label = home.get("_quick_play_setup_hint_label") as Label
 	_require(chips_label != null and chips_label.text.find("Wallet Chips:") != -1, "Quick Play setup must show wallet chips.")
-	_require(hint_label != null and hint_label.text.find("Buy-in will be moved from wallet to table.") != -1, "Quick Play setup must explain buy-in wallet transfer.")
-	_require(hint_label.text.find("Unused table chips return to wallet after the session.") != -1, "Quick Play setup must explain unused table chip return.")
+	_require(hint_label != null and hint_label.text.find("Auto-join a public chip table.") != -1, "Quick Play setup must describe auto-join.")
 
 	var mode_buttons: Dictionary = Dictionary(home.get("_quick_mode_buttons"))
 	_require(mode_buttons.has("chip") and mode_buttons.has("gem"), "Quick Play setup must offer Chip Table and Gem Match entries.")
 
 	var buy_in_buttons: Dictionary = Dictionary(home.get("_quick_buy_in_buttons"))
-	var high_buy_in_button: Button = buy_in_buttons.get(50000) as Button
-	_require(high_buy_in_button != null and high_buy_in_button.disabled, "Buy-in above total_chips must be disabled.")
-	home.set("_selected_quick_buy_in", 50000)
-	home.call("_refresh_quick_play_setup_options")
-	_require(hint_label.text.find("Not enough wallet chips.") != -1, "Quick Play setup must explain insufficient wallet chips.")
-	home.call("_select_quick_buy_in", 10000)
-
+	var blinds_buttons: Dictionary = Dictionary(home.get("_quick_blinds_buttons"))
 	var hand_count_buttons: Dictionary = Dictionary(home.get("_quick_hand_count_buttons"))
-	var five_hand_button: Button = hand_count_buttons.get(5) as Button
-	_require(five_hand_button != null, "Quick Play setup must offer 5 hands.")
-
-	home.call("_select_quick_buy_in", 10000)
-	home.call("_select_quick_blinds", 50, 100)
-	home.call("_select_quick_hand_count", 20)
-	_require(int(home.get("_selected_quick_buy_in")) == 10000, "Selected buy-in must update.")
-	_require(int(home.get("_selected_quick_small_blind")) == 50, "Selected small blind must update.")
-	_require(int(home.get("_selected_quick_big_blind")) == 100, "Selected big blind must update.")
-	_require(int(home.get("_selected_quick_max_hands")) == 20, "Selected hand count must update.")
+	_require(buy_in_buttons.is_empty(), "Quick Play setup must not expose Buy-in choices.")
+	_require(blinds_buttons.is_empty(), "Quick Play setup must not expose Blinds choices.")
+	_require(hand_count_buttons.is_empty(), "Quick Play setup must not expose Hand Count choices.")
 
 	home.call("_select_quick_play_mode", "gem")
 	var chip_settings: VBoxContainer = home.get("_quick_chip_settings_container") as VBoxContainer
@@ -49,7 +35,7 @@ func _initialize() -> void:
 	var start_button: Button = home.get("_quick_start_button") as Button
 	_require(chip_settings != null and not chip_settings.visible, "Gem Match must hide Chip Table settings.")
 	_require(gem_placeholder != null and gem_placeholder.visible, "Gem Match must show the coming soon placeholder.")
-	_require(start_button != null and start_button.disabled and start_button.text == "COMING SOON", "Gem Match must disable Start Table.")
+	_require(start_button != null and start_button.disabled and start_button.text == "COMING SOON", "Gem Match must disable Quick Table join.")
 
 	print("Quick play setup smoke test passed.")
 	quit(0)
