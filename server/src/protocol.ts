@@ -166,6 +166,8 @@ export interface ActionLogEntry {
 
 export interface TableSnapshot {
   room_id: string;
+  table_info?: PublicTableSnapshot;
+  buy_in?: number;
   hand_state: Phase;
   betting_round: Phase;
   phase: Phase;

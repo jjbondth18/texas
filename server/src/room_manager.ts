@@ -406,7 +406,11 @@ export class RoomManager {
   }
 
   private broadcast(room: Room): void {
-    const snapshot = room.table.publicSnapshot();
+    const snapshot = {
+      ...room.table.publicSnapshot(),
+      buy_in: room.buyIn,
+      table_info: this.tableSnapshot(room),
+    };
     for (const playerId of room.clients) {
       const client = this.clients.get(playerId);
       if (!client) continue;

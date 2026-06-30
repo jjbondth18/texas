@@ -2,6 +2,8 @@ extends RefCounted
 class_name TableSnapshot
 
 var room_id := ""
+var table_info: Dictionary = {}
+var buy_in := 0
 var phase := "waiting"
 var hand_id := 0
 var seats: Array = []
@@ -30,6 +32,8 @@ static func from_dict(data: Dictionary):
 
 func apply_table_snapshot(data: Dictionary) -> void:
 	room_id = String(data.get("room_id", room_id))
+	table_info = Dictionary(data.get("table_info", table_info)).duplicate(true)
+	buy_in = int(data.get("buy_in", table_info.get("buy_in", buy_in)))
 	phase = String(data.get("phase", phase))
 	hand_id = int(data.get("hand_id", hand_id))
 	seats = Array(data.get("seats", [])).duplicate(true)
@@ -69,6 +73,8 @@ func seat_for_player(player_id: String) -> Dictionary:
 func to_dict() -> Dictionary:
 	return {
 		"room_id": room_id,
+		"table_info": table_info.duplicate(true),
+		"buy_in": buy_in,
 		"phase": phase,
 		"hand_id": hand_id,
 		"seats": seats.duplicate(true),

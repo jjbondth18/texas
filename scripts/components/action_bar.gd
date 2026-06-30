@@ -141,12 +141,13 @@ func _ready() -> void:
 func set_local_player_info(local: Dictionary, phase: String = "preflop") -> void:
 	if local.is_empty():
 		return
+	var is_server_authoritative := bool(local.get("server_authoritative", false))
 	var chips := int(local.get("chips", 24500))
 	var buy_in := int(local.get("buy_in", 20000))
 	if buy_in <= 0:
-		buy_in = 20000
+		buy_in = 0 if is_server_authoritative else 20000
 	var profit := chips - buy_in
-	var win_rate := _phase_win_rate(phase)
+	var win_rate := String(local.get("win_rate", "N/A" if is_server_authoritative else _phase_win_rate(phase)))
 
 	_player_name_label.text = String(local.get("player_name", "Luna0581"))
 	_you_badge.visible = bool(local.get("is_local", true))

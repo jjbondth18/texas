@@ -29,6 +29,7 @@ const ServerTableSnapshotScript := preload("res://scripts/state/table_snapshot.g
 
 const DESIGN_SIZE := Vector2(2560, 1000)
 const LOCAL_SERVER_URL := "ws://127.0.0.1:8080"
+const SERVER_DEFAULT_BUY_IN := 1000
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
 const FLYING_CARD_BACK_PATH := "res://assets/ui/cardback/asset_02.png"
 const FLYING_CHIP_PATH := "res://assets/ui/chips/chip_stack_purple.png"
@@ -582,7 +583,7 @@ func _empty_server_ui_snapshot(message: String) -> Dictionary:
 	if local_name == "":
 		local_name = PlayerProfileScript.DEFAULT_PLAYER_NAME
 	var local_avatar_id: String = PlayerProfileScript.get_avatar_id(profile)
-	var local_chips: int = PlayerProfileScript.table_buy_in(profile)
+	var local_chips: int = SERVER_DEFAULT_BUY_IN
 	var seats: Array = []
 	for i in range(6):
 		var is_local := i == _server_local_seat_index
@@ -605,7 +606,9 @@ func _empty_server_ui_snapshot(message: String) -> Dictionary:
 			"is_big_blind": false,
 			"is_turn": false,
 			"last_action": "",
-			"buy_in": local_chips,
+			"buy_in": SERVER_DEFAULT_BUY_IN,
+			"server_authoritative": true,
+			"win_rate": "N/A",
 		})
 	var local_player: Dictionary = _find_local_player(seats)
 	return {
@@ -636,6 +639,10 @@ func _empty_server_ui_snapshot(message: String) -> Dictionary:
 func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapshot: Dictionary) -> Dictionary:
 	var phase: String = String(server_snapshot.get("betting_round", server_snapshot.get("hand_state", server_snapshot.get("phase", "waiting"))))
 	var room_id: String = String(server_snapshot.get("room_id", _server_room_id))
+	var table_info: Dictionary = Dictionary(server_snapshot.get("table_info", {}))
+	var server_buy_in: int = int(server_snapshot.get("buy_in", table_info.get("buy_in", SERVER_DEFAULT_BUY_IN)))
+	if server_buy_in <= 0:
+		server_buy_in = SERVER_DEFAULT_BUY_IN
 	var server_hand_id := int(server_snapshot.get("hand_id", 0))
 	var private_hand_id := int(private_snapshot.get("hand_id", -1))
 	var private_matches_hand := private_hand_id == server_hand_id
@@ -680,7 +687,9 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 			"last_action": _server_action_label(String(server_seat.get("last_action", ""))),
 			"last_action_amount": int(server_seat.get("last_action_amount", 0)),
 			"last_action_seq": int(server_snapshot.get("hand_id", 0)) * 1000 + int(server_seat.get("last_action_amount", 0)),
-			"buy_in": PlayerProfileScript.table_buy_in(ProfileServiceScript.new().get_current_profile()),
+			"buy_in": server_buy_in,
+			"server_authoritative": true,
+			"win_rate": "N/A",
 		})
 	var community_cards: Array = []
 	for card_item in Array(server_snapshot.get("community_cards", [])):
@@ -699,6 +708,8 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"source_model": "server_authoritative",
 		"table_id": room_id if room_id != "" else "authoritative_local",
 		"table_name": "Authoritative Local Table",
+		"buy_in": server_buy_in,
+		"table_info": table_info,
 		"hand_id": "hand_%s" % str(server_hand_id),
 		"blinds_text": "%d / %d" % [int(server_snapshot.get("small_blind", 25)), int(server_snapshot.get("big_blind", 50))],
 		"phase": phase,
@@ -2642,6 +2653,7 @@ func _apply_launch_context(target_snapshot: Dictionary) -> void:
 	_apply_local_profile_to_snapshot(target_snapshot)
 
 func _apply_local_profile_to_snapshot(target_snapshot: Dictionary) -> void:
+	var is_server_snapshot := String(target_snapshot.get("source_model", "")) == "server_authoritative"
 	var profile: Dictionary = TableLaunchContext.get_player_profile()
 	var local_name: String = PlayerProfileScript.get_player_name(profile)
 	var local_avatar_id: String = PlayerProfileScript.get_avatar_id(profile)
@@ -2656,7 +2668,12 @@ func _apply_local_profile_to_snapshot(target_snapshot: Dictionary) -> void:
 		seat["player_name"] = local_name
 		seat["avatar_id"] = local_avatar_id
 		seat["avatar_texture"] = local_avatar_texture
-		seat["buy_in"] = TableLaunchContext.buy_in
+		if is_server_snapshot:
+			seat["buy_in"] = int(target_snapshot.get("buy_in", seat.get("buy_in", SERVER_DEFAULT_BUY_IN)))
+			seat["server_authoritative"] = true
+			seat["win_rate"] = "N/A"
+		else:
+			seat["buy_in"] = TableLaunchContext.buy_in
 		seats[i] = seat
 	target_snapshot["seats"] = seats
 	target_snapshot["local_player"] = _find_local_player(seats)
