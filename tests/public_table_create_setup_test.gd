@@ -12,7 +12,8 @@ func _init() -> void:
 	_require(source.contains("\"BUY-IN\" if public_table"), "Public setup must include Buy-in")
 	_require(source.contains("BLINDS"), "Public setup must include Blinds")
 	_require(source.contains("HAND COUNT"), "Public setup must include Hand Count")
-	_require(source.contains("No Gem matches."), "Public setup must clarify no Gem matches")
+	_require(source.contains("Gem public tables require secure server matchmaking."), "Public setup must show disabled Gem copy")
+	_require(source.contains("var gem_disabled: bool = public_table"), "Public Gem tab must be disabled")
 	_require(source.contains("_local_backend.create_public_table(_public_table_config_from_values"), "Public confirm must create a public table from setup values")
 
 	PublicTableRegistryScript.reset()

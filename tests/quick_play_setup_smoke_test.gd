@@ -17,7 +17,7 @@ func _initialize() -> void:
 	var chips_label: Label = home.get("_quick_play_setup_chips_label") as Label
 	var hint_label: Label = home.get("_quick_play_setup_hint_label") as Label
 	_require(chips_label != null and chips_label.text.find("Wallet Chips:") != -1, "Quick Play setup must show wallet chips.")
-	_require(hint_label != null and hint_label.text.find("Auto-join a public chip table.") != -1, "Quick Play setup must describe auto-join.")
+	_require(hint_label != null and hint_label.text.find("selected stakes") != -1, "Quick Play setup must describe selected stakes.")
 
 	var mode_buttons: Dictionary = Dictionary(home.get("_quick_mode_buttons"))
 	_require(mode_buttons.has("chip") and mode_buttons.has("gem"), "Quick Play setup must offer Chip Table and Gem Match entries.")
@@ -25,9 +25,15 @@ func _initialize() -> void:
 	var buy_in_buttons: Dictionary = Dictionary(home.get("_quick_buy_in_buttons"))
 	var blinds_buttons: Dictionary = Dictionary(home.get("_quick_blinds_buttons"))
 	var hand_count_buttons: Dictionary = Dictionary(home.get("_quick_hand_count_buttons"))
-	_require(buy_in_buttons.is_empty(), "Quick Play setup must not expose Buy-in choices.")
-	_require(blinds_buttons.is_empty(), "Quick Play setup must not expose Blinds choices.")
-	_require(hand_count_buttons.is_empty(), "Quick Play setup must not expose Hand Count choices.")
+	_require(buy_in_buttons.has(5000) and buy_in_buttons.has(50000), "Quick Play setup must expose Buy-in choices.")
+	_require(blinds_buttons.has("25/50") and blinds_buttons.has("100/200"), "Quick Play setup must expose Blinds choices.")
+	_require(hand_count_buttons.has(5) and hand_count_buttons.has(999), "Quick Play setup must expose Hand Count choices.")
+	home.call("_select_quick_buy_in", 10000)
+	home.call("_select_quick_blinds", 50, 100)
+	home.call("_select_quick_hand_count", 20)
+	_require(int(home.get("_selected_quick_buy_in")) == 10000, "Quick selected buy-in must update.")
+	_require(int(home.get("_selected_quick_small_blind")) == 50, "Quick selected blinds must update.")
+	_require(int(home.get("_selected_quick_max_hands")) == 20, "Quick selected hand count must update.")
 
 	home.call("_select_quick_play_mode", "gem")
 	var chip_settings: VBoxContainer = home.get("_quick_chip_settings_container") as VBoxContainer
