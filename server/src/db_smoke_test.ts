@@ -185,6 +185,62 @@ const sitFail = sitFailMessages.find((message) => typeof message === "object" &&
 if (!sitFail || sitFail.ok !== false || sitFail.reason !== "insufficient_chips") throw new Error("failed sit_down should return sit_down_result ok=false insufficient_chips");
 if (Number(sitFail.wallet_chips) >= Number(sitFail.required_chips)) throw new Error("failed sit_down should include wallet_chips below required_chips");
 
+const warmupMessages: unknown[] = [];
+const warmupWs = { OPEN: 1, readyState: 1, send: (data: string) => warmupMessages.push(JSON.parse(data)) };
+const warmupClient = manager.connect(warmupWs as any);
+manager.handle(warmupClient.id, { type: "hello", player_id: "warmup_player", name: "Warmup Player" });
+const warmupRoom = manager.createRoom();
+manager.handle("warmup_player", { type: "join_room", room_id: warmupRoom.id });
+manager.handle("warmup_player", { type: "sit_down", room_id: warmupRoom.id, seat_index: 0 });
+const beforeWarmupWallet = Number(manager.adminSnapshot(false).total_wallet_chips);
+const beforeWarmupGems = Number(manager.adminSnapshot(false).total_wallet_gems);
+warmupMessages.length = 0;
+manager.handle("warmup_player", { type: "start_ai_warmup", room_id: warmupRoom.id });
+const warmupResult = warmupMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "start_ai_warmup_result") as
+  | { type: string; ok?: boolean; room_id?: string; reason?: string }
+  | undefined;
+if (!warmupResult || warmupResult.ok !== true || warmupResult.room_id !== warmupRoom.id) throw new Error("start_ai_warmup should return ok=true for one seated real player");
+const warmupSnapshot = warmupMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "table_snapshot") as
+  | { type: string; snapshot?: { is_ai_warmup?: boolean; table_state?: string; seats?: Array<{ warmup_ai?: boolean; is_ai?: boolean }> } }
+  | undefined;
+if (!warmupSnapshot?.snapshot?.is_ai_warmup || warmupSnapshot.snapshot.table_state !== "ai_warmup") throw new Error("warm-up snapshot should be marked ai_warmup");
+if ((warmupSnapshot.snapshot.seats ?? []).filter((seat) => seat.warmup_ai && seat.is_ai).length < 1) throw new Error("start_ai_warmup should add warm-up AI seats");
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeWarmupWallet) throw new Error("start_ai_warmup should not change account wallet chips");
+if (Number(manager.adminSnapshot(false).total_wallet_gems) !== beforeWarmupGems) throw new Error("start_ai_warmup should not change account wallet gems");
+const warmupHandResultRows = countRows("table_session_results");
+const warmupBaselineStack = warmupRoom.table.getSeatByPlayer("warmup_player")?.chips ?? 0;
+if (warmupRoom.table.currentTurnSeat === 0) {
+  manager.handle("warmup_player", { type: "player_action", room_id: warmupRoom.id, action: "fold" });
+}
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeWarmupWallet) throw new Error("completed warm-up hand should not change account wallet chips");
+if (Number(manager.adminSnapshot(false).total_wallet_gems) !== beforeWarmupGems) throw new Error("completed warm-up hand should not change account wallet gems");
+if (countRows("table_session_results") !== warmupHandResultRows) throw new Error("completed warm-up hand should not write formal hand_results");
+if ((warmupRoom.table.getSeatByPlayer("warmup_player")?.chips ?? 0) !== warmupBaselineStack) throw new Error("completed warm-up hand should restore real player table stack");
+warmupMessages.length = 0;
+manager.handle("warmup_player", { type: "start_ai_warmup", room_id: warmupRoom.id });
+const repeatedWarmup = warmupMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "start_ai_warmup_result") as
+  | { type: string; ok?: boolean; reason?: string }
+  | undefined;
+if (!repeatedWarmup || repeatedWarmup.ok !== false || repeatedWarmup.reason !== "already_playing") throw new Error("active warm-up should reject repeated start_ai_warmup");
+const normalOnePlayer = manager.connect();
+manager.handle(normalOnePlayer.id, { type: "hello", player_id: "normal_one_player", name: "Normal One" });
+const normalOnePlayerRoom = manager.createRoom();
+manager.handle("normal_one_player", { type: "join_room", room_id: normalOnePlayerRoom.id });
+manager.handle("normal_one_player", { type: "sit_down", room_id: normalOnePlayerRoom.id, seat_index: 0 });
+expectThrows("at least two connected seated players are required", () => manager.handle("normal_one_player", { type: "start_hand", room_id: normalOnePlayerRoom.id }));
+const nonSeatedWarmupMessages: unknown[] = [];
+const nonSeatedWarmupWs = { OPEN: 1, readyState: 1, send: (data: string) => nonSeatedWarmupMessages.push(JSON.parse(data)) };
+const nonSeatedWarmup = manager.connect(nonSeatedWarmupWs as any);
+manager.handle(nonSeatedWarmup.id, { type: "hello", player_id: "warmup_spectator", name: "Warmup Spectator" });
+manager.handle("warmup_spectator", { type: "join_room", room_id: normalOnePlayerRoom.id });
+const spectatorBeforeWallet = Number(manager.adminSnapshot(false).total_wallet_chips);
+manager.handle("warmup_spectator", { type: "start_ai_warmup", room_id: normalOnePlayerRoom.id });
+const spectatorWarmup = nonSeatedWarmupMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "start_ai_warmup_result") as
+  | { type: string; ok?: boolean; reason?: string }
+  | undefined;
+if (!spectatorWarmup || spectatorWarmup.ok !== false || spectatorWarmup.reason !== "not_seated") throw new Error("non-seated player should receive start_ai_warmup_result not_seated");
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== spectatorBeforeWallet) throw new Error("failed start_ai_warmup should not change wallet");
+
 const mockPurchaseMessages: unknown[] = [];
 const mockPurchaseWs = { OPEN: 1, readyState: 1, send: (data: string) => mockPurchaseMessages.push(JSON.parse(data)) };
 const mockPurchaseClient = manager.connect(mockPurchaseWs as any);

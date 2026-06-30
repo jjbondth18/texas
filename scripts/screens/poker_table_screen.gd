@@ -582,6 +582,7 @@ func _connect_authoritative_server() -> void:
 		_poker_ws_client.table_created.connect(_on_server_table_created)
 		_poker_ws_client.table_joined.connect(_on_server_table_joined)
 		_poker_ws_client.sit_down_result_received.connect(_on_server_sit_down_result)
+		_poker_ws_client.start_ai_warmup_result_received.connect(_on_server_start_ai_warmup_result)
 		_poker_ws_client.table_snapshot_received.connect(_on_server_table_snapshot_received)
 		_poker_ws_client.private_snapshot_received.connect(_on_server_private_snapshot_received)
 		_poker_ws_client.server_error.connect(_on_server_error)
@@ -778,6 +779,15 @@ func _on_server_sit_down_result(ok: bool, room_id: String, seat_index: int, play
 		TableLaunchContext.set_pending_launch_error(failure_message)
 		call_deferred("_complete_return_home")
 
+func _on_server_start_ai_warmup_result(ok: bool, room_id: String, reason: String) -> void:
+	if room_id != "":
+		_server_room_id = room_id
+	if ok:
+		_append_session_log("start_ai_warmup accepted.")
+		return
+	var failure_reason := reason if reason != "" else "unknown"
+	_on_server_error("START AI WARM-UP failed: %s" % failure_reason)
+
 func _server_sit_down_failure_message(reason: String, wallet_chips: int = -1, required_chips: int = -1) -> String:
 	if reason == "insufficient_chips":
 		if wallet_chips >= 0 and required_chips >= 0:
@@ -937,6 +947,8 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	var phase: String = String(server_snapshot.get("betting_round", server_snapshot.get("hand_state", server_snapshot.get("phase", "waiting"))))
 	var room_id: String = String(server_snapshot.get("room_id", _server_room_id))
 	var table_info: Dictionary = Dictionary(server_snapshot.get("table_info", {}))
+	var is_server_ai_warmup := bool(server_snapshot.get("is_ai_warmup", table_info.get("is_ai_warmup", false)))
+	var server_table_state := String(server_snapshot.get("table_state", table_info.get("table_state", phase)))
 	var server_buy_in: int = int(server_snapshot.get("buy_in", table_info.get("buy_in", SERVER_DEFAULT_BUY_IN)))
 	if server_buy_in <= 0:
 		server_buy_in = SERVER_DEFAULT_BUY_IN
@@ -1027,6 +1039,8 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"blinds_text": "%d / %d" % [server_small_blind, server_big_blind],
 		"phase": phase,
 		"room_state": phase,
+		"table_state": server_table_state,
+		"is_ai_warmup": is_server_ai_warmup,
 		"pot": total_pot,
 		"pot_data": {"main": total_pot, "side_pots": side_pots, "total": total_pot},
 		"community_cards": community_cards,
@@ -2475,10 +2489,22 @@ func _should_show_public_warmup_entry() -> bool:
 	return _real_public_player_count_from_flow() == 1
 
 func _start_public_ai_warmup() -> void:
+	_append_session_log("START AI WARM-UP clicked")
 	if server_authoritative and (not _server_seat_confirmed or _server_local_seat_index < 0):
 		_on_server_error("Cannot start AI warm-up: waiting for seat confirmation.")
 		return
 	if not _is_public_waiting_for_real_players() or _is_public_ai_warmup():
+		return
+	if server_authoritative:
+		if _poker_ws_client == null or not _server_connected:
+			_on_server_error("Cannot start AI warm-up: authoritative server is not connected.")
+			return
+		_send_server_message(_poker_ws_client.start_ai_warmup(_server_room_id), "start_ai_warmup %s" % _server_room_id)
+		_append_session_log("Sent server start_ai_warmup %s" % _server_room_id)
+		if _public_waiting_button != null:
+			_public_waiting_button.disabled = true
+		if _ai_warmup_button != null:
+			_ai_warmup_button.disabled = true
 		return
 	_activate_public_warmup_ai_seats(3)
 	TableLaunchContext.is_ai_warmup = true
@@ -3389,21 +3415,28 @@ func _sync_authoritative_waiting_context(target_snapshot: Dictionary) -> void:
 	if not _is_public_chip_table():
 		return
 	var phase := String(target_snapshot.get("phase", "waiting"))
+	var is_server_ai_warmup := bool(target_snapshot.get("is_ai_warmup", false)) or String(target_snapshot.get("table_state", "")) == "ai_warmup"
 	var seats: Array = Array(target_snapshot.get("seats", [])).duplicate(true)
 	var real_count := _real_public_player_count_from_snapshot(seats)
 	var local_seat_confirmed := int(target_snapshot.get("local_seat_index", -1)) >= 0 and _server_seat_confirmed
 	var waiting_for_real_players := local_seat_confirmed and phase in ["waiting", "waiting_for_players"] and real_count < 2
+	if is_server_ai_warmup:
+		waiting_for_real_players = true
 	TableLaunchContext.waiting_for_real_players = waiting_for_real_players
-	TableLaunchContext.is_ai_warmup = false
+	TableLaunchContext.is_ai_warmup = is_server_ai_warmup
+	TableLaunchContext.warmup_ai_player_ids = _warmup_ai_ids_from_snapshot(seats)
 	TableLaunchContext.set_seats(seats)
 	if _table_session != null:
 		_table_session.waiting_for_real_players = waiting_for_real_players
-		_table_session.is_ai_warmup = false
-		_table_session.status = TableSessionScript.TABLE_WAITING_FOR_PLAYERS if waiting_for_real_players else TableSessionScript.TABLE_PLAYING
+		_table_session.is_ai_warmup = is_server_ai_warmup
+		_table_session.warmup_ai_player_ids = TableLaunchContext.warmup_ai_player_ids.duplicate()
+		_table_session.status = TableSessionScript.TABLE_AI_WARMUP if is_server_ai_warmup else (TableSessionScript.TABLE_WAITING_FOR_PLAYERS if waiting_for_real_players else TableSessionScript.TABLE_PLAYING)
 		_table_session.current_table_chips = _local_table_chips_from_snapshot(seats)
 		_update_launch_context_session()
 	if phase in ["waiting", "waiting_for_players"]:
 		_table_flow.table_state = TexasTableFlowScript.WAITING
+		_table_flow.seats = _server_ui_seats_to_table_flow_seats(seats)
+	elif is_server_ai_warmup:
 		_table_flow.seats = _server_ui_seats_to_table_flow_seats(seats)
 	if not local_seat_confirmed:
 		var messages: Array = Array(target_snapshot.get("system_messages", [])).duplicate()
@@ -3415,7 +3448,17 @@ func _sync_authoritative_waiting_context(target_snapshot: Dictionary) -> void:
 	var can_show_warmup := _should_show_public_warmup_entry()
 	target_snapshot["server_waiting_for_real_players"] = waiting_for_real_players
 	target_snapshot["server_real_player_count"] = real_count
+	if is_server_ai_warmup:
+		print("AI warm-up snapshot applied: is_ai_warmup=true seat_count=%d local_player_seat_index=%d" % [seats.size(), int(target_snapshot.get("local_seat_index", -1))])
 	_log_authoritative_snapshot_debug(target_snapshot, real_count, can_show_warmup)
+
+func _warmup_ai_ids_from_snapshot(source_seats: Array) -> Array[String]:
+	var ids: Array[String] = []
+	for seat_item in source_seats:
+		var seat: Dictionary = Dictionary(seat_item)
+		if bool(seat.get("warmup_ai", false)):
+			ids.append(String(seat.get("player_id", "")))
+	return ids
 
 func _server_ui_seats_to_table_flow_seats(source_seats: Array) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []

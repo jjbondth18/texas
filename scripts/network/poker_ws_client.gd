@@ -16,6 +16,7 @@ signal table_list_received(tables: Array)
 signal table_created(room_id: String, table_info: Dictionary)
 signal table_joined(room_id: String, table_info: Dictionary)
 signal mock_purchase_result_received(ok: bool, currency: String, amount: int, wallet: Dictionary)
+signal start_ai_warmup_result_received(ok: bool, room_id: String, reason: String)
 signal sit_down_result_received(ok: bool, room_id: String, seat_index: int, player_id: String, reason: String, wallet_chips: int, required_chips: int)
 signal table_snapshot_received(snapshot: Dictionary)
 signal private_snapshot_received(snapshot: Dictionary)
@@ -95,6 +96,9 @@ func ready(is_ready: bool = true) -> int:
 func start_hand() -> int:
 	return send_message(PokerProtocolScript.start_hand())
 
+func start_ai_warmup(target_room_id: String = room_id) -> int:
+	return send_message(PokerProtocolScript.start_ai_warmup(target_room_id))
+
 func player_action(action: String, amount: int = 0) -> int:
 	return send_message(PokerProtocolScript.player_action(action, amount))
 
@@ -166,6 +170,13 @@ func _handle_message(message: Dictionary) -> void:
 				String(message.get("currency", "")),
 				int(message.get("amount", 0)),
 				purchase_wallet
+			)
+		PokerProtocolScript.START_AI_WARMUP_RESULT:
+			room_id = String(message.get("room_id", room_id))
+			start_ai_warmup_result_received.emit(
+				bool(message.get("ok", false)),
+				room_id,
+				String(message.get("reason", ""))
 			)
 		PokerProtocolScript.SIT_DOWN_RESULT:
 			var result_player_id := String(message.get("server_player_id", message.get("player_id", player_id)))

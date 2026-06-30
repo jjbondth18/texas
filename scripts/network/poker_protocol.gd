@@ -9,6 +9,7 @@ const LEAVE_SEAT := "leave_seat"
 const CASH_OUT := "cash_out"
 const READY := "ready"
 const START_HAND := "start_hand"
+const START_AI_WARMUP := "start_ai_warmup"
 const PLAYER_ACTION := "player_action"
 const ADD_TABLE_CHIPS := "add_table_chips"
 const GET_PROFILE := "get_profile"
@@ -29,6 +30,7 @@ const TABLE_LIST := "table_list"
 const TABLE_CREATED := "table_created"
 const TABLE_JOINED := "table_joined"
 const MOCK_PURCHASE_RESULT := "mock_purchase_result"
+const START_AI_WARMUP_RESULT := "start_ai_warmup_result"
 const ERROR := "error"
 
 const ACTION_FOLD := "fold"
@@ -79,6 +81,9 @@ static func ready(is_ready: bool = true) -> Dictionary:
 
 static func start_hand() -> Dictionary:
 	return _message(START_HAND)
+
+static func start_ai_warmup(room_id: String) -> Dictionary:
+	return _message(START_AI_WARMUP, {"room_id": room_id})
 
 static func player_action(action: String, amount: int = 0) -> Dictionary:
 	var data := {"action": action}

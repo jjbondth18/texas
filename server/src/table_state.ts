@@ -8,6 +8,7 @@ export interface Player {
   connected: boolean;
   avatarId?: string;
   isAi?: boolean;
+  warmupAi?: boolean;
 }
 
 export interface Seat {
@@ -16,6 +17,7 @@ export interface Seat {
   name: string;
   avatarId: string;
   isAi: boolean;
+  warmupAi: boolean;
   chips: number;
   status: SeatStatus;
   disconnected: boolean;
@@ -112,6 +114,7 @@ export class TableState {
       name: player.name,
       avatarId: player.avatarId ?? "default",
       isAi: Boolean(player.isAi),
+      warmupAi: Boolean(player.warmupAi),
       chips: Math.max(1, Math.floor(buyIn)),
       status: "sitting" satisfies SeatStatus,
       disconnected: false,
@@ -227,7 +230,7 @@ export class TableState {
         disconnected: seat.disconnected,
         connected: seat.playerId !== "" && !seat.disconnected,
         is_ai: seat.isAi,
-        warmup_ai: false,
+        warmup_ai: seat.warmupAi,
         current_bet: seat.currentBet,
         contribution: seat.contribution,
         last_action: seat.lastAction,
@@ -406,6 +409,7 @@ export class TableState {
       name: "",
       avatarId: "",
       isAi: false,
+      warmupAi: false,
       chips: 0,
       status: "empty",
       disconnected: false,

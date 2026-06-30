@@ -32,10 +32,12 @@ export function processAutomaticTurns(table: TableState): void {
   while (guard < 24 && table.currentTurnSeat >= 0 && ["preflop", "flop", "turn", "river"].includes(table.phase)) {
     guard += 1;
     const seat = table.getSeat(table.currentTurnSeat);
-    if (!seat || !seat.disconnected || seat.status !== "playing") return;
+    if (!seat || seat.status !== "playing") return;
     const canCheck = seat.currentBet >= table.currentBet;
-    applySeatAction(table, seat, canCheck ? "check" : "fold", 0);
-    table.addLog(`${seat.name} auto-${canCheck ? "checks" : "folds"} after disconnect.`);
+    if (!seat.disconnected && !seat.warmupAi) return;
+    const action = seat.disconnected ? (canCheck ? "check" : "fold") : (canCheck ? "check" : "call");
+    applySeatAction(table, seat, action, 0);
+    table.addLog(`${seat.name} auto-${action === "check" ? "checks" : action === "call" ? "calls" : "folds"}${seat.disconnected ? " after disconnect" : ""}.`);
     afterAction(table, seat.seatIndex);
   }
 }

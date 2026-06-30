@@ -7,6 +7,7 @@ export type ClientMessageType =
   | "cash_out"
   | "ready"
   | "start_hand"
+  | "start_ai_warmup"
   | "add_table_chips"
   | "player_action"
   | "get_profile"
@@ -30,6 +31,7 @@ export type ServerMessageType =
   | "table_created"
   | "table_joined"
   | "mock_purchase_result"
+  | "start_ai_warmup_result"
   | "error";
 export type ErrorCode =
   | "insufficient_chips"
@@ -44,6 +46,10 @@ export type ErrorCode =
   | "invalid_table_config"
   | "invalid_identity_provider"
   | "mock_purchase_disabled"
+  | "not_public_table"
+  | "already_playing"
+  | "not_waiting"
+  | "too_many_real_players"
   | "cannot_add_chips_during_hand"
   | "cannot_cash_out_during_hand";
 export type PlayerActionType = "fold" | "check" | "call" | "bet" | "raise" | "all_in";
@@ -109,6 +115,7 @@ export interface ServerMessage {
   currency?: "chips" | "gems";
   amount?: number;
   source?: string;
+  is_ai_warmup?: boolean;
 }
 
 export interface AvatarCatalogItemSnapshot {
@@ -147,6 +154,8 @@ export interface PublicTableSnapshot {
   seated_count: number;
   current_players: number;
   hand_state: Phase;
+  table_state?: string;
+  is_ai_warmup?: boolean;
   is_public: boolean;
   created_at: string;
   seats?: PublicSeatSnapshot[];
@@ -207,6 +216,8 @@ export interface TableSnapshot {
   betting_round: Phase;
   phase: Phase;
   hand_id: number;
+  table_state?: string;
+  is_ai_warmup?: boolean;
   seats: PublicSeatSnapshot[];
   community_cards: Card[];
   pot: number;
