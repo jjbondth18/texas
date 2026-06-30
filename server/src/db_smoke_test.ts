@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { RoomManager } from "./room_manager.js";
 import { getDatabase } from "./db/database.js";
 import { initializeSchema } from "./db/schema.js";
+import { config } from "./config.js";
 
 process.env.TEXAS_DB_PATH = join(mkdtempSync(join(tmpdir(), "texas-db-smoke-")), "texas_dev.sqlite");
 
@@ -183,6 +184,32 @@ const sitFail = sitFailMessages.find((message) => typeof message === "object" &&
   | undefined;
 if (!sitFail || sitFail.ok !== false || sitFail.reason !== "insufficient_chips") throw new Error("failed sit_down should return sit_down_result ok=false insufficient_chips");
 if (Number(sitFail.wallet_chips) >= Number(sitFail.required_chips)) throw new Error("failed sit_down should include wallet_chips below required_chips");
+
+const mockPurchaseMessages: unknown[] = [];
+const mockPurchaseWs = { OPEN: 1, readyState: 1, send: (data: string) => mockPurchaseMessages.push(JSON.parse(data)) };
+const mockPurchaseClient = manager.connect(mockPurchaseWs as any);
+manager.handle(mockPurchaseClient.id, { type: "hello", player_id: "mock_purchase_player", name: "Mock Purchase" });
+const beforeMockPurchase = manager.adminSnapshot(false);
+manager.handle("mock_purchase_player", { type: "mock_purchase", currency: "chips", amount: 50000, source: "store_mock" });
+manager.handle("mock_purchase_player", { type: "mock_purchase", currency: "gems", amount: 500, source: "store_mock" });
+const afterMockPurchase = manager.adminSnapshot(false);
+if (Number(afterMockPurchase.total_wallet_chips) !== Number(beforeMockPurchase.total_wallet_chips) + 50000) throw new Error("mock chip purchase should update server wallet");
+if (Number(afterMockPurchase.total_wallet_gems) !== Number(beforeMockPurchase.total_wallet_gems) + 500) throw new Error("mock gem purchase should update server wallet");
+if (countRows("wallet_transactions", "reason = 'store_mock_purchase' AND currency = 'chips' AND amount = 50000") !== 1) throw new Error("mock chip purchase should write wallet transaction");
+if (countRows("wallet_transactions", "reason = 'store_mock_purchase' AND currency = 'gems' AND amount = 500") !== 1) throw new Error("mock gem purchase should write wallet transaction");
+const purchaseResult = mockPurchaseMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "mock_purchase_result") as
+  | { type: string; ok?: boolean; currency?: string; amount?: number; wallet?: { chips?: number; gems?: number } }
+  | undefined;
+if (!purchaseResult || purchaseResult.ok !== true || purchaseResult.currency !== "chips" || Number(purchaseResult.wallet?.chips) < 50000) throw new Error("mock purchase should return result with synced wallet");
+const affordableRoom = manager.createRoom({ buyIn: 20000, smallBlind: 50, bigBlind: 100, handCount: 10 });
+manager.handle("mock_purchase_player", { type: "join_room", room_id: affordableRoom.id });
+manager.handle("mock_purchase_player", { type: "sit_down", room_id: affordableRoom.id, seat_index: 0 });
+if (!affordableRoom.table.publicSnapshot().seats[0].occupied) throw new Error("mock chip purchase should make selected buy-in affordable");
+const beforeDisabledTotal = Number(manager.adminSnapshot(false).total_wallet_chips);
+config.allowMockPurchases = false;
+expectThrows("mock_purchase_disabled", () => manager.handle("mock_purchase_player", { type: "mock_purchase", currency: "chips", amount: 10000, source: "store_mock" }));
+config.allowMockPurchases = true;
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeDisabledTotal) throw new Error("disabled mock purchase should not change wallet");
 
 console.log("DB_SMOKE_OK");
 console.log(JSON.stringify({ db_path: process.env.TEXAS_DB_PATH, player_count: manager.adminSnapshot(false).player_count, total_wallet_chips: manager.adminSnapshot(false).total_wallet_chips }, null, 2));

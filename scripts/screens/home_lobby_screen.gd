@@ -1308,6 +1308,7 @@ func _connect_profile_server() -> void:
 	_profile_ws_client.table_list_received.connect(_on_server_table_list_received)
 	_profile_ws_client.table_created.connect(_on_server_table_created)
 	_profile_ws_client.table_joined.connect(_on_server_table_joined)
+	_profile_ws_client.mock_purchase_result_received.connect(_on_server_mock_purchase_result)
 	_profile_ws_client.server_error.connect(_on_profile_server_error)
 	var err := _profile_ws_client.connect_to_server(NetworkConfigScript.server_url())
 	if err != OK:
@@ -2787,18 +2788,25 @@ func _add_store_currency_column(parent: Container, title_text: String, desc_text
 		vbox.add_child(button)
 
 func _show_mock_purchase_confirm(currency: String, amount: int) -> void:
-	if server_authoritative_profile and _profile_server_connected:
-		_show_toast("Store purchases\nAvatar unlocks are handled by the server profile.", [], 2.4)
-		return
 	var dialog := ConfirmationDialog.new()
 	dialog.title = "Mock purchase?"
-	dialog.dialog_text = "MOCK PURCHASE / DEV ONLY\nThis is a mock purchase for development only.\nAdd %s %s to your wallet?" % [_format_number(amount), currency.to_upper()]
+	var target := "server wallet" if server_authoritative_profile and _profile_server_connected else "local wallet"
+	dialog.dialog_text = "MOCK PURCHASE / DEV ONLY\nThis is a mock purchase for development only.\nAdd %s %s to your %s?" % [_format_number(amount), currency.to_upper(), target]
 	dialog.confirmed.connect(_confirm_mock_purchase.bind(currency, amount, dialog))
 	dialog.canceled.connect(dialog.queue_free)
 	add_child(dialog)
 	dialog.popup_centered(Vector2(360, 180))
 
 func _confirm_mock_purchase(currency: String, amount: int, dialog: ConfirmationDialog) -> void:
+	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
+		var err := _profile_ws_client.mock_purchase(currency, amount)
+		if err == OK:
+			_show_toast("Mock purchase sent to server wallet.", [], 1.4)
+		else:
+			_show_toast("Mock purchase failed.\nServer wallet sync failed.", [], 2.4)
+		if dialog != null:
+			dialog.queue_free()
+		return
 	var store := StoreMockServiceScript.new()
 	if currency == "gems":
 		_player_profile = store.mock_purchase_gems(amount)
@@ -2809,6 +2817,16 @@ func _confirm_mock_purchase(currency: String, amount: int, dialog: ConfirmationD
 	_refresh_profile_panel()
 	if dialog != null:
 		dialog.queue_free()
+
+func _on_server_mock_purchase_result(ok: bool, currency: String, amount: int, wallet: Dictionary) -> void:
+	if not ok:
+		_show_toast("Mock purchase failed.", [], 2.4)
+		return
+	if not wallet.is_empty():
+		_player_profile = ProfileServiceScript.new().apply_wallet_snapshot(wallet)
+		_refresh_profile_views_from_server()
+	var label := "Gems" if currency == "gems" else "Chips"
+	_show_toast("Mock purchase complete.\n+%s %s added to server wallet.", [_format_number(amount), label], 2.8)
 
 func _build_profile_panel() -> void:
 	_profile_panel = PanelContainer.new()

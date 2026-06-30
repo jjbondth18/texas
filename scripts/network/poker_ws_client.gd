@@ -15,6 +15,7 @@ signal avatar_catalog_received(catalog: Array)
 signal table_list_received(tables: Array)
 signal table_created(room_id: String, table_info: Dictionary)
 signal table_joined(room_id: String, table_info: Dictionary)
+signal mock_purchase_result_received(ok: bool, currency: String, amount: int, wallet: Dictionary)
 signal sit_down_result_received(ok: bool, room_id: String, seat_index: int, player_id: String, reason: String, wallet_chips: int, required_chips: int)
 signal table_snapshot_received(snapshot: Dictionary)
 signal private_snapshot_received(snapshot: Dictionary)
@@ -112,6 +113,9 @@ func buy_avatar(avatar_id: String) -> int:
 func select_avatar(avatar_id: String) -> int:
 	return send_message(PokerProtocolScript.select_avatar(avatar_id))
 
+func mock_purchase(currency: String, amount: int) -> int:
+	return send_message(PokerProtocolScript.mock_purchase(currency, amount))
+
 func list_tables() -> int:
 	return send_message(PokerProtocolScript.list_tables())
 
@@ -153,6 +157,16 @@ func _handle_message(message: Dictionary) -> void:
 			var joined_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = String(message.get("room_id", joined_table.get("room_id", room_id)))
 			table_joined.emit(room_id, joined_table)
+		PokerProtocolScript.MOCK_PURCHASE_RESULT:
+			var purchase_wallet := Dictionary(message.get("wallet", {})).duplicate(true)
+			if not purchase_wallet.is_empty():
+				wallet_synced.emit(purchase_wallet)
+			mock_purchase_result_received.emit(
+				bool(message.get("ok", false)),
+				String(message.get("currency", "")),
+				int(message.get("amount", 0)),
+				purchase_wallet
+			)
 		PokerProtocolScript.SIT_DOWN_RESULT:
 			var result_player_id := String(message.get("server_player_id", message.get("player_id", player_id)))
 			if result_player_id != "":

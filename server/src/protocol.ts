@@ -13,6 +13,7 @@ export type ClientMessageType =
   | "get_avatar_catalog"
   | "buy_avatar"
   | "select_avatar"
+  | "mock_purchase"
   | "list_tables"
   | "create_table"
   | "join_table";
@@ -28,6 +29,7 @@ export type ServerMessageType =
   | "table_list"
   | "table_created"
   | "table_joined"
+  | "mock_purchase_result"
   | "error";
 export type ErrorCode =
   | "insufficient_chips"
@@ -41,6 +43,7 @@ export type ErrorCode =
   | "table_full"
   | "invalid_table_config"
   | "invalid_identity_provider"
+  | "mock_purchase_disabled"
   | "cannot_add_chips_during_hand"
   | "cannot_cash_out_during_hand";
 export type PlayerActionType = "fold" | "check" | "call" | "bet" | "raise" | "all_in";
@@ -76,6 +79,8 @@ export interface ClientMessage {
   action?: PlayerActionType;
   amount?: number;
   table_name?: string;
+  currency?: "chips" | "gems";
+  source?: string;
 }
 
 export interface ServerMessage {
@@ -101,6 +106,9 @@ export interface ServerMessage {
   avatar_catalog?: AvatarCatalogItemSnapshot[];
   tables?: PublicTableSnapshot[];
   table?: PublicTableSnapshot;
+  currency?: "chips" | "gems";
+  amount?: number;
+  source?: string;
 }
 
 export interface AvatarCatalogItemSnapshot {

@@ -13,6 +13,7 @@ export interface ServerConfig {
   adminEnabled: boolean;
   adminLocalOnly: boolean;
   devShowPrivateCards: boolean;
+  allowMockPurchases: boolean;
 }
 
 loadDotEnv(resolve(process.cwd(), ".env"));
@@ -27,6 +28,7 @@ export const config: ServerConfig = {
   adminEnabled: booleanEnv("ADMIN_ENABLED", true),
   adminLocalOnly: booleanEnv("ADMIN_LOCAL_ONLY", true),
   devShowPrivateCards: (process.env.NODE_ENV || "development") === "production" ? false : booleanEnv("DEV_SHOW_PRIVATE_CARDS", false),
+  allowMockPurchases: booleanEnv("ALLOW_MOCK_PURCHASES", (process.env.NODE_ENV || "development") !== "production"),
 };
 
 export function configWarnings(value: ServerConfig = config): string[] {
@@ -50,6 +52,7 @@ export function publicConfigSummary(value: ServerConfig = config): Record<string
     ADMIN_ENABLED: value.adminEnabled,
     ADMIN_LOCAL_ONLY: value.adminLocalOnly,
     DEV_SHOW_PRIVATE_CARDS: value.devShowPrivateCards,
+    ALLOW_MOCK_PURCHASES: value.allowMockPurchases,
   };
 }
 

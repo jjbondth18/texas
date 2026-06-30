@@ -15,6 +15,7 @@ const GET_PROFILE := "get_profile"
 const GET_AVATAR_CATALOG := "get_avatar_catalog"
 const BUY_AVATAR := "buy_avatar"
 const SELECT_AVATAR := "select_avatar"
+const MOCK_PURCHASE := "mock_purchase"
 const LIST_TABLES := "list_tables"
 const CREATE_TABLE := "create_table"
 const JOIN_TABLE := "join_table"
@@ -27,6 +28,7 @@ const AVATAR_CATALOG := "avatar_catalog"
 const TABLE_LIST := "table_list"
 const TABLE_CREATED := "table_created"
 const TABLE_JOINED := "table_joined"
+const MOCK_PURCHASE_RESULT := "mock_purchase_result"
 const ERROR := "error"
 
 const ACTION_FOLD := "fold"
@@ -98,6 +100,9 @@ static func buy_avatar(avatar_id: String) -> Dictionary:
 
 static func select_avatar(avatar_id: String) -> Dictionary:
 	return _message(SELECT_AVATAR, {"avatar_id": avatar_id})
+
+static func mock_purchase(currency: String, amount: int, source: String = "store_mock") -> Dictionary:
+	return _message(MOCK_PURCHASE, {"currency": currency, "amount": amount, "source": source})
 
 static func list_tables() -> Dictionary:
 	return _message(LIST_TABLES)

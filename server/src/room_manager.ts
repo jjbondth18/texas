@@ -11,6 +11,7 @@ import { IdentityRepository } from "./db/identity_repository.js";
 import { ResultRepository } from "./db/result_repository.js";
 import { WalletRepository } from "./db/wallet_repository.js";
 import { AVATAR_CATALOG, findAvatarCatalogItem } from "./avatar_catalog.js";
+import { config } from "./config.js";
 
 interface Client {
   id: string;
@@ -137,6 +138,16 @@ export class RoomManager {
       this.selectAvatar(client, String(message.avatar_id || ""));
       this.recordLog(`${client.id} selected avatar=${normalizeAvatarId(String(message.avatar_id || ""))}`);
       this.send(client, { type: "profile_snapshot", request_id: message.request_id, ...this.profilePayload(client.id) });
+      return;
+    }
+    if (message.type === "mock_purchase") {
+      if (message.currency !== "chips" && message.currency !== "gems") throw new Error("invalid_amount");
+      const currency = message.currency;
+      const amount = numberOr(message.amount, 0);
+      const wallet = this.mockPurchase(client, currency, amount);
+      this.recordLog(`${client.id} mock_purchase currency=${currency} amount=${amount}`);
+      this.send(client, { type: "mock_purchase_result", request_id: message.request_id, ok: true, player_id: client.id, server_player_id: client.id, currency, amount, source: "store_mock", wallet, wallet_chips: wallet.chips });
+      this.send(client, { type: "wallet_snapshot", request_id: message.request_id, player_id: client.id, wallet });
       return;
     }
     const roomId = message.room_id || client.roomId;
@@ -421,6 +432,17 @@ export class RoomManager {
     if (!this.avatars.hasAvatar(client.id, avatarId)) throw new Error("avatar_not_unlocked");
     const profile = this.players.setAvatar(client.id, avatarId);
     client.avatarId = profile.avatar_id;
+  }
+
+  private mockPurchase(client: Client, currency: "chips" | "gems", amount: number) {
+    if (!config.allowMockPurchases) throw new Error("mock_purchase_disabled");
+    const normalized = Math.floor(amount);
+    if (normalized <= 0) throw new Error("invalid_amount");
+    this.wallets.ensure(client.id);
+    if (currency === "gems") {
+      return this.wallets.addGems(client.id, normalized, { reason: "store_mock_purchase" });
+    }
+    return this.wallets.addChips(client.id, normalized, { reason: "store_mock_purchase" });
   }
 
   private sitDownWithWallet(room: Room, client: Client, seatIndex: number, payloadPlayerId = ""): void {
