@@ -2,6 +2,7 @@ extends Node
 class_name PokerWsClient
 
 const PokerProtocolScript := preload("res://scripts/network/poker_protocol.gd")
+const IdentityServiceScript := preload("res://scripts/services/identity_service.gd")
 
 signal connected()
 signal disconnected()
@@ -59,9 +60,15 @@ func send_message(message: Dictionary) -> int:
 		return ERR_UNAVAILABLE
 	return _peer.send_text(PokerProtocolScript.encode(message))
 
-func send_hello(player_name: String = "", profile_player_id: String = "", avatar_id: String = "") -> int:
-	local_player_id = profile_player_id
-	return send_message(PokerProtocolScript.hello(player_name, profile_player_id, avatar_id))
+func send_hello(player_name: String = "", profile_player_id: String = "", avatar_id: String = "", auth_provider: String = "", external_id: String = "") -> int:
+	var identity: Dictionary = IdentityServiceScript.new().get_identity()
+	var resolved_name := player_name if player_name != "" else String(identity.get("display_name", ""))
+	var resolved_external_id := external_id if external_id != "" else String(identity.get("external_id", profile_player_id))
+	var resolved_provider := auth_provider if auth_provider != "" else String(identity.get("provider", "local_dev"))
+	var resolved_avatar_id := avatar_id if avatar_id != "" else String(identity.get("avatar_id", ""))
+	var compatible_player_id := profile_player_id if profile_player_id != "" else resolved_external_id
+	local_player_id = resolved_external_id
+	return send_message(PokerProtocolScript.hello(resolved_name, compatible_player_id, resolved_avatar_id, resolved_provider, resolved_external_id))
 
 func create_room() -> int:
 	return send_message(PokerProtocolScript.create_room())

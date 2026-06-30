@@ -1,4 +1,5 @@
 import type { WebSocket } from "ws";
+import { randomUUID } from "node:crypto";
 import type { ClientMessage, PublicTableSnapshot, ServerMessage } from "./protocol.js";
 import { applyPlayerAction, legalActions, processAutomaticTurns } from "./betting_engine.js";
 import { TableState, type Player } from "./table_state.js";
@@ -42,6 +43,7 @@ const DEV_BOT_MIN_WALLET_CHIPS = 50000;
 const ALLOWED_BUY_INS = new Set([5000, 10000, 20000, 50000]);
 const ALLOWED_BLIND_PAIRS = new Set(["25/50", "50/100", "100/200"]);
 const ALLOWED_HAND_COUNTS = new Set([0, 5, 10, 20]);
+const ALLOWED_IDENTITY_PROVIDERS = new Set(["local_dev", "steam"]);
 
 export class RoomManager {
   private clients = new Map<string, Client>();
@@ -308,7 +310,8 @@ export class RoomManager {
 
   private handleHello(client: Client, message: ClientMessage): Omit<ServerMessage, "type" | "request_id" | "player_id"> {
     const previousId = client.id;
-    const requestedId = normalizePlayerId(message.player_id || previousId);
+    const identity = this.resolveIdentity(message, previousId);
+    const requestedId = identity.playerId;
     if (requestedId !== previousId) {
       this.clients.delete(previousId);
       client.id = requestedId;
@@ -318,7 +321,7 @@ export class RoomManager {
     const requestedAvatarId = normalizeAvatarId(String(message.avatar_id || client.avatarId || "default"));
     this.players.upsert(client.id, displayName, "default");
     this.wallets.ensure(client.id);
-    this.identities.linkIdentity(client.id, "local_dev", requestedId);
+    this.identities.linkIdentity(client.id, identity.provider, identity.externalId);
     this.avatars.unlockAvatar(client.id, "default");
     const avatarId = this.avatars.hasAvatar(client.id, requestedAvatarId) ? requestedAvatarId : "default";
     const profile = this.players.upsert(client.id, displayName, avatarId);
@@ -449,6 +452,19 @@ export class RoomManager {
     if (wallet) this.send(client, { type: "wallet_snapshot", player_id: client.id, room_id: roomId, wallet });
   }
 
+  private resolveIdentity(message: ClientMessage, fallbackPlayerId: string): { provider: string; externalId: string; playerId: string } {
+    const provider = normalizeIdentityProvider(String(message.auth_provider || "local_dev"));
+    if (!ALLOWED_IDENTITY_PROVIDERS.has(provider)) throw new Error("invalid_identity_provider");
+    const hasExternalId = Object.prototype.hasOwnProperty.call(message, "external_id");
+    const rawExternalId = hasExternalId ? String(message.external_id || "") : String(message.player_id || fallbackPlayerId);
+    const externalId = normalizeExternalId(rawExternalId);
+    if (externalId === "") throw new Error("external_id is required");
+    const existing = this.identities.findByProviderExternal(provider, externalId);
+    if (existing) return { provider, externalId, playerId: existing.player_id };
+    const playerId = provider === "local_dev" ? normalizePlayerId(externalId) : `player_${randomUUID()}`;
+    return { provider, externalId, playerId };
+  }
+
   private tableConfigFromMessage(message: ClientMessage): Partial<Pick<Room, "tableName" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "maxPlayers" | "isPublic">> {
     const buyIn = Math.floor(numberOr(message.buy_in, DEFAULT_TABLE_BUY_IN));
     const smallBlind = Math.floor(numberOr(message.small_blind, DEFAULT_SMALL_BLIND));
@@ -507,6 +523,14 @@ function normalizeHandCount(value: unknown, fallback: number): number {
 function normalizePlayerId(value: string): string {
   const trimmed = String(value || "").trim();
   return trimmed.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64) || `player_${Date.now()}`;
+}
+
+function normalizeIdentityProvider(value: string): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeExternalId(value: string): string {
+  return String(value || "").trim().slice(0, 128);
 }
 
 function normalizeAvatarId(value: string): string {

@@ -12,6 +12,12 @@ export interface PlayerIdentityRecord {
 export class IdentityRepository {
   constructor(private readonly db: Database.Database) {}
 
+  findByProviderExternal(provider: string, externalId: string): PlayerIdentityRecord | undefined {
+    return this.db.prepare("SELECT * FROM player_identities WHERE provider = ? AND external_id = ?").get(provider, externalId) as
+      | PlayerIdentityRecord
+      | undefined;
+  }
+
   linkIdentity(playerId: string, provider: string, externalId: string, now = new Date().toISOString()): PlayerIdentityRecord {
     this.db
       .prepare("INSERT OR IGNORE INTO player_identities (id, player_id, provider, external_id, created_at) VALUES (?, ?, ?, ?, ?)")

@@ -40,12 +40,29 @@ The `player_identities` table separates a local player from an external identity
 - Future Steam provider: `steam`
 - Future Steam external id: Steam ID from verified Steam auth
 
+Current local development flow:
+
+1. Godot `IdentityService` returns `provider=local_dev`.
+2. `external_id` comes from the stable local profile player id.
+3. The server maps `(local_dev, external_id)` through `player_identities`.
+4. If the mapping already exists, the existing internal `player_id` is reused.
+5. If it does not exist, the server creates the local player and links the identity.
+
+Future Steam flow:
+
+1. Godot asks the Steamworks layer for a Steam identity token.
+2. The server verifies that token with Steam before trusting it.
+3. The server maps `(steam, steam_id)` through `player_identities`.
+4. New Steam users get a generated internal `player_id`; returning Steam users reuse the linked internal player.
+
 Before production Steam login:
 
 1. Verify Steam auth server-side.
 2. Link or create a player from `(provider, external_id)`.
 3. Stop trusting client-supplied names or ids as identity proof.
 4. Keep display name/avatar as profile data, not authentication data.
+
+The internal `player_id` should not directly equal a SteamID. Keeping an internal id lets us relink identities, support account recovery or future providers, avoid leaking platform identifiers through game snapshots, and keep wallet/table records stable if an external provider changes how identifiers are represented.
 
 ## Required Environment Variables
 

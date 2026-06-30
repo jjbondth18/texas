@@ -27,6 +27,10 @@ if (countRows("player_identities", "provider = 'local_dev' AND external_id = 'db
 if (countRows("wallet_transactions", "reason = 'initial_grant' AND amount = 10000") !== 1) throw new Error("initial chips should write wallet transaction");
 if (countRows("wallet_transactions", "reason = 'daily_login_bonus' AND amount = 1000") !== 1) throw new Error("daily login should write wallet transaction");
 
+const repeatIdentityClient = manager.connect();
+manager.handle(repeatIdentityClient.id, { type: "hello", auth_provider: "local_dev", external_id: "db_smoke_player", name: "DB Smoke Repeat" });
+if (!manager.getClient("db_smoke_player")) throw new Error("same local_dev external_id should resolve to the same server player_id");
+
 manager.handle("db_smoke_player", { type: "buy_avatar", avatar_id: "1_01" });
 const afterAvatarBuy = manager.adminSnapshot(false);
 if (Number(afterAvatarBuy.total_wallet_chips) !== 9500) throw new Error("buy_avatar should deduct chips from wallet");
@@ -108,8 +112,14 @@ if (Number(configTable.small_blind) !== 50 || Number(configTable.big_blind) !== 
 if (Number(configTable.hand_count) !== 20) throw new Error("create_table should preserve selected hand count");
 expectThrows("invalid_table_config", () => manager.handle("db_smoke_config", { type: "create_table", buy_in: 12345, small_blind: 25, big_blind: 50, hand_count: 10 }));
 expectThrows("invalid_table_config", () => manager.handle("db_smoke_config", { type: "create_table", buy_in: 10000, small_blind: 10, big_blind: 20, hand_count: 10 }));
+const steamClient = manager.connect();
+manager.handle(steamClient.id, { type: "hello", auth_provider: "steam", external_id: "steam_76561198000000000", name: "Steam Smoke" });
+if (countRows("player_identities", "provider = 'steam' AND external_id = 'steam_76561198000000000'") !== 1) throw new Error("steam provider should create identity");
+if (manager.getClient("steam_76561198000000000")) throw new Error("server player_id should not directly equal Steam external_id");
+expectThrows("invalid_identity_provider", () => manager.handle(manager.connect().id, { type: "hello", auth_provider: "email", external_id: "bad", name: "Bad Provider" }));
+expectThrows("external_id is required", () => manager.handle(manager.connect().id, { type: "hello", auth_provider: "steam", external_id: "", name: "Empty External" }));
 if (countRows("wallet_transactions") < 7) throw new Error("admin db wallet_transactions query should be readable");
-if (countRows("player_identities") < 4) throw new Error("admin db player_identities query should be readable");
+if (countRows("player_identities") < 5) throw new Error("admin db player_identities query should be readable");
 
 console.log("DB_SMOKE_OK");
 console.log(JSON.stringify({ db_path: process.env.TEXAS_DB_PATH, player_count: manager.adminSnapshot(false).player_count, total_wallet_chips: manager.adminSnapshot(false).total_wallet_chips }, null, 2));

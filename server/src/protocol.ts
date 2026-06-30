@@ -39,6 +39,7 @@ export type ErrorCode =
   | "room_not_found"
   | "table_full"
   | "invalid_table_config"
+  | "invalid_identity_provider"
   | "cannot_add_chips_during_hand"
   | "cannot_cash_out_during_hand";
 export type PlayerActionType = "fold" | "check" | "call" | "bet" | "raise" | "all_in";
@@ -58,6 +59,8 @@ export interface ClientMessage {
   request_id?: string;
   room_id?: string;
   player_id?: string;
+  auth_provider?: string;
+  external_id?: string;
   name?: string;
   player_name?: string;
   avatar_id?: string;
