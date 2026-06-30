@@ -3,11 +3,12 @@ import { existsSync } from "node:fs";
 import Database from "better-sqlite3";
 import { WebSocketServer } from "ws";
 import type { ClientMessage, ServerMessage } from "./protocol.js";
+import { config } from "./config.js";
 import { databasePath } from "./db/database.js";
 import { RoomManager } from "./room_manager.js";
 
-const port = Number(process.env.PORT ?? 8080);
-const host = "127.0.0.1";
+const port = config.port;
+const host = config.host;
 const startedAt = Date.now();
 const manager = new RoomManager();
 const server = createServer((req, res) => routeHttp(req, res));
@@ -39,7 +40,7 @@ wss.on("connection", (ws) => {
 
 server.listen(port, host, () => {
   console.log(`Authoritative poker server listening on ws://${host}:${port}`);
-  console.log(`Local admin debug dashboard available at http://${host}:${port}/admin`);
+  if (config.adminEnabled) console.log(`Local admin debug dashboard available at http://${host}:${port}/admin`);
 });
 
 function send(ws: { send(data: string): void }, message: ServerMessage): void {
@@ -48,6 +49,10 @@ function send(ws: { send(data: string): void }, message: ServerMessage): void {
 
 function routeHttp(req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? `${host}:${port}`}`);
+  if (url.pathname.startsWith("/admin") && !canAccessAdmin(req)) {
+    sendText(res, 403, "Admin dashboard is disabled or local-only.");
+    return;
+  }
   if (url.pathname === "/admin") {
     sendHtml(res, renderAdminPage());
     return;
@@ -64,7 +69,7 @@ function routeHttp(req: IncomingMessage, res: ServerResponse): void {
 }
 
 function adminState(): unknown {
-  const showPrivateCards = process.env.DEV_SHOW_PRIVATE_CARDS === "true";
+  const showPrivateCards = config.devShowPrivateCards;
   return {
     uptime_seconds: Math.floor((Date.now() - startedAt) / 1000),
     dev_show_private_cards: showPrivateCards,
@@ -199,6 +204,19 @@ function renderDatabaseAdminPage(): string {
         rows: queryRows(db, "SELECT player_id, chips, gems, updated_at FROM wallets ORDER BY updated_at DESC LIMIT 50"),
       },
       {
+        title: "wallet_transactions",
+        columns: ["id", "player_id", "currency", "amount", "reason", "balance_after", "related_room_id", "related_hand_id", "created_at"],
+        rows: queryRows(
+          db,
+          "SELECT id, player_id, currency, amount, reason, balance_after, related_room_id, related_hand_id, created_at FROM wallet_transactions ORDER BY created_at DESC LIMIT 100",
+        ),
+      },
+      {
+        title: "player_identities",
+        columns: ["id", "player_id", "provider", "external_id", "created_at"],
+        rows: queryRows(db, "SELECT id, player_id, provider, external_id, created_at FROM player_identities ORDER BY created_at DESC LIMIT 50"),
+      },
+      {
         title: "daily_login_claims",
         columns: ["player_id", "claim_date", "chips_awarded", "claimed_at"],
         rows: queryRows(db, "SELECT player_id, claim_date, chips_awarded, claimed_at FROM daily_login_claims ORDER BY claimed_at DESC LIMIT 50"),
@@ -228,6 +246,13 @@ function renderDatabaseAdminPage(): string {
 
 function queryRows(db: Database.Database, sql: string): AdminDbRow[] {
   return db.prepare(sql).all() as AdminDbRow[];
+}
+
+function canAccessAdmin(req: IncomingMessage): boolean {
+  if (!config.adminEnabled) return false;
+  if (!config.adminLocalOnly) return true;
+  const address = req.socket.remoteAddress || "";
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
 }
 
 function renderDbTable(table: AdminDbTable): string {

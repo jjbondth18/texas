@@ -11,6 +11,22 @@ npm install
 npm.cmd run dev
 ```
 
+Local server configuration is read from environment variables:
+
+```text
+NODE_ENV=development
+HOST=127.0.0.1
+PORT=8080
+DATABASE_DRIVER=sqlite
+SQLITE_PATH=server/data/texas_dev.sqlite
+DATABASE_URL=
+ADMIN_ENABLED=true
+ADMIN_LOCAL_ONLY=true
+DEV_SHOW_PRIVATE_CARDS=false
+```
+
+`DATABASE_DRIVER=postgres` and `DATABASE_URL` are reserved for future production wiring. This local build still opens SQLite only.
+
 WebSocket clients connect to:
 
 ```text
@@ -154,6 +170,12 @@ The database is local development state only. It is not a production account sys
 On `hello`, the server creates or updates the local player profile, creates a wallet with `10000` starting chips, unlocks the default avatar, and automatically grants the first daily login bonus for the current UTC date (`+1000` chips). Repeating `hello` on the same day does not grant the bonus again.
 
 To reset local development data, stop the server, delete `server/data/texas_dev.sqlite`, and restart `npm.cmd run dev`.
+
+Schema migrations run automatically at startup through `schema_migrations`. Deleting the SQLite file and restarting the server recreates the full development schema.
+
+Wallet changes are recorded in `wallet_transactions` with reasons such as `initial_grant`, `daily_login_bonus`, `table_buy_in`, `add_table_chips`, `table_cash_out`, and `avatar_purchase`.
+
+Player identity is prepared for future Steam auth through `player_identities`. Current local dev `hello` messages create a `local_dev` identity using the client-provided player id as `external_id`; this is not production authentication.
 
 When Godot connects to the local server, the `hello` response includes the server profile, wallet, unlocked avatars, and daily login result. Godot applies those values to the local `ProfileService` cache so the lobby/top bar and table wallet displays prefer the SQLite-backed chips, gems, player name, and selected avatar. The first `hello` for a UTC day shows a lightweight `Daily bonus +1000 chips` message; reconnecting on the same UTC day does not award or display another bonus.
 

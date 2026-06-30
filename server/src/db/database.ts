@@ -1,19 +1,22 @@
 import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
+import { config } from "../config.js";
 import { initializeSchema } from "./schema.js";
-
-const moduleDir = dirname(fileURLToPath(import.meta.url));
-const defaultDatabasePath = resolve(moduleDir, "../../data/texas_dev.sqlite");
 
 let sharedDatabase: Database.Database | null = null;
 
 export function databasePath(): string {
-  return process.env.TEXAS_DB_PATH || defaultDatabasePath;
+  return process.env.SQLITE_PATH || process.env.TEXAS_DB_PATH || config.sqlitePath;
 }
 
 export function openDatabase(path = databasePath()): Database.Database {
+  // Development currently uses SQLite so local runs stay zero-dependency.
+  // Production should move this boundary to a PostgreSQL implementation
+  // behind the same repository interfaces before public deployment.
+  if (config.databaseDriver !== "sqlite") {
+    throw new Error("DATABASE_DRIVER=postgres is reserved for production wiring; this build only opens SQLite.");
+  }
   mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path);
   db.pragma("journal_mode = WAL");

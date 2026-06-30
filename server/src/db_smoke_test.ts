@@ -2,6 +2,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RoomManager } from "./room_manager.js";
+import { getDatabase } from "./db/database.js";
+import { initializeSchema } from "./db/schema.js";
 
 process.env.TEXAS_DB_PATH = join(mkdtempSync(join(tmpdir(), "texas-db-smoke-")), "texas_dev.sqlite");
 
@@ -15,13 +17,21 @@ if (!helloClient) throw new Error("hello did not migrate client to requested pla
 
 const firstProfile = manager.adminSnapshot(false);
 if (Number(firstProfile.player_count) !== 1) throw new Error("expected one player after hello");
+if (Number(firstProfile.identity_count) !== 1) throw new Error("expected local_dev identity after hello");
 if (Number(firstProfile.total_wallet_chips) !== 11000) throw new Error("expected 10000 initial chips plus 1000 daily login chips");
 if (Number(firstProfile.avatar_unlock_count) !== 1) throw new Error("new player should unlock the default avatar");
+const db = getDatabase();
+initializeSchema(db);
+if (countRows("schema_migrations") < 2) throw new Error("migrations should be recorded and re-runnable");
+if (countRows("player_identities", "provider = 'local_dev' AND external_id = 'db_smoke_player'") !== 1) throw new Error("hello should write local_dev identity");
+if (countRows("wallet_transactions", "reason = 'initial_grant' AND amount = 10000") !== 1) throw new Error("initial chips should write wallet transaction");
+if (countRows("wallet_transactions", "reason = 'daily_login_bonus' AND amount = 1000") !== 1) throw new Error("daily login should write wallet transaction");
 
 manager.handle("db_smoke_player", { type: "buy_avatar", avatar_id: "1_01" });
 const afterAvatarBuy = manager.adminSnapshot(false);
 if (Number(afterAvatarBuy.total_wallet_chips) !== 9500) throw new Error("buy_avatar should deduct chips from wallet");
 if (Number(afterAvatarBuy.avatar_unlock_count) !== 2) throw new Error("buy_avatar should write avatar unlock");
+if (countRows("wallet_transactions", "reason = 'avatar_purchase' AND amount = -1500") !== 1) throw new Error("avatar purchase should write negative wallet transaction");
 expectThrows("already_unlocked", () => manager.handle("db_smoke_player", { type: "buy_avatar", avatar_id: "1_01" }));
 expectThrows("insufficient_gems", () => manager.handle("db_smoke_player", { type: "buy_avatar", avatar_id: "1_03" }));
 expectThrows("avatar_not_unlocked", () => manager.handle("db_smoke_player", { type: "select_avatar", avatar_id: "2_01" }));
@@ -39,11 +49,13 @@ manager.handle("db_smoke_player", { type: "sit_down", room_id: room.id, seat_ind
 const afterBuyIn = manager.adminSnapshot(false);
 if (Number(afterBuyIn.total_wallet_chips) !== 4500) throw new Error("sit_down should deduct room buy-in from wallet");
 if (room.table.getSeat(0)?.chips !== 5000) throw new Error("sit_down should put room buy-in table chips on the seat");
+if (countRows("wallet_transactions", "reason = 'table_buy_in' AND amount = -5000") !== 1) throw new Error("table buy-in should write negative wallet transaction");
 
 manager.handle("db_smoke_player", { type: "add_table_chips", room_id: room.id, amount: 500 });
 const afterAdd = manager.adminSnapshot(false);
 if (Number(afterAdd.total_wallet_chips) !== 4000) throw new Error("add_table_chips should deduct wallet chips");
 if (room.table.getSeat(0)?.chips !== 5500) throw new Error("add_table_chips should increase table chips");
+if (countRows("wallet_transactions", "reason = 'add_table_chips' AND amount = -500") !== 1) throw new Error("add_table_chips should write negative wallet transaction");
 
 expectThrows("insufficient_chips", () => manager.handle("db_smoke_player", { type: "add_table_chips", room_id: room.id, amount: 999999 }));
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 4000) throw new Error("failed add_table_chips should not change wallet");
@@ -52,6 +64,7 @@ manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id });
 const afterCashOut = manager.adminSnapshot(false);
 if (Number(afterCashOut.total_wallet_chips) !== 9500) throw new Error("cash_out should refund remaining table chips");
 if (room.table.getSeat(0)?.playerId !== "") throw new Error("cash_out should clear the seat");
+if (countRows("wallet_transactions", "reason = 'table_cash_out' AND amount = 5500") !== 1) throw new Error("cash out should write positive wallet transaction");
 expectThrows("not_seated", () => manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id }));
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 9500) throw new Error("repeat cash_out should not double refund");
 
@@ -95,6 +108,8 @@ if (Number(configTable.small_blind) !== 50 || Number(configTable.big_blind) !== 
 if (Number(configTable.hand_count) !== 20) throw new Error("create_table should preserve selected hand count");
 expectThrows("invalid_table_config", () => manager.handle("db_smoke_config", { type: "create_table", buy_in: 12345, small_blind: 25, big_blind: 50, hand_count: 10 }));
 expectThrows("invalid_table_config", () => manager.handle("db_smoke_config", { type: "create_table", buy_in: 10000, small_blind: 10, big_blind: 20, hand_count: 10 }));
+if (countRows("wallet_transactions") < 7) throw new Error("admin db wallet_transactions query should be readable");
+if (countRows("player_identities") < 4) throw new Error("admin db player_identities query should be readable");
 
 console.log("DB_SMOKE_OK");
 console.log(JSON.stringify({ db_path: process.env.TEXAS_DB_PATH, player_count: manager.adminSnapshot(false).player_count, total_wallet_chips: manager.adminSnapshot(false).total_wallet_chips }, null, 2));
@@ -108,4 +123,9 @@ function expectThrows(expectedMessage: string, fn: () => void): void {
     return;
   }
   throw new Error(`expected ${expectedMessage}`);
+}
+
+function countRows(table: string, where = "1 = 1"): number {
+  const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE ${where}`).get() as { count: number } | undefined;
+  return Number(row?.count ?? 0);
 }

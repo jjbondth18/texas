@@ -25,7 +25,7 @@ export class LoginBonusRepository {
       this.db
         .prepare("INSERT INTO daily_login_claims (player_id, claim_date, chips_awarded, claimed_at) VALUES (?, ?, ?, ?)")
         .run(playerId, claimDate, DAILY_LOGIN_CHIPS, claimedAt);
-      this.walletRepository.addChips(playerId, DAILY_LOGIN_CHIPS, claimedAt);
+      this.walletRepository.addChips(playerId, DAILY_LOGIN_CHIPS, { reason: "daily_login_bonus", now: claimedAt });
     });
     transaction();
     return { daily_login_awarded: true, awarded_chips: DAILY_LOGIN_CHIPS };

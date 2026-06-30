@@ -6,6 +6,7 @@ import { getDatabase } from "./db/database.js";
 import { AvatarRepository } from "./db/avatar_repository.js";
 import { LoginBonusRepository } from "./db/login_bonus_repository.js";
 import { PlayerRepository } from "./db/player_repository.js";
+import { IdentityRepository } from "./db/identity_repository.js";
 import { ResultRepository } from "./db/result_repository.js";
 import { WalletRepository } from "./db/wallet_repository.js";
 import { AVATAR_CATALOG, findAvatarCatalogItem } from "./avatar_catalog.js";
@@ -51,6 +52,7 @@ export class RoomManager {
   private recordedHandResults = new Set<string>();
   private readonly db = getDatabase();
   private readonly players = new PlayerRepository(this.db);
+  private readonly identities = new IdentityRepository(this.db);
   private readonly wallets = new WalletRepository(this.db);
   private readonly avatars = new AvatarRepository(this.db);
   private readonly loginBonus = new LoginBonusRepository(this.db, this.wallets);
@@ -229,6 +231,7 @@ export class RoomManager {
     return {
       active_websocket_connections: this.activeConnectionCount(),
       player_count: this.players.count(),
+      identity_count: this.identities.count(),
       total_wallet_chips: this.wallets.totalChips(),
       total_wallet_gems: this.wallets.totalGems(),
       avatar_unlock_count: this.avatars.countUnlocks(),
@@ -315,6 +318,7 @@ export class RoomManager {
     const requestedAvatarId = normalizeAvatarId(String(message.avatar_id || client.avatarId || "default"));
     this.players.upsert(client.id, displayName, "default");
     this.wallets.ensure(client.id);
+    this.identities.linkIdentity(client.id, "local_dev", requestedId);
     this.avatars.unlockAvatar(client.id, "default");
     const avatarId = this.avatars.hasAvatar(client.id, requestedAvatarId) ? requestedAvatarId : "default";
     const profile = this.players.upsert(client.id, displayName, avatarId);
@@ -355,10 +359,10 @@ export class RoomManager {
     if (!wallet) throw new Error("wallet not found");
     if (item.currency === "chips") {
       if (wallet.chips < item.price_chips) throw new Error("insufficient_chips");
-      this.wallets.deductChips(client.id, item.price_chips);
+      this.wallets.deductChips(client.id, item.price_chips, { reason: "avatar_purchase" });
     } else if (item.currency === "gems") {
       if (wallet.gems < item.price_gems) throw new Error("insufficient_gems");
-      this.wallets.deductGems(client.id, item.price_gems);
+      this.wallets.deductGems(client.id, item.price_gems, { reason: "avatar_purchase" });
     }
     this.avatars.unlockAvatar(client.id, avatarId);
     this.sendWalletSnapshot(client, client.roomId);
@@ -378,7 +382,7 @@ export class RoomManager {
     this.wallets.ensure(client.id);
     const wallet = this.wallets.get(client.id);
     if (!wallet || wallet.chips < room.buyIn) throw new Error("insufficient_chips");
-    this.wallets.deductChips(client.id, room.buyIn);
+    this.wallets.deductChips(client.id, room.buyIn, { reason: "table_buy_in", relatedRoomId: room.id });
     room.table.sitDown(toPlayer(client), seatIndex, room.buyIn);
     this.sendWalletSnapshot(client, room.id);
   }
@@ -392,7 +396,7 @@ export class RoomManager {
     this.wallets.ensure(client.id);
     const wallet = this.wallets.get(client.id);
     if (!wallet || wallet.chips < normalized) throw new Error("insufficient_chips");
-    this.wallets.deductChips(client.id, normalized);
+    this.wallets.deductChips(client.id, normalized, { reason: "add_table_chips", relatedRoomId: room.id });
     room.table.addTableChips(client.id, normalized);
     this.sendWalletSnapshot(client, room.id);
   }
@@ -402,7 +406,7 @@ export class RoomManager {
     if (!seat) throw new Error("not_seated");
     if (!room.table.canMoveTableChips()) throw new Error("cannot_cash_out_during_hand");
     const result = room.table.cashOut(client.id);
-    this.wallets.refundTableChips(client.id, result.amount);
+    this.wallets.refundTableChips(client.id, result.amount, { reason: "table_cash_out", relatedRoomId: room.id });
     this.sendWalletSnapshot(client, room.id);
   }
 
@@ -470,7 +474,7 @@ export class RoomManager {
     if (!playerId.startsWith("bot_") && !playerId.startsWith("LocalBot")) return;
     const wallet = this.wallets.get(playerId);
     if (!wallet || wallet.chips >= DEV_BOT_MIN_WALLET_CHIPS) return;
-    this.wallets.addChips(playerId, DEV_BOT_MIN_WALLET_CHIPS - wallet.chips);
+    this.wallets.addChips(playerId, DEV_BOT_MIN_WALLET_CHIPS - wallet.chips, { reason: "dev_bot_wallet_top_up" });
   }
 
   private mustClient(playerId: string): Client {
