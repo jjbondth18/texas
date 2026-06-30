@@ -1183,11 +1183,15 @@ func _start_quick_play_from_setup() -> void:
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
 	var setup_config := {
+		"table_type": "public_chip",
+		"currency": "chip",
 		"buy_in": _selected_quick_buy_in,
 		"small_blind": _selected_quick_small_blind,
 		"big_blind": _selected_quick_big_blind,
+		"hand_count": _normalized_hand_count_for_context(_selected_quick_max_hands),
 		"max_hands": _selected_quick_max_hands,
 		"max_players": int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("max_players", 9)),
+		"allow_quick_join": true,
 		"buy_in_deducted_from_wallet": true,
 	}
 	_hide_quick_play_setup()
@@ -1201,11 +1205,14 @@ func _quick_server_table_config() -> Dictionary:
 	if hand_count >= 999:
 		hand_count = 0
 	return {
+		"table_type": "public_chip",
+		"currency": "chip",
 		"buy_in": _selected_quick_buy_in,
 		"small_blind": _selected_quick_small_blind,
 		"big_blind": _selected_quick_big_blind,
 		"hand_count": hand_count,
 		"max_players": int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("max_players", 9)),
+		"allow_quick_join": true,
 		"is_public": true,
 	}
 
@@ -1567,11 +1574,14 @@ func _confirm_public_table_setup() -> void:
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
 		_start_table_launch_transition("Creating public table...", func() -> void:
 			_profile_ws_client.create_table("%s's Table" % PlayerProfileScript.get_player_name(_player_profile), {
+				"table_type": "public_chip",
+				"currency": "chip",
 				"buy_in": int(_public_table_setup_values.get("buy_in", 10000)),
 				"small_blind": int(_public_table_setup_values.get("small_blind", 50)),
 				"big_blind": int(_public_table_setup_values.get("big_blind", 100)),
 				"hand_count": _normalized_hand_count_for_context(int(_public_table_setup_values.get("max_hands", 10))),
 				"max_players": int(_public_table_setup_values.get("max_players", 6)),
+				"allow_quick_join": true,
 				"is_public": true,
 			})
 		)
@@ -1602,6 +1612,8 @@ func _public_table_config_from_values(values: Dictionary) -> Dictionary:
 	var small_blind: int = int(values.get("small_blind", 50))
 	var big_blind: int = int(values.get("big_blind", 100))
 	return {
+		"table_type": "public_chip",
+		"currency": "chip",
 		"table_name": "Public Chip %d/%d" % [small_blind, big_blind],
 		"small_blind": small_blind,
 		"big_blind": big_blind,
@@ -1814,6 +1826,11 @@ func _process(delta: float) -> void:
 
 func _on_join_pressed(room_id: String) -> void:
 	print("Loading Poker Table: %s..." % room_id)
+	var table_info := _find_public_table_info(room_id)
+	if table_info.is_empty() or not _is_joinable_room_browser_table(table_info):
+		_show_toast("This table is no longer available.")
+		_refresh_room_browser_rows()
+		return
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
 		_start_table_launch_transition("Joining server table...", func() -> void:
 			_profile_ws_client.join_table(room_id)
@@ -1834,11 +1851,22 @@ func _join_public_chip_table_after_wallet_check(room_id: String) -> void:
 		_show_coming_soon("TABLE")
 		return
 	var table_info := _find_public_table_info(room_id)
+	if table_info.is_empty() or not _is_joinable_room_browser_table(table_info):
+		_finish_table_launch_transition()
+		_show_toast("This table is no longer available.")
+		_refresh_room_browser_rows()
+		return
 	var buy_in: int = int(table_info.get("buy_in", 10000))
 	_reload_player_profile()
 	if PlayerProfileScript.get_total_chips(_player_profile) < buy_in:
 		_finish_table_launch_transition()
 		_show_toast("Not enough wallet chips.")
+		return
+	var context := _local_backend.join_public_table(room_id, _player_profile)
+	if context.is_empty():
+		_finish_table_launch_transition()
+		_show_toast("This table is no longer available.")
+		_refresh_room_browser_rows()
 		return
 	var service := ProfileServiceScript.new()
 	var buy_in_profile: Dictionary = service.deduct_table_buy_in(buy_in)
@@ -1849,7 +1877,6 @@ func _join_public_chip_table_after_wallet_check(room_id: String) -> void:
 	_player_profile = buy_in_profile
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
-	var context := _local_backend.join_public_table(room_id, _player_profile)
 	context["buy_in_deducted_from_wallet"] = true
 	var table_session: Dictionary = Dictionary(context.get("table_session", {}))
 	table_session["buy_in_deducted_from_wallet"] = true
@@ -2146,24 +2173,105 @@ func _refresh_room_browser_rows() -> void:
 		HomeTheme.make_font_settings(empty_label, 13, HomeTheme.MUTED)
 		_room_browser_list_vbox.add_child(empty_label)
 		return
+	var visible_count := 0
 	for room_value in rooms:
-		_add_room_browser_row(_normalized_room_browser_table(Dictionary(room_value)))
+		var normalized_room: Dictionary = _normalized_room_browser_table(Dictionary(room_value))
+		if not _is_joinable_room_browser_table(normalized_room):
+			continue
+		_add_room_browser_row(normalized_room)
+		visible_count += 1
+	if visible_count == 0:
+		var filtered_empty_label := Label.new()
+		filtered_empty_label.text = "No clean public chip tables are available. Create a new table to start fresh."
+		filtered_empty_label.custom_minimum_size = Vector2(0, 54)
+		filtered_empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		HomeTheme.make_font_settings(filtered_empty_label, 13, HomeTheme.MUTED)
+		_room_browser_list_vbox.add_child(filtered_empty_label)
 
 func _normalized_room_browser_table(room: Dictionary) -> Dictionary:
 	var room_id := String(room.get("room_id", room.get("table_id", "")))
-	var seated_count := int(room.get("seated_count", room.get("current_players", 0)))
+	var seated_count := _connected_room_player_count(room)
 	var max_players := int(room.get("max_players", 6))
+	var status := String(room.get("status", room.get("hand_state", "waiting")))
+	var hand_state := String(room.get("hand_state", room.get("phase", status)))
 	return {
 		"room_id": room_id,
 		"table_name": String(room.get("table_name", room_id if room_id != "" else "Public Table")),
+		"table_type": String(room.get("table_type", "public_chip")),
+		"currency": String(room.get("currency", "chip")),
 		"small_blind": int(room.get("small_blind", 10)),
 		"big_blind": int(room.get("big_blind", 20)),
 		"buy_in": int(room.get("buy_in", 1000)),
 		"seated_count": seated_count,
 		"max_players": max_players,
-		"hand_state": String(room.get("hand_state", room.get("status", "waiting"))),
-		"status": "full" if seated_count >= max_players else String(room.get("status", "")),
+		"hand_state": hand_state,
+		"status": "full" if seated_count >= max_players else status,
+		"current_turn_seat": int(room.get("current_turn_seat", room.get("turn_seat_index", -1))),
+		"allow_quick_join": bool(room.get("allow_quick_join", true)),
+		"players": Array(room.get("players", [])).duplicate(true),
+		"seats": Array(room.get("seats", [])).duplicate(true),
+		"pot": int(room.get("pot", 0)),
 	}
+
+func _is_joinable_room_browser_table(room: Dictionary) -> bool:
+	if String(room.get("table_type", "public_chip")) != "public_chip":
+		return false
+	if String(room.get("currency", "chip")) != "chip":
+		return false
+	var status := String(room.get("status", ""))
+	var hand_state := String(room.get("hand_state", status))
+	if status in ["full", "closed", "dirty", "paused", "hand_over", "showdown_reveal", "showdown", "finished"]:
+		return false
+	if hand_state in ["closed", "dirty", "paused", "hand_over", "showdown_reveal", "showdown", "finished"]:
+		return false
+	if status not in ["waiting", "open"]:
+		return false
+	if hand_state not in ["waiting", "open", "idle", "pre_hand"]:
+		return false
+	if int(room.get("current_turn_seat", -1)) == -1 and hand_state not in ["waiting", "open", "idle", "pre_hand"]:
+		return false
+	if int(room.get("seated_count", 0)) >= int(room.get("max_players", 6)):
+		return false
+	if int(room.get("seated_count", 0)) <= 0 and (not Array(room.get("players", [])).is_empty() or not Array(room.get("seats", [])).is_empty()):
+		return false
+	return true
+
+func _connected_room_player_count(room: Dictionary) -> int:
+	var counted := {}
+	var count := 0
+	for player_item in Array(room.get("players", [])):
+		var player := Dictionary(player_item)
+		if not _is_connected_room_player(player):
+			continue
+		var player_id := String(player.get("player_id", player.get("id", "player_%d" % count)))
+		if counted.has(player_id):
+			continue
+		counted[player_id] = true
+		count += 1
+	for seat_item in Array(room.get("seats", [])):
+		var seat := Dictionary(seat_item)
+		if not _is_connected_room_player(seat):
+			continue
+		var seat_player_id := String(seat.get("player_id", seat.get("id", "seat_%s" % String(seat.get("seat_id", count)))))
+		if counted.has(seat_player_id):
+			continue
+		counted[seat_player_id] = true
+		count += 1
+	if count == 0 and Array(room.get("players", [])).is_empty() and Array(room.get("seats", [])).is_empty():
+		count = max(int(room.get("seated_count", room.get("current_players", 0))), 0)
+	return min(count, int(room.get("max_players", 6)))
+
+func _is_connected_room_player(data: Dictionary) -> bool:
+	var status := String(data.get("status", ""))
+	if data.has("status") and status in ["empty", "left", "out", "disconnected"]:
+		return false
+	if bool(data.get("disconnected", false)):
+		return false
+	if data.has("connected") and not bool(data.get("connected", true)):
+		return false
+	if data.has("occupied") and not bool(data.get("occupied", true)):
+		return false
+	return String(data.get("player_id", data.get("id", "player"))) != ""
 
 func _add_room_browser_row(room: Dictionary) -> void:
 	var row_panel := PanelContainer.new()

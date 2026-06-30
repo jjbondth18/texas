@@ -133,6 +133,11 @@ func _build_public_table_context(table: Dictionary, profile: Dictionary) -> Dict
 	var context := _build_table_context("quick_play", String(table.get("table_id", "mock_public_table")), "", profile, false, false, 7, setup_config)
 	context["table_name"] = String(table.get("table_name", "Public Chip Table"))
 	context["table_type"] = PublicTableRegistryScript.TABLE_TYPE_PUBLIC_CHIP
+	context["room_state"] = "waiting"
+	context["hand_state"] = "waiting"
+	context["pot"] = 0
+	context["current_turn_seat"] = -1
+	context["community_cards"] = []
 	context["public_table"] = table.duplicate(true)
 	context["allow_quick_join"] = bool(table.get("allow_quick_join", true))
 	context["table_session"]["table_type"] = PublicTableRegistryScript.TABLE_TYPE_PUBLIC_CHIP
@@ -144,6 +149,8 @@ func _public_table_config_from_setup(setup_config: Dictionary, player: Dictionar
 	var big_blind: int = int(setup_config.get("big_blind", 50))
 	var hand_count: int = int(setup_config.get("max_hands", setup_config.get("hand_count", 10)))
 	return {
+		"table_type": PublicTableRegistryScript.TABLE_TYPE_PUBLIC_CHIP,
+		"currency": "chip",
 		"table_name": "Public Chip %d/%d" % [small_blind, big_blind],
 		"small_blind": small_blind,
 		"big_blind": big_blind,
@@ -152,6 +159,8 @@ func _public_table_config_from_setup(setup_config: Dictionary, player: Dictionar
 		"max_players": int(setup_config.get("max_players", 9)),
 		"created_by": String(player.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID)),
 		"allow_quick_join": true,
+		"status": "waiting",
+		"hand_state": "waiting",
 	}
 
 func _build_mock_seats(profile: Dictionary, buy_in: int, ai_count: int) -> Array[Dictionary]:

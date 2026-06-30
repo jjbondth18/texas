@@ -34,11 +34,12 @@ Public chip tables are the shared local/mock table directory for account-chip po
 The current registry is local/mock only. A future server implementation can replace the registry while preserving the same table concepts:
 
 - `table_type = "public_chip"`
-- `status = "waiting" | "playing" | "full"`
+- `currency = "chip"`
+- joinable `status` / `hand_state = "waiting" | "open" | "idle" | "pre_hand"`
 - `allow_quick_join = true`
-- `buy_in`, `blinds`, `hand_count`, `max_players`, and `current_players`
+- `buy_in`, `small_blind`, `big_blind`, `hand_count`, `max_players`, and `current_players`
 
-Quick join uses a simple mock rule: prefer waiting, quick-joinable, non-full public chip tables with the most current players; otherwise join any non-full quick-joinable public chip table; otherwise create a default public chip table.
+Quick join uses a simple mock rule: prefer clean waiting/open, quick-joinable, non-full public chip tables matching the selected config; otherwise create a new clean public chip table. Hand-over, closed, dirty, private, training, and disconnected-only tables are not joinable.
 
 ## Table Launch Flow
 
@@ -74,12 +75,15 @@ Quick Play exposes Buy-in, Blinds, and Hand Count in the setup panel. These are 
 - First, quick join looks for a non-full, quick-joinable `public_chip` table matching the selected buy-in, blinds, and compatible hand count.
 - If a matching public table exists, Quick joins that table.
 - If no matching table exists, Quick automatically creates a public chip table using the selected config and joins it.
+- The config passed to the registry/server uses `buy_in`, `small_blind`, `big_blind`, `hand_count`, `max_players`, `table_type = public_chip`, and `currency = chip`.
+- Quick never joins `hand_over`, closed, dirty, private, training, or disconnected-only tables.
 
 If the wallet cannot cover the selected public chip table buy-in, Quick Play shows "Not enough wallet chips" and does not enter a table.
 
 Table Browser is the manual public chip table flow.
 
 - Existing public tables can be joined directly.
+- Only clean joinable public chip tables are shown.
 - Joining an existing public table does not open the create setup panel.
 - Creating a public table opens a `CREATE PUBLIC TABLE` setup panel first.
 - Public table setup uses the same visual setup panel language as Quick Play and supports Buy-in, Blinds, and Hand Count.
@@ -87,6 +91,7 @@ Table Browser is the manual public chip table flow.
 - Public Gem tables are visible as a reserved option but disabled/Coming Soon because they require secure server matchmaking.
 - Public chip tables do not support Gem buy-in in the current mock.
 - Quick Chip auto-join can seat players into the same public chip table registry.
+- Disconnected players or bots are not counted in Browser player totals.
 
 Friends Room is the private casual room flow.
 
