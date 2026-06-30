@@ -8,6 +8,7 @@ import { databasePath } from "./db/database.js";
 import { RoomManager } from "./room_manager.js";
 import packageJson from "../package.json" with { type: "json" };
 
+const SERVER_BUILD_ID = "sitdown-ack-v1";
 const port = config.port;
 const host = config.host;
 const startedAt = Date.now();
@@ -41,6 +42,7 @@ wss.on("connection", (ws) => {
 
 server.listen(port, host, () => {
   console.log(`Authoritative poker server listening on ws://${host}:${port}`);
+  console.log(`SERVER_BUILD_ID = "${SERVER_BUILD_ID}"`);
   console.log(`Server config: ${JSON.stringify(publicConfigSummary())}`);
   for (const warning of configWarnings()) console.warn(`WARNING: ${warning}`);
   if (config.adminEnabled) console.log(`Local admin debug dashboard available at http://${host}:${port}/admin`);

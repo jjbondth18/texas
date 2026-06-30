@@ -30,6 +30,7 @@ const ServerTableSnapshotScript := preload("res://scripts/state/table_snapshot.g
 
 const DESIGN_SIZE := Vector2(2560, 1000)
 const SERVER_DEFAULT_BUY_IN := 5000
+const CLIENT_BUILD_ID := "sitdown-ack-v1"
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
 const FLYING_CARD_BACK_PATH := "res://assets/ui/cardback/asset_02.png"
 const FLYING_CHIP_PATH := "res://assets/ui/chips/chip_stack_purple.png"
@@ -140,7 +141,14 @@ var _server_start_hand_requested := false
 var _server_local_player_id := ""
 var _server_local_identity_id := ""
 var _server_local_player_name := ""
-var _server_local_seat_index := 0
+var _server_requested_seat_index := 0
+var _server_local_seat_index := -1
+var _server_sit_down_requested := false
+var _server_sit_down_pending := false
+var _server_seat_confirmed := false
+var _server_ready_sent := false
+var _server_sit_down_failed := false
+var _server_sit_down_error := ""
 var _server_private_snapshot: Dictionary = {}
 var _server_last_error := ""
 var _server_latest_ui_snapshot: Dictionary = {}
@@ -523,6 +531,14 @@ func _boot_server_authoritative_table() -> void:
 	_server_start_hand_requested = false
 	_server_local_player_id = ""
 	_server_local_identity_id = ""
+	_server_requested_seat_index = 0
+	_server_local_seat_index = -1
+	_server_sit_down_requested = false
+	_server_sit_down_pending = false
+	_server_seat_confirmed = false
+	_server_ready_sent = false
+	_server_sit_down_failed = false
+	_server_sit_down_error = ""
 	_server_last_error = ""
 	_server_latest_ui_snapshot = {}
 	_server_snapshot_initialized = false
@@ -565,6 +581,7 @@ func _connect_authoritative_server() -> void:
 		_poker_ws_client.daily_login_awarded.connect(_on_server_daily_login_awarded)
 		_poker_ws_client.table_created.connect(_on_server_table_created)
 		_poker_ws_client.table_joined.connect(_on_server_table_joined)
+		_poker_ws_client.sit_down_result_received.connect(_on_server_sit_down_result)
 		_poker_ws_client.table_snapshot_received.connect(_on_server_table_snapshot_received)
 		_poker_ws_client.private_snapshot_received.connect(_on_server_private_snapshot_received)
 		_poker_ws_client.server_error.connect(_on_server_error)
@@ -579,6 +596,7 @@ func _connect_authoritative_server() -> void:
 func _on_server_connected() -> void:
 	_server_connected = true
 	_append_session_log("Connected to authoritative server.")
+	_append_session_log("CLIENT_BUILD_ID = \"%s\"" % CLIENT_BUILD_ID)
 	var err := _poker_ws_client.send_hello(_server_local_player_name, _server_local_identity_id, PlayerProfileScript.get_avatar_id(ProfileServiceScript.new().get_current_profile()))
 	if err != OK:
 		_on_server_error("Failed to send hello: %s" % error_string(err))
@@ -602,7 +620,7 @@ func _on_server_hello_received(player_id: String, room_id: String) -> void:
 		_server_create_room_requested = true
 		_send_server_message(_poker_ws_client.create_table(_server_create_table_name(), _server_create_table_config()), "create_table")
 		return
-	_try_server_sit_ready()
+	_try_server_sit_down()
 
 func _on_server_profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_ids: Array) -> void:
 	var synced_profile := ProfileServiceScript.new().apply_server_profile_snapshot(profile, wallet, unlocked_avatar_ids, false)
@@ -630,19 +648,33 @@ func _on_server_daily_login_awarded(chips: int) -> void:
 		TableLaunchContext.set_player_profile(synced_profile)
 		_append_session_log("Daily bonus +%s chips" % _format_chips(chips))
 
-func _try_server_sit_ready() -> void:
+func _try_server_sit_down() -> void:
 	if _server_setup_done or _server_room_id == "" or _poker_ws_client == null:
 		return
 	_server_setup_done = true
+	_server_sit_down_requested = true
+	_server_sit_down_pending = true
+	_server_seat_confirmed = false
+	_server_ready_sent = false
+	_server_sit_down_failed = false
+	_server_sit_down_error = ""
 	var buy_in: int = PlayerProfileScript.table_buy_in(ProfileServiceScript.new().get_current_profile())
 	if buy_in <= 0:
 		buy_in = 5000
 	_append_session_log("Authoritative room_id: %s" % _server_room_id)
-	_send_server_message(_poker_ws_client.sit_down(_server_local_seat_index, buy_in), "sit_down seat %d" % _server_local_seat_index)
-	_send_server_message(_poker_ws_client.ready(true), "ready")
+	_append_session_log("Waiting for seat confirmation...")
+	_send_server_message(_poker_ws_client.sit_down(_server_requested_seat_index, buy_in), "sit_down seat %d" % _server_requested_seat_index)
 	_append_session_log("Start bots with: npm.cmd run bot -- --room %s --count 2 --start-seat 1" % _server_room_id)
 	if TableLaunchContext.allow_debug_tools:
 		_append_session_log("Debug tools enabled. S requests start_hand from the authoritative server.")
+
+func _try_server_ready_after_seated() -> void:
+	if _server_ready_sent or not _server_seat_confirmed or _server_local_seat_index < 0:
+		return
+	if _poker_ws_client == null or not _server_connected:
+		return
+	_server_ready_sent = true
+	_send_server_message(_poker_ws_client.ready(true), "ready")
 
 func _server_create_table_name() -> String:
 	var player_name := PlayerProfileScript.get_player_name(ProfileServiceScript.new().get_current_profile())
@@ -673,11 +705,11 @@ func _server_create_table_config() -> Dictionary:
 
 func _on_server_table_created(room_id: String, table_info: Dictionary) -> void:
 	_apply_server_table_info(room_id, table_info)
-	_try_server_sit_ready()
+	_try_server_sit_down()
 
 func _on_server_table_joined(room_id: String, table_info: Dictionary) -> void:
 	_apply_server_table_info(room_id, table_info)
-	_try_server_sit_ready()
+	_try_server_sit_down()
 
 func _apply_server_table_info(room_id: String, table_info: Dictionary) -> void:
 	if room_id != "":
@@ -710,6 +742,27 @@ func _apply_server_table_info(room_id: String, table_info: Dictionary) -> void:
 		"Unlimited" if max_hands >= 999 else str(max_hands),
 	])
 
+func _on_server_sit_down_result(ok: bool, room_id: String, seat_index: int, player_id: String, reason: String) -> void:
+	if room_id != "":
+		_server_room_id = room_id
+	if player_id != "":
+		_server_local_player_id = player_id
+	if ok:
+		_server_sit_down_pending = false
+		_server_sit_down_failed = false
+		_server_sit_down_error = ""
+		_server_seat_confirmed = true
+		_server_local_seat_index = seat_index
+		_append_session_log("sit_down accepted: room_id=%s seat=%d canonical_room_player_id=%s" % [_server_room_id, seat_index, _server_local_player_id])
+		_try_server_ready_after_seated()
+	else:
+		_server_sit_down_pending = false
+		_server_sit_down_failed = true
+		_server_seat_confirmed = false
+		_server_local_seat_index = -1
+		_server_sit_down_error = reason if reason != "" else "unknown"
+		_on_server_error("Failed to sit down at table. reason=%s" % _server_sit_down_error)
+
 func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
 	var apply_start := Time.get_ticks_msec()
 	_server_last_error = ""
@@ -719,6 +772,7 @@ func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
 	_server_table_snapshot.apply_table_snapshot(server_snapshot)
 	_server_room_id = String(server_snapshot.get("room_id", _server_room_id))
 	var next_snapshot := _server_snapshot_to_ui_snapshot(server_snapshot, _server_private_snapshot)
+	_update_server_seat_confirmation_from_snapshot(next_snapshot)
 	_queue_server_action_events(server_snapshot, next_snapshot)
 	_server_latest_ui_snapshot = next_snapshot.duplicate(true)
 	snapshot = _server_apply_playback_projection(_server_latest_ui_snapshot)
@@ -726,6 +780,28 @@ func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
 	_refresh()
 	_warn_if_server_ui_slow("server snapshot apply", apply_start, SERVER_UI_SLOW_APPLY_WARNING_MS)
 	_start_server_action_playback()
+
+func _update_server_seat_confirmation_from_snapshot(ui_snapshot: Dictionary) -> void:
+	var local_seat := int(ui_snapshot.get("local_seat_index", -1))
+	var confirmed := local_seat >= 0
+	if confirmed:
+		var was_confirmed := _server_seat_confirmed
+		_server_seat_confirmed = true
+		_server_sit_down_pending = false
+		_server_sit_down_failed = false
+		_server_sit_down_error = ""
+		_server_local_seat_index = local_seat
+		if not was_confirmed:
+			_append_session_log("Seat confirmed by snapshot: seat=%d canonical_room_player_id=%s" % [local_seat, _server_local_player_id])
+		_try_server_ready_after_seated()
+	else:
+		var occupied_count := 0
+		for seat_item in Array(ui_snapshot.get("seats", [])):
+			var seat: Dictionary = Dictionary(seat_item)
+			if bool(seat.get("occupied", String(seat.get("player_id", "")) != "")):
+				occupied_count += 1
+		if occupied_count == 0:
+			print("[AuthoritativeSnapshot] snapshot has no occupied seats")
 
 func _on_server_private_snapshot_received(private_snapshot: Dictionary) -> void:
 	_server_private_snapshot = private_snapshot.duplicate(true)
@@ -744,6 +820,11 @@ func _on_server_error(message: String) -> void:
 	_server_last_error = message
 	_server_waiting_for_action_ack = false
 	_server_cash_out_pending_return = false
+	if _server_sit_down_pending and not _server_seat_confirmed:
+		_server_sit_down_pending = false
+		_server_sit_down_failed = true
+		_server_sit_down_error = message
+		_server_local_seat_index = -1
 	_append_session_log("Server error: %s" % message)
 	if _server_table_snapshot != null:
 		_server_latest_ui_snapshot = _server_snapshot_to_ui_snapshot(_server_table_snapshot.to_dict(), _server_private_snapshot)
@@ -767,12 +848,13 @@ func _empty_server_ui_snapshot(message: String) -> Dictionary:
 	var local_avatar_id: String = PlayerProfileScript.get_avatar_id(profile)
 	var local_chips: int = SERVER_DEFAULT_BUY_IN
 	var seats: Array = []
+	var visual_local_seat := _server_requested_seat_index
 	for i in range(6):
-		var is_local := i == _server_local_seat_index
+		var is_local := _server_seat_confirmed and i == _server_local_seat_index
 		seats.append({
 			"seat_index": i,
 			"seat_id": i,
-			"visual_position": MockTableSimulation.visual_position_for_seat_index(i, _server_local_seat_index),
+			"visual_position": MockTableSimulation.visual_position_for_seat_index(i, visual_local_seat),
 			"player_id": _server_local_player_id if is_local else "",
 			"player_name": local_name if is_local else "Seat %d" % i,
 			"avatar_id": local_avatar_id if is_local else AvatarLibraryScript.avatar_id_for_seat(i + 1, false),
@@ -806,7 +888,7 @@ func _empty_server_ui_snapshot(message: String) -> Dictionary:
 		"community_cards": [],
 		"seats": seats,
 		"local_player": local_player,
-		"local_seat_index": _server_local_seat_index,
+		"local_seat_index": _server_local_seat_index if _server_seat_confirmed else -1,
 		"turn_seat_index": -1,
 		"turn_seconds": 15,
 		"turn_prompt": "Connecting...",
@@ -827,7 +909,7 @@ func _server_local_seat_from_snapshot(server_snapshot: Dictionary, private_snaps
 		var seat: Dictionary = Dictionary(seat_item)
 		if String(seat.get("player_id", "")) == _server_local_player_id and bool(seat.get("occupied", true)):
 			return int(seat.get("seat_id", seat.get("seat_index", _server_local_seat_index)))
-	return _server_local_seat_index
+	return -1
 
 func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapshot: Dictionary) -> Dictionary:
 	var phase: String = String(server_snapshot.get("betting_round", server_snapshot.get("hand_state", server_snapshot.get("phase", "waiting"))))
@@ -843,6 +925,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	var private_matches_hand := private_hand_id == server_hand_id
 	var local_server_seat: int = _server_local_seat_from_snapshot(server_snapshot, private_snapshot)
 	_server_local_seat_index = local_server_seat
+	var visual_local_seat := local_server_seat if local_server_seat >= 0 else _server_requested_seat_index
 	var current_turn_seat: int = int(server_snapshot.get("current_turn_seat", -1))
 	var seats: Array = []
 	for seat_item in Array(server_snapshot.get("seats", [])):
@@ -850,7 +933,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		var seat_index: int = int(server_seat.get("seat_id", server_seat.get("seat_index", 0)))
 		var occupied := bool(server_seat.get("occupied", String(server_seat.get("player_id", "")) != ""))
 		var seat_player_id := String(server_seat.get("player_id", ""))
-		var is_local := occupied and seat_index == local_server_seat and (_server_local_player_id == "" or seat_player_id == _server_local_player_id)
+		var is_local := local_server_seat >= 0 and occupied and seat_index == local_server_seat and (_server_local_player_id == "" or seat_player_id == _server_local_player_id)
 		var raw_status: String = String(server_seat.get("status", "empty"))
 		if not occupied:
 			raw_status = "empty"
@@ -870,7 +953,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		seats.append({
 			"seat_index": seat_index,
 			"seat_id": seat_index,
-			"visual_position": MockTableSimulation.visual_position_for_seat_index(seat_index, local_server_seat),
+			"visual_position": MockTableSimulation.visual_position_for_seat_index(seat_index, visual_local_seat),
 			"player_id": seat_player_id,
 			"player_name": String(server_seat.get("player_name", server_seat.get("name", "Seat %d" % seat_index))),
 			"avatar_id": avatar_id,
@@ -903,13 +986,15 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	var total_pot: int = int(server_snapshot.get("pot", 0))
 	var side_pots: Array = Array(server_snapshot.get("side_pots", [])).duplicate(true)
 	var history: Array = _server_history_lines(server_snapshot, room_id, side_pots)
+	if local_server_seat < 0:
+		history.append("Failed to sit down at table." if _server_sit_down_failed else "Waiting for seat confirmation...")
 	if _server_last_error != "":
 		history.append("Server error: %s" % _server_last_error)
 	var local_player: Dictionary = _find_local_player(seats)
 	var available_actions: Array = _server_legal_actions_to_ui_actions(Array(private_snapshot.get("legal_actions", [])), total_pot)
-	if current_turn_seat != local_server_seat:
+	if local_server_seat < 0 or current_turn_seat != local_server_seat:
 		available_actions = []
-	var turn_prompt := _server_turn_message(seats, current_turn_seat, local_server_seat, phase)
+	var turn_prompt := "Waiting for seat confirmation..." if local_server_seat < 0 else _server_turn_message(seats, current_turn_seat, local_server_seat, phase)
 	return {
 		"source_model": "server_authoritative",
 		"table_id": room_id if room_id != "" else "authoritative_local",
@@ -931,11 +1016,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"turn_prompt": turn_prompt,
 		"available_actions": available_actions,
 		"hand_history": history,
-		"system_messages": [
-			"Server authoritative mode",
-			"Room: %s" % room_id,
-			turn_prompt,
-		],
+		"system_messages": _server_system_messages(room_id, turn_prompt, local_server_seat),
 		"visual_events": [],
 		"server_recent_actions": Array(server_snapshot.get("recent_actions", server_snapshot.get("action_log", []))).duplicate(true),
 		"server_hand_id": server_hand_id,
@@ -944,6 +1025,18 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"rule_debug_log": history,
 		"table_session": {},
 	}
+
+func _server_system_messages(room_id: String, turn_prompt: String, local_server_seat: int) -> Array:
+	var messages: Array = [
+		"Server authoritative mode",
+		"Room: %s" % room_id,
+	]
+	if local_server_seat < 0:
+		messages.append("Failed to sit down at table." if _server_sit_down_failed else "Joining table...")
+		messages.append(_server_sit_down_error if _server_sit_down_failed and _server_sit_down_error != "" else "Waiting for seat confirmation...")
+	else:
+		messages.append(turn_prompt)
+	return messages
 
 func _server_card_to_ui_card(card: Dictionary, face_up: bool) -> Dictionary:
 	var rank: String = String(card.get("rank", ""))
@@ -1316,6 +1409,9 @@ func _start_next_hand() -> void:
 	if server_authoritative:
 		if _poker_ws_client == null or not _server_connected:
 			_on_server_error("Cannot start hand: authoritative server is not connected.")
+			return
+		if not _server_seat_confirmed or _server_local_seat_index < 0:
+			_on_server_error("Cannot start hand: waiting for seat confirmation.")
 			return
 		_server_start_hand_requested = true
 		_send_server_message(_poker_ws_client.start_hand(), "start_hand")
@@ -2346,6 +2442,8 @@ func _refresh_public_waiting_controls() -> void:
 		_public_waiting_body_label.text = "%d / 6 seated\nStart AI warm-up while waiting.\nWarm-up uses practice chips and does not affect your wallet." % _real_public_player_count_from_flow()
 
 func _should_show_public_warmup_entry() -> bool:
+	if server_authoritative and (not _server_seat_confirmed or _server_local_seat_index < 0):
+		return false
 	if not _is_public_waiting_for_real_players() or _is_public_ai_warmup():
 		return false
 	if String(_table_flow.table_state) != TexasTableFlowScript.WAITING:
@@ -2355,6 +2453,9 @@ func _should_show_public_warmup_entry() -> bool:
 	return _real_public_player_count_from_flow() == 1
 
 func _start_public_ai_warmup() -> void:
+	if server_authoritative and (not _server_seat_confirmed or _server_local_seat_index < 0):
+		_on_server_error("Cannot start AI warm-up: waiting for seat confirmation.")
+		return
 	if not _is_public_waiting_for_real_players() or _is_public_ai_warmup():
 		return
 	_activate_public_warmup_ai_seats(3)
@@ -2948,7 +3049,16 @@ func _refresh_rule_debug_panel() -> void:
 func _server_rule_debug_text() -> String:
 	var lines: Array[String] = []
 	lines.append("SERVER AUTHORITATIVE DEBUG  (Ctrl+D hide/show)")
-	lines.append("connected=%s room_id=%s local_seat=%d" % [str(_server_connected), _server_room_id if _server_room_id != "" else "-", _server_local_seat_index])
+	lines.append("CLIENT_BUILD_ID=%s" % CLIENT_BUILD_ID)
+	lines.append("connected=%s room_id=%s requested_seat=%d confirmed_seat=%d seat_confirmed=%s ready_sent=%s" % [
+		str(_server_connected),
+		_server_room_id if _server_room_id != "" else "-",
+		_server_requested_seat_index,
+		_server_local_seat_index,
+		str(_server_seat_confirmed),
+		str(_server_ready_sent),
+	])
+	lines.append("local_profile_id=%s server_player_id=%s canonical_room_player_id=%s" % [_server_local_identity_id, _server_local_player_id, _server_local_player_id])
 	lines.append("state=%s hand=%s current_turn=%d pot=%d" % [
 		String(snapshot.get("phase", "waiting")),
 		String(snapshot.get("hand_id", "-")),
@@ -3259,7 +3369,8 @@ func _sync_authoritative_waiting_context(target_snapshot: Dictionary) -> void:
 	var phase := String(target_snapshot.get("phase", "waiting"))
 	var seats: Array = Array(target_snapshot.get("seats", [])).duplicate(true)
 	var real_count := _real_public_player_count_from_snapshot(seats)
-	var waiting_for_real_players := phase in ["waiting", "waiting_for_players"] and real_count < 2
+	var local_seat_confirmed := int(target_snapshot.get("local_seat_index", -1)) >= 0 and _server_seat_confirmed
+	var waiting_for_real_players := local_seat_confirmed and phase in ["waiting", "waiting_for_players"] and real_count < 2
 	TableLaunchContext.waiting_for_real_players = waiting_for_real_players
 	TableLaunchContext.is_ai_warmup = false
 	TableLaunchContext.set_seats(seats)
@@ -3272,6 +3383,13 @@ func _sync_authoritative_waiting_context(target_snapshot: Dictionary) -> void:
 	if phase in ["waiting", "waiting_for_players"]:
 		_table_flow.table_state = TexasTableFlowScript.WAITING
 		_table_flow.seats = _server_ui_seats_to_table_flow_seats(seats)
+	if not local_seat_confirmed:
+		var messages: Array = Array(target_snapshot.get("system_messages", [])).duplicate()
+		if _server_sit_down_failed:
+			messages.append("Failed to sit down at table.")
+		else:
+			messages.append("Waiting for seat confirmation...")
+		target_snapshot["system_messages"] = messages
 	var can_show_warmup := _should_show_public_warmup_entry()
 	target_snapshot["server_waiting_for_real_players"] = waiting_for_real_players
 	target_snapshot["server_real_player_count"] = real_count
@@ -3329,12 +3447,13 @@ func _log_authoritative_snapshot_debug(target_snapshot: Dictionary, real_count: 
 	if signature == _server_last_snapshot_debug_signature:
 		return
 	_server_last_snapshot_debug_signature = signature
-	print("[AuthoritativeSnapshot] room_id=%s table_state=%s occupied_real=%d server_player_id=%s local_profile_id=%s local_player_seat_index=%d can_show_ai_warmup_button=%s seats=%s" % [
+	print("Authoritative snapshot applied: room_id=%s table_state=%s real_player_count=%d server_player_id=%s local_profile_id=%s canonical_room_player_id=%s local_player_seat_index=%d can_show_warmup=%s seats=%s" % [
 		String(target_snapshot.get("table_id", target_snapshot.get("room_id", ""))),
 		String(target_snapshot.get("phase", "waiting")),
 		real_count,
 		_server_local_player_id,
 		_server_local_identity_id,
+		_server_local_player_id,
 		int(target_snapshot.get("local_seat_index", -1)),
 		str(can_show_warmup),
 		_authoritative_seat_debug_summary(Array(target_snapshot.get("seats", []))),

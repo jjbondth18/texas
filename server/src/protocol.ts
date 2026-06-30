@@ -19,6 +19,7 @@ export type ClientMessageType =
 
 export type ServerMessageType =
   | "hello"
+  | "sit_down_result"
   | "table_snapshot"
   | "private_snapshot"
   | "profile_snapshot"
@@ -85,6 +86,9 @@ export interface ServerMessage {
   room_id?: string;
   error?: string;
   error_code?: ErrorCode | string;
+  ok?: boolean;
+  seat_index?: number;
+  reason?: string;
   snapshot?: unknown;
   profile?: PlayerProfileSnapshot;
   wallet?: WalletSnapshot;

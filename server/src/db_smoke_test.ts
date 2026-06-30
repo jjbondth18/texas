@@ -155,6 +155,22 @@ expectThrows("external_id is required", () => manager.handle(manager.connect().i
 if (countRows("wallet_transactions") < 7) throw new Error("admin db wallet_transactions query should be readable");
 if (countRows("player_identities") < 5) throw new Error("admin db player_identities query should be readable");
 
+const sitAckMessages: unknown[] = [];
+const sitAckWs = { OPEN: 1, readyState: 1, send: (data: string) => sitAckMessages.push(JSON.parse(data)) };
+const sitAckClient = manager.connect(sitAckWs as any);
+manager.handle(sitAckClient.id, { type: "hello", player_id: "sit_ack_player", name: "Sit Ack" });
+const sitAckRoom = manager.createRoom();
+manager.handle("sit_ack_player", { type: "join_room", room_id: sitAckRoom.id });
+sitAckMessages.length = 0;
+manager.handle("sit_ack_player", { type: "sit_down", room_id: sitAckRoom.id, seat_index: 0 });
+const sitAck = sitAckMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "sit_down_result") as
+  | { type: string; ok?: boolean; room_id?: string; seat_index?: number; player_id?: string }
+  | undefined;
+if (!sitAck || sitAck.ok !== true) throw new Error("sit_down should return sit_down_result ok=true");
+if (sitAck.room_id !== sitAckRoom.id || sitAck.seat_index !== 0 || sitAck.player_id !== "sit_ack_player") throw new Error("sit_down_result should include room, seat, and canonical player_id");
+if (!sitAckRoom.table.publicSnapshot().seats[0].occupied) throw new Error("sit_down_result success should have occupied snapshot seat");
+if (sitAckRoom.table.publicSnapshot().seats[0].player_id !== "sit_ack_player") throw new Error("snapshot seat should use canonical player id after sit_down ack");
+
 console.log("DB_SMOKE_OK");
 console.log(JSON.stringify({ db_path: process.env.TEXAS_DB_PATH, player_count: manager.adminSnapshot(false).player_count, total_wallet_chips: manager.adminSnapshot(false).total_wallet_chips }, null, 2));
 

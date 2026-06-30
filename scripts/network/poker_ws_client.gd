@@ -15,6 +15,7 @@ signal avatar_catalog_received(catalog: Array)
 signal table_list_received(tables: Array)
 signal table_created(room_id: String, table_info: Dictionary)
 signal table_joined(room_id: String, table_info: Dictionary)
+signal sit_down_result_received(ok: bool, room_id: String, seat_index: int, player_id: String, reason: String)
 signal table_snapshot_received(snapshot: Dictionary)
 signal private_snapshot_received(snapshot: Dictionary)
 signal server_error(message: String)
@@ -152,6 +153,18 @@ func _handle_message(message: Dictionary) -> void:
 			var joined_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = String(message.get("room_id", joined_table.get("room_id", room_id)))
 			table_joined.emit(room_id, joined_table)
+		PokerProtocolScript.SIT_DOWN_RESULT:
+			var result_player_id := String(message.get("server_player_id", message.get("player_id", player_id)))
+			if result_player_id != "":
+				player_id = result_player_id
+			room_id = String(message.get("room_id", room_id))
+			sit_down_result_received.emit(
+				bool(message.get("ok", false)),
+				room_id,
+				int(message.get("seat_index", -1)),
+				result_player_id,
+				String(message.get("reason", ""))
+			)
 		PokerProtocolScript.TABLE_SNAPSHOT:
 			var snapshot := Dictionary(message.get("snapshot", {})).duplicate(true)
 			room_id = String(message.get("room_id", snapshot.get("room_id", room_id)))

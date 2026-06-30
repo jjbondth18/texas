@@ -147,10 +147,36 @@ export class RoomManager {
         this.joinRoom(client, room.id);
         this.recordLog(`${client.id} joined ${room.id}`);
         break;
-      case "sit_down":
-        this.sitDownWithWallet(room, client, numberOr(message.seat_index, 0), String(message.player_id || ""));
-        this.recordLog(`${client.id} sat in ${room.id} seat=${numberOr(message.seat_index, 0)}`);
+      case "sit_down": {
+        const seatIndex = numberOr(message.seat_index, 0);
+        try {
+          this.sitDownWithWallet(room, client, seatIndex, String(message.player_id || ""));
+          this.send(client, {
+            type: "sit_down_result",
+            request_id: message.request_id,
+            ok: true,
+            room_id: room.id,
+            seat_index: seatIndex,
+            player_id: client.id,
+            server_player_id: client.id,
+          });
+          this.recordLog(`${client.id} sat in ${room.id} seat=${seatIndex}`);
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          this.send(client, {
+            type: "sit_down_result",
+            request_id: message.request_id,
+            ok: false,
+            room_id: room.id,
+            seat_index: seatIndex,
+            player_id: client.id,
+            server_player_id: client.id,
+            reason,
+          });
+          throw error;
+        }
         break;
+      }
       case "add_table_chips":
         this.addTableChips(room, client, numberOr(message.amount, 0));
         this.recordLog(`${client.id} added table chips amount=${numberOr(message.amount, 0)} in ${room.id}`);
@@ -418,8 +444,9 @@ export class RoomManager {
 
   private recordNotSeated(room: Room, client: Client, message: ClientMessage, command: string): void {
     const seatPlayerIds = room.table.seats.map((seat) => seat.playerId || "-").join(",");
+    const occupiedSeats = room.table.seats.filter((seat) => seat.playerId).map((seat) => `${seat.seatIndex}:${seat.playerId}:${seat.status}:${seat.chips}`).join(",");
     this.recordLog(
-      `player is not seated command=${command} room_id=${room.id} connection_player_id=${client.id} payload_player_id=${String(message.player_id || "-")} seat_player_ids=[${seatPlayerIds}]`,
+      `player is not seated command=${command} room_id=${room.id} connection_player_id=${client.id} payload_player_id=${String(message.player_id || "-")} seat_player_ids=[${seatPlayerIds}] occupied_seats=[${occupiedSeats}]`,
     );
   }
 
