@@ -550,7 +550,7 @@ func _build_quick_play_setup_panel() -> void:
 
 	var start_button := Button.new()
 	_quick_start_button = start_button
-	start_button.text = "START TABLE"
+	start_button.text = "FIND TABLE"
 	start_button.custom_minimum_size = Vector2(180, 48)
 	start_button.focus_mode = Control.FOCUS_NONE
 	start_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -704,12 +704,13 @@ func _render_table_creation_setup_panel(panel: PanelContainer, public_table: boo
 	column.add_child(title)
 
 	_add_table_setup_mode_switch(column, public_table, selected_mode)
+	_add_table_setup_profile_row(column)
 
 	var mode_note := Label.new()
 	if public_table:
 		mode_note.text = "Create a public chip table with your selected stakes." if not gem_selected else "Gem public tables require secure server matchmaking."
 	else:
-		mode_note.text = "Private casual room. Not listed in public tables." if not gem_selected else "Gem private rooms are reserved for future server/private match support."
+		mode_note.text = "Private casual room. Not listed in public tables." if not gem_selected else "Gem private rooms are reserved for future private match support."
 	mode_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	mode_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	mode_note.custom_minimum_size = Vector2(520, 0)
@@ -765,7 +766,7 @@ func _add_table_setup_mode_switch(parent: VBoxContainer, public_table: bool, sel
 
 	var gem_disabled: bool = public_table
 	var gem_button: Button = _table_setup_mode_button("GEM MATCH", selected_mode == "gem", gem_disabled)
-	gem_button.tooltip_text = "Gem public tables require secure server matchmaking." if public_table else "Gem private rooms are reserved for future server/private match support."
+	gem_button.tooltip_text = "Gem public tables require secure server matchmaking." if public_table else "Gem private rooms are reserved for future private match support."
 	gem_button.pressed.connect(func() -> void:
 		if public_table:
 			_show_toast("Gem public tables require secure server matchmaking.")
@@ -774,6 +775,47 @@ func _add_table_setup_mode_switch(parent: VBoxContainer, public_table: bool, sel
 		_render_table_creation_setup_panel(_private_room_setup_panel, false)
 	)
 	switch_row.add_child(gem_button)
+
+
+func _add_table_setup_profile_row(parent: VBoxContainer) -> void:
+	var profile_row := HBoxContainer.new()
+	profile_row.add_theme_constant_override("separation", 14)
+	profile_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	parent.add_child(profile_row)
+
+	var avatar_frame := PanelContainer.new()
+	avatar_frame.custom_minimum_size = Vector2(64, 64)
+	avatar_frame.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.012, 0.010, 0.024, 0.92), Color(0.82, 0.78, 1.0, 0.65), 32, 1))
+	profile_row.add_child(avatar_frame)
+
+	var avatar := TextureRect.new()
+	avatar.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	avatar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	avatar.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	avatar.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	avatar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var texture: Texture2D = AvatarLibraryScript.get_avatar_by_id(PlayerProfileScript.get_avatar_id(_player_profile))
+	if texture == null:
+		var avatar_path := String(_player_profile.get("avatar", ""))
+		if avatar_path != "" and ResourceLoader.exists(avatar_path):
+			texture = load(avatar_path) as Texture2D
+	avatar.texture = texture
+	avatar.visible = texture != null
+	avatar_frame.add_child(avatar)
+
+	var profile_text := VBoxContainer.new()
+	profile_text.add_theme_constant_override("separation", 4)
+	profile_row.add_child(profile_text)
+
+	var name_label := Label.new()
+	name_label.text = PlayerProfileScript.get_player_name(_player_profile)
+	HomeTheme.make_font_settings(name_label, 18, HomeTheme.TEXT)
+	profile_text.add_child(name_label)
+
+	var chips_label := Label.new()
+	chips_label.text = "Wallet Chips: %s" % _format_number(PlayerProfileScript.get_total_chips(_player_profile))
+	HomeTheme.make_font_settings(chips_label, 14, HomeTheme.GOLD)
+	profile_text.add_child(chips_label)
 
 
 func _table_setup_mode_button(label_text: String, selected: bool, disabled: bool) -> Button:
@@ -807,7 +849,7 @@ func _add_table_setup_option_row(parent: VBoxContainer, values: Dictionary, key:
 	parent.add_child(row)
 	for option_item in options:
 		var option_value: int = int(option_item)
-		var button := _table_setup_option_button(_table_setup_option_label(key, option_value), int(values.get(key, 0)) == option_value)
+		var button: Button = _table_setup_option_button(_table_setup_option_label(key, option_value), int(values.get(key, 0)) == option_value)
 		button.pressed.connect(func() -> void:
 			values[key] = option_value
 			_render_table_creation_setup_panel(_public_table_setup_panel if public_table else _private_room_setup_panel, public_table)
@@ -1154,7 +1196,7 @@ func _start_quick_play_from_setup() -> void:
 
 
 func _quick_server_table_config() -> Dictionary:
-	var hand_count := _selected_quick_max_hands
+	var hand_count: int = _selected_quick_max_hands
 	if hand_count >= 999:
 		hand_count = 0
 	return {
@@ -1375,7 +1417,7 @@ func _refresh_quick_play_setup_options() -> void:
 		_quick_gem_placeholder_container.visible = not is_chip_mode
 	if _quick_start_button != null:
 		_quick_start_button.disabled = not is_chip_mode or _selected_quick_buy_in > total_chips
-		_quick_start_button.text = "START TABLE" if is_chip_mode else "COMING SOON"
+		_quick_start_button.text = "FIND TABLE" if is_chip_mode else "COMING SOON"
 		_quick_start_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if is_chip_mode else Control.CURSOR_ARROW
 		_quick_start_button.add_theme_stylebox_override("disabled", HomeTheme.make_button_style(Color(0.08, 0.06, 0.10, 0.62), Color(0.76, 0.52, 0.9, 0.28), 22))
 		_quick_start_button.add_theme_color_override("font_disabled_color", Color(0.78, 0.72, 0.86, 0.72))
@@ -1539,14 +1581,14 @@ func _confirm_public_table_setup() -> void:
 		_show_toast("Not enough wallet chips.")
 		return
 	_start_table_launch_transition("Creating public table...", func() -> void:
-		var table := _local_backend.create_public_table(_public_table_config_from_values(_public_table_setup_values))
+		var table: Dictionary = _local_backend.create_public_table(_public_table_config_from_values(_public_table_setup_values))
 		_join_public_chip_table_after_wallet_check(String(table.get("table_id", "")))
 	)
 
 
 func _confirm_private_room_setup() -> void:
 	if _private_room_setup_mode == "gem":
-		_show_toast("Gem private rooms are reserved for future server/private match support.")
+		_show_toast("Gem private rooms are reserved for future private match support.")
 		return
 	_hide_table_creation_setup_panels()
 	_start_table_launch_transition("Creating private room...", func() -> void:

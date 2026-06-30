@@ -35,7 +35,8 @@ func leave_public_table(table_id: String, player_id: String) -> void:
 	PublicTableRegistryScript.leave_public_table(table_id, player_id)
 
 func quick_join_public_table(player: Dictionary, preferred_config: Dictionary = {}) -> Dictionary:
-	var table := PublicTableRegistryScript.quick_join_public_table(player, _public_table_config_from_setup(preferred_config, player))
+	var registry_config: Dictionary = _public_table_config_from_setup(preferred_config, player) if not preferred_config.is_empty() else {}
+	var table: Dictionary = PublicTableRegistryScript.quick_join_public_table(player, registry_config)
 	if table.is_empty():
 		return {}
 	_current_context = _build_public_table_context(table, player)

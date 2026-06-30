@@ -9,6 +9,7 @@ func _init() -> void:
 	_require(source.contains("\"small_blind\": _selected_quick_small_blind"), "Quick Chip must use selected small blind")
 	_require(source.contains("\"big_blind\": _selected_quick_big_blind"), "Quick Chip must use selected big blind")
 	_require(source.contains("\"max_hands\": _selected_quick_max_hands"), "Quick Chip must use selected hand count")
+	_require(source.contains("_quick_start_button.text = \"FIND TABLE\""), "Quick Chip button must read FIND TABLE")
 	_require(source.contains("if _quick_play_mode != \"chip\":\n\t\treturn"), "Quick Gem must not enter a table")
 	print("Quick setup keeps stake controls test passed.")
 	quit(0)

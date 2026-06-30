@@ -23,7 +23,7 @@ static func list_public_tables() -> Array[Dictionary]:
 	return public_tables
 
 static func create_public_table(config: Dictionary = {}) -> Dictionary:
-	var table_id := String(config.get("table_id", "pub_chip_%03d" % _next_table_number))
+	var table_id: String = String(config.get("table_id", "pub_chip_%03d" % _next_table_number))
 	if not config.has("table_id"):
 		_next_table_number += 1
 	var small_blind: int = int(config.get("small_blind", 25))
@@ -71,7 +71,7 @@ static func join_public_table(table_id: String, player: Dictionary) -> Dictionar
 		table["status"] = STATUS_FULL
 		_tables[table_id] = table
 		return {}
-	var player_id := _player_id(player)
+	var player_id: String = _player_id(player)
 	var player_ids: Array = Array(table.get("player_ids", [])).duplicate()
 	if not player_ids.has(player_id):
 		player_ids.append(player_id)
@@ -95,11 +95,16 @@ static func leave_public_table(table_id: String, player_id: String) -> void:
 	_tables[table_id] = table
 
 static func quick_join_public_table(player: Dictionary, preferred_config: Dictionary = {}) -> Dictionary:
-	var table_id := _best_quick_join_table_id(true)
+	var has_preference: bool = _has_quick_join_preference(preferred_config)
+	var table_id: String = _best_quick_join_table_id(true, preferred_config if has_preference else {})
 	if table_id == "":
+		table_id = _best_quick_join_table_id(false, preferred_config if has_preference else {})
+	if table_id == "" and not has_preference:
+		table_id = _best_quick_join_table_id(true)
+	if table_id == "" and not has_preference:
 		table_id = _best_quick_join_table_id(false)
 	if table_id == "":
-		var created := create_public_table(preferred_config)
+		var created: Dictionary = create_public_table(preferred_config)
 		table_id = String(created.get("table_id", ""))
 	return join_public_table(table_id, player)
 
@@ -127,7 +132,7 @@ static func seed_mock_public_tables() -> void:
 		"created_by": "mock_registry",
 	})
 
-static func _best_quick_join_table_id(waiting_only: bool) -> String:
+static func _best_quick_join_table_id(waiting_only: bool, preferred_config: Dictionary = {}) -> String:
 	var best_id := ""
 	var best_players := -1
 	for table_id in _tables.keys():
@@ -140,11 +145,34 @@ static func _best_quick_join_table_id(waiting_only: bool) -> String:
 			continue
 		if waiting_only and String(table.get("status", "")) != STATUS_WAITING:
 			continue
+		if not _table_matches_preferred_config(table, preferred_config):
+			continue
 		var current_players: int = int(table.get("current_players", 0))
 		if current_players > best_players:
 			best_players = current_players
 			best_id = String(table.get("table_id", table_id))
 	return best_id
+
+static func _has_quick_join_preference(preferred_config: Dictionary) -> bool:
+	return preferred_config.has("buy_in") or preferred_config.has("small_blind") or preferred_config.has("big_blind") or preferred_config.has("hand_count") or preferred_config.has("max_hands")
+
+static func _table_matches_preferred_config(table: Dictionary, preferred_config: Dictionary) -> bool:
+	if preferred_config.is_empty():
+		return true
+	if preferred_config.has("buy_in") and int(table.get("buy_in", 0)) != int(preferred_config.get("buy_in", 0)):
+		return false
+	if preferred_config.has("small_blind") and int(table.get("small_blind", 0)) != int(preferred_config.get("small_blind", 0)):
+		return false
+	if preferred_config.has("big_blind") and int(table.get("big_blind", 0)) != int(preferred_config.get("big_blind", 0)):
+		return false
+	var preferred_hands: int = int(preferred_config.get("hand_count", preferred_config.get("max_hands", int(table.get("hand_count", 10)))))
+	var table_hands: int = int(table.get("hand_count", table.get("max_hands", preferred_hands)))
+	if _normalized_hand_count(preferred_hands) != _normalized_hand_count(table_hands):
+		return false
+	return true
+
+static func _normalized_hand_count(value: int) -> int:
+	return 999 if value <= 0 or value >= 999 else value
 
 static func _update_public_table_status(table: Dictionary) -> void:
 	var current_players: int = int(table.get("current_players", 0))

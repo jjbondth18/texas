@@ -34,11 +34,12 @@ func _initialize() -> void:
 	_require(int(home.get("_selected_quick_buy_in")) == 10000, "Quick selected buy-in must update.")
 	_require(int(home.get("_selected_quick_small_blind")) == 50, "Quick selected blinds must update.")
 	_require(int(home.get("_selected_quick_max_hands")) == 20, "Quick selected hand count must update.")
+	var start_button: Button = home.get("_quick_start_button") as Button
+	_require(start_button != null and start_button.text == "FIND TABLE", "Chip Quick action must read FIND TABLE.")
 
 	home.call("_select_quick_play_mode", "gem")
 	var chip_settings: VBoxContainer = home.get("_quick_chip_settings_container") as VBoxContainer
 	var gem_placeholder: VBoxContainer = home.get("_quick_gem_placeholder_container") as VBoxContainer
-	var start_button: Button = home.get("_quick_start_button") as Button
 	_require(chip_settings != null and not chip_settings.visible, "Gem Match must hide Chip Table settings.")
 	_require(gem_placeholder != null and gem_placeholder.visible, "Gem Match must show the coming soon placeholder.")
 	_require(start_button != null and start_button.disabled and start_button.text == "COMING SOON", "Gem Match must disable Quick Table join.")

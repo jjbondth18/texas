@@ -11,7 +11,7 @@ func _init() -> void:
 	_require(source.contains("_confirm_private_room_setup"), "Private setup must have a confirm action")
 	_require(source.contains("STARTING STACK / BUY-IN"), "Private setup must include Starting Stack / Buy-in")
 	_require(source.contains("Private casual room. Not listed in public tables."), "Private setup must clarify private casual")
-	_require(source.contains("Gem private rooms are reserved for future server/private match support."), "Private Gem option must be visible as a future option")
+	_require(source.contains("Gem private rooms are reserved for future private match support."), "Private Gem option must be visible as a future option")
 	_require(source.contains("_private_room_setup_mode = \"gem\""), "Private Gem tab must not be blacked out")
 
 	PublicTableRegistryScript.reset()
