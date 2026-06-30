@@ -2384,7 +2384,7 @@ func _add_room_browser_row(room: Dictionary) -> void:
 	HomeTheme.make_font_settings(name_lbl, 15, Color(1, 1, 1, 0.95))
 	name_box.add_child(name_lbl)
 	var public_badge := Label.new()
-	public_badge.text = "AI WARM-UP - REAL PLAYERS NEXT HAND" if bool(room.get("is_ai_warmup", false)) else ("SERVER PUBLIC CHIP" if _profile_server_connected else "LOCAL MOCK CHIP")
+	public_badge.text = "WARM-UP / WAITING FOR PLAYERS" if bool(room.get("host_in_local_warmup", false)) else ("SERVER PUBLIC CHIP" if _profile_server_connected else "LOCAL MOCK CHIP")
 	HomeTheme.make_font_settings(public_badge, 11, HomeTheme.CYAN)
 	name_box.add_child(public_badge)
 	var blinds_lbl := Label.new()

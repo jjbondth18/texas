@@ -89,6 +89,7 @@ static func create_public_table(config: Dictionary = {}) -> Dictionary:
 		"pending_real_joiners": [],
 		"warmup_ai_player_ids": [],
 		"is_ai_warmup": false,
+		"host_in_local_warmup": false,
 		"waiting_for_real_players": true,
 	}
 	_update_public_table_status(table)
@@ -110,22 +111,6 @@ static func join_public_table(table_id: String, player: Dictionary) -> Dictionar
 			_tables[table_id] = table
 		return {}
 	var player_id: String = _player_id(player)
-	if bool(table.get("is_ai_warmup", false)):
-		var pending_joiners: Array = Array(table.get("pending_real_joiners", [])).duplicate(true)
-		var already_pending := false
-		for joiner_item in pending_joiners:
-			if _player_id(Dictionary(joiner_item)) == player_id:
-				already_pending = true
-				break
-		if not already_pending:
-			var joiner := player.duplicate(true)
-			joiner["player_id"] = player_id
-			joiner["pending_next_hand"] = true
-			pending_joiners.append(joiner)
-		table["pending_real_joiners"] = pending_joiners
-		table["join_result"] = "pending_next_hand"
-		_tables[table_id] = table
-		return _public_table_snapshot(table)
 	var player_ids: Array = Array(table.get("player_ids", [])).duplicate()
 	if not player_ids.has(player_id):
 		player_ids.append(player_id)
@@ -135,6 +120,8 @@ static func join_public_table(table_id: String, player: Dictionary) -> Dictionar
 		real_player_ids.append(player_id)
 	table["real_player_ids"] = real_player_ids
 	table["current_players"] = min(real_player_ids.size(), int(table.get("max_players", 9)))
+	if bool(table.get("host_in_local_warmup", false)) and real_player_ids.size() >= 2:
+		table["host_in_local_warmup"] = false
 	_update_public_table_status(table)
 	_tables[table_id] = table
 	return _public_table_snapshot(table)
@@ -145,16 +132,14 @@ static func start_ai_warmup(table_id: String, ai_count: int = 3) -> Dictionary:
 	var table: Dictionary = _normalized_public_table(Dictionary(_tables[table_id]))
 	if not _is_public_chip_table(table):
 		return {}
-	var warmup_ids: Array[String] = []
-	for index in range(max(ai_count, 1)):
-		warmup_ids.append("warmup_ai_%02d" % (index + 1))
-	table["is_ai_warmup"] = true
+	table["is_ai_warmup"] = false
+	table["host_in_local_warmup"] = true
 	table["waiting_for_real_players"] = true
-	table["warmup_ai_player_ids"] = warmup_ids
-	table["status"] = STATUS_AI_WARMUP
-	table["hand_state"] = STATUS_AI_WARMUP
+	table["warmup_ai_player_ids"] = []
+	table["status"] = STATUS_WAITING_FOR_PLAYERS
+	table["hand_state"] = STATUS_WAITING_FOR_PLAYERS
 	var log: Array = Array(table.get("table_log", [])).duplicate()
-	log.append("AI warm-up started. Waiting for real players.")
+	log.append("Host started local AI warm-up. Public room remains open for real players.")
 	table["table_log"] = log
 	_tables[table_id] = table
 	return _public_table_snapshot(table)
@@ -178,6 +163,7 @@ static func settle_pending_real_joiners(table_id: String) -> Dictionary:
 	table["pending_real_joiners"] = []
 	table["warmup_ai_player_ids"] = []
 	table["is_ai_warmup"] = false
+	table["host_in_local_warmup"] = false
 	table["waiting_for_real_players"] = real_player_ids.size() < 2
 	table["current_players"] = min(real_player_ids.size(), int(table.get("max_players", 9)))
 	table["status"] = STATUS_OPEN if real_player_ids.size() >= 2 else STATUS_WAITING_FOR_PLAYERS
@@ -313,6 +299,7 @@ static func _normalized_public_table(table: Dictionary) -> Dictionary:
 	normalized["pending_real_joiners"] = Array(table.get("pending_real_joiners", [])).duplicate(true)
 	normalized["warmup_ai_player_ids"] = Array(table.get("warmup_ai_player_ids", [])).duplicate()
 	normalized["is_ai_warmup"] = bool(table.get("is_ai_warmup", false))
+	normalized["host_in_local_warmup"] = bool(table.get("host_in_local_warmup", false))
 	normalized["waiting_for_real_players"] = bool(table.get("waiting_for_real_players", false))
 	normalized["join_result"] = String(table.get("join_result", "seated"))
 	normalized["created_by"] = String(table.get("created_by", "local_mock"))

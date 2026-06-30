@@ -14,16 +14,20 @@ Public Chip tables are real-player public tables. When fewer than two real playe
 
 ## AI Warm-up
 
-- Sets `is_ai_warmup = true`.
-- Adds temporary `warmup_ai` seats.
-- Uses warm-up/practice play only.
-- Does not change account chips, gems, ranked stats, public profit, leaderboard progress, or formal public hand results.
-- Warm-up AI is not counted in `current_players`; the public list shows only real seated players.
+- AI Warm-up is a separate local practice table on the host client.
+- The server public room remains real-player-only and stays open in `waiting_for_players`.
+- The compatibility `start_ai_warmup` command only marks `host_in_local_warmup=true`; it does not start a server hand.
+- AI never enters server public seats, never occupies public room capacity, and never appears in public table snapshots.
+- Local warm-up uses practice chips only.
+- Local warm-up does not change account chips, gems, ranked stats, public profit, leaderboard progress, or formal public hand results.
+- The warm-up UI must show `LOCAL AI WARM-UP`, `Practice chips only`, and that the public room is waiting in the background.
 
 ## Quick No-match Flow
 
-Quick Chip first tries to join a clean waiting/open public chip table. If none exists, it creates a clean public table, seats the local player, and starts AI warm-up automatically so the player can begin practicing immediately.
+Quick Chip first tries to join a clean waiting/open public chip table. If none exists, it creates a clean public table and seats the local player. Local AI warm-up can then be started from the poker table while the public room waits for real players.
 
 ## Real Players Joining Warm-up
 
-Real players may join an `ai_warmup` table from the Table Browser. They are added to `pending_real_joiners` and are not inserted into the current hand. Before the next hand starts, warm-up AI is removed, pending real players are seated, and the table either enters formal public play with at least two real players or returns to `waiting_for_players`.
+Real players join the real server public room, not the host's local warm-up table. When another real player sits in the public room, the host client must interrupt local warm-up immediately, clear local AI timers/seats/cards/pot, apply the latest server room snapshot, and return to the public table ready/waiting-to-start state.
+
+The returned public room shows only real players. The host can then start a formal public hand through the server authoritative `start_hand` path.

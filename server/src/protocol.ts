@@ -116,6 +116,8 @@ export interface ServerMessage {
   amount?: number;
   source?: string;
   is_ai_warmup?: boolean;
+  local_warmup?: boolean;
+  host_in_local_warmup?: boolean;
 }
 
 export interface AvatarCatalogItemSnapshot {
@@ -156,6 +158,7 @@ export interface PublicTableSnapshot {
   hand_state: Phase;
   table_state?: string;
   is_ai_warmup?: boolean;
+  host_in_local_warmup?: boolean;
   is_public: boolean;
   created_at: string;
   seats?: PublicSeatSnapshot[];
@@ -218,6 +221,7 @@ export interface TableSnapshot {
   hand_id: number;
   table_state?: string;
   is_ai_warmup?: boolean;
+  host_in_local_warmup?: boolean;
   seats: PublicSeatSnapshot[];
   community_cards: Card[];
   pot: number;

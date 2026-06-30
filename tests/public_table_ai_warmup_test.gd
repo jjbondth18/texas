@@ -22,12 +22,13 @@ func run() -> void:
 	assert(Array(joined.get("warmup_ai_player_ids", [])).is_empty())
 
 	var warmup := PublicTableRegistryScript.start_ai_warmup("warmup_create_waiting", 3)
-	assert(bool(warmup.get("is_ai_warmup", false)) == true)
-	assert(String(warmup.get("status", "")) == "ai_warmup")
-	assert(Array(warmup.get("warmup_ai_player_ids", [])).size() == 3)
+	assert(bool(warmup.get("is_ai_warmup", false)) == false)
+	assert(bool(warmup.get("host_in_local_warmup", false)) == true)
+	assert(String(warmup.get("status", "")) == "waiting_for_players")
+	assert(Array(warmup.get("warmup_ai_player_ids", [])).is_empty())
 	assert(int(warmup.get("current_players", 0)) == 1)
 
 	var listed := PublicTableRegistryScript.list_public_tables()
 	assert(listed.size() == 1)
 	assert(int(Dictionary(listed[0]).get("current_players", 0)) == 1)
-	assert(bool(Dictionary(listed[0]).get("is_ai_warmup", false)) == true)
+	assert(bool(Dictionary(listed[0]).get("host_in_local_warmup", false)) == true)

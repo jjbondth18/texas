@@ -1,7 +1,7 @@
 import type { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import type { ClientMessage, PublicTableSnapshot, ServerMessage } from "./protocol.js";
-import { applyPlayerAction, legalActions, processAutomaticTurns, processSingleAutomaticTurn } from "./betting_engine.js";
+import { applyPlayerAction, legalActions, processAutomaticTurns } from "./betting_engine.js";
 import { TableState, type Player } from "./table_state.js";
 import { getDatabase } from "./db/database.js";
 import { AvatarRepository } from "./db/avatar_repository.js";
@@ -33,12 +33,7 @@ interface Room {
   maxPlayers: number;
   isPublic: boolean;
   isAiWarmup: boolean;
-  warmupBaselineChips: Map<string, number>;
-  lastWarmupResetHandId: number;
-  warmupNextHandTimer?: ReturnType<typeof setTimeout>;
-  warmupNextHandScheduledHandId: number;
-  warmupAiActionTimer?: ReturnType<typeof setTimeout>;
-  warmupAiActionSequence: number;
+  hostInLocalWarmup: string;
   createdAt: string;
 }
 
@@ -52,9 +47,6 @@ const ALLOWED_BUY_INS = new Set([5000, 10000, 20000, 50000]);
 const ALLOWED_BLIND_PAIRS = new Set(["25/50", "50/100", "100/200"]);
 const ALLOWED_HAND_COUNTS = new Set([0, 5, 10, 20]);
 const ALLOWED_IDENTITY_PROVIDERS = new Set(["local_dev", "steam"]);
-const WARMUP_AI_ACTION_DELAY_MIN_MS = 600;
-const WARMUP_AI_ACTION_DELAY_MAX_MS = 1200;
-
 export class RoomManager {
   private clients = new Map<string, Client>();
   private rooms = new Map<string, Room>();
@@ -222,13 +214,13 @@ export class RoomManager {
         break;
       case "start_ai_warmup": {
         try {
-          const aiCount = this.startAiWarmup(room, client);
-          this.send(client, { type: "start_ai_warmup_result", request_id: message.request_id, ok: true, room_id: room.id, player_id: client.id, server_player_id: client.id, is_ai_warmup: true });
-          this.recordLog(`start_ai_warmup accepted: room_id=${room.id} player_id=${client.id} warmup_ai_count=${aiCount} seats=${this.seatDebug(room)}`);
+          this.markHostStartedLocalWarmup(room, client);
+          this.send(client, { type: "start_ai_warmup_result", request_id: message.request_id, ok: true, room_id: room.id, player_id: client.id, server_player_id: client.id, is_ai_warmup: false, local_warmup: true, host_in_local_warmup: true });
+          this.recordLog(`host_started_local_warmup accepted: room_id=${room.id} player_id=${client.id} real_player_count=${this.realConnectedSeatedCount(room)} seats=${this.seatDebug(room)}`);
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
           this.send(client, { type: "start_ai_warmup_result", request_id: message.request_id, ok: false, room_id: room.id, player_id: client.id, server_player_id: client.id, reason });
-          this.recordLog(`start_ai_warmup rejected: room_id=${room.id} player_id=${client.id} reason=${reason} real_player_count=${this.realConnectedSeatedCount(room)} state=${room.table.phase}`);
+          this.recordLog(`host_started_local_warmup rejected: room_id=${room.id} player_id=${client.id} reason=${reason} real_player_count=${this.realConnectedSeatedCount(room)} state=${room.table.phase}`);
           return;
         }
         break;
@@ -236,7 +228,6 @@ export class RoomManager {
       case "player_action":
         if (!message.action) throw new Error("action is required");
         this.requireSeated(room, client, message, "player_action");
-        this.cancelWarmupAiAction(room);
         applyPlayerAction(room.table, client.id, message.action, numberOr(message.amount, 0));
         this.recordLog(`${client.id} action=${message.action} amount=${numberOr(message.amount, 0)} in ${room.id}`);
         break;
@@ -264,10 +255,7 @@ export class RoomManager {
       maxPlayers: options.maxPlayers ?? DEFAULT_MAX_PLAYERS,
       isPublic: options.isPublic ?? true,
       isAiWarmup: false,
-      warmupBaselineChips: new Map(),
-      lastWarmupResetHandId: 0,
-      warmupNextHandScheduledHandId: 0,
-      warmupAiActionSequence: 0,
+      hostInLocalWarmup: "",
       createdAt: new Date().toISOString(),
     };
     this.rooms.set(id, room);
@@ -323,6 +311,7 @@ export class RoomManager {
           current_players: this.publicSeatedCount(room),
           is_public: room.isPublic,
           is_ai_warmup: room.isAiWarmup,
+          host_in_local_warmup: room.hostInLocalWarmup !== "",
           connected_player_ids: [...room.clients],
           hand_state: snapshot.phase,
           betting_round: snapshot.phase,
@@ -381,6 +370,7 @@ export class RoomManager {
       hand_state: room.table.phase,
       table_state: room.isAiWarmup ? "ai_warmup" : room.table.phase,
       is_ai_warmup: room.isAiWarmup,
+      host_in_local_warmup: room.hostInLocalWarmup !== "",
       is_public: room.isPublic,
       created_at: room.createdAt,
       seats: room.table.publicSnapshot().seats,
@@ -470,57 +460,20 @@ export class RoomManager {
     client.avatarId = profile.avatar_id;
   }
 
-  private startAiWarmup(room: Room, client: Client): number {
+  private markHostStartedLocalWarmup(room: Room, client: Client): void {
     const requestingSeat = room.table.getSeatByPlayer(client.id);
     const realCount = this.realConnectedSeatedCount(room);
     const allowed = room.isPublic && Boolean(requestingSeat) && room.table.phase === "waiting" && realCount === 1 && !room.isAiWarmup;
-    this.recordLog(`start_ai_warmup requested: room_id=${room.id} player_id=${client.id} real_player_count=${realCount} state=${room.table.phase} allowed=${allowed}`);
+    this.recordLog(`host_started_local_warmup requested: room_id=${room.id} player_id=${client.id} real_player_count=${realCount} state=${room.table.phase} allowed=${allowed}`);
     if (!room.isPublic) throw new Error("not_public_table");
     if (!requestingSeat) throw new Error("not_seated");
-    if (room.isAiWarmup) return this.startNextWarmupHand(room);
+    if (room.hostInLocalWarmup === client.id) return;
     if (!["waiting", "hand_over"].includes(room.table.phase)) throw new Error("already_playing");
     if (room.table.phase !== "waiting") throw new Error("not_waiting");
     if (realCount !== 1) throw new Error("too_many_real_players");
-    room.isAiWarmup = true;
-    room.warmupBaselineChips = new Map(room.table.seats.filter((seat) => seat.playerId && !seat.isAi && !seat.warmupAi).map((seat) => [seat.playerId, seat.chips]));
-    let added = 0;
-    for (const seat of room.table.seats) {
-      if (added >= 3) break;
-      if (seat.playerId) continue;
-      const player: Player = {
-        id: `warmup_ai_${room.id}_${added + 1}`,
-        name: `Warm-up AI ${added + 1}`,
-        avatarId: "default",
-        connected: true,
-        isAi: true,
-        warmupAi: true,
-      };
-      room.table.sitDown(player, seat.seatIndex, room.buyIn);
-      added += 1;
-    }
-    if (added === 0) throw new Error("table_full");
-    room.table.addAction({ type: "system", action: "ai_warmup", message: "AI WARM-UP started. Practice results will not affect account wallet." });
-    this.startNextWarmupHand(room);
-    return added;
-  }
-
-  private startNextWarmupHand(room: Room): number {
-    if (!room.isAiWarmup) throw new Error("not_public_table");
-    if (!["waiting", "hand_over"].includes(room.table.phase)) throw new Error("already_playing");
-    this.cancelWarmupAiAction(room);
-    this.cancelWarmupNextHand(room);
-    this.restoreWarmupStacksIfNeeded(room);
-    for (const seat of room.table.seats) {
-      if (!seat.playerId || (!seat.warmupAi && !seat.isAi)) continue;
-      if (seat.chips <= 0) seat.chips = room.buyIn;
-      if (seat.status === "sit_out" || seat.status === "disconnected") seat.status = "sitting";
-    }
-    const warmupCount = room.table.seats.filter((seat) => seat.warmupAi || seat.isAi).length;
-    if (warmupCount < 1) throw new Error("table_full");
-    room.table.addAction({ type: "system", action: "ai_warmup", message: "Next AI warm-up hand starting. Practice chips only." });
-    room.table.startHand();
-    this.recordLog(`next_ai_warmup_hand started: room_id=${room.id} hand_id=${room.table.handId}`);
-    return warmupCount;
+    room.hostInLocalWarmup = client.id;
+    room.isAiWarmup = false;
+    room.table.addAction({ type: "system", action: "local_warmup", message: `${client.name} started local AI warm-up. Public room remains open for real players.` });
   }
 
   private mockPurchase(client: Client, currency: "chips" | "gems", amount: number) {
@@ -542,6 +495,12 @@ export class RoomManager {
     if (!wallet || wallet.chips < room.buyIn) throw new Error("insufficient_chips");
     this.wallets.deductChips(client.id, room.buyIn, { reason: "table_buy_in", relatedRoomId: room.id });
     room.table.sitDown(toPlayer(client), seatIndex, room.buyIn);
+    if (room.hostInLocalWarmup !== "" && this.realConnectedSeatedCount(room) >= 2) {
+      const hostId = room.hostInLocalWarmup;
+      room.hostInLocalWarmup = "";
+      room.table.addAction({ type: "system", action: "real_player_joined", message: "Real player joined. Return from local AI warm-up to public table." });
+      this.recordLog(`real_player_joined_interrupts_local_warmup room_id=${room.id} host_player_id=${hostId} joined_player_id=${client.id}`);
+    }
     const occupiedCount = this.occupiedSeatCount(room);
     const acceptedSeat = room.table.getSeat(seatIndex);
     this.recordLog(
@@ -581,28 +540,11 @@ export class RoomManager {
   private cashOut(room: Room, client: Client): void {
     const seat = room.table.getSeatByPlayer(client.id);
     if (!seat) throw new Error("not_seated");
-    if (room.isAiWarmup) {
-      this.cashOutWarmupPlayer(room, client);
-      return;
-    }
+    if (room.hostInLocalWarmup === client.id) room.hostInLocalWarmup = "";
     if (!room.table.canMoveTableChips()) throw new Error("cannot_cash_out_during_hand");
     const result = room.table.cashOut(client.id);
     this.wallets.refundTableChips(client.id, result.amount, { reason: "table_cash_out", relatedRoomId: room.id });
     this.sendWalletSnapshot(client, room.id);
-  }
-
-  private cashOutWarmupPlayer(room: Room, client: Client): void {
-    this.cancelWarmupAiAction(room);
-    this.cancelWarmupNextHand(room);
-    this.restoreWarmupStacksIfNeeded(room);
-    const seat = room.table.getSeatByPlayer(client.id);
-    if (!seat) throw new Error("not_seated");
-    const refund = Math.max(0, Math.floor(room.warmupBaselineChips.get(client.id) ?? seat.chips));
-    room.table.leaveSeat(client.id);
-    this.wallets.refundTableChips(client.id, refund, { reason: "table_cash_out", relatedRoomId: room.id });
-    this.sendWalletSnapshot(client, room.id);
-    room.table.addAction({ type: "system", message: `${client.name} left AI warm-up. Practice result ignored and original table stack returned.` });
-    if (this.realConnectedSeatedCount(room) === 0) this.clearWarmupState(room);
   }
 
   private recordHandResults(room: Room): void {
@@ -619,7 +561,6 @@ export class RoomManager {
   }
 
   private broadcast(room: Room): void {
-    this.restoreWarmupStacksIfNeeded(room);
     const snapshot = {
       ...room.table.publicSnapshot(),
       buy_in: room.buyIn,
@@ -628,6 +569,7 @@ export class RoomManager {
       current_players: this.publicSeatedCount(room),
       table_state: room.isAiWarmup ? "ai_warmup" : room.table.phase,
       is_ai_warmup: room.isAiWarmup,
+      host_in_local_warmup: room.hostInLocalWarmup !== "",
       table_info: this.tableSnapshot(room),
     };
     for (const playerId of room.clients) {
@@ -639,7 +581,6 @@ export class RoomManager {
       const privateSnapshot = room.table.privateSnapshot(playerId, legalActions(room.table, playerId));
       if (privateSnapshot) this.send(client, { type: "private_snapshot", room_id: room.id, snapshot: privateSnapshot });
     }
-    this.scheduleWarmupContinuation(room);
   }
 
   private send(client: Client, message: ServerMessage): void {
@@ -649,122 +590,6 @@ export class RoomManager {
   private sendWalletSnapshot(client: Client, roomId?: string): void {
     const wallet = this.wallets.get(client.id);
     if (wallet) this.send(client, { type: "wallet_snapshot", player_id: client.id, room_id: roomId, wallet });
-  }
-
-  private restoreWarmupStacksIfNeeded(room: Room): void {
-    if (!room.isAiWarmup || room.table.phase !== "hand_over" || room.lastWarmupResetHandId === room.table.handId) return;
-    this.cancelWarmupAiAction(room);
-    for (const seat of room.table.seats) {
-      if (!seat.playerId || seat.warmupAi || seat.isAi) continue;
-      const baseline = room.warmupBaselineChips.get(seat.playerId);
-      if (baseline !== undefined) seat.chips = baseline;
-    }
-    room.lastWarmupResetHandId = room.table.handId;
-    room.table.lastHandResults = [];
-    room.table.addAction({ type: "system", message: "AI warm-up result ignored for account settlement. Table stack restored." });
-  }
-
-  private scheduleWarmupContinuation(room: Room): void {
-    if (!room.isAiWarmup) {
-      this.cancelWarmupAiAction(room);
-      this.cancelWarmupNextHand(room);
-      return;
-    }
-    if (room.table.phase === "hand_over") {
-      this.cancelWarmupAiAction(room);
-      this.scheduleWarmupNextHandIfNeeded(room);
-      return;
-    }
-    this.scheduleWarmupAiActionIfNeeded(room);
-  }
-
-  private scheduleWarmupAiActionIfNeeded(room: Room): void {
-    if (!this.isWarmupAiTurn(room)) {
-      this.cancelWarmupAiAction(room);
-      return;
-    }
-    if (room.warmupAiActionTimer) return;
-    const handId = room.table.handId;
-    const seatIndex = room.table.currentTurnSeat;
-    const sequence = ++room.warmupAiActionSequence;
-    const delay = this.warmupAiActionDelayMs();
-    room.warmupAiActionTimer = setTimeout(() => {
-      room.warmupAiActionTimer = undefined;
-      if (!this.rooms.has(room.id)) return;
-      if (!room.isAiWarmup || room.table.handId !== handId || room.table.currentTurnSeat !== seatIndex || room.warmupAiActionSequence !== sequence) return;
-      if (!this.isWarmupAiTurn(room)) return;
-      const acted = processSingleAutomaticTurn(room.table, true);
-      if (!acted) return;
-      this.recordLog(`warmup_ai_action: room_id=${room.id} hand_id=${handId} seat=${seatIndex}`);
-      this.recordHandResults(room);
-      this.broadcast(room);
-    }, delay);
-    room.warmupAiActionTimer.unref?.();
-  }
-
-  private isWarmupAiTurn(room: Room): boolean {
-    if (!room.isAiWarmup || room.table.currentTurnSeat < 0) return false;
-    if (!["preflop", "flop", "turn", "river"].includes(room.table.phase)) return false;
-    const seat = room.table.getSeat(room.table.currentTurnSeat);
-    return Boolean(seat && seat.status === "playing" && seat.warmupAi);
-  }
-
-  private warmupAiActionDelayMs(): number {
-    return Math.floor(WARMUP_AI_ACTION_DELAY_MIN_MS + Math.random() * (WARMUP_AI_ACTION_DELAY_MAX_MS - WARMUP_AI_ACTION_DELAY_MIN_MS + 1));
-  }
-
-  private scheduleWarmupNextHandIfNeeded(room: Room): void {
-    if (!room.isAiWarmup || room.table.phase !== "hand_over") return;
-    if (room.warmupNextHandTimer || room.warmupNextHandScheduledHandId === room.table.handId) return;
-    if (this.realConnectedSeatedCount(room) < 1) return;
-    room.warmupNextHandScheduledHandId = room.table.handId;
-    room.warmupNextHandTimer = setTimeout(() => {
-      room.warmupNextHandTimer = undefined;
-      if (!this.rooms.has(room.id) || !room.isAiWarmup || room.table.phase !== "hand_over") return;
-      if (this.realConnectedSeatedCount(room) < 1) {
-        this.clearWarmupState(room);
-        this.broadcast(room);
-        return;
-      }
-      try {
-        this.startNextWarmupHand(room);
-        this.broadcast(room);
-      } catch (error) {
-        this.recordLog(`next_ai_warmup_hand failed: room_id=${room.id} reason=${error instanceof Error ? error.message : String(error)}`);
-      }
-    }, 3000);
-    room.warmupNextHandTimer.unref?.();
-  }
-
-  private cancelWarmupNextHand(room: Room): void {
-    if (!room.warmupNextHandTimer) return;
-    clearTimeout(room.warmupNextHandTimer);
-    room.warmupNextHandTimer = undefined;
-  }
-
-  private cancelWarmupAiAction(room: Room): void {
-    room.warmupAiActionSequence += 1;
-    if (!room.warmupAiActionTimer) return;
-    clearTimeout(room.warmupAiActionTimer);
-    room.warmupAiActionTimer = undefined;
-  }
-
-  private clearWarmupState(room: Room): void {
-    this.cancelWarmupAiAction(room);
-    this.cancelWarmupNextHand(room);
-    for (const seat of room.table.seats) {
-      if (seat.warmupAi || seat.isAi) room.table.leaveSeat(seat.playerId);
-    }
-    room.isAiWarmup = false;
-    room.warmupBaselineChips.clear();
-    room.lastWarmupResetHandId = 0;
-    room.warmupNextHandScheduledHandId = 0;
-    room.table.phase = "waiting";
-    room.table.currentTurnSeat = -1;
-    room.table.currentBet = 0;
-    room.table.communityCards = [];
-    room.table.winners = [];
-    room.table.lastHandResults = [];
   }
 
   private seatDebug(room: Room): string {

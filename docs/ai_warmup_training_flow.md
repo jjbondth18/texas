@@ -2,7 +2,7 @@
 
 AI Warm-up and Training are practice flows.
 
-AI Warm-up is available on a public chip table after the real player is seated and the table is waiting for more real players. The client sends `start_ai_warmup`; the authoritative server adds temporary `warmup_ai` seats and marks snapshots with `is_ai_warmup=true` and `table_state=ai_warmup`.
+AI Warm-up is available on a public chip table after the real player is seated and the table is waiting for more real players. In authoritative public tables, Warm-up is a separate local practice table on the host client. The client may send `start_ai_warmup` as a compatibility notification, but the server only records `host_in_local_warmup=true`; it does not add AI seats, start a server hand, or mark public snapshots as `is_ai_warmup=true`.
 
 Training is a standalone local AI practice mode. It uses `table_type=training_ai`, `uses_practice_chips=true`, and `affects_account_balance=false`. It does not depend on the public table browser, public table registry, server room seating, or the normal two-real-player public start rule.
 
@@ -13,17 +13,19 @@ Both modes are practice only:
 - no formal public cash-game result or profit statistic
 - no ranked/profile progression from practice hands
 
-Warm-up hand-over snapshots show the result briefly, then the server schedules the next warm-up hand. Before the next hand, public cards, pot, bets, folded/all-in state, and current turn are reset by the normal hand start flow. Real-player table stacks are restored to the warm-up baseline so practice wins or losses cannot be cashed out.
+Warm-up hand-over snapshots show the local practice result briefly, then the client can start the next local practice hand. Public room cards, pot, bets, folded/all-in state, and official table stacks are not touched by warm-up.
 
 ## Authoritative AI Warm-up Pacing
 
-Authoritative AI Warm-up does not run AI turns in a synchronous loop. The server broadcasts the current `current_turn_seat` / `current_turn_player_id` snapshot first. If that turn belongs to a `warmup_ai` seat, the room schedules one delayed AI action, applies only that action, broadcasts the next snapshot, then decides whether another delayed AI action is needed.
+Authoritative AI Warm-up uses the same local AI pacing path as Training. AI actions are local practice actions, one at a time, and never server-authoritative public actions.
 
-Human turns pause the scheduler. When the current turn belongs to the real player, the server waits for a client `player_action` and does not advance AI turns.
+Human turns pause the local scheduler. When the current turn belongs to the real player, the client waits for local practice input and does not send public `player_action` messages to the server.
 
-Warm-up exit, hand-over, and next-hand start cancel pending AI action timers. This prevents old timers from acting after the player leaves, after the hand is already over, or after a new hand has started.
+Warm-up exit, hand-over, next-hand start, and real-player join interrupts cancel pending local AI timers. This prevents old local timers from acting after the player leaves, after the hand is already over, after a new hand has started, or after the host returns to the public room.
 
-Player Status rows are rendered in stable `seat_index` order during authoritative warm-up. Turn changes update the existing row highlight and status text only; rows are not reordered, recreated, or resized just because the active player changed.
+Player Status rows are rendered in stable `seat_index` order during local public warm-up. Turn changes update the existing row highlight and status text only; rows are not reordered, recreated, or resized just because the active player changed.
+
+When a real player joins the server public room, the host immediately stops local warm-up and returns to the latest server public room snapshot. The official public room remains real-player-only, and the formal hand starts only through the server authoritative public hand path.
 
 Training hand-over uses the local table flow result reveal and then starts the next training hand automatically when the session can continue.
 

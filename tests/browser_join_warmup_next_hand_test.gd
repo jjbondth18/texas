@@ -18,10 +18,11 @@ func run() -> void:
 		"player_id": "real_joiner",
 		"player_name": "Real Joiner",
 	})
-	assert(String(pending.get("join_result", "")) == "pending_next_hand")
-	assert(Array(pending.get("pending_real_joiners", [])).size() == 1)
-	assert(int(pending.get("current_players", 0)) == 1)
-	assert(Array(pending.get("warmup_ai_player_ids", [])).size() == 3)
+	assert(String(pending.get("join_result", "seated")) == "seated")
+	assert(Array(pending.get("pending_real_joiners", [])).is_empty())
+	assert(int(pending.get("current_players", 0)) == 2)
+	assert(Array(pending.get("warmup_ai_player_ids", [])).is_empty())
+	assert(bool(pending.get("host_in_local_warmup", true)) == false)
 
 	var seated := PublicTableRegistryScript.settle_pending_real_joiners("pending_join_warmup")
 	assert(bool(seated.get("is_ai_warmup", true)) == false)

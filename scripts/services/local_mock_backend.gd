@@ -162,6 +162,7 @@ func _build_public_table_context(table: Dictionary, profile: Dictionary) -> Dict
 	context["allow_quick_join"] = bool(table.get("allow_quick_join", true))
 	context["waiting_for_real_players"] = bool(table.get("waiting_for_real_players", real_player_count < 2))
 	context["is_ai_warmup"] = is_ai_warmup
+	context["host_in_local_warmup"] = bool(table.get("host_in_local_warmup", false))
 	context["pending_real_joiners"] = Array(table.get("pending_real_joiners", [])).duplicate(true)
 	context["warmup_ai_player_ids"] = warmup_ai_ids.duplicate()
 	context["ai_player_count"] = ai_count
@@ -169,6 +170,7 @@ func _build_public_table_context(table: Dictionary, profile: Dictionary) -> Dict
 	context["table_session"]["status"] = String(table.get("status", "waiting"))
 	context["table_session"]["waiting_for_real_players"] = context["waiting_for_real_players"]
 	context["table_session"]["is_ai_warmup"] = context["is_ai_warmup"]
+	context["table_session"]["host_in_local_warmup"] = context["host_in_local_warmup"]
 	context["table_session"]["pending_real_joiners"] = context["pending_real_joiners"]
 	context["table_session"]["warmup_ai_player_ids"] = context["warmup_ai_player_ids"]
 	return context

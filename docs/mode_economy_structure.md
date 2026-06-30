@@ -99,12 +99,13 @@ Public Chip tables remain real-player public tables. When fewer than two real pl
 
 - Browser Create seats the creator and leaves the table waiting by default; no AI is spawned automatically.
 - The poker table can show `START AI WARM-UP` while waiting.
-- AI Warm-up sets `is_ai_warmup = true` and uses temporary `warmup_ai` seats.
+- AI Warm-up is a separate local practice table on the host client; the server public room remains real-player-only.
+- The server can record `host_in_local_warmup=true` for browser display, but AI is never added to public seats.
 - Warm-up hands use practice/warm-up chips only and do not write account chip/gem balances, ranked stats, public profit, leaderboard progress, or formal public results.
-- Quick Chip can automatically start AI Warm-up only when no clean waiting/open public table exists.
+- Quick Chip can create a waiting public room; local AI Warm-up is started from the table UI while waiting.
 - Warm-up AI does not count toward public `current_players`; Browser player counts are real players only.
-- Real players joining an AI Warm-up table are stored in `pending_real_joiners` and are seated before the next hand, after warm-up AI is removed.
-- If pending real players bring the table to at least two real players, the table can enter formal public play; otherwise it returns to `waiting_for_players`.
+- Real players joining while the host is in local warm-up immediately interrupt the host's warm-up and return the host to the latest public room snapshot.
+- If the public room has at least two real players, it can enter ready/waiting-to-start and the host can start a formal server-authoritative public hand.
 
 Friends Room is the private casual room flow.
 

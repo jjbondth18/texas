@@ -197,30 +197,40 @@ const beforeWarmupGems = Number(manager.adminSnapshot(false).total_wallet_gems);
 warmupMessages.length = 0;
 manager.handle("warmup_player", { type: "start_ai_warmup", room_id: warmupRoom.id });
 const warmupResult = warmupMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "start_ai_warmup_result") as
-  | { type: string; ok?: boolean; room_id?: string; reason?: string }
+  | { type: string; ok?: boolean; room_id?: string; reason?: string; local_warmup?: boolean; is_ai_warmup?: boolean }
   | undefined;
-if (!warmupResult || warmupResult.ok !== true || warmupResult.room_id !== warmupRoom.id) throw new Error("start_ai_warmup should return ok=true for one seated real player");
+if (!warmupResult || warmupResult.ok !== true || warmupResult.room_id !== warmupRoom.id || warmupResult.local_warmup !== true || warmupResult.is_ai_warmup !== false) throw new Error("start_ai_warmup should acknowledge local warm-up for one seated real player");
 const warmupSnapshot = warmupMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "table_snapshot") as
-  | { type: string; snapshot?: { is_ai_warmup?: boolean; table_state?: string; seats?: Array<{ warmup_ai?: boolean; is_ai?: boolean }> } }
+  | { type: string; snapshot?: { is_ai_warmup?: boolean; host_in_local_warmup?: boolean; table_state?: string; current_players?: number; seats?: Array<{ warmup_ai?: boolean; is_ai?: boolean }> } }
   | undefined;
-if (!warmupSnapshot?.snapshot?.is_ai_warmup || warmupSnapshot.snapshot.table_state !== "ai_warmup") throw new Error("warm-up snapshot should be marked ai_warmup");
-if ((warmupSnapshot.snapshot.seats ?? []).filter((seat) => seat.warmup_ai && seat.is_ai).length < 1) throw new Error("start_ai_warmup should add warm-up AI seats");
+if (!warmupSnapshot?.snapshot?.host_in_local_warmup || warmupSnapshot.snapshot.is_ai_warmup) throw new Error("warm-up snapshot should mark host local warm-up without server ai_warmup");
+if ((warmupSnapshot.snapshot.seats ?? []).filter((seat) => seat.warmup_ai || seat.is_ai).length !== 0) throw new Error("start_ai_warmup should not add AI seats to server public room");
+if (Number(warmupSnapshot.snapshot.current_players) !== 1) throw new Error("local warm-up should not change server public current_players");
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeWarmupWallet) throw new Error("start_ai_warmup should not change account wallet chips");
 if (Number(manager.adminSnapshot(false).total_wallet_gems) !== beforeWarmupGems) throw new Error("start_ai_warmup should not change account wallet gems");
 const warmupHandResultRows = countRows("table_session_results");
 const warmupBaselineStack = warmupRoom.table.getSeatByPlayer("warmup_player")?.chips ?? 0;
-if (warmupRoom.table.phase === "hand_over") throw new Error("start_ai_warmup should not synchronously run a complete hand");
-if (warmupRoom.table.currentTurnSeat < 0) throw new Error("start_ai_warmup should broadcast a concrete current turn before AI acts");
-if (countRows("table_session_results") !== warmupHandResultRows) throw new Error("paced warm-up start should not write formal hand_results");
+if (warmupRoom.table.phase !== "waiting" || warmupRoom.table.currentTurnSeat !== -1) throw new Error("server room should remain waiting while host runs local warm-up");
+if (countRows("table_session_results") !== warmupHandResultRows) throw new Error("local warm-up start should not write formal hand_results");
 warmupMessages.length = 0;
 manager.handle("warmup_player", { type: "start_ai_warmup", room_id: warmupRoom.id });
 const repeatedWarmup = warmupMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "start_ai_warmup_result") as
-  | { type: string; ok?: boolean; reason?: string; room_id?: string }
+  | { type: string; ok?: boolean; reason?: string; room_id?: string; local_warmup?: boolean }
   | undefined;
-if (!repeatedWarmup || repeatedWarmup.ok !== false || repeatedWarmup.reason !== "already_playing") throw new Error("active warm-up should reject duplicate start_ai_warmup while a hand is running");
+if (!repeatedWarmup || repeatedWarmup.ok !== true || repeatedWarmup.local_warmup !== true) throw new Error("repeated local warm-up start should remain idempotent");
+const warmupJoiner = manager.connect();
+manager.handle(warmupJoiner.id, { type: "hello", player_id: "warmup_joiner", name: "Warmup Joiner" });
+manager.handle("warmup_joiner", { type: "join_room", room_id: warmupRoom.id });
+manager.handle("warmup_joiner", { type: "sit_down", room_id: warmupRoom.id, seat_index: 1 });
+const joinedSnapshot = warmupMessages.filter((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "table_snapshot").pop() as
+  | { type: string; snapshot?: { host_in_local_warmup?: boolean; current_players?: number; seats?: Array<{ warmup_ai?: boolean; is_ai?: boolean }> } }
+  | undefined;
+if (!joinedSnapshot?.snapshot || joinedSnapshot.snapshot.host_in_local_warmup) throw new Error("real join should interrupt host local warm-up");
+if (Number(joinedSnapshot.snapshot.current_players) !== 2) throw new Error("real join should return public room to two real players");
+if ((joinedSnapshot.snapshot.seats ?? []).filter((seat) => seat.warmup_ai || seat.is_ai).length !== 0) throw new Error("real public room should remain AI-free after join");
+const beforeWarmupCashOutWallet = Number(manager.adminSnapshot(false).total_wallet_chips);
 manager.handle("warmup_player", { type: "cash_out", room_id: warmupRoom.id });
-if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeWarmupWallet + warmupBaselineStack) throw new Error("warm-up cash out should refund original table stack");
-if (Number(manager.adminSnapshot(false).total_wallet_gems) !== beforeWarmupGems) throw new Error("warm-up cash out should not change account gems");
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeWarmupCashOutWallet + warmupBaselineStack) throw new Error("public cash out after local warm-up should refund official table stack only");
 const normalOnePlayer = manager.connect();
 manager.handle(normalOnePlayer.id, { type: "hello", player_id: "normal_one_player", name: "Normal One" });
 const normalOnePlayerRoom = manager.createRoom();
