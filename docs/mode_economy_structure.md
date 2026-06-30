@@ -93,6 +93,19 @@ Table Browser is the manual public chip table flow.
 - Quick Chip auto-join can seat players into the same public chip table registry.
 - Disconnected players or bots are not counted in Browser player totals.
 
+## Public Table AI Warm-up
+
+Public Chip tables remain real-player public tables. When fewer than two real players are seated, a table is `waiting_for_players` and does not start a formal public hand.
+
+- Browser Create seats the creator and leaves the table waiting by default; no AI is spawned automatically.
+- The poker table can show `START AI WARM-UP` while waiting.
+- AI Warm-up sets `is_ai_warmup = true` and uses temporary `warmup_ai` seats.
+- Warm-up hands use practice/warm-up chips only and do not write account chip/gem balances, ranked stats, public profit, leaderboard progress, or formal public results.
+- Quick Chip can automatically start AI Warm-up only when no clean waiting/open public table exists.
+- Warm-up AI does not count toward public `current_players`; Browser player counts are real players only.
+- Real players joining an AI Warm-up table are stored in `pending_real_joiners` and are seated before the next hand, after warm-up AI is removed.
+- If pending real players bring the table to at least two real players, the table can enter formal public play; otherwise it returns to `waiting_for_players`.
+
 Friends Room is the private casual room flow.
 
 - Private rooms are created with a room code.

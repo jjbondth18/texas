@@ -15,6 +15,8 @@ const SEAT_LEFT := "left"
 const SEAT_DISCONNECTED := "disconnected"
 const SEAT_SIT_OUT := "sit_out"
 const TABLE_WAITING := "waiting"
+const TABLE_WAITING_FOR_PLAYERS := "waiting_for_players"
+const TABLE_AI_WARMUP := "ai_warmup"
 const TABLE_PLAYING := "playing"
 const TABLE_PAUSED := "paused"
 const TABLE_CLOSED := "closed"
@@ -26,6 +28,10 @@ var table_type := MODE_QUICK_PLAY
 var uses_practice_chips := false
 var affects_account_balance := true
 var buy_in_deducted_from_wallet := false
+var waiting_for_real_players := false
+var is_ai_warmup := false
+var pending_real_joiners: Array[Dictionary] = []
+var warmup_ai_player_ids: Array[String] = []
 var buy_in := 20000
 var starting_chips := 20000
 var current_table_chips := 20000
@@ -58,6 +64,14 @@ func configure_from_context(context: Dictionary) -> void:
 	uses_practice_chips = bool(context.get("uses_practice_chips", mode == MODE_TRAINING))
 	affects_account_balance = bool(context.get("affects_account_balance", mode != MODE_TRAINING))
 	buy_in_deducted_from_wallet = bool(context.get("buy_in_deducted_from_wallet", false))
+	waiting_for_real_players = bool(context.get("waiting_for_real_players", false))
+	is_ai_warmup = bool(context.get("is_ai_warmup", false))
+	pending_real_joiners = []
+	for joiner in Array(context.get("pending_real_joiners", [])):
+		pending_real_joiners.append(Dictionary(joiner).duplicate(true))
+	warmup_ai_player_ids = []
+	for ai_id in Array(context.get("warmup_ai_player_ids", [])):
+		warmup_ai_player_ids.append(String(ai_id))
 	buy_in = int(context.get("buy_in", buy_in))
 	starting_chips = int(context.get("starting_chips", buy_in))
 	current_table_chips = int(context.get("current_table_chips", starting_chips))
@@ -260,6 +274,10 @@ func to_dict() -> Dictionary:
 		"uses_practice_chips": uses_practice_chips,
 		"affects_account_balance": affects_account_balance,
 		"buy_in_deducted_from_wallet": buy_in_deducted_from_wallet,
+		"waiting_for_real_players": waiting_for_real_players,
+		"is_ai_warmup": is_ai_warmup,
+		"pending_real_joiners": pending_real_joiners.duplicate(true),
+		"warmup_ai_player_ids": warmup_ai_player_ids.duplicate(),
 		"buy_in": buy_in,
 		"starting_chips": starting_chips,
 		"current_table_chips": current_table_chips,

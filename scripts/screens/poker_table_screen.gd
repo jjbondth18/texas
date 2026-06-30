@@ -78,6 +78,7 @@ var _top_right_action_bar: HBoxContainer
 var _settings_button: Button
 var _add_chips_button: Button
 var _dealer_cosmetic_button: Button
+var _ai_warmup_button: Button
 var _settings_panel: PanelContainer
 var _popover_layer: Control
 var _add_chips_panel: PanelContainer
@@ -1242,6 +1243,7 @@ func _start_next_hand() -> void:
 		return
 	if _table_session == null:
 		_configure_table_session_from_launch_context()
+	_seat_pending_real_joiners_before_next_hand()
 	if _table_session != null and not _table_session.can_start_next_hand():
 		_enter_session_over()
 		return
@@ -1260,9 +1262,17 @@ func _start_next_hand() -> void:
 		_configure_table_flow_from_launch_context()
 	_sync_launch_profile_to_table_flow()
 	if not _can_table_flow_start_next_hand():
+		if _is_public_waiting_for_real_players():
+			_append_session_log("WAITING FOR PLAYERS - %d / 6 seated." % _real_public_player_count_from_flow())
+			_refresh_public_waiting_controls()
+			return
 		_enter_session_over_with_reason("Not enough players")
 		return
-	var hand_number: int = _table_session.begin_next_hand() if _table_session != null else 0
+	var hand_number := 0
+	if _table_session != null and _is_public_ai_warmup():
+		hand_number = _table_session.current_hand_index + 1
+	elif _table_session != null:
+		hand_number = _table_session.begin_next_hand()
 	if hand_number > 0:
 		_append_session_log("Hand %s started." % _session_hand_count_text())
 	snapshot = _table_flow_to_ui_snapshot(_table_flow.start_new_hand())
@@ -1534,6 +1544,7 @@ func _refresh() -> void:
 	else:
 		_apply_local_cards(cards)
 	_handle_hand_over_state()
+	_refresh_public_waiting_controls()
 	_refresh_rule_debug_panel()
 
 func _on_action_pressed(action: Dictionary) -> void:
@@ -2117,6 +2128,9 @@ func _record_session_hand_result_once() -> void:
 	if _recorded_session_hand_ids.has(hand_id):
 		return
 	_recorded_session_hand_ids[hand_id] = true
+	if _is_public_ai_warmup():
+		_append_session_log("AI warm-up hand complete. Account chips, gems, and stats were not updated.")
+		return
 	var settlement: Dictionary = Dictionary(hand.get("settlement", {}))
 	var local_seat_id: int = int(snapshot.get("local_seat_index", 5))
 	var local_chips: int = _local_table_chips()
@@ -2200,10 +2214,17 @@ func _auto_start_session_if_ready() -> void:
 		return
 	if String(_table_flow.table_state) != TexasTableFlowScript.WAITING:
 		return
+	if _is_public_waiting_for_real_players() and not _is_public_ai_warmup():
+		_append_session_log("Waiting for real players. Start AI warm-up to practice while waiting.")
+		_refresh_public_waiting_controls()
+		_refresh()
+		return
 	_session_started = true
 	_append_session_log("Table session started.")
 	if _table_session.mode == TableSessionScript.MODE_TRAINING:
 		_append_session_log("Training mode. Hands advance automatically after results.")
+	if _is_public_ai_warmup():
+		_append_session_log("AI warm-up started. Waiting for real players.")
 	_start_next_hand()
 
 
@@ -2223,6 +2244,141 @@ func _append_session_log(message: String) -> void:
 		while _session_log.size() > 16:
 			_session_log.remove_at(0)
 	print("[TableSession] %s" % message)
+
+func _is_public_chip_table() -> bool:
+	return TableLaunchContext.table_type == TableSessionScript.TABLE_TYPE_PUBLIC_CHIP or (_table_session != null and _table_session.table_type == TableSessionScript.TABLE_TYPE_PUBLIC_CHIP)
+
+func _is_public_waiting_for_real_players() -> bool:
+	return _is_public_chip_table() and (TableLaunchContext.waiting_for_real_players or (_table_session != null and _table_session.waiting_for_real_players))
+
+func _is_public_ai_warmup() -> bool:
+	return _is_public_chip_table() and (TableLaunchContext.is_ai_warmup or (_table_session != null and _table_session.is_ai_warmup))
+
+func _refresh_public_waiting_controls() -> void:
+	if _ai_warmup_button != null:
+		_ai_warmup_button.visible = _is_public_waiting_for_real_players() and not _is_public_ai_warmup()
+		_ai_warmup_button.disabled = not _ai_warmup_button.visible
+
+func _start_public_ai_warmup() -> void:
+	if not _is_public_waiting_for_real_players() or _is_public_ai_warmup():
+		return
+	_activate_public_warmup_ai_seats(3)
+	TableLaunchContext.is_ai_warmup = true
+	TableLaunchContext.waiting_for_real_players = true
+	TableLaunchContext.warmup_ai_player_ids = _warmup_ai_ids_from_flow()
+	if _table_session != null:
+		_table_session.is_ai_warmup = true
+		_table_session.waiting_for_real_players = true
+		_table_session.warmup_ai_player_ids = TableLaunchContext.warmup_ai_player_ids.duplicate()
+		_table_session.status = TableSessionScript.TABLE_AI_WARMUP
+	_update_launch_context_session()
+	_refresh_public_waiting_controls()
+	_session_started = false
+	_append_session_log("AI warm-up started. Waiting for real players.")
+	_auto_start_session_if_ready()
+
+func _activate_public_warmup_ai_seats(ai_count: int) -> void:
+	var activated := 0
+	for i in range(_table_flow.seats.size()):
+		if activated >= ai_count:
+			break
+		var seat: Dictionary = Dictionary(_table_flow.seats[i]).duplicate(true)
+		if bool(seat.get("is_local", false)):
+			continue
+		if bool(seat.get("occupied", false)) and String(seat.get("status", "")) != TexasTableFlowScript.EMPTY:
+			continue
+		var seat_id: int = int(seat.get("seat_id", seat.get("seat_index", i + 1)))
+		seat["player_id"] = "warmup_ai_%02d" % (activated + 1)
+		seat["player_name"] = "Warm-up AI %d" % (activated + 1)
+		seat["avatar_id"] = AvatarLibraryScript.avatar_id_for_seat(seat_id, false)
+		seat["chips"] = _table_session.buy_in if _table_session != null else PlayerProfileScript.DEFAULT_TABLE_BUY_IN
+		seat["current_bet"] = 0
+		seat["hole_cards"] = []
+		seat["status"] = TexasTableFlowScript.SITTING
+		seat["occupied"] = true
+		seat["is_ai"] = true
+		seat["warmup_ai"] = true
+		_table_flow.seats[i] = seat
+		activated += 1
+	TableLaunchContext.seats = _table_flow.seats.duplicate(true)
+
+func _warmup_ai_ids_from_flow() -> Array[String]:
+	var ids: Array[String] = []
+	for seat_item in _table_flow.seats:
+		var seat: Dictionary = Dictionary(seat_item)
+		if bool(seat.get("warmup_ai", false)):
+			ids.append(String(seat.get("player_id", "")))
+	return ids
+
+func _seat_pending_real_joiners_before_next_hand() -> void:
+	if not _is_public_ai_warmup():
+		return
+	var pending_joiners: Array = TableLaunchContext.pending_real_joiners.duplicate(true)
+	if pending_joiners.is_empty() and _table_session != null:
+		pending_joiners = _table_session.pending_real_joiners.duplicate(true)
+	if pending_joiners.is_empty():
+		return
+	for i in range(_table_flow.seats.size()):
+		var seat: Dictionary = Dictionary(_table_flow.seats[i]).duplicate(true)
+		if bool(seat.get("warmup_ai", false)):
+			seat["player_id"] = ""
+			seat["player_name"] = "Seat %d" % int(seat.get("seat_id", seat.get("seat_index", i + 1)))
+			seat["avatar_id"] = ""
+			seat["chips"] = 0
+			seat["current_bet"] = 0
+			seat["hole_cards"] = []
+			seat["status"] = TexasTableFlowScript.EMPTY
+			seat["occupied"] = false
+			seat["is_ai"] = false
+			seat["warmup_ai"] = false
+			_table_flow.seats[i] = seat
+	for joiner_item in pending_joiners:
+		_seat_pending_real_joiner(Dictionary(joiner_item))
+	TableLaunchContext.is_ai_warmup = false
+	TableLaunchContext.warmup_ai_player_ids.clear()
+	TableLaunchContext.pending_real_joiners.clear()
+	TableLaunchContext.waiting_for_real_players = _real_public_player_count_from_flow() < 2
+	TableLaunchContext.seats = _table_flow.seats.duplicate(true)
+	if _table_session != null:
+		_table_session.is_ai_warmup = false
+		_table_session.warmup_ai_player_ids.clear()
+		_table_session.pending_real_joiners.clear()
+		_table_session.waiting_for_real_players = TableLaunchContext.waiting_for_real_players
+		_table_session.status = TableSessionScript.TABLE_WAITING_FOR_PLAYERS if _table_session.waiting_for_real_players else TableSessionScript.TABLE_PLAYING
+	_update_launch_context_session()
+	_append_session_log("Real players seated. AI warm-up ended.")
+
+func _seat_pending_real_joiner(joiner: Dictionary) -> void:
+	for i in range(_table_flow.seats.size()):
+		var seat: Dictionary = Dictionary(_table_flow.seats[i]).duplicate(true)
+		if bool(seat.get("occupied", false)) and String(seat.get("status", "")) != TexasTableFlowScript.EMPTY:
+			continue
+		var seat_id: int = int(seat.get("seat_id", seat.get("seat_index", i + 1)))
+		seat["player_id"] = String(joiner.get("player_id", joiner.get("id", "pending_player_%d" % seat_id)))
+		seat["player_name"] = String(joiner.get("player_name", joiner.get("name", "Public Player")))
+		seat["avatar_id"] = String(joiner.get("avatar_id", AvatarLibraryScript.avatar_id_for_seat(seat_id, false)))
+		seat["chips"] = _table_session.buy_in if _table_session != null else PlayerProfileScript.DEFAULT_TABLE_BUY_IN
+		seat["current_bet"] = 0
+		seat["hole_cards"] = []
+		seat["status"] = TexasTableFlowScript.SITTING
+		seat["occupied"] = true
+		seat["is_ai"] = false
+		seat["warmup_ai"] = false
+		_table_flow.seats[i] = seat
+		return
+
+func _real_public_player_count_from_flow() -> int:
+	var count := 0
+	for seat_item in _table_flow.seats:
+		var seat: Dictionary = Dictionary(seat_item)
+		if not bool(seat.get("occupied", false)):
+			continue
+		if bool(seat.get("warmup_ai", false)) or bool(seat.get("is_ai", false)):
+			continue
+		if String(seat.get("player_id", "")) == "":
+			continue
+		count += 1
+	return count
 
 
 func _session_hand_count_text() -> String:
@@ -2479,6 +2635,10 @@ func _apply_session_profit_to_profile() -> void:
 	if _profile_settlement_applied or _table_session == null:
 		return
 	_profile_settlement_applied = true
+	if _table_session.is_ai_warmup:
+		_session_unlocked_avatar_ids.clear()
+		_append_session_log("AI warm-up results were not written to account balance or stats.")
+		return
 	if _table_session.mode == TableSessionScript.MODE_TRAINING or _table_session.uses_practice_chips or not _table_session.affects_account_balance:
 		_session_unlocked_avatar_ids.clear()
 		_append_session_log("Training results use practice chips only; account balance and stats were not updated.")
@@ -2861,6 +3021,16 @@ func _complete_return_home() -> void:
 func _cash_out_remaining_table_chips_to_wallet() -> void:
 	if _profile_settlement_applied or _table_session == null:
 		return
+	if _table_session.is_ai_warmup:
+		if _table_session.buy_in_deducted_from_wallet:
+			var warmup_refund: int = max(_table_session.session_start_chips, 0)
+			if warmup_refund > 0:
+				var warmup_service := ProfileServiceScript.new()
+				var warmup_profile: Dictionary = warmup_service.refund_table_chips(warmup_refund)
+				TableLaunchContext.set_player_profile(warmup_profile)
+			_profile_settlement_applied = true
+			_append_session_log("AI warm-up ended. Warm-up wins/losses were ignored and original table stack was returned.")
+		return
 	if _table_session.mode == TableSessionScript.MODE_TRAINING or _table_session.uses_practice_chips or not _table_session.affects_account_balance:
 		return
 	if not _table_session.buy_in_deducted_from_wallet:
@@ -2929,6 +3099,20 @@ func _apply_launch_context(target_snapshot: Dictionary) -> void:
 			target_snapshot["connection_status"] = "LOCAL MOCK ROOM"
 		else:
 			target_snapshot["connection_status"] = "Mock online table"
+		if _is_public_chip_table():
+			var messages: Array = Array(target_snapshot.get("system_messages", [])).duplicate()
+			if _is_public_ai_warmup():
+				target_snapshot["connection_status"] = "AI WARM-UP"
+				messages.insert(0, "AI WARM-UP")
+				messages.insert(1, "Waiting for real players...")
+				if not TableLaunchContext.pending_real_joiners.is_empty():
+					messages.insert(2, "Next hand will seat real players.")
+			elif _is_public_waiting_for_real_players():
+				target_snapshot["connection_status"] = "WAITING FOR PLAYERS"
+				messages.insert(0, "WAITING FOR PLAYERS")
+				messages.insert(1, "%d / 6 seated" % _real_public_player_count_from_flow())
+				messages.insert(2, "Start AI warm-up while waiting?")
+			target_snapshot["system_messages"] = messages
 	_apply_local_profile_to_snapshot(target_snapshot)
 
 func _apply_local_profile_to_snapshot(target_snapshot: Dictionary) -> void:
@@ -3213,6 +3397,12 @@ func _build_top_action_bar() -> void:
 	dealer_button.pressed.connect(_toggle_dealer_cosmetic_panel)
 	_top_right_action_bar.add_child(dealer_button)
 
+	var ai_warmup_button := _top_control_button("START AI WARM-UP", Vector2(190, 56))
+	_ai_warmup_button = ai_warmup_button
+	ai_warmup_button.tooltip_text = "Practice with AI while waiting for real players."
+	ai_warmup_button.pressed.connect(_start_public_ai_warmup)
+	_top_right_action_bar.add_child(ai_warmup_button)
+
 	var add_chips_button := _top_control_button("ADD CHIPS", Vector2(150, 56))
 	_add_chips_button = add_chips_button
 	add_chips_button.tooltip_text = "Move wallet chips to this table."
@@ -3223,6 +3413,7 @@ func _build_top_action_bar() -> void:
 	_build_settings_panel()
 	_build_dealer_cosmetic_panel()
 	_build_add_chips_panel()
+	_refresh_public_waiting_controls()
 
 func _hide_legacy_top_center_bars() -> void:
 	for root_name in ["TopBar", "TopBarRoot", "TopRoot"]:

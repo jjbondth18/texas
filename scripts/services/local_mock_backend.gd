@@ -34,6 +34,13 @@ func join_public_table(table_id: String, player: Dictionary) -> Dictionary:
 func leave_public_table(table_id: String, player_id: String) -> void:
 	PublicTableRegistryScript.leave_public_table(table_id, player_id)
 
+func start_public_table_ai_warmup(table_id: String, profile: Dictionary) -> Dictionary:
+	var table := PublicTableRegistryScript.start_ai_warmup(table_id, 3)
+	if table.is_empty():
+		return {}
+	_current_context = _build_public_table_context(table, profile)
+	return _current_context.duplicate(true)
+
 func quick_join_public_table(player: Dictionary, preferred_config: Dictionary = {}) -> Dictionary:
 	var registry_config: Dictionary = _public_table_config_from_setup(preferred_config, player) if not preferred_config.is_empty() else {}
 	var table: Dictionary = PublicTableRegistryScript.quick_join_public_table(player, registry_config)
@@ -93,6 +100,10 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 		"uses_practice_chips": training,
 		"affects_account_balance": not training,
 		"buy_in_deducted_from_wallet": buy_in_deducted,
+		"waiting_for_real_players": false,
+		"is_ai_warmup": false,
+		"pending_real_joiners": [],
+		"warmup_ai_player_ids": [],
 		"allow_debug_tools": debug_tools,
 		"ai_player_count": ai_count,
 		"max_hands": max_hands,
@@ -102,6 +113,10 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 			"uses_practice_chips": training,
 			"affects_account_balance": not training,
 			"buy_in_deducted_from_wallet": buy_in_deducted,
+			"waiting_for_real_players": false,
+			"is_ai_warmup": false,
+			"pending_real_joiners": [],
+			"warmup_ai_player_ids": [],
 			"buy_in": buy_in,
 			"starting_chips": buy_in,
 			"current_table_chips": buy_in,
@@ -130,17 +145,32 @@ func _build_public_table_context(table: Dictionary, profile: Dictionary) -> Dict
 		"big_blind": int(table.get("big_blind", 50)),
 		"max_hands": int(table.get("hand_count", 10)),
 	}
-	var context := _build_table_context("quick_play", String(table.get("table_id", "mock_public_table")), "", profile, false, false, 7, setup_config)
+	var is_ai_warmup: bool = bool(table.get("is_ai_warmup", false))
+	var warmup_ai_ids: Array = Array(table.get("warmup_ai_player_ids", []))
+	var real_player_count: int = int(table.get("current_players", 0))
+	var ai_count: int = warmup_ai_ids.size() if is_ai_warmup else 0
+	var context := _build_table_context("quick_play", String(table.get("table_id", "mock_public_table")), "", profile, false, false, ai_count, setup_config)
+	context["seats"] = _build_public_table_seats(table, PlayerProfileScript.normalized_dict(profile), int(setup_config.get("buy_in", PlayerProfileScript.DEFAULT_TABLE_BUY_IN)))
 	context["table_name"] = String(table.get("table_name", "Public Chip Table"))
 	context["table_type"] = PublicTableRegistryScript.TABLE_TYPE_PUBLIC_CHIP
-	context["room_state"] = "waiting"
-	context["hand_state"] = "waiting"
+	context["room_state"] = String(table.get("status", "waiting"))
+	context["hand_state"] = String(table.get("hand_state", context.get("room_state", "waiting")))
 	context["pot"] = 0
 	context["current_turn_seat"] = -1
 	context["community_cards"] = []
 	context["public_table"] = table.duplicate(true)
 	context["allow_quick_join"] = bool(table.get("allow_quick_join", true))
+	context["waiting_for_real_players"] = bool(table.get("waiting_for_real_players", real_player_count < 2))
+	context["is_ai_warmup"] = is_ai_warmup
+	context["pending_real_joiners"] = Array(table.get("pending_real_joiners", [])).duplicate(true)
+	context["warmup_ai_player_ids"] = warmup_ai_ids.duplicate()
+	context["ai_player_count"] = ai_count
 	context["table_session"]["table_type"] = PublicTableRegistryScript.TABLE_TYPE_PUBLIC_CHIP
+	context["table_session"]["status"] = String(table.get("status", "waiting"))
+	context["table_session"]["waiting_for_real_players"] = context["waiting_for_real_players"]
+	context["table_session"]["is_ai_warmup"] = context["is_ai_warmup"]
+	context["table_session"]["pending_real_joiners"] = context["pending_real_joiners"]
+	context["table_session"]["warmup_ai_player_ids"] = context["warmup_ai_player_ids"]
 	return context
 
 func _public_table_config_from_setup(setup_config: Dictionary, player: Dictionary) -> Dictionary:
@@ -193,4 +223,43 @@ func _build_mock_seats(profile: Dictionary, buy_in: int, ai_count: int) -> Array
 			"is_local": is_local,
 			"is_ai": has_player and not is_local,
 		})
+	return seats
+
+func _build_public_table_seats(table: Dictionary, profile: Dictionary, buy_in: int) -> Array[Dictionary]:
+	var seats := _build_mock_seats(profile, buy_in, 0)
+	var warmup_ids: Array = Array(table.get("warmup_ai_player_ids", []))
+	var mock_real_to_seat: int = 0
+	if warmup_ids.is_empty():
+		mock_real_to_seat = max(int(table.get("current_players", 1)) - 1, 0)
+	var ai_index := 0
+	var real_index := 0
+	for i in range(seats.size()):
+		var seat: Dictionary = Dictionary(seats[i]).duplicate(true)
+		if bool(seat.get("is_local", false)):
+			seat["chips"] = buy_in
+			seats[i] = seat
+			continue
+		if ai_index < warmup_ids.size():
+			var seat_id: int = int(seat.get("seat_id", seat.get("seat_index", i + 1)))
+			seat["player_id"] = String(warmup_ids[ai_index])
+			seat["player_name"] = "Warm-up AI %d" % (ai_index + 1)
+			seat["avatar_id"] = AvatarLibraryScript.avatar_id_for_seat(seat_id, false)
+			seat["chips"] = buy_in
+			seat["status"] = TableSeatScript.SITTING
+			seat["occupied"] = true
+			seat["is_ai"] = true
+			seat["warmup_ai"] = true
+			ai_index += 1
+		elif real_index < mock_real_to_seat:
+			var real_seat_id: int = int(seat.get("seat_id", seat.get("seat_index", i + 1)))
+			seat["player_id"] = "public_player_%02d" % (real_index + 1)
+			seat["player_name"] = "Public Player %d" % (real_index + 1)
+			seat["avatar_id"] = AvatarLibraryScript.avatar_id_for_seat(real_seat_id, false)
+			seat["chips"] = buy_in
+			seat["status"] = TableSeatScript.SITTING
+			seat["occupied"] = true
+			seat["is_ai"] = false
+			seat["warmup_ai"] = false
+			real_index += 1
+		seats[i] = seat
 	return seats

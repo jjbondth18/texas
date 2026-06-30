@@ -1174,14 +1174,6 @@ func _start_quick_play_from_setup() -> void:
 			_profile_ws_client.create_table(table_name, _quick_server_table_config())
 		)
 		return
-	var service := ProfileServiceScript.new()
-	var buy_in_profile: Dictionary = service.deduct_table_buy_in(_selected_quick_buy_in)
-	if buy_in_profile.is_empty():
-		_refresh_quick_play_setup_options()
-		return
-	_player_profile = buy_in_profile
-	if _top_bar != null:
-		_top_bar.configure(_player_profile)
 	var setup_config := {
 		"table_type": "public_chip",
 		"currency": "chip",
@@ -1196,7 +1188,27 @@ func _start_quick_play_from_setup() -> void:
 	}
 	_hide_quick_play_setup()
 	_start_table_launch_transition("Finding a public chip table...", func() -> void:
-		_open_backend_table(_local_backend.quick_join_public_table(_player_profile, setup_config))
+		var context: Dictionary = _local_backend.quick_join_public_table(_player_profile, setup_config)
+		if context.is_empty():
+			_finish_table_launch_transition()
+			_show_toast("No public table is available.")
+			return
+		if not bool(context.get("is_ai_warmup", false)):
+			var service := ProfileServiceScript.new()
+			var buy_in_profile: Dictionary = service.deduct_table_buy_in(_selected_quick_buy_in)
+			if buy_in_profile.is_empty():
+				_finish_table_launch_transition()
+				_show_toast("Not enough wallet chips.")
+				return
+			_player_profile = buy_in_profile
+			if _top_bar != null:
+				_top_bar.configure(_player_profile)
+			context["local_player_profile"] = _player_profile
+			context["buy_in_deducted_from_wallet"] = true
+			var table_session: Dictionary = Dictionary(context.get("table_session", {}))
+			table_session["buy_in_deducted_from_wallet"] = true
+			context["table_session"] = table_session
+		_open_backend_table(context)
 	)
 
 
@@ -2206,6 +2218,11 @@ func _normalized_room_browser_table(room: Dictionary) -> Dictionary:
 		"max_players": max_players,
 		"hand_state": hand_state,
 		"status": "full" if seated_count >= max_players else status,
+		"is_ai_warmup": bool(room.get("is_ai_warmup", false)),
+		"waiting_for_real_players": bool(room.get("waiting_for_real_players", false)),
+		"pending_real_joiners": Array(room.get("pending_real_joiners", [])).duplicate(true),
+		"warmup_ai_player_ids": Array(room.get("warmup_ai_player_ids", [])).duplicate(),
+		"real_player_ids": Array(room.get("real_player_ids", [])).duplicate(),
 		"current_turn_seat": int(room.get("current_turn_seat", room.get("turn_seat_index", -1))),
 		"allow_quick_join": bool(room.get("allow_quick_join", true)),
 		"players": Array(room.get("players", [])).duplicate(true),
@@ -2224,11 +2241,11 @@ func _is_joinable_room_browser_table(room: Dictionary) -> bool:
 		return false
 	if hand_state in ["closed", "dirty", "paused", "hand_over", "showdown_reveal", "showdown", "finished"]:
 		return false
-	if status not in ["waiting", "open"]:
+	if status not in ["waiting", "waiting_for_players", "open", "ai_warmup"]:
 		return false
-	if hand_state not in ["waiting", "open", "idle", "pre_hand"]:
+	if hand_state not in ["waiting", "waiting_for_players", "open", "ai_warmup", "idle", "pre_hand"]:
 		return false
-	if int(room.get("current_turn_seat", -1)) == -1 and hand_state not in ["waiting", "open", "idle", "pre_hand"]:
+	if int(room.get("current_turn_seat", -1)) == -1 and hand_state not in ["waiting", "waiting_for_players", "open", "ai_warmup", "idle", "pre_hand"]:
 		return false
 	if int(room.get("seated_count", 0)) >= int(room.get("max_players", 6)):
 		return false
@@ -2237,6 +2254,9 @@ func _is_joinable_room_browser_table(room: Dictionary) -> bool:
 	return true
 
 func _connected_room_player_count(room: Dictionary) -> int:
+	var real_player_ids: Array = Array(room.get("real_player_ids", []))
+	if not real_player_ids.is_empty():
+		return min(real_player_ids.size(), int(room.get("max_players", 6)))
 	var counted := {}
 	var count := 0
 	for player_item in Array(room.get("players", [])):
@@ -2271,6 +2291,8 @@ func _is_connected_room_player(data: Dictionary) -> bool:
 		return false
 	if data.has("occupied") and not bool(data.get("occupied", true)):
 		return false
+	if bool(data.get("warmup_ai", false)):
+		return false
 	return String(data.get("player_id", data.get("id", "player"))) != ""
 
 func _add_room_browser_row(room: Dictionary) -> void:
@@ -2295,7 +2317,7 @@ func _add_room_browser_row(room: Dictionary) -> void:
 	HomeTheme.make_font_settings(name_lbl, 15, Color(1, 1, 1, 0.95))
 	name_box.add_child(name_lbl)
 	var public_badge := Label.new()
-	public_badge.text = "SERVER PUBLIC CHIP" if _profile_server_connected else "LOCAL MOCK CHIP"
+	public_badge.text = "AI WARM-UP - REAL PLAYERS NEXT HAND" if bool(room.get("is_ai_warmup", false)) else ("SERVER PUBLIC CHIP" if _profile_server_connected else "LOCAL MOCK CHIP")
 	HomeTheme.make_font_settings(public_badge, 11, HomeTheme.CYAN)
 	name_box.add_child(public_badge)
 	var blinds_lbl := Label.new()

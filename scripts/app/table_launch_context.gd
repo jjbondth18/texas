@@ -13,6 +13,10 @@ static var table_type := "quick_play"
 static var uses_practice_chips := false
 static var affects_account_balance := true
 static var buy_in_deducted_from_wallet := false
+static var waiting_for_real_players := false
+static var is_ai_warmup := false
+static var pending_real_joiners: Array[Dictionary] = []
+static var warmup_ai_player_ids: Array[String] = []
 static var allow_debug_tools := false
 static var ai_player_count := 0
 static var max_hands := 10
@@ -32,6 +36,10 @@ static func configure(mode: String = "quick_play", id: String = "mock_table_001"
 	uses_practice_chips = is_training
 	affects_account_balance = not is_training
 	buy_in_deducted_from_wallet = bool(setup_config.get("buy_in_deducted_from_wallet", false))
+	waiting_for_real_players = false
+	is_ai_warmup = false
+	pending_real_joiners.clear()
+	warmup_ai_player_ids.clear()
 	if not profile.is_empty():
 		set_player_profile(profile)
 	buy_in = PlayerProfileScript.table_buy_in(player_profile)
@@ -77,6 +85,14 @@ static func configure_from_context(context: Dictionary) -> void:
 	uses_practice_chips = bool(context.get("uses_practice_chips", is_training))
 	affects_account_balance = bool(context.get("affects_account_balance", not is_training))
 	buy_in_deducted_from_wallet = bool(context.get("buy_in_deducted_from_wallet", false))
+	waiting_for_real_players = bool(context.get("waiting_for_real_players", false))
+	is_ai_warmup = bool(context.get("is_ai_warmup", false))
+	pending_real_joiners = []
+	for joiner in Array(context.get("pending_real_joiners", [])):
+		pending_real_joiners.append(Dictionary(joiner).duplicate(true))
+	warmup_ai_player_ids = []
+	for ai_id in Array(context.get("warmup_ai_player_ids", [])):
+		warmup_ai_player_ids.append(String(ai_id))
 	allow_debug_tools = bool(context.get("allow_debug_tools", is_training))
 	ai_player_count = int(context.get("ai_player_count", 0))
 	max_hands = int(context.get("max_hands", 10))
@@ -105,6 +121,10 @@ static func get_current_table_context() -> Dictionary:
 		"uses_practice_chips": uses_practice_chips,
 		"affects_account_balance": affects_account_balance,
 		"buy_in_deducted_from_wallet": buy_in_deducted_from_wallet,
+		"waiting_for_real_players": waiting_for_real_players,
+		"is_ai_warmup": is_ai_warmup,
+		"pending_real_joiners": pending_real_joiners.duplicate(true),
+		"warmup_ai_player_ids": warmup_ai_player_ids.duplicate(),
 		"allow_debug_tools": allow_debug_tools,
 		"ai_player_count": ai_player_count,
 		"max_hands": max_hands,
@@ -122,6 +142,10 @@ static func _default_table_session() -> Dictionary:
 		"uses_practice_chips": uses_practice_chips,
 		"affects_account_balance": affects_account_balance,
 		"buy_in_deducted_from_wallet": buy_in_deducted_from_wallet,
+		"waiting_for_real_players": waiting_for_real_players,
+		"is_ai_warmup": is_ai_warmup,
+		"pending_real_joiners": pending_real_joiners.duplicate(true),
+		"warmup_ai_player_ids": warmup_ai_player_ids.duplicate(),
 		"buy_in": session_buy_in,
 		"starting_chips": session_buy_in,
 		"current_table_chips": session_buy_in,
