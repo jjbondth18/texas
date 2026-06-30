@@ -209,21 +209,18 @@ if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeWarmupWall
 if (Number(manager.adminSnapshot(false).total_wallet_gems) !== beforeWarmupGems) throw new Error("start_ai_warmup should not change account wallet gems");
 const warmupHandResultRows = countRows("table_session_results");
 const warmupBaselineStack = warmupRoom.table.getSeatByPlayer("warmup_player")?.chips ?? 0;
-if (warmupRoom.table.currentTurnSeat === 0) {
-  manager.handle("warmup_player", { type: "player_action", room_id: warmupRoom.id, action: "fold" });
-}
-if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeWarmupWallet) throw new Error("completed warm-up hand should not change account wallet chips");
-if (Number(manager.adminSnapshot(false).total_wallet_gems) !== beforeWarmupGems) throw new Error("completed warm-up hand should not change account wallet gems");
-if (countRows("table_session_results") !== warmupHandResultRows) throw new Error("completed warm-up hand should not write formal hand_results");
-if ((warmupRoom.table.getSeatByPlayer("warmup_player")?.chips ?? 0) !== warmupBaselineStack) throw new Error("completed warm-up hand should restore real player table stack");
+if (warmupRoom.table.phase === "hand_over") throw new Error("start_ai_warmup should not synchronously run a complete hand");
+if (warmupRoom.table.currentTurnSeat < 0) throw new Error("start_ai_warmup should broadcast a concrete current turn before AI acts");
+if (countRows("table_session_results") !== warmupHandResultRows) throw new Error("paced warm-up start should not write formal hand_results");
 warmupMessages.length = 0;
 manager.handle("warmup_player", { type: "start_ai_warmup", room_id: warmupRoom.id });
 const repeatedWarmup = warmupMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "start_ai_warmup_result") as
   | { type: string; ok?: boolean; reason?: string; room_id?: string }
   | undefined;
-if (!repeatedWarmup || repeatedWarmup.ok !== true || repeatedWarmup.room_id !== warmupRoom.id) throw new Error("hand-over warm-up should allow start_ai_warmup as next warm-up hand");
-if (warmupRoom.table.phase === "hand_over") throw new Error("next warm-up hand should leave hand_over");
-if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeWarmupWallet) throw new Error("next warm-up hand should not change account wallet chips");
+if (!repeatedWarmup || repeatedWarmup.ok !== false || repeatedWarmup.reason !== "already_playing") throw new Error("active warm-up should reject duplicate start_ai_warmup while a hand is running");
+manager.handle("warmup_player", { type: "cash_out", room_id: warmupRoom.id });
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeWarmupWallet + warmupBaselineStack) throw new Error("warm-up cash out should refund original table stack");
+if (Number(manager.adminSnapshot(false).total_wallet_gems) !== beforeWarmupGems) throw new Error("warm-up cash out should not change account gems");
 const normalOnePlayer = manager.connect();
 manager.handle(normalOnePlayer.id, { type: "hello", player_id: "normal_one_player", name: "Normal One" });
 const normalOnePlayerRoom = manager.createRoom();

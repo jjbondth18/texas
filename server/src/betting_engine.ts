@@ -31,15 +31,21 @@ export function processAutomaticTurns(table: TableState): void {
   let guard = 0;
   while (guard < 24 && table.currentTurnSeat >= 0 && ["preflop", "flop", "turn", "river"].includes(table.phase)) {
     guard += 1;
-    const seat = table.getSeat(table.currentTurnSeat);
-    if (!seat || seat.status !== "playing") return;
-    const canCheck = seat.currentBet >= table.currentBet;
-    if (!seat.disconnected && !seat.warmupAi) return;
-    const action = seat.disconnected ? (canCheck ? "check" : "fold") : (canCheck ? "check" : "call");
-    applySeatAction(table, seat, action, 0);
-    table.addLog(`${seat.name} auto-${action === "check" ? "checks" : action === "call" ? "calls" : "folds"}${seat.disconnected ? " after disconnect" : ""}.`);
-    afterAction(table, seat.seatIndex);
+    if (!processSingleAutomaticTurn(table, false)) return;
   }
+}
+
+export function processSingleAutomaticTurn(table: TableState, includeWarmupAi = false): boolean {
+  if (table.currentTurnSeat < 0 || !["preflop", "flop", "turn", "river"].includes(table.phase)) return false;
+  const seat = table.getSeat(table.currentTurnSeat);
+  if (!seat || seat.status !== "playing") return false;
+  const canCheck = seat.currentBet >= table.currentBet;
+  if (!seat.disconnected && !(includeWarmupAi && seat.warmupAi)) return false;
+  const action = seat.disconnected ? (canCheck ? "check" : "fold") : (canCheck ? "check" : "call");
+  applySeatAction(table, seat, action, 0);
+  table.addLog(`${seat.name} auto-${action === "check" ? "checks" : action === "call" ? "calls" : "folds"}${seat.disconnected ? " after disconnect" : ""}.`);
+  afterAction(table, seat.seatIndex);
+  return true;
 }
 
 function applySeatAction(table: TableState, seat: Seat, action: PlayerActionType, amount: number): void {
