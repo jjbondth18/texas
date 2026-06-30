@@ -23,6 +23,8 @@ Human turns pause the scheduler. When the current turn belongs to the real playe
 
 Warm-up exit, hand-over, and next-hand start cancel pending AI action timers. This prevents old timers from acting after the player leaves, after the hand is already over, or after a new hand has started.
 
+Player Status rows are rendered in stable `seat_index` order during authoritative warm-up. Turn changes update the existing row highlight and status text only; rows are not reordered, recreated, or resized just because the active player changed.
+
 Training hand-over uses the local table flow result reveal and then starts the next training hand automatically when the session can continue.
 
 Exit Table must be safe in waiting, seat confirmation, AI Warm-up, hand-over, showdown reveal, and Training. The client cancels pending local next-hand timers, sends a server cash-out/leave request when connected, waits only briefly for wallet sync, then returns home. Training exits locally and discards practice stacks without touching account wallet data.

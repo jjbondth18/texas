@@ -8,6 +8,7 @@ class_name TableStatusPanel
 var _rows_container: VBoxContainer
 var _pills := {}
 var is_left_panel := false
+var _seat_order: Array[int] = []
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
@@ -84,18 +85,21 @@ func set_status(snapshot: Dictionary) -> void:
 			
 	var seats := Array(snapshot.get("seats", []))
 	var active_players := []
-	var active_seats := []
+	var active_seats: Array[int] = []
 	
 	for seat_data in seats:
 		var seat := Dictionary(seat_data)
-		var status_str := String(seat.get("status", ""))
-		var chips := int(seat.get("chips", 0))
-		if status_str != "empty" and chips > 0:
+		var status_str := String(seat.get("status", "empty"))
+		var raw_status := String(seat.get("raw_status", status_str))
+		var occupied := bool(seat.get("occupied", status_str != "empty"))
+		var seat_index := int(seat.get("seat_index", seat.get("seat_id", 0)))
+		var has_player := String(seat.get("player_id", "")) != "" or String(seat.get("player_name", "")) != ""
+		if occupied and raw_status != "empty" and has_player:
 			active_players.append(seat)
-			active_seats.append(int(seat.get("seat_index", 0)))
+			active_seats.append(seat_index)
 			
-	# Sort leaderboard by seat_index ascending (strictly 1 to 9)
-	active_players.sort_custom(func(a, b): return int(a.get("seat_index", 0)) < int(b.get("seat_index", 0)))
+	# Keep the player status list stable: fixed seat_index order, never turn-order.
+	active_players.sort_custom(func(a, b): return int(a.get("seat_index", a.get("seat_id", 0))) < int(b.get("seat_index", b.get("seat_id", 0))))
 	
 	# Remove pills for seats that are no longer active/present
 	for seat_idx in _pills.keys():
@@ -105,7 +109,7 @@ func set_status(snapshot: Dictionary) -> void:
 			
 	# Instantiate or update player row pills
 	for player in active_players:
-		var seat_idx := int(player.get("seat_index", 0))
+		var seat_idx := int(player.get("seat_index", player.get("seat_id", 0)))
 		if _pills.has(seat_idx):
 			_pills[seat_idx].update_data(player, is_left_panel)
 		else:
@@ -113,12 +117,19 @@ func set_status(snapshot: Dictionary) -> void:
 			_pills[seat_idx] = pill
 			_rows_container.add_child(pill)
 			
-	# Enforce correct sorting order in VBoxContainer
+	# Enforce seat order only when it changed; turn changes should only update row state.
+	var next_order: Array[int] = []
+	for player in active_players:
+		next_order.append(int(player.get("seat_index", player.get("seat_id", 0))))
+	if next_order == _seat_order:
+		return
+	_seat_order = next_order
 	for i in range(active_players.size()):
 		var player = active_players[i]
-		var seat_idx := int(player.get("seat_index", 0))
+		var seat_idx := int(player.get("seat_index", player.get("seat_id", 0)))
 		var pill = _pills[seat_idx]
-		_rows_container.move_child(pill, i)
+		if pill.get_index() != i:
+			_rows_container.move_child(pill, i)
 
 # Inner class representing a high-fidelity sliding player row pill in the list
 class PlayerRowPill extends PanelContainer:
@@ -147,6 +158,8 @@ class PlayerRowPill extends PanelContainer:
 		player_data = data
 		is_left = left_side
 		custom_minimum_size = Vector2(220, 85) # Width 220px to fit inside scroll container with 40px left margin
+		size = custom_minimum_size
+		clip_contents = true
 		size_flags_horizontal = Control.SIZE_SHRINK_END if is_left else Control.SIZE_EXPAND_FILL
 		
 		style_box = StyleBoxFlat.new()
@@ -248,7 +261,9 @@ class PlayerRowPill extends PanelContainer:
 		# HBox for flashing dots marquee underneath name
 		dots_hbox = HBoxContainer.new()
 		dots_hbox.add_theme_constant_override("separation", 4)
-		dots_hbox.visible = false
+		dots_hbox.visible = true
+		dots_hbox.modulate.a = 0.0
+		dots_hbox.custom_minimum_size = Vector2(0, 6)
 		text_vbox.add_child(dots_hbox)
 		
 		var dot_style := StyleBoxFlat.new()
@@ -279,6 +294,9 @@ class PlayerRowPill extends PanelContainer:
 		action_label = Label.new()
 		action_label.add_theme_font_size_override("font_size", 12)
 		action_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if is_left else HORIZONTAL_ALIGNMENT_LEFT
+		action_label.clip_text = true
+		action_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		action_label.custom_minimum_size = Vector2(0, 16)
 		text_vbox.add_child(action_label)
 		
 		# Initial config
@@ -368,7 +386,6 @@ class PlayerRowPill extends PanelContainer:
 				action_label.visible = true
 				action_label.text = "YOUR TURN" if is_local else "THINKING..."
 				action_label.add_theme_color_override("font_color", Color(1.0, 0.90, 0.42) if is_local else Color(0.46, 1.0, 0.86))
-				target_x = _active_offset()
 				target_bg = Color(0.22, 0.14, 0.45, 0.90)
 				target_border = Color(0.0, 1.0, 0.7, 0.9) # Turn: Neon Cyan/Green Outline
 				target_border_width = 1
@@ -398,13 +415,14 @@ class PlayerRowPill extends PanelContainer:
 				if _tween:
 					_tween.kill()
 				_tween = create_tween().set_parallel(true)
-				_tween.tween_property(self, "position:x", target_x, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+				position.x = target_x
 				_tween.tween_property(style_box, "bg_color", target_bg, 0.1 if is_turn else duration)
 				_tween.tween_property(style_box, "border_color", target_border, duration)
 				style_box.set_border_width_all(target_border_width)
 				
-		# Update dots visibility
-		dots_hbox.visible = is_turn
+		# Keep the dot row allocated so turn changes never resize or move rows.
+		dots_hbox.visible = true
+		dots_hbox.modulate.a = 1.0 if is_turn else 0.0
 		
 		# Configure borders & styling
 		if is_local and not is_turn:
@@ -438,7 +456,7 @@ class PlayerRowPill extends PanelContainer:
 		action_label.modulate.a = 1.0
 		
 		# Maintain position X alignment when not tweening
-		var target_x: float = _active_offset() if _is_turn else 0.0
+		var target_x: float = 0.0
 		if _tween == null or not _tween.is_valid() or not _tween.is_running():
 			if position.x != target_x:
 				position.x = target_x
