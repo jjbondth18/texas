@@ -583,7 +583,8 @@ func _try_server_sit_ready() -> void:
 	_send_server_message(_poker_ws_client.sit_down(_server_local_seat_index, buy_in), "sit_down seat %d" % _server_local_seat_index)
 	_send_server_message(_poker_ws_client.ready(true), "ready")
 	_append_session_log("Start bots with: npm.cmd run bot -- --room %s --count 2 --start-seat 1" % _server_room_id)
-	_append_session_log("Press S to request start_hand from the authoritative server.")
+	if TableLaunchContext.allow_debug_tools:
+		_append_session_log("Debug tools enabled. S requests start_hand from the authoritative server.")
 
 func _server_create_table_name() -> String:
 	var player_name := PlayerProfileScript.get_player_name(ProfileServiceScript.new().get_current_profile())
@@ -1164,16 +1165,16 @@ func _server_history_lines(server_snapshot: Dictionary, room_id: String, side_po
 		for log_item in Array(server_snapshot.get("log", [])):
 			history.append(log_item)
 	if String(server_snapshot.get("phase", "")) == "waiting":
-		history.append("Press S to Start Hand after at least two players are ready.")
+		history.append("Waiting for players to be ready.")
 	elif String(server_snapshot.get("phase", "")) == "hand_over":
-		history.append("Hand over. Press S to Start Next Hand.")
+		history.append("Hand over. Next hand starting...")
 	return history
 
 func _server_turn_message(seats: Array, current_turn_seat: int, local_server_seat: int, phase: String = "") -> String:
 	if current_turn_seat < 0:
 		if phase == "hand_over":
-			return "Hand Over - Press S to Start Next Hand"
-		return "Press S to Start Hand when players are ready."
+			return "Hand Over - Next hand starting..."
+		return "Waiting for players..."
 	if current_turn_seat == local_server_seat:
 		return "Your Turn"
 	for seat_item in seats:
@@ -1458,14 +1459,12 @@ func _should_show_hole_cards(seat: Dictionary, stage: String) -> bool:
 
 
 func _is_showdown_eligible_status(status: String) -> bool:
-	return status not in [
-		TexasTableFlowScript.EMPTY,
-		TexasTableFlowScript.FOLDED,
-		TexasTableFlowScript.OUT,
-		"empty",
-		"folded",
-		"left",
-		"out",
+	return status in [
+		TexasTableFlowScript.PLAYING,
+		TexasTableFlowScript.ALL_IN,
+		"playing",
+		"all_in",
+		"active",
 	]
 
 func _refresh() -> void:
@@ -2204,16 +2203,16 @@ func _auto_start_session_if_ready() -> void:
 	_session_started = true
 	_append_session_log("Table session started.")
 	if _table_session.mode == TableSessionScript.MODE_TRAINING:
-		_append_session_log("Training mode. Space starts next hand after HAND_OVER.")
+		_append_session_log("Training mode. Hands advance automatically after results.")
 	_start_next_hand()
 
 
 func _can_use_debug_start_key() -> bool:
-	return TableLaunchContext.allow_debug_tools or TableLaunchContext.is_training or OS.is_debug_build()
+	return TableLaunchContext.allow_debug_tools
 
 
 func _can_use_space_next_hand() -> bool:
-	return TableLaunchContext.is_training or TableLaunchContext.allow_debug_tools
+	return TableLaunchContext.allow_debug_tools
 
 
 func _append_session_log(message: String) -> void:

@@ -8,6 +8,8 @@ func _init() -> void:
 	var table_flow_source: String = _read_source(TexasTableFlowPath)
 	_test_showdown_reveal_state(table_screen_source, table_flow_source)
 	_test_everyone_folded_short_result(table_screen_source, table_flow_source)
+	_test_no_press_s_prompt(table_screen_source)
+	_test_seat_cards_render_revealed_hole_cards()
 	_test_training_account_balance_guard(table_screen_source)
 	_test_no_duplicate_next_hand_timer(table_screen_source)
 	_test_exit_cancels_pending_next_hand(table_screen_source)
@@ -22,6 +24,7 @@ func _test_showdown_reveal_state(table_screen_source: String, table_flow_source:
 	_require(table_screen_source.contains("_showdown_revealed_player_ids.has(seat_id)"), "screen must reveal only selected showdown seats")
 	_require(table_screen_source.contains("SHOWDOWN_REVEAL_HOLD_SECONDS := 5.0"), "showdown reveal must hold for 5 seconds")
 	_require(table_screen_source.contains("_is_showdown_eligible_status(status)"), "showdown reveal must filter eligible active seats")
+	_require(table_flow_source.contains("if status in [PLAYING, ALL_IN]"), "showdown eligibility must include only current-hand contenders")
 
 
 func _test_everyone_folded_short_result(table_screen_source: String, table_flow_source: String) -> void:
@@ -29,6 +32,22 @@ func _test_everyone_folded_short_result(table_screen_source: String, table_flow_
 	_require(table_screen_source.contains("FOLD_WIN_HOLD_SECONDS := 2.5"), "fold win result must use shorter hold")
 	_require(table_screen_source.contains("Everyone folded."), "fold win message must explain that everyone folded")
 	_require(table_screen_source.contains("if end_reason == \"everyone_folded\":\n\t\treturn result"), "fold win must not reveal winner hole cards")
+
+
+func _test_no_press_s_prompt(table_screen_source: String) -> void:
+	_require(not table_screen_source.contains("Press S to Start Next Hand"), "formal hand over UI must not ask for Press S")
+	_require(not table_screen_source.contains("Press S to Start Hand"), "formal waiting UI must not ask for Press S")
+	_require(table_screen_source.contains("Next hand starting..."), "hand over prompt must describe automatic next hand start")
+	_require(table_screen_source.contains("return TableLaunchContext.allow_debug_tools"), "manual S/Space shortcuts must be debug gated by default")
+
+
+func _test_seat_cards_render_revealed_hole_cards() -> void:
+	var poker_seat_source: String = _read_source("res://scripts/components/poker_seat.gd")
+	var seat_card_source: String = _read_source("res://scripts/components/seat_player_card.gd")
+	_require(poker_seat_source.contains("\"cards\": Array(seat_data.get(\"cards\", [])).duplicate(true)"), "PokerSeat must pass cards into SeatPlayerCard")
+	_require(seat_card_source.contains("ShowdownRevealedCards"), "SeatPlayerCard must create revealed card views")
+	_require(seat_card_source.contains("face_up_cards.append(card)"), "SeatPlayerCard must show face-up showdown cards")
+	_require(seat_card_source.contains("_card_back_decor.visible = not _is_empty and not show_revealed_cards"), "card backs must hide when real cards are revealed")
 
 
 func _test_training_account_balance_guard(table_screen_source: String) -> void:

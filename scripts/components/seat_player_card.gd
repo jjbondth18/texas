@@ -13,6 +13,7 @@ const DEALER_BADGE := preload("res://assets/ui/neon_poker_ui_clean/dealer_badge.
 const SMALL_BLIND_BADGE := preload("res://assets/ui/neon_poker_ui_clean/small_blind_badge.png")
 const BIG_BLIND_BADGE := preload("res://assets/ui/neon_poker_ui_clean/big_blind_badge.png")
 const ACTIVE_TURN_GLOW := preload("res://assets/ui/neon_poker_ui_clean/active_turn_glow.png")
+const CardViewScene := preload("res://scenes/components/card_view.tscn")
 const VERBOSE_BET_MARKER_LOGS := false
 
 var _is_empty: bool = true
@@ -28,6 +29,7 @@ var _toast_tween: Tween
 var _bet_marker_panel: PanelContainer
 var _bet_marker_row: HBoxContainer
 var _bet_chip_icon: TextureRect
+var _revealed_cards_root: HBoxContainer
 
 @onready var _card_back_decor: TextureRect = $CardBackDecor
 @onready var _glass_background: TextureRect = $GlassBackground
@@ -50,6 +52,7 @@ func _ready() -> void:
 	_name_label.add_theme_font_size_override("font_size", 22)
 	_chips_label.add_theme_font_size_override("font_size", 20)
 	_bet_label.add_theme_font_size_override("font_size", 18)
+	_build_revealed_cards()
 	_build_bet_marker()
 	_build_toast()
 	_apply_static_assets()
@@ -77,6 +80,7 @@ func set_card_data(data: Dictionary) -> void:
 	_chip_icon.visible = not _is_empty
 
 	_card_back_decor.visible = not _is_empty
+	_apply_revealed_cards(Array(data.get("cards", [])))
 	_active_turn_glow.visible = _is_active_turn and not _is_empty
 	_avatar.texture = _avatar_texture
 	_avatar.visible = _avatar_texture != null and not _is_empty
@@ -116,6 +120,42 @@ func set_card_data(data: Dictionary) -> void:
 	queue_redraw()
 
 
+func _build_revealed_cards() -> void:
+	_revealed_cards_root = HBoxContainer.new()
+	_revealed_cards_root.name = "ShowdownRevealedCards"
+	_revealed_cards_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_revealed_cards_root.alignment = BoxContainer.ALIGNMENT_CENTER
+	_revealed_cards_root.add_theme_constant_override("separation", -12)
+	_revealed_cards_root.visible = false
+	add_child(_revealed_cards_root)
+	for _i in range(2):
+		var card := CardViewScene.instantiate() as CardView
+		card.custom_minimum_size = Vector2(70, 96)
+		card.size = Vector2(70, 96)
+		card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_revealed_cards_root.add_child(card)
+
+
+func _apply_revealed_cards(cards: Array) -> void:
+	if _revealed_cards_root == null:
+		return
+	var face_up_cards: Array[Dictionary] = []
+	for card_item in cards:
+		var card: Dictionary = Dictionary(card_item)
+		if bool(card.get("face_up", false)):
+			face_up_cards.append(card)
+	var show_revealed_cards: bool = not _is_empty and not _is_local_player and face_up_cards.size() > 0
+	_revealed_cards_root.visible = show_revealed_cards
+	_card_back_decor.visible = not _is_empty and not show_revealed_cards
+	for i in range(_revealed_cards_root.get_child_count()):
+		var card_view := _revealed_cards_root.get_child(i) as CardView
+		if card_view == null:
+			continue
+		card_view.visible = show_revealed_cards and i < face_up_cards.size()
+		if i < face_up_cards.size():
+			card_view.call("set_card", face_up_cards[i])
+
+
 func _apply_static_assets() -> void:
 	_card_back_decor.texture = CARD_BACKS_PAIR
 	_glass_background.texture = GLASS_BACKGROUND
@@ -147,6 +187,9 @@ func _layout() -> void:
 
 	_card_back_decor.position = card_pos + Vector2(84, -77)
 	_card_back_decor.size = Vector2(180, 119)
+	if _revealed_cards_root != null:
+		_revealed_cards_root.position = card_pos + Vector2(80, -76)
+		_revealed_cards_root.size = Vector2(188, 116)
 
 	_avatar_container.position = card_pos + Vector2(10, 12)
 	_avatar_container.size = Vector2(95, 95)

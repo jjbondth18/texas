@@ -647,7 +647,7 @@ func _active_contender_ids() -> Array[int]:
 	for seat in seats:
 		var data: Dictionary = seat
 		var status: String = String(data.get("status", EMPTY))
-		if status not in [EMPTY, FOLDED, OUT]:
+		if status in [PLAYING, ALL_IN]:
 			result.append(int(data.get("seat_id", data.get("seat_index", 0))))
 	return result
 

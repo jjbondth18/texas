@@ -46,6 +46,7 @@ func set_seat_data(data: Dictionary) -> void:
 		"visual_position": int(seat_data.get("visual_position", seat_data.get("seat_index", 0))),
 		"last_action": String(seat_data.get("last_action", "")),
 		"status": String(seat_data.get("raw_status", seat_data.get("status", ""))),
+		"cards": Array(seat_data.get("cards", [])).duplicate(true),
 	}
 	_seat_card.set_card_data(card_data)
 

@@ -266,7 +266,7 @@ static func _history_from_events(events: Array) -> Array[String]:
 			"room_entered":
 				lines.append("Entered room: %s" % String(payload.get("room", "Neon Table 01")))
 			"waiting_for_hand":
-				lines.append("Waiting for next hand. Press S to start test hand.")
+				lines.append("Waiting for next hand. Next hand starts automatically.")
 			"hand_started":
 				lines.append("Hand #%d started" % int(payload.get("hand_number", 0)))
 			"dealer_assigned":

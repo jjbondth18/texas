@@ -2,6 +2,8 @@
 
 This project now keeps a short hand-end presentation phase before the next hand starts.
 
+Formal play never requires the player to press `S` to continue. Debug/manual start shortcuts are only available when dev debug tools are explicitly enabled, and the normal UI should say that the next hand is starting automatically.
+
 ## Showdown
 
 When a hand ends with two or more showdown-eligible players still in the hand, the table enters a showdown reveal presentation:
@@ -11,6 +13,7 @@ When a hand ends with two or more showdown-eligible players still in the hand, t
 - The result banner shows the winner or split winners, the pot amount, and the winning hand label when available.
 - The reveal holds for 5 seconds.
 - After the hold, the table automatically starts the next hand when the session can continue.
+- Quick/public/private/training tables all follow the same reveal rule, including local mock AI tables.
 
 This uses the existing settlement result. It does not change dealing, betting, winner evaluation, or side-pot rules.
 
@@ -48,3 +51,5 @@ Replay persistence is not implemented here. These fields simply describe the han
 ## Timer Safety
 
 The poker table screen uses a pending next-hand token so only the newest hand-end timer can start the next hand. Returning to the lobby, resetting the debug table, or loading a debug phase cancels any pending timer before it can fire.
+
+Manual next-hand input is not part of the formal flow. If retained for development, it must stay behind the debug tools flag and must not appear as player-facing copy.
