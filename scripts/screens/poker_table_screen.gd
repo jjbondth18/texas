@@ -40,6 +40,8 @@ const SERVER_UI_VERBOSE_LOGS := false
 const SERVER_UI_SLOW_APPLY_WARNING_MS := 16
 const SERVER_UI_SLOW_PLAYBACK_WARNING_MS := 16
 const SERVER_UI_WARNING_THROTTLE_MS := 1000
+const SHOWDOWN_REVEAL_HOLD_SECONDS := 5.0
+const FOLD_WIN_HOLD_SECONDS := 2.5
 
 var snapshot := {}
 var server_authoritative := true
@@ -93,6 +95,11 @@ var _visual_pause_until_msec: int = 0
 var _hand_over_sequence_active: bool = false
 var _next_hand_ready: bool = true
 var _auto_next_hand_enabled: bool = false
+var _showdown_reveal_active: bool = false
+var _showdown_revealed_player_ids: Array[int] = []
+var _hand_result_message: String = ""
+var _hand_result_hold_seconds: float = 0.0
+var _pending_next_hand_token: int = 0
 var _bet_marker_overrides: Dictionary = {}
 var _visible_community_cards: Array = []
 var _community_reveal_token: int = 0
@@ -110,6 +117,9 @@ var _session_unlock_avatar: TextureRect
 var _session_unlock_label: Label
 var _session_play_again_hint_label: Label
 var _session_play_again_button: Button
+var _hand_result_banner: PanelContainer
+var _hand_result_title_label: Label
+var _hand_result_body_label: Label
 var _recorded_session_hand_ids := {}
 var _session_started := false
 var _profile_settlement_applied := false
@@ -214,6 +224,7 @@ func _build_scene() -> void:
 	call_deferred("_hide_legacy_top_center_bars")
 	_build_rule_debug_panel()
 	_build_session_result_panel()
+	_build_hand_result_banner()
 	
 	# Setup seats map from static scene nodes
 	_seats[1] = $TableSurfaceLayer/TableLayer/SeatLayer/Seat1Panel
@@ -254,6 +265,48 @@ func _build_scene() -> void:
 	_local_cards_root = _action_bar.local_cards_root
 	
 	_layout()
+
+
+func _build_hand_result_banner() -> void:
+	_hand_result_banner = PanelContainer.new()
+	_hand_result_banner.name = "HandEndResultBanner"
+	_hand_result_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hand_result_banner.visible = false
+	_hand_result_banner.z_index = 260
+	_hand_result_banner.size = Vector2(640, 124)
+	_hand_result_banner.position = Vector2((DESIGN_SIZE.x - _hand_result_banner.size.x) * 0.5, 286.0)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.018, 0.008, 0.045, 0.88)
+	style.border_color = Color(1.0, 0.0, 0.58, 0.82)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(16)
+	style.shadow_color = Color(1.0, 0.0, 0.58, 0.22)
+	style.shadow_size = 18
+	style.content_margin_left = 24
+	style.content_margin_right = 24
+	style.content_margin_top = 16
+	style.content_margin_bottom = 16
+	_hand_result_banner.add_theme_stylebox_override("panel", style)
+
+	var box := VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 8)
+	_hand_result_banner.add_child(box)
+
+	_hand_result_title_label = Label.new()
+	_hand_result_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hand_result_title_label.add_theme_font_size_override("font_size", 23)
+	_hand_result_title_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.96, 1.0))
+	box.add_child(_hand_result_title_label)
+
+	_hand_result_body_label = Label.new()
+	_hand_result_body_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hand_result_body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_hand_result_body_label.add_theme_font_size_override("font_size", 17)
+	_hand_result_body_label.add_theme_color_override("font_color", Color(0.88, 0.91, 1.0, 0.96))
+	box.add_child(_hand_result_body_label)
+
+	_content_root.add_child(_hand_result_banner)
 
 func _layout() -> void:
 	if _content_root == null:
@@ -396,6 +449,7 @@ func _apply_design_rect_to_control(target: Control, design_rect: Rect2) -> void:
 	target.size = design_rect.size / parent_design_scale
 
 func _load_phase(phase: String) -> void:
+	_cancel_pending_next_hand_timer()
 	if phase.to_lower() == "waiting":
 		_configure_table_flow_from_launch_context()
 		_table_flow.reset_table()
@@ -1197,6 +1251,7 @@ func _start_next_hand() -> void:
 		return
 	if _session_result_panel != null:
 		_session_result_panel.visible = false
+	_cancel_pending_next_hand_timer()
 	_hand_over_sequence_active = false
 	_next_hand_ready = true
 	_reset_visual_hand_state()
@@ -1275,6 +1330,7 @@ func _force_finish_current_session() -> void:
 	_enter_session_over()
 
 func _reset_test_table() -> void:
+	_cancel_pending_next_hand_timer()
 	if server_authoritative:
 		_boot_server_authoritative_table()
 		return
@@ -1333,7 +1389,7 @@ func _table_flow_to_ui_snapshot(source: Dictionary) -> Dictionary:
 		var cards: Array[Dictionary] = []
 		for card_item in Array(seat.get("hole_cards", [])):
 			var card: Dictionary = Dictionary(card_item).duplicate(true)
-			card["face_up"] = bool(seat.get("is_local", false)) or stage in [TexasTableFlowScript.SHOWDOWN, TexasTableFlowScript.HAND_OVER]
+			card["face_up"] = _should_show_hole_cards(seat, stage)
 			cards.append(card)
 		seats.append({
 			"seat_index": seat_id,
@@ -1387,6 +1443,30 @@ func _table_flow_to_ui_snapshot(source: Dictionary) -> Dictionary:
 		"rule_debug_log": Array(source.get("rule_debug_log", [])).duplicate(),
 		"table_session": _table_session.to_dict() if _table_session != null else {},
 	}
+
+
+func _should_show_hole_cards(seat: Dictionary, stage: String) -> bool:
+	if bool(seat.get("is_local", false)):
+		return true
+	var seat_id: int = int(seat.get("seat_id", seat.get("seat_index", 0)))
+	var status: String = String(seat.get("status", ""))
+	if stage == TexasTableFlowScript.SHOWDOWN and _is_showdown_eligible_status(status):
+		return true
+	if _showdown_reveal_active and _showdown_revealed_player_ids.has(seat_id):
+		return true
+	return false
+
+
+func _is_showdown_eligible_status(status: String) -> bool:
+	return status not in [
+		TexasTableFlowScript.EMPTY,
+		TexasTableFlowScript.FOLDED,
+		TexasTableFlowScript.OUT,
+		"empty",
+		"folded",
+		"left",
+		"out",
+	]
 
 func _refresh() -> void:
 	_hide_legacy_top_center_bars()
@@ -1669,6 +1749,7 @@ func _apply_local_cards(cards: Array) -> void:
 
 
 func _reset_visual_hand_state() -> void:
+	_clear_hand_result_reveal_state()
 	_bet_marker_overrides.clear()
 	_visual_pause_until_msec = 0
 	_visible_community_cards.clear()
@@ -1879,25 +1960,152 @@ func _handle_hand_over_state() -> void:
 		return
 	if String(_table_flow.table_state) != TexasTableFlowScript.HAND_OVER:
 		_hand_over_sequence_active = false
+		_clear_hand_result_reveal_state()
 		return
 	if _hand_over_sequence_active:
 		return
 	_hand_over_sequence_active = true
 	_next_hand_ready = false
 	_record_session_hand_result_once()
+	_begin_hand_result_reveal()
+
+func _begin_hand_result_reveal() -> void:
+	var hand: Dictionary = Dictionary(_table_flow.hand_data)
+	var settlement: Dictionary = Dictionary(hand.get("settlement", {}))
+	var end_reason: String = String(settlement.get("end_reason", hand.get("end_reason", "")))
+	var reveal_ids: Array[int] = _hand_result_reveal_ids(hand, settlement, end_reason)
+	_showdown_revealed_player_ids = reveal_ids
+	_showdown_reveal_active = reveal_ids.size() >= 2 and end_reason != "everyone_folded"
+	_hand_result_hold_seconds = float(settlement.get(
+		"result_hold_seconds",
+		SHOWDOWN_REVEAL_HOLD_SECONDS if _showdown_reveal_active else FOLD_WIN_HOLD_SECONDS
+	))
+	if _hand_result_hold_seconds <= 0.0:
+		_hand_result_hold_seconds = SHOWDOWN_REVEAL_HOLD_SECONDS if _showdown_reveal_active else FOLD_WIN_HOLD_SECONDS
+	_hand_result_message = _hand_result_summary_text(settlement, end_reason)
+	_apply_showdown_reveal_to_snapshot()
+	_refresh_revealed_seat_cards()
+	_show_hand_result_banner("SHOWDOWN" if _showdown_reveal_active else "HAND RESULT", _hand_result_message)
+	_append_session_log(_hand_result_message)
+	_schedule_next_hand_after_result(_hand_result_hold_seconds)
+
+
+func _hand_result_reveal_ids(hand: Dictionary, settlement: Dictionary, end_reason: String) -> Array[int]:
+	var result: Array[int] = []
+	if end_reason == "everyone_folded":
+		return result
+	var raw_ids: Array = Array(settlement.get("showdown_revealed_player_ids", hand.get("showdown_revealed_player_ids", [])))
+	for item in raw_ids:
+		var seat_id: int = int(item)
+		if seat_id > 0 and not result.has(seat_id):
+			result.append(seat_id)
+	if result.size() >= 2:
+		return result
+	for seat_item in _table_flow.seats:
+		var seat: Dictionary = Dictionary(seat_item)
+		var status: String = String(seat.get("status", ""))
+		var seat_id: int = int(seat.get("seat_id", seat.get("seat_index", 0)))
+		if seat_id > 0 and _is_showdown_eligible_status(status) and not result.has(seat_id):
+			result.append(seat_id)
+	if result.size() >= 2:
+		return result
+	return []
+
+
+func _hand_result_summary_text(settlement: Dictionary, end_reason: String) -> String:
+	var explicit_summary: String = String(settlement.get("showdown_summary", ""))
+	if explicit_summary != "":
+		return explicit_summary
+	var winner_names: Array[String] = []
+	for winner_name in Array(settlement.get("winner_names", [])):
+		winner_names.append(String(winner_name))
+	var winner_text: String = ", ".join(winner_names) if not winner_names.is_empty() else "Winner"
+	var pot_amount: int = int(settlement.get("pot_before_settlement", settlement.get("win_amount", 0)))
+	var hand_rank: String = String(settlement.get("hand_description", settlement.get("hand_rank", "")))
+	if end_reason == "everyone_folded":
+		return "Everyone folded.\n%s wins %d chips." % [winner_text, pot_amount]
+	var rank_suffix: String = " with %s" % hand_rank if hand_rank != "" else ""
+	if winner_names.size() > 1:
+		return "%s split %d chips%s." % [winner_text, pot_amount, rank_suffix]
+	return "%s wins %d chips%s." % [winner_text, pot_amount, rank_suffix]
+
+
+func _apply_showdown_reveal_to_snapshot() -> void:
+	var seats: Array = Array(snapshot.get("seats", [])).duplicate(true)
+	for i in range(seats.size()):
+		var seat: Dictionary = Dictionary(seats[i]).duplicate(true)
+		var seat_id: int = int(seat.get("seat_id", seat.get("seat_index", 0)))
+		var cards: Array = Array(seat.get("cards", [])).duplicate(true)
+		for card_index in range(cards.size()):
+			var card: Dictionary = Dictionary(cards[card_index]).duplicate(true)
+			if _showdown_reveal_active and _showdown_revealed_player_ids.has(seat_id):
+				card["face_up"] = true
+			elif not bool(seat.get("is_local", false)):
+				card["face_up"] = false
+			cards[card_index] = card
+		seat["cards"] = cards
+		seats[i] = seat
+	snapshot["seats"] = seats
+	snapshot["showdown_revealed_player_ids"] = _showdown_revealed_player_ids.duplicate()
+	snapshot["hand_result_message"] = _hand_result_message
+	snapshot["hand_result_hold_seconds"] = _hand_result_hold_seconds
+
+
+func _refresh_revealed_seat_cards() -> void:
+	for seat_data in Array(snapshot.get("seats", [])):
+		var data: Dictionary = Dictionary(seat_data)
+		var visual_position: int = int(data.get("visual_position", data.get("seat_index", 0)))
+		if _seats.has(visual_position):
+			_seats[visual_position].set_seat_data(data)
+
+
+func _show_hand_result_banner(title: String, body: String) -> void:
+	if _hand_result_banner == null:
+		return
+	_hand_result_title_label.text = title
+	_hand_result_body_label.text = body
+	_hand_result_banner.visible = true
+
+
+func _hide_hand_result_banner() -> void:
+	if _hand_result_banner != null:
+		_hand_result_banner.visible = false
+
+
+func _schedule_next_hand_after_result(delay_seconds: float) -> void:
+	_pending_next_hand_token += 1
+	var token: int = _pending_next_hand_token
+	call_deferred("_wait_and_start_next_hand_after_result", token, delay_seconds)
+
+
+func _wait_and_start_next_hand_after_result(token: int, delay_seconds: float) -> void:
+	await get_tree().create_timer(delay_seconds).timeout
+	if token != _pending_next_hand_token:
+		return
+	if String(_table_flow.table_state) != TexasTableFlowScript.HAND_OVER:
+		_hand_over_sequence_active = false
+		_clear_hand_result_reveal_state()
+		return
+	_next_hand_ready = true
 	if _table_session != null and _table_session.is_session_over:
 		_enter_session_over()
 		return
-	call_deferred("_unlock_next_hand_after_showdown_pause")
-
-func _unlock_next_hand_after_showdown_pause() -> void:
-	await get_tree().create_timer(2.0).timeout
-	if String(_table_flow.table_state) != TexasTableFlowScript.HAND_OVER:
-		_hand_over_sequence_active = false
-		return
-	_next_hand_ready = true
-	if _auto_next_hand_enabled and _table_session != null and _table_session.can_start_next_hand():
+	if _table_session != null and _table_session.can_start_next_hand():
 		_start_next_hand()
+
+
+func _cancel_pending_next_hand_timer() -> void:
+	_pending_next_hand_token += 1
+	_next_hand_ready = true
+	_clear_hand_result_reveal_state()
+
+
+func _clear_hand_result_reveal_state() -> void:
+	_showdown_reveal_active = false
+	_showdown_revealed_player_ids.clear()
+	_hand_result_message = ""
+	_hand_result_hold_seconds = 0.0
+	_hide_hand_result_banner()
 
 
 func _record_session_hand_result_once() -> void:
@@ -2625,6 +2833,7 @@ func _capture_and_quit() -> void:
 	get_tree().quit()
 
 func _return_home() -> void:
+	_cancel_pending_next_hand_timer()
 	if server_authoritative:
 		if _server_cash_out_pending_return:
 			return

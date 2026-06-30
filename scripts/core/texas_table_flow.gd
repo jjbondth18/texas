@@ -496,6 +496,12 @@ func finish_hand() -> Dictionary:
 		return to_snapshot()
 	_clear_betting_round_state(true)
 	var pot_amount: int = int(hand_data.get("pot", 0))
+	var showdown_contenders: Array[int] = _active_contender_ids()
+	var end_reason: String = "showdown" if showdown_contenders.size() >= 2 else "everyone_folded"
+	var revealed_player_ids: Array[int] = []
+	if end_reason == "showdown":
+		for contender_id in showdown_contenders:
+			revealed_player_ids.append(contender_id)
 	var winners: Array[int] = _determine_winners()
 	var winning_rank: String = String(hand_data.get("winning_rank", ""))
 	_award_pot(winners, pot_amount)
@@ -506,6 +512,10 @@ func finish_hand() -> Dictionary:
 	hand_data["stage"] = HAND_OVER
 	hand_data["current_turn_seat"] = -1
 	hand_data["winner_seats"] = winners.duplicate()
+	hand_data["showdown_revealed_player_ids"] = revealed_player_ids.duplicate()
+	hand_data["showdown_summary"] = ""
+	hand_data["result_hold_seconds"] = 5.0 if end_reason == "showdown" else 2.5
+	hand_data["end_reason"] = end_reason
 	hand_data["settlement"] = {
 		"winner_seats": winners.duplicate(),
 		"winner_names": winner_names.duplicate(),
@@ -514,7 +524,13 @@ func finish_hand() -> Dictionary:
 		"hand_description": winning_rank,
 		"pot_before_settlement": pot_amount,
 		"pot_after_settlement": 0,
+		"showdown_revealed_player_ids": revealed_player_ids.duplicate(),
+		"showdown_summary": "",
+		"result_hold_seconds": 5.0 if end_reason == "showdown" else 2.5,
+		"end_reason": end_reason,
 	}
+	hand_data["showdown_summary"] = _hand_result_summary(winner_names, pot_amount, winning_rank, end_reason)
+	hand_data["settlement"]["showdown_summary"] = String(hand_data.get("showdown_summary", ""))
 	hand_data["pot"] = 0
 	hand_data["current_bet"] = 0
 	hand_data["acted_this_round"] = []
@@ -540,6 +556,16 @@ func finish_hand() -> Dictionary:
 		pot_amount,
 	])
 	return to_snapshot()
+
+
+func _hand_result_summary(winner_names: Array[String], pot_amount: int, winning_rank: String, end_reason: String) -> String:
+	var winner_text: String = ", ".join(winner_names) if not winner_names.is_empty() else "Winner"
+	if end_reason == "everyone_folded":
+		return "Everyone folded. %s wins %d chips." % [winner_text, pot_amount]
+	var rank_suffix: String = " with %s" % winning_rank if winning_rank != "" else ""
+	if winner_names.size() > 1:
+		return "%s split %d chips%s." % [winner_text, pot_amount, rank_suffix]
+	return "%s wins %d chips%s." % [winner_text, pot_amount, rank_suffix]
 
 
 func to_snapshot() -> Dictionary:
