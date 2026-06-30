@@ -3,9 +3,10 @@ import { existsSync } from "node:fs";
 import Database from "better-sqlite3";
 import { WebSocketServer } from "ws";
 import type { ClientMessage, ServerMessage } from "./protocol.js";
-import { config } from "./config.js";
+import { config, configWarnings, publicConfigSummary } from "./config.js";
 import { databasePath } from "./db/database.js";
 import { RoomManager } from "./room_manager.js";
+import packageJson from "../package.json" with { type: "json" };
 
 const port = config.port;
 const host = config.host;
@@ -40,6 +41,8 @@ wss.on("connection", (ws) => {
 
 server.listen(port, host, () => {
   console.log(`Authoritative poker server listening on ws://${host}:${port}`);
+  console.log(`Server config: ${JSON.stringify(publicConfigSummary())}`);
+  for (const warning of configWarnings()) console.warn(`WARNING: ${warning}`);
   if (config.adminEnabled) console.log(`Local admin debug dashboard available at http://${host}:${port}/admin`);
 });
 
@@ -51,6 +54,10 @@ function routeHttp(req: IncomingMessage, res: ServerResponse): void {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? `${host}:${port}`}`);
   if (url.pathname.startsWith("/admin") && !canAccessAdmin(req)) {
     sendText(res, 403, "Admin dashboard is disabled or local-only.");
+    return;
+  }
+  if (url.pathname === "/healthz") {
+    sendJson(res, healthz());
     return;
   }
   if (url.pathname === "/admin") {
@@ -66,6 +73,15 @@ function routeHttp(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
   sendText(res, 404, "Not found");
+}
+
+function healthz(): unknown {
+  return {
+    ok: true,
+    uptime: Math.floor((Date.now() - startedAt) / 1000),
+    version: String(packageJson.version || "0.0.0"),
+    env: config.nodeEnv,
+  };
 }
 
 function adminState(): unknown {

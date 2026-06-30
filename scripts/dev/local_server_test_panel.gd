@@ -3,10 +3,9 @@ class_name LocalServerTestPanel
 
 const PokerWsClientScript := preload("res://scripts/network/poker_ws_client.gd")
 const PokerProtocolScript := preload("res://scripts/network/poker_protocol.gd")
+const NetworkConfigScript := preload("res://scripts/network/network_config.gd")
 const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
-
-const DEFAULT_SERVER_URL := "ws://127.0.0.1:8080"
 
 var _client: PokerWsClient
 var _profile_service := ProfileServiceScript.new()
@@ -58,7 +57,7 @@ func _build_ui() -> void:
 	connection_grid.add_theme_constant_override("v_separation", 8)
 	root.add_child(connection_grid)
 
-	_server_url_edit = _add_labeled_line_edit(connection_grid, "Server URL", DEFAULT_SERVER_URL)
+	_server_url_edit = _add_labeled_line_edit(connection_grid, "Server URL", NetworkConfigScript.server_url())
 	_player_name_edit = _add_labeled_line_edit(connection_grid, "Player Name", "")
 	_room_id_edit = _add_labeled_line_edit(connection_grid, "Room ID", "")
 	_seat_index_spin = _add_labeled_spin(connection_grid, "Seat", 0, 5, 0)

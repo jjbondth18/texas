@@ -3,6 +3,7 @@ class_name PokerWsClient
 
 const PokerProtocolScript := preload("res://scripts/network/poker_protocol.gd")
 const IdentityServiceScript := preload("res://scripts/services/identity_service.gd")
+const NetworkConfigScript := preload("res://scripts/network/network_config.gd")
 
 signal connected()
 signal disconnected()
@@ -19,7 +20,7 @@ signal private_snapshot_received(snapshot: Dictionary)
 signal server_error(message: String)
 signal message_received(message: Dictionary)
 
-var url := "ws://127.0.0.1:8080"
+var url := NetworkConfigScript.server_url()
 var local_player_id := ""
 var player_id := ""
 var room_id := ""

@@ -68,6 +68,7 @@ const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 const SettingsServiceScript := preload("res://scripts/services/settings_service.gd")
 const PokerWsClientScript := preload("res://scripts/network/poker_ws_client.gd")
+const NetworkConfigScript := preload("res://scripts/network/network_config.gd")
 const MODE_IMAGES := {
 	"quick_play": "res://assets/home_lobby/mode_cards/mode_quick_play.png",
 	"room_browser": "res://assets/home_lobby/mode_cards/mode_cash_tables.png",
@@ -1250,7 +1251,7 @@ func _connect_profile_server() -> void:
 	_profile_ws_client.table_created.connect(_on_server_table_created)
 	_profile_ws_client.table_joined.connect(_on_server_table_joined)
 	_profile_ws_client.server_error.connect(_on_profile_server_error)
-	var err := _profile_ws_client.connect_to_server("ws://127.0.0.1:8080")
+	var err := _profile_ws_client.connect_to_server(NetworkConfigScript.server_url())
 	if err != OK:
 		_profile_server_connected = false
 		push_warning("[HomeLobby] Could not connect profile server: %s" % error_string(err))

@@ -25,10 +25,10 @@ const TableSessionScript := preload("res://scripts/data/table_session.gd")
 const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
 const PokerWsClientScript := preload("res://scripts/network/poker_ws_client.gd")
 const PokerProtocolScript := preload("res://scripts/network/poker_protocol.gd")
+const NetworkConfigScript := preload("res://scripts/network/network_config.gd")
 const ServerTableSnapshotScript := preload("res://scripts/state/table_snapshot.gd")
 
 const DESIGN_SIZE := Vector2(2560, 1000)
-const LOCAL_SERVER_URL := "ws://127.0.0.1:8080"
 const SERVER_DEFAULT_BUY_IN := 5000
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
 const FLYING_CARD_BACK_PATH := "res://assets/ui/cardback/asset_02.png"
@@ -460,11 +460,12 @@ func _connect_authoritative_server() -> void:
 		_poker_ws_client.private_snapshot_received.connect(_on_server_private_snapshot_received)
 		_poker_ws_client.server_error.connect(_on_server_error)
 		add_child(_poker_ws_client)
-	var err := _poker_ws_client.connect_to_server(LOCAL_SERVER_URL)
+	var server_url := NetworkConfigScript.server_url()
+	var err := _poker_ws_client.connect_to_server(server_url)
 	if err != OK:
 		_on_server_error("Connect failed: %s" % error_string(err))
 		return
-	_append_session_log("Connecting to authoritative server %s" % LOCAL_SERVER_URL)
+	_append_session_log("Connecting to authoritative server %s" % server_url)
 
 func _on_server_connected() -> void:
 	_server_connected = true
