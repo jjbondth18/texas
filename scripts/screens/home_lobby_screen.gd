@@ -1372,6 +1372,9 @@ func _server_table_context(room_id: String, table_info: Dictionary) -> Dictionar
 		"allow_debug_tools": true,
 		"ai_player_count": 0,
 		"max_hands": max_hands,
+		"waiting_for_real_players": int(table_info.get("current_players", table_info.get("seated_count", 0))) < 2,
+		"is_ai_warmup": false,
+		"warmup_ai_player_ids": [],
 		"table_session": {
 			"mode": "quick_play",
 			"table_type": "public_chip",
@@ -1384,6 +1387,9 @@ func _server_table_context(room_id: String, table_info: Dictionary) -> Dictionar
 			"small_blind": small_blind,
 			"big_blind": big_blind,
 			"max_hands": max_hands,
+			"waiting_for_real_players": int(table_info.get("current_players", table_info.get("seated_count", 0))) < 2,
+			"is_ai_warmup": false,
+			"warmup_ai_player_ids": [],
 		},
 	}
 
@@ -2249,7 +2255,7 @@ func _is_joinable_room_browser_table(room: Dictionary) -> bool:
 		return false
 	if int(room.get("seated_count", 0)) >= int(room.get("max_players", 6)):
 		return false
-	if int(room.get("seated_count", 0)) <= 0 and (not Array(room.get("players", [])).is_empty() or not Array(room.get("seats", [])).is_empty()):
+	if int(room.get("seated_count", 0)) <= 0 and (not Array(room.get("players", [])).is_empty() or not Array(room.get("seats", [])).is_empty()) and _connected_room_player_count(room) > 0:
 		return false
 	return true
 

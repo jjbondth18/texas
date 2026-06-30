@@ -131,22 +131,30 @@ export interface PublicTableSnapshot {
   hand_count: number;
   max_players: number;
   seated_count: number;
+  current_players: number;
   hand_state: Phase;
   is_public: boolean;
   created_at: string;
+  seats?: PublicSeatSnapshot[];
 }
 
 export interface PublicSeatSnapshot {
   seat_id: number;
   seat_index: number;
+  occupied: boolean;
   player_id: string;
   player_name: string;
   name: string;
+  avatar_id: string;
   chips: number;
+  table_stack: number;
   status: SeatStatus;
   folded: boolean;
   all_in: boolean;
   disconnected: boolean;
+  connected: boolean;
+  is_ai: boolean;
+  warmup_ai: boolean;
   current_bet: number;
   contribution: number;
   last_action: string;
@@ -179,6 +187,8 @@ export interface TableSnapshot {
   table_info?: PublicTableSnapshot;
   buy_in?: number;
   hand_count?: number;
+  seated_count?: number;
+  current_players?: number;
   hand_state: Phase;
   betting_round: Phase;
   phase: Phase;

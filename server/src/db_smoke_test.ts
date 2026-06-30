@@ -53,6 +53,18 @@ manager.handle("db_smoke_player", { type: "sit_down", room_id: room.id, seat_ind
 const afterBuyIn = manager.adminSnapshot(false);
 if (Number(afterBuyIn.total_wallet_chips) !== 4500) throw new Error("sit_down should deduct room buy-in from wallet");
 if (room.table.getSeat(0)?.chips !== 5000) throw new Error("sit_down should put room buy-in table chips on the seat");
+const creatorSeatSnapshot = room.table.publicSnapshot().seats[0];
+if (!creatorSeatSnapshot.occupied) throw new Error("authoritative snapshot should mark creator seat occupied");
+if (creatorSeatSnapshot.player_id !== "db_smoke_player") throw new Error("authoritative snapshot should include creator player_id");
+if (creatorSeatSnapshot.player_name !== "DB Smoke") throw new Error("authoritative snapshot should include creator name");
+if (creatorSeatSnapshot.avatar_id !== "default") throw new Error("authoritative snapshot should include creator avatar_id");
+if (!creatorSeatSnapshot.connected) throw new Error("authoritative snapshot should mark creator connected");
+if (creatorSeatSnapshot.is_ai) throw new Error("authoritative snapshot should not mark creator as AI");
+if (creatorSeatSnapshot.table_stack !== 5000) throw new Error("authoritative snapshot should expose creator table_stack");
+const roomAdminTable = (afterBuyIn.table_list as Array<Record<string, unknown>>).find((table) => table.room_id === room.id);
+if (!roomAdminTable) throw new Error("created room should appear in public table list");
+if (Number(roomAdminTable.current_players) !== 1) throw new Error("public table list should count one connected real creator");
+if (Number(roomAdminTable.seated_count) !== 1) throw new Error("public table list should show creator as 1/6");
 if (countRows("wallet_transactions", "reason = 'table_buy_in' AND amount = -5000") !== 1) throw new Error("table buy-in should write negative wallet transaction");
 
 manager.handle("db_smoke_player", { type: "add_table_chips", room_id: room.id, amount: 500 });

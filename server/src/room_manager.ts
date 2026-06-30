@@ -112,7 +112,7 @@ export class RoomManager {
     if (message.type === "join_table") {
       const room = this.rooms.get(String(message.room_id || ""));
       if (!room) throw new Error("room_not_found");
-      if (this.seatedCount(room) >= room.maxPlayers) throw new Error("table_full");
+      if (this.occupiedSeatCount(room) >= room.maxPlayers) throw new Error("table_full");
       this.joinRoom(client, room.id);
       const table = this.tableSnapshot(room);
       this.recordLog(`${client.id} joined public table ${room.id}`);
@@ -248,7 +248,8 @@ export class RoomManager {
           big_blind: room.bigBlind,
           buy_in: room.buyIn,
           hand_count: room.handCount,
-          seated_count: this.seatedCount(room),
+          seated_count: this.publicSeatedCount(room),
+          current_players: this.publicSeatedCount(room),
           is_public: room.isPublic,
           connected_player_ids: [...room.clients],
           hand_state: snapshot.phase,
@@ -259,14 +260,19 @@ export class RoomManager {
           current_turn_seat: snapshot.current_turn_seat,
           seats: room.table.seats.map((seat) => ({
             seat_index: seat.seatIndex,
+            occupied: seat.playerId !== "",
             player_id: seat.playerId,
             name: seat.name,
+            avatar_id: seat.avatarId,
             chips: seat.chips,
             table_chips: seat.chips,
+            table_stack: seat.chips,
             current_bet: seat.currentBet,
             contribution: seat.contribution,
             status: seat.status,
             disconnected: seat.disconnected,
+            connected: seat.playerId !== "" && !seat.disconnected,
+            is_ai: seat.isAi,
             last_action: seat.lastAction,
             hole_card_count: seat.holeCards.length,
             ...(showPrivateCards ? { hole_cards: seat.holeCards.map((card) => card.code) } : {}),
@@ -297,15 +303,21 @@ export class RoomManager {
       buy_in: room.buyIn,
       hand_count: room.handCount,
       max_players: room.maxPlayers,
-      seated_count: this.seatedCount(room),
+      seated_count: this.publicSeatedCount(room),
+      current_players: this.publicSeatedCount(room),
       hand_state: room.table.phase,
       is_public: room.isPublic,
       created_at: room.createdAt,
+      seats: room.table.publicSnapshot().seats,
     };
   }
 
-  private seatedCount(room: Room): number {
+  private occupiedSeatCount(room: Room): number {
     return room.table.seats.filter((seat) => seat.playerId !== "").length;
+  }
+
+  private publicSeatedCount(room: Room): number {
+    return room.table.seats.filter((seat) => seat.playerId !== "" && !seat.disconnected && !seat.isAi).length;
   }
 
   private handleHello(client: Client, message: ClientMessage): Omit<ServerMessage, "type" | "request_id" | "player_id"> {
@@ -387,6 +399,8 @@ export class RoomManager {
     if (!wallet || wallet.chips < room.buyIn) throw new Error("insufficient_chips");
     this.wallets.deductChips(client.id, room.buyIn, { reason: "table_buy_in", relatedRoomId: room.id });
     room.table.sitDown(toPlayer(client), seatIndex, room.buyIn);
+    const occupiedCount = this.occupiedSeatCount(room);
+    this.recordLog(`sit_down room=${room.id} player=${client.id} seat=${seatIndex} chips=${room.buyIn} occupied=${occupiedCount}`);
     this.sendWalletSnapshot(client, room.id);
   }
 
@@ -430,6 +444,8 @@ export class RoomManager {
       ...room.table.publicSnapshot(),
       buy_in: room.buyIn,
       hand_count: room.handCount,
+      seated_count: this.publicSeatedCount(room),
+      current_players: this.publicSeatedCount(room),
       table_info: this.tableSnapshot(room),
     };
     for (const playerId of room.clients) {
@@ -507,7 +523,13 @@ export class RoomManager {
 }
 
 function toPlayer(client: Client): Player {
-  return { id: client.id, name: client.name || client.id, connected: Boolean(client.ws) };
+  return {
+    id: client.id,
+    name: client.name || client.id,
+    connected: Boolean(client.ws),
+    avatarId: client.avatarId || "default",
+    isAi: client.id.startsWith("bot_") || client.id.startsWith("LocalBot"),
+  };
 }
 
 function numberOr(value: unknown, fallback: number): number {

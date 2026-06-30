@@ -6,12 +6,16 @@ export interface Player {
   id: string;
   name: string;
   connected: boolean;
+  avatarId?: string;
+  isAi?: boolean;
 }
 
 export interface Seat {
   seatIndex: number;
   playerId: string;
   name: string;
+  avatarId: string;
+  isAi: boolean;
   chips: number;
   status: SeatStatus;
   disconnected: boolean;
@@ -106,6 +110,8 @@ export class TableState {
     Object.assign(seat, {
       playerId: player.id,
       name: player.name,
+      avatarId: player.avatarId ?? "default",
+      isAi: Boolean(player.isAi),
       chips: Math.max(1, Math.floor(buyIn)),
       status: "sitting" satisfies SeatStatus,
       disconnected: false,
@@ -208,14 +214,20 @@ export class TableState {
       seats: this.seats.map((seat): PublicSeatSnapshot => ({
         seat_id: seat.seatIndex,
         seat_index: seat.seatIndex,
+        occupied: seat.playerId !== "",
         player_id: seat.playerId,
         player_name: seat.name,
         name: seat.name,
+        avatar_id: seat.avatarId,
         chips: seat.chips,
+        table_stack: seat.chips,
         status: seat.status,
         folded: seat.status === "folded",
         all_in: seat.status === "all_in",
         disconnected: seat.disconnected,
+        connected: seat.playerId !== "" && !seat.disconnected,
+        is_ai: seat.isAi,
+        warmup_ai: false,
         current_bet: seat.currentBet,
         contribution: seat.contribution,
         last_action: seat.lastAction,
@@ -392,6 +404,8 @@ export class TableState {
       seatIndex,
       playerId: "",
       name: "",
+      avatarId: "",
+      isAi: false,
       chips: 0,
       status: "empty",
       disconnected: false,
