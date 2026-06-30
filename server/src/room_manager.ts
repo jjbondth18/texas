@@ -163,6 +163,7 @@ export class RoomManager {
           this.recordLog(`${client.id} sat in ${room.id} seat=${seatIndex}`);
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
+          const wallet = this.wallets.get(client.id);
           this.send(client, {
             type: "sit_down_result",
             request_id: message.request_id,
@@ -172,6 +173,8 @@ export class RoomManager {
             player_id: client.id,
             server_player_id: client.id,
             reason,
+            wallet_chips: wallet?.chips ?? 0,
+            required_chips: room.buyIn,
           });
           throw error;
         }

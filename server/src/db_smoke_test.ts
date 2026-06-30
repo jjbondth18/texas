@@ -170,6 +170,19 @@ if (!sitAck || sitAck.ok !== true) throw new Error("sit_down should return sit_d
 if (sitAck.room_id !== sitAckRoom.id || sitAck.seat_index !== 0 || sitAck.player_id !== "sit_ack_player") throw new Error("sit_down_result should include room, seat, and canonical player_id");
 if (!sitAckRoom.table.publicSnapshot().seats[0].occupied) throw new Error("sit_down_result success should have occupied snapshot seat");
 if (sitAckRoom.table.publicSnapshot().seats[0].player_id !== "sit_ack_player") throw new Error("snapshot seat should use canonical player id after sit_down ack");
+const sitFailMessages: unknown[] = [];
+const sitFailWs = { OPEN: 1, readyState: 1, send: (data: string) => sitFailMessages.push(JSON.parse(data)) };
+const sitFailClient = manager.connect(sitFailWs as any);
+manager.handle(sitFailClient.id, { type: "hello", player_id: "sit_fail_player", name: "Sit Fail" });
+const sitFailRoom = manager.createRoom({ buyIn: 50000, smallBlind: 100, bigBlind: 200, handCount: 10 });
+manager.handle("sit_fail_player", { type: "join_room", room_id: sitFailRoom.id });
+sitFailMessages.length = 0;
+expectThrows("insufficient_chips", () => manager.handle("sit_fail_player", { type: "sit_down", room_id: sitFailRoom.id, seat_index: 0 }));
+const sitFail = sitFailMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "sit_down_result") as
+  | { type: string; ok?: boolean; reason?: string; wallet_chips?: number; required_chips?: number }
+  | undefined;
+if (!sitFail || sitFail.ok !== false || sitFail.reason !== "insufficient_chips") throw new Error("failed sit_down should return sit_down_result ok=false insufficient_chips");
+if (Number(sitFail.wallet_chips) >= Number(sitFail.required_chips)) throw new Error("failed sit_down should include wallet_chips below required_chips");
 
 console.log("DB_SMOKE_OK");
 console.log(JSON.stringify({ db_path: process.env.TEXAS_DB_PATH, player_count: manager.adminSnapshot(false).player_count, total_wallet_chips: manager.adminSnapshot(false).total_wallet_chips }, null, 2));

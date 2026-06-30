@@ -658,9 +658,21 @@ func _try_server_sit_down() -> void:
 	_server_ready_sent = false
 	_server_sit_down_failed = false
 	_server_sit_down_error = ""
-	var buy_in: int = PlayerProfileScript.table_buy_in(ProfileServiceScript.new().get_current_profile())
+	var buy_in: int = TableLaunchContext.buy_in
+	if buy_in <= 0:
+		buy_in = PlayerProfileScript.table_buy_in(ProfileServiceScript.new().get_current_profile())
 	if buy_in <= 0:
 		buy_in = 5000
+	var authoritative_wallet_chips := PlayerProfileScript.get_total_chips(ProfileServiceScript.new().get_current_profile())
+	var local_profile_chips := PlayerProfileScript.get_total_chips(TableLaunchContext.get_player_profile())
+	var displayed_wallet_chips := authoritative_wallet_chips
+	_append_session_log("Wallet debug: authoritative_wallet_chips=%s local_profile_chips=%s displayed_wallet_chips=%s selected_buy_in=%s can_afford_buy_in=%s" % [
+		_format_chips(authoritative_wallet_chips),
+		_format_chips(local_profile_chips),
+		_format_chips(displayed_wallet_chips),
+		_format_chips(buy_in),
+		str(authoritative_wallet_chips >= buy_in),
+	])
 	_append_session_log("Authoritative room_id: %s" % _server_room_id)
 	_append_session_log("Waiting for seat confirmation...")
 	_send_server_message(_poker_ws_client.sit_down(_server_requested_seat_index, buy_in), "sit_down seat %d" % _server_requested_seat_index)
@@ -742,7 +754,7 @@ func _apply_server_table_info(room_id: String, table_info: Dictionary) -> void:
 		"Unlimited" if max_hands >= 999 else str(max_hands),
 	])
 
-func _on_server_sit_down_result(ok: bool, room_id: String, seat_index: int, player_id: String, reason: String) -> void:
+func _on_server_sit_down_result(ok: bool, room_id: String, seat_index: int, player_id: String, reason: String, wallet_chips: int = -1, required_chips: int = -1) -> void:
 	if room_id != "":
 		_server_room_id = room_id
 	if player_id != "":
@@ -761,7 +773,17 @@ func _on_server_sit_down_result(ok: bool, room_id: String, seat_index: int, play
 		_server_seat_confirmed = false
 		_server_local_seat_index = -1
 		_server_sit_down_error = reason if reason != "" else "unknown"
-		_on_server_error("Failed to sit down at table. reason=%s" % _server_sit_down_error)
+		var failure_message := _server_sit_down_failure_message(_server_sit_down_error, wallet_chips, required_chips)
+		_on_server_error(failure_message)
+		TableLaunchContext.set_pending_launch_error(failure_message)
+		call_deferred("_complete_return_home")
+
+func _server_sit_down_failure_message(reason: String, wallet_chips: int = -1, required_chips: int = -1) -> String:
+	if reason == "insufficient_chips":
+		if wallet_chips >= 0 and required_chips >= 0:
+			return "Not enough chips for this buy-in. Required: %s. Wallet: %s." % [_format_chips(required_chips), _format_chips(wallet_chips)]
+		return "Not enough chips for this buy-in."
+	return "Failed to sit down at table. reason=%s" % reason
 
 func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
 	var apply_start := Time.get_ticks_msec()

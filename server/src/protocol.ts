@@ -89,6 +89,8 @@ export interface ServerMessage {
   ok?: boolean;
   seat_index?: number;
   reason?: string;
+  wallet_chips?: number;
+  required_chips?: number;
   snapshot?: unknown;
   profile?: PlayerProfileSnapshot;
   wallet?: WalletSnapshot;

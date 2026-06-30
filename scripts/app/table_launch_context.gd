@@ -26,6 +26,7 @@ static var big_blind := 50
 static var seats: Array[Dictionary] = []
 static var table_session: Dictionary = {}
 static var player_profile: Dictionary = PlayerProfileScript.default_profile()
+static var pending_launch_error := ""
 
 static func configure(mode: String = "quick_play", id: String = "mock_table_001", profile: Dictionary = {}, setup_config: Dictionary = {}) -> void:
 	launch_mode = mode
@@ -75,6 +76,14 @@ static func get_player_profile() -> Dictionary:
 	if player_profile.is_empty():
 		player_profile = PlayerProfileScript.default_profile()
 	return player_profile.duplicate(true)
+
+static func set_pending_launch_error(message: String) -> void:
+	pending_launch_error = message
+
+static func consume_pending_launch_error() -> String:
+	var message := pending_launch_error
+	pending_launch_error = ""
+	return message
 
 static func configure_from_context(context: Dictionary) -> void:
 	if context.is_empty():

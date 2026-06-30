@@ -140,6 +140,7 @@ var _private_room_setup_mode := "chip"
 var server_authoritative_profile := true
 var _profile_ws_client: PokerWsClient
 var _profile_server_connected := false
+var _profile_server_wallet_synced := false
 var _avatar_catalog: Array = []
 var _avatar_catalog_by_id: Dictionary = {}
 var _server_public_tables: Array = []
@@ -210,6 +211,7 @@ func _ready() -> void:
 	lobby_vm["player"] = _player_profile
 	_top_bar.configure(_player_profile)
 	set_state(LobbyState.COLLAPSED, false)
+	call_deferred("_show_pending_launch_error")
 	_handle_runtime_capture_args()
 
 func set_state(new_state: LobbyState, animated: bool = true) -> void:
@@ -708,8 +710,16 @@ func _render_table_creation_setup_panel(panel: PanelContainer, public_table: boo
 	_add_table_setup_profile_row(column)
 
 	var mode_note := Label.new()
+	var buy_in := int(values.get("buy_in", 10000))
+	var wallet_chips := _wallet_chips_for_public_chip_setup()
+	var can_afford_public_buy_in := not public_table or gem_selected or _can_afford_public_buy_in(buy_in)
 	if public_table:
-		mode_note.text = "Create a public chip table with your selected stakes." if not gem_selected else "Gem public tables require secure server matchmaking."
+		if gem_selected:
+			mode_note.text = "Gem public tables require secure server matchmaking."
+		elif not can_afford_public_buy_in:
+			mode_note.text = "Not enough server wallet chips. Required: %s. Wallet: %s." % [_format_number(buy_in), _format_number(wallet_chips)]
+		else:
+			mode_note.text = "Create a public chip table with your selected stakes."
 	else:
 		mode_note.text = "Private casual room. Not listed in public tables." if not gem_selected else "Gem private rooms are reserved for future private match support."
 	mode_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -731,10 +741,13 @@ func _render_table_creation_setup_panel(panel: PanelContainer, public_table: boo
 	confirm.text = "COMING SOON" if gem_selected else ("CREATE TABLE" if public_table else "CREATE ROOM")
 	confirm.custom_minimum_size = Vector2(180, 48)
 	confirm.focus_mode = Control.FOCUS_NONE
-	confirm.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	confirm.disabled = gem_selected or (public_table and not can_afford_public_buy_in)
+	confirm.mouse_default_cursor_shape = Control.CURSOR_ARROW if confirm.disabled else Control.CURSOR_POINTING_HAND
 	confirm.add_theme_font_size_override("font_size", 15)
 	confirm.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.68), Color(1.0, 0.0, 0.5, 0.85), 22))
 	confirm.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.86), Color(1.0, 0.0, 0.5, 1.0), 22))
+	confirm.add_theme_stylebox_override("disabled", HomeTheme.make_button_style(Color(0.08, 0.06, 0.10, 0.62), Color(0.76, 0.52, 0.9, 0.28), 22))
+	confirm.add_theme_color_override("font_disabled_color", Color(0.78, 0.72, 0.86, 0.72))
 	confirm.pressed.connect(Callable(self, "_confirm_public_table_setup") if public_table else Callable(self, "_confirm_private_room_setup"))
 	buttons.add_child(confirm)
 
@@ -814,7 +827,7 @@ func _add_table_setup_profile_row(parent: VBoxContainer) -> void:
 	profile_text.add_child(name_label)
 
 	var chips_label := Label.new()
-	chips_label.text = "Wallet Chips: %s" % _format_number(PlayerProfileScript.get_total_chips(_player_profile))
+	chips_label.text = "%s: %s" % [_wallet_label_for_public_chip_setup(), _format_number(_wallet_chips_for_public_chip_setup())]
 	HomeTheme.make_font_settings(chips_label, 14, HomeTheme.GOLD)
 	profile_text.add_child(chips_label)
 
@@ -851,7 +864,17 @@ func _add_table_setup_option_row(parent: VBoxContainer, values: Dictionary, key:
 	for option_item in options:
 		var option_value: int = int(option_item)
 		var button: Button = _table_setup_option_button(_table_setup_option_label(key, option_value), int(values.get(key, 0)) == option_value)
+		var disabled := public_table and key == "buy_in" and not _can_afford_public_buy_in(option_value)
+		button.disabled = disabled
+		button.mouse_default_cursor_shape = Control.CURSOR_ARROW if disabled else Control.CURSOR_POINTING_HAND
+		if disabled:
+			button.tooltip_text = "Not enough server wallet chips."
+			button.add_theme_stylebox_override("disabled", HomeTheme.make_button_style(Color(0.012, 0.014, 0.028, 0.46), Color(0.34, 0.32, 0.48, 0.28), 18))
+			button.add_theme_color_override("font_disabled_color", Color(0.55, 0.55, 0.68, 0.72))
 		button.pressed.connect(func() -> void:
+			if disabled:
+				_show_toast("Not enough chips for this buy-in.")
+				return
 			values[key] = option_value
 			_render_table_creation_setup_panel(_public_table_setup_panel if public_table else _private_room_setup_panel, public_table)
 		)
@@ -1164,8 +1187,9 @@ func _hide_quick_play_setup() -> void:
 func _start_quick_play_from_setup() -> void:
 	if _quick_play_mode != "chip":
 		return
-	if PlayerProfileScript.get_total_chips(_player_profile) < _selected_quick_buy_in:
+	if not _can_afford_public_buy_in(_selected_quick_buy_in):
 		_refresh_quick_play_setup_options()
+		_show_toast("Not enough chips for this buy-in.")
 		return
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
 		var table_name := "%s's Table" % PlayerProfileScript.get_player_name(_player_profile)
@@ -1231,9 +1255,9 @@ func _quick_server_table_config() -> Dictionary:
 
 func _update_quick_play_setup_profile() -> void:
 	var player_name := PlayerProfileScript.get_player_name(_player_profile)
-	var total_chips := PlayerProfileScript.get_total_chips(_player_profile)
+	var total_chips := _wallet_chips_for_public_chip_setup()
 	_quick_play_setup_name_label.text = player_name
-	_quick_play_setup_chips_label.text = "Wallet Chips: %s" % _format_number(total_chips)
+	_quick_play_setup_chips_label.text = "%s: %s" % [_wallet_label_for_public_chip_setup(), _format_number(total_chips)]
 	var texture: Texture2D = AvatarLibraryScript.get_avatar_by_id(PlayerProfileScript.get_avatar_id(_player_profile))
 	if texture == null:
 		var avatar_path := String(_player_profile.get("avatar", ""))
@@ -1247,6 +1271,21 @@ func _reload_player_profile() -> void:
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
 	_refresh_profile_panel()
+
+func _wallet_chips_for_public_chip_setup() -> int:
+	if server_authoritative_profile and _profile_server_connected:
+		if not _profile_server_wallet_synced:
+			return 0
+		return PlayerProfileScript.get_total_chips(ProfileServiceScript.new().get_current_profile())
+	return PlayerProfileScript.get_total_chips(_player_profile)
+
+func _wallet_label_for_public_chip_setup() -> String:
+	return "Server Wallet Chips" if server_authoritative_profile and _profile_server_connected else "Wallet Chips"
+
+func _can_afford_public_buy_in(buy_in: int) -> bool:
+	if server_authoritative_profile and _profile_server_connected and not _profile_server_wallet_synced:
+		return false
+	return _wallet_chips_for_public_chip_setup() >= buy_in
 
 func _claim_daily_login_bonus() -> void:
 	var service := ProfileServiceScript.new()
@@ -1277,6 +1316,7 @@ func _connect_profile_server() -> void:
 
 func _on_profile_server_connected() -> void:
 	_profile_server_connected = true
+	_profile_server_wallet_synced = false
 	var player_id := String(_player_profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID))
 	var player_name := PlayerProfileScript.get_player_name(_player_profile)
 	_profile_ws_client.send_hello(player_name, player_id, _server_avatar_id_for_client(PlayerProfileScript.get_avatar_id(_player_profile)))
@@ -1286,15 +1326,18 @@ func _on_profile_server_connected() -> void:
 
 func _on_profile_server_disconnected() -> void:
 	_profile_server_connected = false
+	_profile_server_wallet_synced = false
 	if current_state == LobbyState.ROOM_BROWSER:
 		_refresh_room_browser_rows()
 
 func _on_profile_server_profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_ids: Array) -> void:
 	_player_profile = ProfileServiceScript.new().apply_server_profile(profile, wallet, unlocked_avatar_ids)
+	_profile_server_wallet_synced = true
 	_refresh_profile_views_from_server()
 
 func _on_profile_server_wallet_synced(wallet: Dictionary) -> void:
 	_player_profile = ProfileServiceScript.new().apply_wallet_snapshot(wallet)
+	_profile_server_wallet_synced = true
 	_refresh_profile_views_from_server()
 
 func _on_profile_server_daily_login_awarded(chips: int) -> void:
@@ -1323,6 +1366,15 @@ func _refresh_profile_views_from_server() -> void:
 	_refresh_profile_panel()
 	if _quick_play_setup_panel != null and _quick_play_setup_panel.visible:
 		_update_quick_play_setup_profile()
+		_refresh_quick_play_setup_options()
+	if _public_table_setup_panel != null and _public_table_setup_panel.visible:
+		_render_table_creation_setup_panel(_public_table_setup_panel, true)
+
+func _show_pending_launch_error() -> void:
+	var message := TableLaunchContext.consume_pending_launch_error()
+	if message != "":
+		_finish_table_launch_transition()
+		_show_toast(message, [], 3.2)
 
 func _request_server_table_list() -> void:
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
@@ -1395,7 +1447,7 @@ func _server_table_context(room_id: String, table_info: Dictionary) -> Dictionar
 
 
 func _select_default_quick_buy_in() -> void:
-	var total_chips := PlayerProfileScript.get_total_chips(_player_profile)
+	var total_chips := _wallet_chips_for_public_chip_setup()
 	var best := 0
 	for option in [5000, 10000, 20000, 50000]:
 		var value: int = int(option)
@@ -1410,7 +1462,7 @@ func _select_default_quick_buy_in() -> void:
 
 
 func _select_quick_buy_in(value: int) -> void:
-	if value > PlayerProfileScript.get_total_chips(_player_profile):
+	if not _can_afford_public_buy_in(value):
 		return
 	_selected_quick_buy_in = value
 	_refresh_quick_play_setup_options()
@@ -1436,7 +1488,7 @@ func _select_quick_play_mode(mode: String) -> void:
 
 func _refresh_quick_play_setup_options() -> void:
 	var is_chip_mode := _quick_play_mode == "chip"
-	var total_chips := PlayerProfileScript.get_total_chips(_player_profile)
+	var total_chips := _wallet_chips_for_public_chip_setup()
 	if _quick_chip_settings_container != null:
 		_quick_chip_settings_container.visible = is_chip_mode
 	if _quick_gem_placeholder_container != null:
@@ -1451,7 +1503,7 @@ func _refresh_quick_play_setup_options() -> void:
 		if not is_chip_mode:
 			_quick_play_setup_hint_label.text = "Gem matches require secure server matchmaking and will be available in a future update."
 		elif _selected_quick_buy_in > total_chips:
-			_quick_play_setup_hint_label.text = "Not enough wallet chips."
+			_quick_play_setup_hint_label.text = "Not enough server wallet chips."
 		else:
 			_quick_play_setup_hint_label.text = "Quickly join an available public chip table with your selected stakes.\nBuy-in will be moved from wallet to table. Unused table chips return to wallet after the session."
 	for key_item in _quick_mode_buttons.keys():
@@ -1588,13 +1640,18 @@ func _confirm_public_table_setup() -> void:
 	if _public_table_setup_mode == "gem":
 		_show_toast("Gem public tables require secure server matchmaking.")
 		return
+	var buy_in: int = int(_public_table_setup_values.get("buy_in", 10000))
+	if not _can_afford_public_buy_in(buy_in):
+		_show_toast("Not enough chips for this buy-in.")
+		_render_table_creation_setup_panel(_public_table_setup_panel, true)
+		return
 	_hide_table_creation_setup_panels()
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
 		_start_table_launch_transition("Creating public table...", func() -> void:
 			_profile_ws_client.create_table("%s's Table" % PlayerProfileScript.get_player_name(_player_profile), {
 				"table_type": "public_chip",
 				"currency": "chip",
-				"buy_in": int(_public_table_setup_values.get("buy_in", 10000)),
+				"buy_in": buy_in,
 				"small_blind": int(_public_table_setup_values.get("small_blind", 50)),
 				"big_blind": int(_public_table_setup_values.get("big_blind", 100)),
 				"hand_count": _normalized_hand_count_for_context(int(_public_table_setup_values.get("max_hands", 10))),
@@ -1605,7 +1662,6 @@ func _confirm_public_table_setup() -> void:
 		)
 		return
 	_reload_player_profile()
-	var buy_in: int = int(_public_table_setup_values.get("buy_in", 10000))
 	if PlayerProfileScript.get_total_chips(_player_profile) < buy_in:
 		_show_toast("Not enough wallet chips.")
 		return
@@ -1850,6 +1906,10 @@ func _on_join_pressed(room_id: String) -> void:
 		_refresh_room_browser_rows()
 		return
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
+		var buy_in: int = int(table_info.get("buy_in", 10000))
+		if not _can_afford_public_buy_in(buy_in):
+			_show_toast("Not enough chips for this buy-in.")
+			return
 		_start_table_launch_transition("Joining server table...", func() -> void:
 			_profile_ws_client.join_table(room_id)
 		)
