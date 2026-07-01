@@ -810,7 +810,7 @@ func _add_table_setup_profile_row(parent: VBoxContainer) -> void:
 	avatar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var texture: Texture2D = AvatarLibraryScript.get_avatar_by_id(PlayerProfileScript.get_avatar_id(_player_profile))
 	if texture == null:
-		var avatar_path := String(_player_profile.get("avatar", ""))
+		var avatar_path := str(_player_profile.get("avatar", ""))
 		if avatar_path != "" and ResourceLoader.exists(avatar_path):
 			texture = load(avatar_path) as Texture2D
 	avatar.texture = texture
@@ -1260,7 +1260,7 @@ func _update_quick_play_setup_profile() -> void:
 	_quick_play_setup_chips_label.text = "%s: %s" % [_wallet_label_for_public_chip_setup(), _format_number(total_chips)]
 	var texture: Texture2D = AvatarLibraryScript.get_avatar_by_id(PlayerProfileScript.get_avatar_id(_player_profile))
 	if texture == null:
-		var avatar_path := String(_player_profile.get("avatar", ""))
+		var avatar_path := str(_player_profile.get("avatar", ""))
 		if avatar_path != "" and ResourceLoader.exists(avatar_path):
 			texture = load(avatar_path) as Texture2D
 	_quick_play_setup_avatar.texture = texture
@@ -1318,7 +1318,7 @@ func _connect_profile_server() -> void:
 func _on_profile_server_connected() -> void:
 	_profile_server_connected = true
 	_profile_server_wallet_synced = false
-	var player_id := String(_player_profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID))
+	var player_id := str(_player_profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID))
 	var player_name := PlayerProfileScript.get_player_name(_player_profile)
 	_profile_ws_client.send_hello(player_name, player_id, _server_avatar_id_for_client(PlayerProfileScript.get_avatar_id(_player_profile)))
 	_profile_ws_client.get_avatar_catalog()
@@ -1350,7 +1350,7 @@ func _on_avatar_catalog_received(catalog: Array) -> void:
 	_avatar_catalog_by_id.clear()
 	for item_value in _avatar_catalog:
 		var item := Dictionary(item_value)
-		var avatar_id := String(item.get("avatar_id", ""))
+		var avatar_id := str(item.get("avatar_id", ""))
 		if avatar_id != "":
 			_avatar_catalog_by_id[avatar_id] = item
 	_refresh_avatar_gallery()
@@ -1388,19 +1388,19 @@ func _on_server_table_list_received(tables: Array) -> void:
 	_refresh_room_browser_rows()
 
 func _on_server_table_created(room_id: String, table_info: Dictionary) -> void:
-	_open_server_table(room_id, table_info)
+	_open_server_table(room_id, table_info, 0)
 
 func _on_server_table_joined(room_id: String, table_info: Dictionary) -> void:
-	_open_server_table(room_id, table_info)
+	_open_server_table(room_id, table_info, -1)
 
-func _open_server_table(room_id: String, table_info: Dictionary) -> void:
+func _open_server_table(room_id: String, table_info: Dictionary, requested_seat_index: int = 0) -> void:
 	if room_id == "":
 		_finish_table_launch_transition()
 		_show_toast("Server Table\nMissing room_id", [], 2.2)
 		return
-	_open_backend_table(_server_table_context(room_id, table_info))
+	_open_backend_table(_server_table_context(room_id, table_info, requested_seat_index))
 
-func _server_table_context(room_id: String, table_info: Dictionary) -> Dictionary:
+func _server_table_context(room_id: String, table_info: Dictionary, requested_seat_index: int = 0) -> Dictionary:
 	var buy_in := int(table_info.get("buy_in", 5000))
 	var small_blind := int(table_info.get("small_blind", 25))
 	var big_blind := int(table_info.get("big_blind", 50))
@@ -1423,6 +1423,7 @@ func _server_table_context(room_id: String, table_info: Dictionary) -> Dictionar
 		"affects_account_balance": true,
 		"buy_in_deducted_from_wallet": false,
 		"allow_debug_tools": true,
+		"requested_seat_index": requested_seat_index,
 		"ai_player_count": 0,
 		"max_hands": max_hands,
 		"waiting_for_real_players": int(table_info.get("current_players", table_info.get("seated_count", 0))) < 2,
@@ -1508,7 +1509,7 @@ func _refresh_quick_play_setup_options() -> void:
 		else:
 			_quick_play_setup_hint_label.text = "Quickly join an available public chip table with your selected stakes.\nBuy-in will be moved from wallet to table. Unused table chips return to wallet after the session."
 	for key_item in _quick_mode_buttons.keys():
-		var mode := String(key_item)
+		var mode := str(key_item)
 		var button: Button = _quick_mode_buttons[key_item] as Button
 		_apply_quick_mode_style(button, mode == _quick_play_mode)
 	for key_item in _quick_buy_in_buttons.keys():
@@ -1519,7 +1520,7 @@ func _refresh_quick_play_setup_options() -> void:
 		var disabled: bool = value > total_chips
 		_apply_quick_option_style(button, value == _selected_quick_buy_in, disabled)
 	for key_item in _quick_blinds_buttons.keys():
-		var key: String = String(key_item)
+		var key: String = str(key_item)
 		var button: Button = _quick_blinds_buttons[key_item] as Button
 		if button == null:
 			continue
@@ -1668,7 +1669,7 @@ func _confirm_public_table_setup() -> void:
 		return
 	_start_table_launch_transition("Creating public table...", func() -> void:
 		var table: Dictionary = _local_backend.create_public_table(_public_table_config_from_values(_public_table_setup_values))
-		_join_public_chip_table_after_wallet_check(String(table.get("table_id", "")))
+		_join_public_chip_table_after_wallet_check(str(table.get("table_id", "")))
 	)
 
 
@@ -1695,7 +1696,7 @@ func _public_table_config_from_values(values: Dictionary) -> Dictionary:
 		"buy_in": int(values.get("buy_in", 10000)),
 		"hand_count": int(values.get("max_hands", 10)),
 		"max_players": int(values.get("max_players", 6)),
-		"created_by": String(_player_profile.get("player_id", "local_player")),
+		"created_by": str(_player_profile.get("player_id", "local_player")),
 		"allow_quick_join": true,
 	}
 
@@ -1967,7 +1968,7 @@ func _find_public_table_info(room_id: String) -> Dictionary:
 	var rooms := _server_public_tables if _profile_server_connected else _local_backend.list_public_tables()
 	for room_value in rooms:
 		var room := _normalized_room_browser_table(Dictionary(room_value))
-		if String(room.get("room_id", "")) == room_id:
+		if str(room.get("room_id", "")) == room_id:
 			return room
 	return {}
 
@@ -2268,16 +2269,16 @@ func _refresh_room_browser_rows() -> void:
 		_room_browser_list_vbox.add_child(filtered_empty_label)
 
 func _normalized_room_browser_table(room: Dictionary) -> Dictionary:
-	var room_id := String(room.get("room_id", room.get("table_id", "")))
+	var room_id := str(room.get("room_id", room.get("table_id", "")))
 	var seated_count := _connected_room_player_count(room)
 	var max_players := int(room.get("max_players", 6))
-	var status := String(room.get("status", room.get("hand_state", "waiting")))
-	var hand_state := String(room.get("hand_state", room.get("phase", status)))
+	var status := str(room.get("status", room.get("hand_state", "waiting")))
+	var hand_state := str(room.get("hand_state", room.get("phase", status)))
 	return {
 		"room_id": room_id,
-		"table_name": String(room.get("table_name", room_id if room_id != "" else "Public Table")),
-		"table_type": String(room.get("table_type", "public_chip")),
-		"currency": String(room.get("currency", "chip")),
+		"table_name": str(room.get("table_name", room_id if room_id != "" else "Public Table")),
+		"table_type": str(room.get("table_type", "public_chip")),
+		"currency": str(room.get("currency", "chip")),
 		"small_blind": int(room.get("small_blind", 10)),
 		"big_blind": int(room.get("big_blind", 20)),
 		"buy_in": int(room.get("buy_in", 1000)),
@@ -2298,12 +2299,12 @@ func _normalized_room_browser_table(room: Dictionary) -> Dictionary:
 	}
 
 func _is_joinable_room_browser_table(room: Dictionary) -> bool:
-	if String(room.get("table_type", "public_chip")) != "public_chip":
+	if str(room.get("table_type", "public_chip")) != "public_chip":
 		return false
-	if String(room.get("currency", "chip")) != "chip":
+	if str(room.get("currency", "chip")) != "chip":
 		return false
-	var status := String(room.get("status", ""))
-	var hand_state := String(room.get("hand_state", status))
+	var status := str(room.get("status", ""))
+	var hand_state := str(room.get("hand_state", status))
 	if status in ["full", "closed", "dirty", "paused", "hand_over", "showdown_reveal", "showdown", "finished"]:
 		return false
 	if hand_state in ["closed", "dirty", "paused", "hand_over", "showdown_reveal", "finished"]:
@@ -2330,7 +2331,7 @@ func _connected_room_player_count(room: Dictionary) -> int:
 		var player := Dictionary(player_item)
 		if not _is_connected_room_player(player):
 			continue
-		var player_id := String(player.get("player_id", player.get("id", "player_%d" % count)))
+		var player_id := str(player.get("player_id", player.get("id", "player_%d" % count)))
 		if counted.has(player_id):
 			continue
 		counted[player_id] = true
@@ -2339,7 +2340,7 @@ func _connected_room_player_count(room: Dictionary) -> int:
 		var seat := Dictionary(seat_item)
 		if not _is_connected_room_player(seat):
 			continue
-		var seat_player_id := String(seat.get("player_id", seat.get("id", "seat_%s" % String(seat.get("seat_id", count)))))
+		var seat_player_id := str(seat.get("player_id", seat.get("id", "seat_%s" % str(seat.get("seat_id", count)))))
 		if counted.has(seat_player_id):
 			continue
 		counted[seat_player_id] = true
@@ -2349,7 +2350,7 @@ func _connected_room_player_count(room: Dictionary) -> int:
 	return min(count, int(room.get("max_players", 6)))
 
 func _is_connected_room_player(data: Dictionary) -> bool:
-	var status := String(data.get("status", ""))
+	var status := str(data.get("status", ""))
 	if data.has("status") and status in ["empty", "left", "out", "disconnected"]:
 		return false
 	if bool(data.get("disconnected", false)):
@@ -2360,7 +2361,7 @@ func _is_connected_room_player(data: Dictionary) -> bool:
 		return false
 	if bool(data.get("warmup_ai", false)):
 		return false
-	return String(data.get("player_id", data.get("id", "player"))) != ""
+	return str(data.get("player_id", data.get("id", "player"))) != ""
 
 func _add_room_browser_row(room: Dictionary) -> void:
 	var row_panel := PanelContainer.new()
@@ -2380,7 +2381,7 @@ func _add_room_browser_row(room: Dictionary) -> void:
 	name_box.add_theme_constant_override("separation", 2)
 	row_hbox.add_child(name_box)
 	var name_lbl := Label.new()
-	name_lbl.text = String(room.get("table_name", "Public Table"))
+	name_lbl.text = str(room.get("table_name", "Public Table"))
 	HomeTheme.make_font_settings(name_lbl, 15, Color(1, 1, 1, 0.95))
 	name_box.add_child(name_lbl)
 	var public_badge := Label.new()
@@ -2422,8 +2423,8 @@ func _add_room_browser_row(room: Dictionary) -> void:
 	join_btn.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
 	join_btn.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
 	join_btn.add_theme_font_size_override("font_size", 13)
-	join_btn.disabled = String(room.get("status", "")) == "full"
-	var r_id := String(room.get("room_id", ""))
+	join_btn.disabled = str(room.get("status", "")) == "full"
+	var r_id := str(room.get("room_id", ""))
 	join_btn.pressed.connect(func() -> void: _on_join_pressed(r_id))
 	btn_container.add_child(join_btn)
 
@@ -2519,9 +2520,9 @@ func _update_friends_room_panel() -> void:
 	var seats: Array = Array(_friends_room_context.get("seats", []))
 	var occupied := 0
 	for seat in seats:
-		if String(Dictionary(seat).get("status", "")) != "empty":
+		if str(Dictionary(seat).get("status", "")) != "empty":
 			occupied += 1
-	_friends_room_id_label.text = "ROOM ID: %s" % String(_friends_room_context.get("room_id", "-"))
+	_friends_room_id_label.text = "ROOM ID: %s" % str(_friends_room_context.get("room_id", "-"))
 	_friends_room_seats_label.text = "SEATS: %d / 9" % occupied
 	_friends_room_ready_label.text = "READY: Seat 5 local player"
 
@@ -3047,7 +3048,7 @@ func _refresh_profile_panel() -> void:
 		var selected_avatar_id: String = PlayerProfileScript.get_avatar_id(_player_profile)
 		var texture: Texture2D = AvatarLibraryScript.get_avatar_by_id(PlayerProfileScript.get_avatar_id(_player_profile))
 		if texture == null:
-			var avatar_path := String(_player_profile.get("avatar", ""))
+			var avatar_path := str(_player_profile.get("avatar", ""))
 			if avatar_path != "" and ResourceLoader.exists(avatar_path):
 				texture = load(avatar_path) as Texture2D
 		_profile_avatar_rect.texture = texture
@@ -3062,7 +3063,7 @@ func _refresh_profile_panel() -> void:
 	_set_profile_stat("total_profit", _signed_number(int(_player_profile.get("total_profit", 0))))
 	_set_profile_stat("biggest_pot", _format_number(int(_player_profile.get("biggest_pot", 0))))
 	_set_profile_stat("best_session_profit", _signed_number(int(_player_profile.get("best_session_profit", 0))))
-	var best_hand := String(_player_profile.get("best_hand_desc", ""))
+	var best_hand := str(_player_profile.get("best_hand_desc", ""))
 	_set_profile_stat("best_hand_desc", best_hand if best_hand != "" else "-")
 	_refresh_avatar_gallery()
 
@@ -3097,7 +3098,7 @@ func _refresh_avatar_gallery() -> void:
 	var unlocked: Array = Array(_player_profile.get("unlocked_avatar_ids", []))
 	var selected_id: String = PlayerProfileScript.get_avatar_id(_player_profile)
 	for avatar_key in _profile_avatar_buttons.keys():
-		var avatar_id: String = String(avatar_key)
+		var avatar_id: String = str(avatar_key)
 		var button: Button = _profile_avatar_buttons[avatar_key] as Button
 		if button == null:
 			continue
@@ -3160,7 +3161,7 @@ func _avatar_price_text(avatar_id: String) -> String:
 	var item := _catalog_item_for_avatar(avatar_id)
 	if item.is_empty():
 		return "Locked"
-	var currency := String(item.get("currency", "free"))
+	var currency := str(item.get("currency", "free"))
 	if currency == "chips":
 		return "%s Chips" % _format_number(int(item.get("price_chips", 0)))
 	if currency == "gems":
@@ -3233,7 +3234,7 @@ func _build_settings_panel() -> void:
 		{"label": "Slow", "value": "slow"},
 		{"label": "Normal", "value": "normal"},
 		{"label": "Fast", "value": "fast"},
-	], String(settings.get("animation_speed", "normal")))
+	], str(settings.get("animation_speed", "normal")))
 
 	var reduce_motion := _add_settings_checkbox(content, "DISPLAY", "Reduce Motion", bool(settings.get("reduce_motion", false)))
 	var ui_scale := _add_settings_option(content, "", "UI Scale", [
@@ -3265,7 +3266,7 @@ func _build_settings_panel() -> void:
 			"mute_all": mute_all.button_pressed,
 			"show_hand_hints": show_hand_hints.button_pressed,
 			"confirm_big_bets": confirm_big_bets.button_pressed,
-			"animation_speed": String(animation_speed.get_meta("selected_value")),
+			"animation_speed": str(animation_speed.get_meta("selected_value")),
 			"ui_scale": float(ui_scale.get_meta("selected_value")),
 			"reduce_motion": reduce_motion.button_pressed,
 		}
@@ -3335,7 +3336,7 @@ func _add_settings_option(parent: VBoxContainer, section_title: String, label_te
 	var selected_index := 0
 	for i in range(options.size()):
 		var item := Dictionary(options[i])
-		option.add_item(String(item.get("label", "")), i)
+		option.add_item(str(item.get("label", "")), i)
 		option.set_item_metadata(i, item.get("value", ""))
 		if bool(item.get("disabled", false)):
 			option.set_item_disabled(i, true)

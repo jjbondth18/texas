@@ -18,6 +18,7 @@ static var is_ai_warmup := false
 static var pending_real_joiners: Array[Dictionary] = []
 static var warmup_ai_player_ids: Array[String] = []
 static var allow_debug_tools := false
+static var requested_seat_index := 0
 static var ai_player_count := 0
 static var max_hands := 10
 static var buy_in := PlayerProfileScript.DEFAULT_TABLE_BUY_IN
@@ -49,6 +50,7 @@ static func configure(mode: String = "quick_play", id: String = "mock_table_001"
 	backend_type = "local_mock"
 	room_id = ""
 	allow_debug_tools = is_training
+	requested_seat_index = int(setup_config.get("requested_seat_index", 0))
 	ai_player_count = 7 if mode in ["quick_play", "training"] else 0
 	max_hands = 999 if is_training else int(setup_config.get("max_hands", 10))
 	small_blind = int(setup_config.get("small_blind", 25))
@@ -108,6 +110,7 @@ static func configure_from_context(context: Dictionary) -> void:
 	for ai_id in Array(context.get("warmup_ai_player_ids", [])):
 		warmup_ai_player_ids.append(String(ai_id))
 	allow_debug_tools = bool(context.get("allow_debug_tools", is_training))
+	requested_seat_index = int(context.get("requested_seat_index", 0))
 	ai_player_count = int(context.get("ai_player_count", 0))
 	max_hands = int(context.get("max_hands", 10))
 	buy_in = int(context.get("buy_in", PlayerProfileScript.DEFAULT_TABLE_BUY_IN))
@@ -138,6 +141,7 @@ static func get_current_table_context() -> Dictionary:
 		"pending_real_joiners": pending_real_joiners.duplicate(true),
 		"warmup_ai_player_ids": warmup_ai_player_ids.duplicate(),
 		"allow_debug_tools": allow_debug_tools,
+		"requested_seat_index": requested_seat_index,
 		"ai_player_count": ai_player_count,
 		"max_hands": max_hands,
 		"table_session": table_session.duplicate(true),

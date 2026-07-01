@@ -171,19 +171,20 @@ export class RoomManager {
         this.recordLog(`${client.id} joined ${room.id}`);
         break;
       case "sit_down": {
-        const seatIndex = numberOr(message.seat_index, 0);
+        const requestedSeatIndex = Object.prototype.hasOwnProperty.call(message, "seat_index") ? numberOr(message.seat_index, -1) : -1;
+        let acceptedSeatIndex = requestedSeatIndex;
         try {
-          this.sitDownWithWallet(room, client, seatIndex, String(message.player_id || ""));
+          acceptedSeatIndex = this.sitDownWithWallet(room, client, requestedSeatIndex, String(message.player_id || ""));
           this.send(client, {
             type: "sit_down_result",
             request_id: message.request_id,
             ok: true,
             room_id: room.id,
-            seat_index: seatIndex,
+            seat_index: acceptedSeatIndex,
             player_id: client.id,
             server_player_id: client.id,
           });
-          this.recordLog(`${client.id} sat in ${room.id} seat=${seatIndex}`);
+          this.recordLog(`${client.id} sat in ${room.id} seat=${acceptedSeatIndex}`);
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
           const wallet = this.wallets.get(client.id);
@@ -192,7 +193,7 @@ export class RoomManager {
             request_id: message.request_id,
             ok: false,
             room_id: room.id,
-            seat_index: seatIndex,
+            seat_index: acceptedSeatIndex,
             player_id: client.id,
             server_player_id: client.id,
             reason,
@@ -547,9 +548,10 @@ export class RoomManager {
     this.recordLog(`real_player_joined_interrupts_local_warmup room_id=${room.id} host_player_id=${hostId} joined_player_id=${simulatedId} simulated=true`);
   }
 
-  private sitDownWithWallet(room: Room, client: Client, seatIndex: number, payloadPlayerId = ""): void {
-    const seat = room.table.getSeat(seatIndex);
+  private sitDownWithWallet(room: Room, client: Client, requestedSeatIndex: number, payloadPlayerId = ""): number {
+    const seat = requestedSeatIndex < 0 ? room.table.seats.find((candidate) => candidate.playerId === "") : room.table.getSeat(requestedSeatIndex);
     if (!seat || seat.playerId) throw new Error("seat is not available");
+    const seatIndex = seat.seatIndex;
     this.wallets.ensure(client.id);
     const wallet = this.wallets.get(client.id);
     if (!wallet || wallet.chips < room.buyIn) throw new Error("insufficient_chips");
@@ -565,9 +567,10 @@ export class RoomManager {
     const occupiedCount = this.occupiedSeatCount(room);
     const acceptedSeat = room.table.getSeat(seatIndex);
     this.recordLog(
-      `sit_down accepted room_id=${room.id} connection_player_id=${client.id} payload_player_id=${payloadPlayerId || "-"} seat_index=${seatIndex} seat_player_id=${acceptedSeat?.playerId || "-"} occupied_count=${occupiedCount}`,
+      `sit_down accepted room_id=${room.id} connection_player_id=${client.id} payload_player_id=${payloadPlayerId || "-"} requested_seat_index=${requestedSeatIndex} seat_index=${seatIndex} seat_player_id=${acceptedSeat?.playerId || "-"} occupied_count=${occupiedCount}`,
     );
     this.sendWalletSnapshot(client, room.id);
+    return seatIndex;
   }
 
   private requireSeated(room: Room, client: Client, message: ClientMessage, command: string): void {

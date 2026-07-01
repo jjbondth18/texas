@@ -548,7 +548,7 @@ func _boot_server_authoritative_table() -> void:
 	_server_start_hand_requested = false
 	_server_local_player_id = ""
 	_server_local_identity_id = ""
-	_server_requested_seat_index = 0
+	_server_requested_seat_index = int(TableLaunchContext.requested_seat_index)
 	_server_local_seat_index = -1
 	_server_sit_down_requested = false
 	_server_sit_down_pending = false
