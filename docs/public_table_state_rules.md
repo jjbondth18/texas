@@ -19,16 +19,21 @@ Display-only blind labels such as `50 / 100` can exist in UI, but backend logic 
 
 ## Lifecycle
 
-- `waiting_for_players`: fewer than two real connected seated players. The host can use local AI warm-up, but no server public hand starts.
-- `ready_to_start`: at least two real connected seated players and no active hand. The host sees `START PUBLIC HAND`; non-host players wait for the host.
+- `waiting_for_players` / `waiting_ready`: no active hand. Public Create seats the creator at objective seat `5`, and additional real players use the objective join order `[5, 8, 2, 6, 4, 9, 1, 7, 3]`.
+- `waiting_ready`: the Ready system is available only after the client has a confirmed seated snapshot. Players may press `READY` / `UNREADY`; at least two ready real players are required before a formal public hand can start.
+- `starting_countdown`: all required real players are ready. The server starts a 3 second countdown and then automatically starts the formal public hand.
 - `playing`: a formal public hand is active. New real players may join an open seat, but their seat status is `waiting_next_hand`.
-- `hand_over`: settlement completed. The room returns to `ready_to_start` when at least two real connected players remain.
+- `hand_result` / `hand_over`: settlement completed. After the first formal public hand starts, later hands continue automatically after the result display if at least two ready real candidates remain.
 
 AI warm-up is always local practice. Warm-up AI never enters public seats and never joins official public hands.
 
+Ready does not replace `sit_down`: clients must wait for `sit_down_result` or a `table_snapshot` with their own occupied seat before showing Ready controls. If `local_player_seat_index == -1`, the table shows a joining / waiting-for-seat state instead of a valid ready table.
+
+With one seated real player, the table still shows local `START AI WARM-UP` for practice. This warm-up does not use server seats and does not change wallet, gems, formal stats, or public profit.
+
 The official account-wallet boundary is the first successful server public `start_hand`. A player who leaves a public table before that formal hand starts receives the full server table stack back to the wallet with reason `left_before_official_hand`. Local warm-up hands do not change wallet chips, gems, formal stats, or public profit.
 
-The dev-only simulated real join button is only for testing warm-up interruption and `ready_to_start` UI. A dev simulated player is seated as a real-looking public seat, but it has no controller and the server rejects formal public `start_hand` while it is present. Use a second real client for an actual public hand test.
+The dev-only simulated real join button is only for testing warm-up interruption and Ready UI. A dev simulated player is seated as a real-looking public seat, but it has no controller and the server rejects formal public hand start while it is present. Use a second real client for an actual public hand test.
 
 Formal public hands use a server action timeout. If a player does not act before the timeout, the server auto-checks when legal, otherwise auto-folds, logs the timeout, broadcasts a snapshot, and schedules the next turn.
 
@@ -40,7 +45,7 @@ Table Browser only lists clean joinable public chip tables:
 
 - `table_type = public_chip`
 - `currency = chip`
-- `status` / `hand_state` is `waiting`, `waiting_for_players`, `ready_to_start`, `open`, `playing`, an active hand phase (`preflop`, `flop`, `turn`, `river`, `showdown`), `idle`, or `pre_hand`
+- `status` / `hand_state` is `waiting`, `waiting_for_players`, `waiting_ready`, `starting_countdown`, `hand_result`, `open`, `playing`, an active hand phase (`preflop`, `flop`, `turn`, `river`, `showdown`), `idle`, or `pre_hand`
 - not full
 - not private room
 - not training table

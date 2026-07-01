@@ -380,7 +380,7 @@ func _build_public_waiting_panel() -> void:
 	_public_waiting_body_label.add_theme_color_override("font_color", Color(0.72, 0.78, 1.0, 0.92))
 	box.add_child(_public_waiting_body_label)
 	_public_waiting_button = _top_control_button("START AI WARM-UP", Vector2(210, 42))
-	_public_waiting_button.pressed.connect(_start_public_ai_warmup)
+	_public_waiting_button.pressed.connect(_on_public_waiting_button_pressed)
 	box.add_child(_public_waiting_button)
 	_content_root.add_child(_public_waiting_panel)
 
@@ -926,8 +926,8 @@ func _empty_server_ui_snapshot(message: String) -> Dictionary:
 	var local_avatar_id: String = PlayerProfileScript.get_avatar_id(profile)
 	var local_chips: int = SERVER_DEFAULT_BUY_IN
 	var seats: Array = []
-	var visual_local_seat: int = _server_requested_seat_index if _server_requested_seat_index >= 0 else 5
-	for i in range(6):
+	var visual_local_seat: int = 5 if _is_public_chip_table() else (_server_requested_seat_index if _server_requested_seat_index >= 0 else 5)
+	for i in range(1, 10):
 		var is_local := _server_seat_confirmed and i == _server_local_seat_index
 		seats.append({
 			"seat_index": i,
@@ -953,6 +953,8 @@ func _empty_server_ui_snapshot(message: String) -> Dictionary:
 			"win_rate": "N/A",
 		})
 	var local_player: Dictionary = _find_local_player(seats)
+	if local_player.is_empty():
+		local_player = _server_joining_local_player_placeholder(local_name, local_avatar_id)
 	return {
 		"source_model": "server_authoritative",
 		"table_id": _server_room_id if _server_room_id != "" else "authoritative_local",
@@ -1007,13 +1009,15 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	var private_matches_hand := private_hand_id == server_hand_id
 	var local_server_seat: int = _server_local_seat_from_snapshot(server_snapshot, private_snapshot)
 	_server_local_seat_index = local_server_seat
-	var visual_local_seat: int = local_server_seat if local_server_seat >= 0 else (_server_requested_seat_index if _server_requested_seat_index >= 0 else 5)
+	var visual_local_seat: int = 5 if _is_public_chip_table() else (local_server_seat if local_server_seat >= 0 else (_server_requested_seat_index if _server_requested_seat_index >= 0 else 5))
 	var current_turn_seat: int = _normalized_turn_seat(int(server_snapshot.get("current_turn_seat", -1)), phase)
 	var seats: Array = []
 	for seat_item in Array(server_snapshot.get("seats", [])):
 		var server_seat: Dictionary = Dictionary(seat_item).duplicate(true)
 		var seat_index: int = int(server_seat.get("seat_id", server_seat.get("seat_index", 0)))
 		var occupied := bool(server_seat.get("occupied", String(server_seat.get("player_id", "")) != ""))
+		if _is_public_chip_table() and seat_index == 0 and not occupied:
+			continue
 		var seat_player_id := String(server_seat.get("player_id", ""))
 		var is_local := local_server_seat >= 0 and occupied and seat_index == local_server_seat and (_server_local_player_id == "" or seat_player_id == _server_local_player_id)
 		var raw_status: String = String(server_seat.get("status", "empty"))
@@ -1074,6 +1078,8 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	if _server_last_error != "":
 		history.append("Server error: %s" % _server_last_error)
 	var local_player: Dictionary = _find_local_player(seats)
+	if local_player.is_empty() and local_server_seat < 0:
+		local_player = _server_joining_local_player_placeholder(_server_local_player_name, PlayerProfileScript.get_avatar_id(ProfileServiceScript.new().get_current_profile()))
 	var available_actions: Array = _server_legal_actions_to_ui_actions(Array(private_snapshot.get("legal_actions", [])), total_pot)
 	if local_server_seat < 0 or current_turn_seat != local_server_seat:
 		available_actions = []
@@ -1135,6 +1141,42 @@ func _server_system_messages(room_id: String, turn_prompt: String, local_server_
 		messages.append(turn_prompt)
 	return messages
 
+func _server_joining_local_player_placeholder(player_name: String, avatar_id: String) -> Dictionary:
+	if player_name == "":
+		player_name = "Joining table..."
+	if avatar_id == "":
+		avatar_id = PlayerProfileScript.DEFAULT_AVATAR_ID
+	return {
+		"seat_index": -1,
+		"seat_id": -1,
+		"visual_position": 5,
+		"player_id": _server_local_player_id,
+		"player_name": player_name if _server_seat_confirmed else "Joining table...",
+		"avatar_id": avatar_id,
+		"avatar_texture": null,
+		"chips": 0,
+		"table_stack": 0,
+		"current_bet": 0,
+		"status": "joining",
+		"raw_status": "joining",
+		"ready": false,
+		"occupied": false,
+		"connected": _server_connected,
+		"is_ai": false,
+		"warmup_ai": false,
+		"cards": [],
+		"is_local": false,
+		"is_dealer": false,
+		"is_small_blind": false,
+		"is_big_blind": false,
+		"is_turn": false,
+		"last_action": "Waiting for seat confirmation",
+		"last_action_amount": 0,
+		"buy_in": 0,
+		"server_authoritative": true,
+		"win_rate": "N/A",
+	}
+
 func _is_authoritative_public_host(server_snapshot: Dictionary = {}) -> bool:
 	var host_id := String(server_snapshot.get("host_player_id", ""))
 	if host_id == "":
@@ -1142,7 +1184,7 @@ func _is_authoritative_public_host(server_snapshot: Dictionary = {}) -> bool:
 		host_id = String(table_info.get("host_player_id", ""))
 	if host_id != "":
 		return host_id == _server_local_player_id
-	return _server_local_seat_index == 0
+	return _server_local_seat_index == 5
 
 func _server_card_to_ui_card(card: Dictionary, face_up: bool) -> Dictionary:
 	var rank: String = String(card.get("rank", ""))
@@ -2680,10 +2722,10 @@ func _refresh_public_waiting_controls() -> void:
 		_dev_simulate_real_join_button.visible = should_show_dev_join
 		_dev_simulate_real_join_button.disabled = not should_show_dev_join
 	if _public_waiting_panel != null:
-		_public_waiting_panel.visible = should_show or _is_public_ready_to_start_state()
+		_public_waiting_panel.visible = should_show or (_server_seat_confirmed and _server_local_seat_index >= 0 and _is_public_ready_to_start_state())
 	if _public_waiting_button != null:
-		_public_waiting_button.text = ready_text if should_show_ready else "START AI WARM-UP"
-		_public_waiting_button.tooltip_text = start_block_reason
+		_public_waiting_button.text = "START AI WARM-UP" if should_show else ready_text
+		_public_waiting_button.tooltip_text = "Practice with AI while waiting for real players." if should_show else start_block_reason
 		_public_waiting_button.visible = should_show or should_show_ready
 		_public_waiting_button.disabled = not (should_show or should_show_ready)
 	if _public_waiting_body_label != null and should_show:
@@ -2717,7 +2759,7 @@ func _is_public_ready_to_start_state() -> bool:
 		return false
 	if not _is_public_chip_table():
 		return false
-	return String(_server_latest_ui_snapshot.get("room_state", _server_latest_ui_snapshot.get("table_state", ""))) in ["waiting_ready", "starting_countdown"]
+	return String(_server_latest_ui_snapshot.get("room_state", _server_latest_ui_snapshot.get("table_state", ""))) in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown"]
 
 func _is_public_starting_countdown_state() -> bool:
 	return String(_server_latest_ui_snapshot.get("room_state", _server_latest_ui_snapshot.get("table_state", ""))) == "starting_countdown"
@@ -2729,7 +2771,7 @@ func _should_show_public_ready_entry() -> bool:
 		return false
 	if _public_start_block_reason() != "":
 		return false
-	return _real_public_player_count_from_flow() >= 2
+	return _real_public_player_count_from_flow() >= 1
 
 func _is_local_public_ready() -> bool:
 	for seat_item in Array(_server_latest_ui_snapshot.get("seats", [])):
@@ -2760,7 +2802,7 @@ func _should_show_dev_simulate_real_join() -> bool:
 		return false
 	if _server_room_id == "":
 		return false
-	if _server_local_seat_index != 0:
+	if not _is_authoritative_public_host(_server_latest_ui_snapshot):
 		return false
 	if not _has_local_public_seat():
 		return false
@@ -2776,6 +2818,12 @@ func _should_show_public_warmup_entry() -> bool:
 	if not _has_local_public_seat():
 		return false
 	return _real_public_player_count_from_flow() == 1
+
+func _on_public_waiting_button_pressed() -> void:
+	if _should_show_public_warmup_entry():
+		_start_public_ai_warmup_practice()
+	elif _should_show_public_ready_entry():
+		_toggle_server_public_ready()
 
 func _dev_simulate_real_player_join() -> void:
 	if not _should_show_dev_simulate_real_join():
@@ -2796,6 +2844,9 @@ func _start_public_ai_warmup() -> void:
 	if _should_show_public_ready_entry():
 		_toggle_server_public_ready()
 		return
+	_start_public_ai_warmup_practice()
+
+func _start_public_ai_warmup_practice() -> void:
 	_append_session_log("START AI WARM-UP clicked")
 	if server_authoritative and (not _server_seat_confirmed or _server_local_seat_index < 0):
 		_on_server_error("Cannot start AI warm-up: waiting for seat confirmation.")

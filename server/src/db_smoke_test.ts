@@ -233,6 +233,18 @@ manager.handle("warmup_player", { type: "cash_out", room_id: warmupRoom.id });
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeWarmupCashOutWallet + warmupBaselineStack) throw new Error("public cash out after local warm-up should refund official table stack only");
 if (countRows("wallet_transactions", "reason = 'left_before_official_hand' AND related_room_id = '" + warmupRoom.id + "'") !== 1) throw new Error("local warm-up exit before official hand should refund with left_before_official_hand reason");
 
+const objectiveHost = manager.connect();
+manager.handle(objectiveHost.id, { type: "hello", player_id: "objective_host", name: "Objective Host" });
+const objectiveJoiner = manager.connect();
+manager.handle(objectiveJoiner.id, { type: "hello", player_id: "objective_joiner", name: "Objective Joiner" });
+const objectiveRoom = manager.createRoom();
+manager.handle("objective_host", { type: "join_room", room_id: objectiveRoom.id });
+manager.handle("objective_host", { type: "sit_down", room_id: objectiveRoom.id, seat_index: -1 });
+manager.handle("objective_joiner", { type: "join_room", room_id: objectiveRoom.id });
+manager.handle("objective_joiner", { type: "sit_down", room_id: objectiveRoom.id, seat_index: -1 });
+if (objectiveRoom.table.getSeatByPlayer("objective_host")?.seatIndex !== 5) throw new Error("public create auto-seat should put creator at objective seat 5");
+if (objectiveRoom.table.getSeatByPlayer("objective_joiner")?.seatIndex !== 8) throw new Error("public join auto-seat should put second player at objective seat 8");
+
 const readyHostMessages: unknown[] = [];
 const readyHostWs = { OPEN: 1, readyState: 1, send: (data: string) => readyHostMessages.push(JSON.parse(data)) };
 const readyHost = manager.connect(readyHostWs as any);

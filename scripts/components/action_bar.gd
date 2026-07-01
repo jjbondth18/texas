@@ -158,6 +158,9 @@ func set_local_player_info(local: Dictionary, phase: String = "preflop") -> void
 	var avatar_texture: Texture2D = local.get("avatar_texture", null) as Texture2D
 	var avatar_panel: Control = $IdentityZone/AvatarPanel
 	var initials_label: Label = avatar_panel.get_node_or_null("AvatarInitials") as Label
+	if initials_label != null:
+		var display_name: String = String(local.get("player_name", ""))
+		initials_label.text = display_name.substr(0, 1).to_upper() if display_name != "" else "?"
 	if avatar_texture != null:
 		_avatar_rect.texture = avatar_texture
 		if initials_label != null:

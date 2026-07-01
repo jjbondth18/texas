@@ -5,6 +5,9 @@ var room_id := ""
 var table_info: Dictionary = {}
 var buy_in := 0
 var phase := "waiting"
+var hand_state := "waiting"
+var table_state := "waiting"
+var room_state := "waiting"
 var hand_id := 0
 var seats: Array = []
 var community_cards: Array = []
@@ -24,6 +27,15 @@ var log: Array = []
 var recent_actions: Array = []
 var action_log: Array = []
 var private_snapshot: Dictionary = {}
+var host_player_id := ""
+var official_hand_started := false
+var ready_count := 0
+var ready_required_count := 0
+var ready_countdown_deadline_at := ""
+var hand_result_deadline_at := ""
+var action_timeout_ms := 0
+var action_deadline_at := ""
+var dev_simulated_player_present := false
 
 static func from_dict(data: Dictionary):
 	var snapshot = load("res://scripts/state/table_snapshot.gd").new()
@@ -35,6 +47,9 @@ func apply_table_snapshot(data: Dictionary) -> void:
 	table_info = Dictionary(data.get("table_info", table_info)).duplicate(true)
 	buy_in = int(data.get("buy_in", table_info.get("buy_in", buy_in)))
 	phase = String(data.get("phase", phase))
+	hand_state = String(data.get("hand_state", data.get("phase", hand_state)))
+	table_state = String(data.get("table_state", table_info.get("table_state", table_state)))
+	room_state = String(data.get("room_state", table_info.get("room_state", room_state)))
 	hand_id = int(data.get("hand_id", hand_id))
 	seats = Array(data.get("seats", [])).duplicate(true)
 	community_cards = Array(data.get("community_cards", [])).duplicate(true)
@@ -53,6 +68,15 @@ func apply_table_snapshot(data: Dictionary) -> void:
 	log = Array(data.get("log", [])).duplicate()
 	recent_actions = Array(data.get("recent_actions", data.get("action_log", []))).duplicate(true)
 	action_log = Array(data.get("action_log", recent_actions)).duplicate(true)
+	host_player_id = String(data.get("host_player_id", table_info.get("host_player_id", host_player_id)))
+	official_hand_started = bool(data.get("official_hand_started", table_info.get("official_hand_started", official_hand_started)))
+	ready_count = int(data.get("ready_count", table_info.get("ready_count", ready_count)))
+	ready_required_count = int(data.get("ready_required_count", table_info.get("ready_required_count", ready_required_count)))
+	ready_countdown_deadline_at = String(data.get("ready_countdown_deadline_at", table_info.get("ready_countdown_deadline_at", ready_countdown_deadline_at)))
+	hand_result_deadline_at = String(data.get("hand_result_deadline_at", table_info.get("hand_result_deadline_at", hand_result_deadline_at)))
+	action_timeout_ms = int(data.get("action_timeout_ms", table_info.get("action_timeout_ms", action_timeout_ms)))
+	action_deadline_at = String(data.get("action_deadline_at", table_info.get("action_deadline_at", action_deadline_at)))
+	dev_simulated_player_present = bool(data.get("dev_simulated_player_present", table_info.get("dev_simulated_player_present", dev_simulated_player_present)))
 
 func apply_private_snapshot(data: Dictionary) -> void:
 	private_snapshot = data.duplicate(true)
@@ -76,6 +100,9 @@ func to_dict() -> Dictionary:
 		"table_info": table_info.duplicate(true),
 		"buy_in": buy_in,
 		"phase": phase,
+		"hand_state": hand_state,
+		"table_state": table_state,
+		"room_state": room_state,
 		"hand_id": hand_id,
 		"seats": seats.duplicate(true),
 		"community_cards": community_cards.duplicate(true),
@@ -95,4 +122,13 @@ func to_dict() -> Dictionary:
 		"recent_actions": recent_actions.duplicate(true),
 		"action_log": action_log.duplicate(true),
 		"private_snapshot": private_snapshot.duplicate(true),
+		"host_player_id": host_player_id,
+		"official_hand_started": official_hand_started,
+		"ready_count": ready_count,
+		"ready_required_count": ready_required_count,
+		"ready_countdown_deadline_at": ready_countdown_deadline_at,
+		"hand_result_deadline_at": hand_result_deadline_at,
+		"action_timeout_ms": action_timeout_ms,
+		"action_deadline_at": action_deadline_at,
+		"dev_simulated_player_present": dev_simulated_player_present,
 	}

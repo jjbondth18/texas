@@ -1388,7 +1388,7 @@ func _on_server_table_list_received(tables: Array) -> void:
 	_refresh_room_browser_rows()
 
 func _on_server_table_created(room_id: String, table_info: Dictionary) -> void:
-	_open_server_table(room_id, table_info, -1)
+	_open_server_table(room_id, table_info, 5)
 
 func _on_server_table_joined(room_id: String, table_info: Dictionary) -> void:
 	_open_server_table(room_id, table_info, -1)
