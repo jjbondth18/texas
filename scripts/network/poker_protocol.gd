@@ -20,6 +20,7 @@ const BUY_AVATAR := "buy_avatar"
 const SELECT_AVATAR := "select_avatar"
 const MOCK_PURCHASE := "mock_purchase"
 const LIST_TABLES := "list_tables"
+const QUICK_JOIN_TABLE := "quick_join_table"
 const CREATE_TABLE := "create_table"
 const JOIN_TABLE := "join_table"
 const TABLE_SNAPSHOT := "table_snapshot"
@@ -29,6 +30,7 @@ const PROFILE_SNAPSHOT := "profile_snapshot"
 const WALLET_SNAPSHOT := "wallet_snapshot"
 const AVATAR_CATALOG := "avatar_catalog"
 const TABLE_LIST := "table_list"
+const QUICK_TABLE_MATCHED := "quick_table_matched"
 const TABLE_CREATED := "table_created"
 const TABLE_JOINED := "table_joined"
 const MOCK_PURCHASE_RESULT := "mock_purchase_result"
@@ -122,6 +124,12 @@ static func mock_purchase(currency: String, amount: int, source: String = "store
 
 static func list_tables() -> Dictionary:
 	return _message(LIST_TABLES)
+
+static func quick_join_table(config: Dictionary = {}) -> Dictionary:
+	var data := {}
+	for key in config.keys():
+		data[key] = config[key]
+	return _message(QUICK_JOIN_TABLE, data)
 
 static func create_table(table_name: String = "", config: Dictionary = {}) -> Dictionary:
 	var data := {}

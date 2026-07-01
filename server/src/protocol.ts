@@ -18,6 +18,7 @@ export type ClientMessageType =
   | "select_avatar"
   | "mock_purchase"
   | "list_tables"
+  | "quick_join_table"
   | "create_table"
   | "join_table";
 
@@ -30,6 +31,7 @@ export type ServerMessageType =
   | "wallet_snapshot"
   | "avatar_catalog"
   | "table_list"
+  | "quick_table_matched"
   | "table_created"
   | "table_joined"
   | "mock_purchase_result"
@@ -153,6 +155,9 @@ export interface WalletSnapshot {
 
 export interface PublicTableSnapshot {
   room_id: string;
+  table_type?: string;
+  currency?: string;
+  allow_quick_join?: boolean;
   table_name: string;
   small_blind: number;
   big_blind: number;

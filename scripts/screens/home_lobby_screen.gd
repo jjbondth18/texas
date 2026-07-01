@@ -538,7 +538,7 @@ func _build_quick_play_setup_panel() -> void:
 	_quick_chip_settings_container.add_theme_constant_override("separation", 12)
 	column.add_child(_quick_chip_settings_container)
 	var chip_mode_note := Label.new()
-	chip_mode_note.text = "Quickly join an available public chip table with your selected stakes."
+	chip_mode_note.text = "Quickly join the best available public chip table with your selected stakes.\nIf no matching table is available, a new public table will be created."
 	chip_mode_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	chip_mode_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	chip_mode_note.custom_minimum_size = Vector2(520, 0)
@@ -1196,10 +1196,9 @@ func _start_quick_play_from_setup() -> void:
 		_show_toast("Not enough chips for this buy-in.")
 		return
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
-		var table_name := "%s's Table" % PlayerProfileScript.get_player_name(_player_profile)
 		_hide_quick_play_setup()
-		_start_table_launch_transition("Creating server table...", func() -> void:
-			_profile_ws_client.create_table(table_name, _quick_server_table_config())
+		_start_table_launch_transition("Finding server table...", func() -> void:
+			_profile_ws_client.quick_join_table(_quick_server_table_config())
 		)
 		return
 	var setup_config := {
@@ -1211,7 +1210,7 @@ func _start_quick_play_from_setup() -> void:
 		"hand_count": _normalized_hand_count_for_context(_selected_quick_max_hands),
 		"max_hands": _selected_quick_max_hands,
 		"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
-		"max_players": int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("max_players", 9)),
+		"max_players": 6,
 		"allow_quick_join": true,
 		"buy_in_deducted_from_wallet": true,
 	}
@@ -1253,7 +1252,7 @@ func _quick_server_table_config() -> Dictionary:
 		"big_blind": _selected_quick_big_blind,
 		"hand_count": hand_count,
 		"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
-		"max_players": int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("max_players", 9)),
+		"max_players": 6,
 		"allow_quick_join": true,
 		"is_public": true,
 	}
@@ -1516,7 +1515,7 @@ func _refresh_quick_play_setup_options() -> void:
 		elif _selected_quick_buy_in > total_chips:
 			_quick_play_setup_hint_label.text = "Not enough server wallet chips."
 		else:
-			_quick_play_setup_hint_label.text = "Quickly join an available public chip table with your selected stakes.\nBuy-in will be moved from wallet to table. Unused table chips return to wallet after the session."
+			_quick_play_setup_hint_label.text = "Quickly join the best available public chip table with your selected stakes.\nIf no matching table is available, a new public table will be created."
 	for key_item in _quick_mode_buttons.keys():
 		var mode := str(key_item)
 		var button: Button = _quick_mode_buttons[key_item] as Button

@@ -130,6 +130,13 @@ export class RoomManager {
       this.send(client, { type: "table_list", request_id: message.request_id, tables: this.publicTables() });
       return;
     }
+    if (message.type === "quick_join_table") {
+      const room = this.quickJoinTable(client, message);
+      const table = this.tableSnapshot(room);
+      this.send(client, { type: "quick_table_matched", request_id: message.request_id, room_id: room.id, table });
+      this.send(client, { type: "table_list", tables: this.publicTables() });
+      return;
+    }
     if (message.type === "create_table") {
       const room = this.createRoom(this.tableConfigFromMessage(message));
       room.hostPlayerId = client.id;
@@ -423,6 +430,41 @@ export class RoomManager {
     room.clients.add(client.id);
   }
 
+  private quickJoinTable(client: Client, message: ClientMessage): Room {
+    const tableConfig = this.tableConfigFromMessage(message);
+    const matchedRoom = this.bestQuickJoinRoom(tableConfig);
+    if (matchedRoom) {
+      this.joinRoom(client, matchedRoom.id);
+      this.recordLog(`${client.id} quick matched public table ${matchedRoom.id}`);
+      return matchedRoom;
+    }
+    const room = this.createRoom(tableConfig);
+    room.hostPlayerId = client.id;
+    this.joinRoom(client, room.id);
+    this.recordLog(`${client.id} quick created public table ${room.id}`);
+    return room;
+  }
+
+  private bestQuickJoinRoom(tableConfig: Partial<Pick<Room, "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): Room | undefined {
+    return [...this.rooms.values()]
+      .filter((room) => this.isQuickJoinMatch(room, tableConfig))
+      .sort((a, b) => {
+        const playerDelta = this.realConnectedSeatedCount(b) - this.realConnectedSeatedCount(a);
+        if (playerDelta !== 0) return playerDelta;
+        const createdDelta = a.createdAt.localeCompare(b.createdAt);
+        if (createdDelta !== 0) return createdDelta;
+        return a.id.localeCompare(b.id);
+      })[0];
+  }
+
+  private isQuickJoinMatch(room: Room, tableConfig: Partial<Pick<Room, "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): boolean {
+    if (!room.isPublic || room.isAiWarmup || room.sessionComplete) return false;
+    if (room.buyIn !== tableConfig.buyIn || room.smallBlind !== tableConfig.smallBlind || room.bigBlind !== tableConfig.bigBlind || room.handCount !== tableConfig.handCount) return false;
+    if (this.occupiedSeatCount(room) >= room.maxPlayers) return false;
+    if (this.publicSeatedCount(room) <= 0 && this.occupiedSeatCount(room) > 0) return false;
+    return ["waiting_for_players", "waiting_ready", "ready_to_start"].includes(this.publicRoomState(room));
+  }
+
   private publicTables(): PublicTableSnapshot[] {
     return [...this.rooms.values()].filter((room) => room.isPublic).map((room) => this.tableSnapshot(room));
   }
@@ -431,6 +473,9 @@ export class RoomManager {
     const roomState = this.publicRoomState(room);
     return {
       room_id: room.id,
+      table_type: "public_chip",
+      currency: "chips",
+      allow_quick_join: true,
       table_name: room.tableName,
       small_blind: room.smallBlind,
       big_blind: room.bigBlind,
@@ -1121,7 +1166,7 @@ export class RoomManager {
     if (room.table.phase === "showdown") return "hand_result";
     if (room.table.phase === "hand_over" && room.officialHandStarted && room.handResultTimer) return "hand_result";
     if (room.readyCountdownTimer) return "starting_countdown";
-    if (["waiting", "hand_over"].includes(room.table.phase)) return "waiting_ready";
+    if (["waiting", "hand_over"].includes(room.table.phase)) return this.publicSeatedCount(room) < 2 ? "waiting_for_players" : "waiting_ready";
     return "playing";
   }
 

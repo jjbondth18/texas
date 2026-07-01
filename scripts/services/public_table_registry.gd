@@ -5,6 +5,7 @@ const TABLE_TYPE_PUBLIC_CHIP := "public_chip"
 const STATUS_WAITING := "waiting"
 const STATUS_WAITING_FOR_PLAYERS := "waiting_for_players"
 const STATUS_READY_TO_START := "waiting_ready"
+const STATUS_READY_TO_START_ALIAS := "ready_to_start"
 const STATUS_STARTING_COUNTDOWN := "starting_countdown"
 const STATUS_HAND_RESULT := "hand_result"
 const STATUS_AI_WARMUP := "ai_warmup"
@@ -34,7 +35,7 @@ static func list_public_tables() -> Array[Dictionary]:
 			continue
 		if not _is_clean_joinable_public_table(table, false):
 			if _should_close_dirty_table(table):
-				stale_table_ids.append(String(table.get("table_id", table_id)))
+				stale_table_ids.append(str(table.get("table_id", table_id)))
 			continue
 		_tables[table_id] = table
 		public_tables.append(_public_table_snapshot(table))
@@ -44,7 +45,7 @@ static func list_public_tables() -> Array[Dictionary]:
 
 static func create_public_table(config: Dictionary = {}) -> Dictionary:
 	var normalized_config: Dictionary = _normalized_public_table_config(config)
-	var table_id: String = String(config.get("table_id", "pub_chip_%03d" % _next_table_number))
+	var table_id: String = str(config.get("table_id", "pub_chip_%03d" % _next_table_number))
 	if not config.has("table_id"):
 		_next_table_number += 1
 	var small_blind: int = int(normalized_config.get("small_blind", 25))
@@ -54,13 +55,13 @@ static func create_public_table(config: Dictionary = {}) -> Dictionary:
 	var action_time_seconds: int = int(normalized_config.get("action_time_seconds", DEFAULT_ACTION_TIME_SECONDS))
 	var player_ids: Array[String] = []
 	for player_id in Array(normalized_config.get("player_ids", [])):
-		player_ids.append(String(player_id))
+		player_ids.append(str(player_id))
 	var real_player_ids: Array[String] = []
 	for player_id in Array(normalized_config.get("real_player_ids", player_ids)):
-		real_player_ids.append(String(player_id))
+		real_player_ids.append(str(player_id))
 	var table := {
 		"table_id": table_id,
-		"table_name": String(normalized_config.get("table_name", "Public Chip %03d" % max(_next_table_number - 1, 1))),
+		"table_name": str(normalized_config.get("table_name", "Public Chip %03d" % max(_next_table_number - 1, 1))),
 		"table_type": TABLE_TYPE_PUBLIC_CHIP,
 		"currency": "chip",
 		"status": STATUS_WAITING_FOR_PLAYERS,
@@ -79,7 +80,7 @@ static func create_public_table(config: Dictionary = {}) -> Dictionary:
 		"action_time_seconds": action_time_seconds,
 		"max_players": max_players,
 		"current_players": min(max(real_player_ids.size(), int(normalized_config.get("current_players", player_ids.size()))), max_players),
-		"created_by": String(normalized_config.get("created_by", "local_mock")),
+		"created_by": str(normalized_config.get("created_by", "local_mock")),
 		"allow_quick_join": bool(normalized_config.get("allow_quick_join", true)),
 		"allow_mid_hand_join": false,
 		"pot": 0,
@@ -104,7 +105,7 @@ static func create_public_table(config: Dictionary = {}) -> Dictionary:
 
 static func add_mock_table(table: Dictionary) -> void:
 	var normalized: Dictionary = _normalized_public_table(table)
-	_tables[String(normalized.get("table_id", ""))] = normalized
+	_tables[str(normalized.get("table_id", ""))] = normalized
 
 static func join_public_table(table_id: String, player: Dictionary) -> Dictionary:
 	if not _tables.has(table_id):
@@ -181,7 +182,7 @@ static func leave_public_table(table_id: String, player_id: String) -> void:
 	if not _tables.has(table_id):
 		return
 	var table: Dictionary = Dictionary(_tables[table_id]).duplicate(true)
-	if String(table.get("table_type", "")) != TABLE_TYPE_PUBLIC_CHIP:
+	if str(table.get("table_type", "")) != TABLE_TYPE_PUBLIC_CHIP:
 		return
 	var player_ids: Array = Array(table.get("player_ids", [])).duplicate()
 	player_ids.erase(player_id)
@@ -199,18 +200,12 @@ static func quick_join_public_table(player: Dictionary, preferred_config: Dictio
 	var table_id: String = _best_quick_join_table_id(true, clean_config if has_preference else {})
 	var created_new_table := false
 	if table_id == "":
-		table_id = _best_quick_join_table_id(false, clean_config if has_preference else {})
-	if table_id == "" and not has_preference:
-		table_id = _best_quick_join_table_id(true)
-	if table_id == "" and not has_preference:
-		table_id = _best_quick_join_table_id(false)
-	if table_id == "":
 		var created: Dictionary = create_public_table(clean_config)
-		table_id = String(created.get("table_id", ""))
+		table_id = str(created.get("table_id", ""))
 		created_new_table = true
 	var joined: Dictionary = join_public_table(table_id, player)
 	if created_new_table and not joined.is_empty():
-		return start_ai_warmup(table_id)
+		joined["quick_created_table"] = true
 	return joined
 
 static func seed_mock_public_tables() -> void:
@@ -240,18 +235,22 @@ static func seed_mock_public_tables() -> void:
 static func _best_quick_join_table_id(waiting_only: bool, preferred_config: Dictionary = {}) -> String:
 	var best_id := ""
 	var best_players := -1
+	var best_created_at := ""
 	for table_id in _tables.keys():
 		var table: Dictionary = _normalized_public_table(Dictionary(_tables[table_id]))
 		if not _is_clean_joinable_public_table(table, true):
 			continue
-		if waiting_only and String(table.get("status", "")) not in [STATUS_WAITING, STATUS_OPEN, STATUS_READY_TO_START, STATUS_STARTING_COUNTDOWN]:
+		if waiting_only and str(table.get("status", "")) not in [STATUS_WAITING, STATUS_OPEN, STATUS_READY_TO_START, STATUS_READY_TO_START_ALIAS, STATUS_STARTING_COUNTDOWN]:
 			continue
 		if not _table_matches_preferred_config(table, preferred_config):
 			continue
 		var current_players: int = int(table.get("current_players", 0))
-		if current_players > best_players:
+		var created_at: String = str(table.get("created_at", ""))
+		var normalized_id: String = str(table.get("table_id", table_id))
+		if current_players > best_players or (current_players == best_players and (best_created_at == "" or created_at < best_created_at or (created_at == best_created_at and normalized_id < best_id))):
 			best_players = current_players
-			best_id = String(table.get("table_id", table_id))
+			best_created_at = created_at
+			best_id = normalized_id
 	return best_id
 
 static func _has_quick_join_preference(preferred_config: Dictionary) -> bool:
@@ -267,12 +266,12 @@ static func _normalized_public_table_config(config: Dictionary) -> Dictionary:
 		if not result.has("big_blind") and blinds_dict.has("big"):
 			result["big_blind"] = int(blinds_dict.get("big", 50))
 	elif blinds_value is String:
-		var pieces: PackedStringArray = String(blinds_value).replace(" ", "").split("/")
+		var pieces: PackedStringArray = str(blinds_value).replace(" ", "").split("/")
 		if pieces.size() >= 2:
-			if not result.has("small_blind") and String(pieces[0]).is_valid_int():
-				result["small_blind"] = int(String(pieces[0]))
-			if not result.has("big_blind") and String(pieces[1]).is_valid_int():
-				result["big_blind"] = int(String(pieces[1]))
+			if not result.has("small_blind") and str(pieces[0]).is_valid_int():
+				result["small_blind"] = int(str(pieces[0]))
+			if not result.has("big_blind") and str(pieces[1]).is_valid_int():
+				result["big_blind"] = int(str(pieces[1]))
 	result["table_type"] = TABLE_TYPE_PUBLIC_CHIP
 	result["currency"] = "chip"
 	result["buy_in"] = int(result.get("buy_in", 20000))
@@ -286,14 +285,14 @@ static func _normalized_public_table_config(config: Dictionary) -> Dictionary:
 
 static func _normalized_public_table(table: Dictionary) -> Dictionary:
 	var normalized: Dictionary = _normalized_public_table_config(table)
-	normalized["table_id"] = String(table.get("table_id", table.get("room_id", "")))
-	normalized["room_id"] = String(table.get("room_id", normalized.get("table_id", "")))
-	normalized["table_name"] = String(table.get("table_name", table.get("name", normalized.get("table_id", "Public Table"))))
-	normalized["table_type"] = String(table.get("table_type", normalized.get("table_type", "")))
-	normalized["currency"] = String(table.get("currency", normalized.get("currency", "chip")))
-	normalized["status"] = String(table.get("status", table.get("hand_state", STATUS_WAITING)))
-	normalized["hand_state"] = String(table.get("hand_state", table.get("phase", normalized.get("status", STATUS_WAITING))))
-	normalized["betting_round"] = String(table.get("betting_round", table.get("round", normalized.get("hand_state", STATUS_WAITING))))
+	normalized["table_id"] = str(table.get("table_id", table.get("room_id", "")))
+	normalized["room_id"] = str(table.get("room_id", normalized.get("table_id", "")))
+	normalized["table_name"] = str(table.get("table_name", table.get("name", normalized.get("table_id", "Public Table"))))
+	normalized["table_type"] = str(table.get("table_type", normalized.get("table_type", "")))
+	normalized["currency"] = str(table.get("currency", normalized.get("currency", "chip")))
+	normalized["status"] = str(table.get("status", table.get("hand_state", STATUS_WAITING)))
+	normalized["hand_state"] = str(table.get("hand_state", table.get("phase", normalized.get("status", STATUS_WAITING))))
+	normalized["betting_round"] = str(table.get("betting_round", table.get("round", normalized.get("hand_state", STATUS_WAITING))))
 	normalized["pot"] = int(table.get("pot", 0))
 	normalized["side_pots"] = Array(table.get("side_pots", [])).duplicate(true)
 	normalized["community_cards"] = Array(table.get("community_cards", [])).duplicate(true)
@@ -308,35 +307,38 @@ static func _normalized_public_table(table: Dictionary) -> Dictionary:
 	normalized["is_ai_warmup"] = bool(table.get("is_ai_warmup", false))
 	normalized["host_in_local_warmup"] = bool(table.get("host_in_local_warmup", false))
 	normalized["waiting_for_real_players"] = bool(table.get("waiting_for_real_players", false))
-	normalized["join_result"] = String(table.get("join_result", "seated"))
-	normalized["created_by"] = String(table.get("created_by", "local_mock"))
+	normalized["join_result"] = str(table.get("join_result", "seated"))
+	normalized["created_by"] = str(table.get("created_by", "local_mock"))
 	normalized["allow_mid_hand_join"] = bool(table.get("allow_mid_hand_join", false))
 	normalized["hand_number"] = int(table.get("hand_number", table.get("hand_id", 0)))
 	normalized["current_players"] = _real_player_count(normalized)
 	return normalized
 
 static func _is_public_chip_table(table: Dictionary) -> bool:
-	return String(table.get("table_type", "")) == TABLE_TYPE_PUBLIC_CHIP and String(table.get("currency", "chip")) == "chip"
+	var currency: String = str(table.get("currency", "chip"))
+	return str(table.get("table_type", "")) == TABLE_TYPE_PUBLIC_CHIP and currency in ["chip", "chips"]
 
 static func _is_clean_joinable_public_table(table: Dictionary, quick_join: bool) -> bool:
 	if not _is_public_chip_table(table):
 		return false
 	if quick_join and not bool(table.get("allow_quick_join", true)):
 		return false
-	var status: String = String(table.get("status", ""))
-	var hand_state: String = String(table.get("hand_state", status))
+	var status: String = str(table.get("status", ""))
+	var hand_state: String = str(table.get("hand_state", status))
 	var current_turn: int = int(table.get("current_turn_seat", -1))
 	if quick_join and bool(table.get("is_ai_warmup", false)):
+		return false
+	if quick_join and status not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_READY_TO_START_ALIAS]:
 		return false
 	if status in [STATUS_CLOSED, STATUS_DIRTY, STATUS_PAUSED, STATUS_FULL, STATUS_HAND_OVER, STATUS_SHOWDOWN_REVEAL, "showdown", "finished"]:
 		return false
 	if hand_state in [STATUS_CLOSED, STATUS_DIRTY, STATUS_PAUSED, STATUS_HAND_OVER, STATUS_SHOWDOWN_REVEAL, "finished"]:
 		return false
-	if status not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_STARTING_COUNTDOWN, STATUS_HAND_RESULT, STATUS_OPEN, STATUS_PLAYING, STATUS_AI_WARMUP]:
+	if status not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_READY_TO_START_ALIAS, STATUS_STARTING_COUNTDOWN, STATUS_HAND_RESULT, STATUS_OPEN, STATUS_PLAYING, STATUS_AI_WARMUP]:
 		return false
-	if hand_state not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_STARTING_COUNTDOWN, STATUS_HAND_RESULT, STATUS_OPEN, STATUS_PLAYING, "preflop", "flop", "turn", "river", "showdown", STATUS_AI_WARMUP, "idle", "pre_hand"]:
+	if hand_state not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_READY_TO_START_ALIAS, STATUS_STARTING_COUNTDOWN, STATUS_HAND_RESULT, STATUS_OPEN, STATUS_PLAYING, "preflop", "flop", "turn", "river", "showdown", STATUS_AI_WARMUP, "idle", "pre_hand"]:
 		return false
-	if current_turn == -1 and hand_state not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_STARTING_COUNTDOWN, STATUS_HAND_RESULT, STATUS_OPEN, STATUS_PLAYING, "preflop", "flop", "turn", "river", "showdown", STATUS_AI_WARMUP, "idle", "pre_hand"]:
+	if current_turn == -1 and hand_state not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_READY_TO_START_ALIAS, STATUS_STARTING_COUNTDOWN, STATUS_HAND_RESULT, STATUS_OPEN, STATUS_PLAYING, "preflop", "flop", "turn", "river", "showdown", STATUS_AI_WARMUP, "idle", "pre_hand"]:
 		return false
 	if int(table.get("current_players", 0)) >= int(table.get("max_players", 9)):
 		return false
@@ -346,8 +348,8 @@ static func _is_clean_joinable_public_table(table: Dictionary, quick_join: bool)
 	return true
 
 static func _should_close_dirty_table(table: Dictionary) -> bool:
-	var status: String = String(table.get("status", ""))
-	var hand_state: String = String(table.get("hand_state", status))
+	var status: String = str(table.get("status", ""))
+	var hand_state: String = str(table.get("hand_state", status))
 	var has_player_records: bool = not Array(table.get("players", [])).is_empty() or not Array(table.get("seats", [])).is_empty()
 	return status in [STATUS_CLOSED, STATUS_DIRTY, STATUS_HAND_OVER, STATUS_SHOWDOWN_REVEAL] or hand_state in [STATUS_HAND_OVER, STATUS_SHOWDOWN_REVEAL, STATUS_CLOSED, STATUS_DIRTY] or (_connected_player_count(table) <= 0 and (status in [STATUS_PLAYING, STATUS_HAND_OVER] or has_player_records))
 
@@ -358,7 +360,7 @@ static func _connected_player_count(table: Dictionary) -> int:
 		var player: Dictionary = Dictionary(player_item)
 		if not _is_connected_occupied_player(player):
 			continue
-		var player_id: String = String(player.get("player_id", player.get("id", "player_%d" % count)))
+		var player_id: String = str(player.get("player_id", player.get("id", "player_%d" % count)))
 		if counted.has(player_id):
 			continue
 		counted[player_id] = true
@@ -367,7 +369,7 @@ static func _connected_player_count(table: Dictionary) -> int:
 		var seat: Dictionary = Dictionary(seat_item)
 		if not _is_connected_occupied_player(seat):
 			continue
-		var seat_player_id: String = String(seat.get("player_id", seat.get("id", "seat_%s" % String(seat.get("seat_id", count)))))
+		var seat_player_id: String = str(seat.get("player_id", seat.get("id", "seat_%s" % str(seat.get("seat_id", count)))))
 		if counted.has(seat_player_id):
 			continue
 		counted[seat_player_id] = true
@@ -375,7 +377,7 @@ static func _connected_player_count(table: Dictionary) -> int:
 	var player_ids: Array = Array(table.get("player_ids", []))
 	if count == 0 and not player_ids.is_empty():
 		for player_id_item in player_ids:
-			var listed_id: String = String(player_id_item)
+			var listed_id: String = str(player_id_item)
 			if listed_id == "" or counted.has(listed_id):
 				continue
 			counted[listed_id] = true
@@ -391,7 +393,7 @@ static func _real_player_count(table: Dictionary) -> int:
 	return _connected_player_count(table)
 
 static func _is_connected_occupied_player(data: Dictionary) -> bool:
-	var status: String = String(data.get("status", ""))
+	var status: String = str(data.get("status", ""))
 	if data.has("status") and status in ["empty", "left", "out", "disconnected"]:
 		return false
 	if bool(data.get("disconnected", false)):
@@ -402,7 +404,7 @@ static func _is_connected_occupied_player(data: Dictionary) -> bool:
 		return false
 	if bool(data.get("warmup_ai", false)):
 		return false
-	return String(data.get("player_id", data.get("id", "player"))) != ""
+	return str(data.get("player_id", data.get("id", "player"))) != ""
 
 static func _table_matches_preferred_config(table: Dictionary, preferred_config: Dictionary) -> bool:
 	if preferred_config.is_empty():
@@ -435,7 +437,7 @@ static func _update_public_table_status(table: Dictionary) -> void:
 	elif current_players < 2:
 		table["status"] = STATUS_WAITING_FOR_PLAYERS
 		table["hand_state"] = STATUS_WAITING_FOR_PLAYERS
-	elif String(table.get("status", STATUS_WAITING)) in [STATUS_FULL, STATUS_WAITING_FOR_PLAYERS, STATUS_WAITING, STATUS_OPEN]:
+	elif str(table.get("status", STATUS_WAITING)) in [STATUS_FULL, STATUS_WAITING_FOR_PLAYERS, STATUS_WAITING, STATUS_OPEN]:
 		table["status"] = STATUS_READY_TO_START
 		table["hand_state"] = STATUS_READY_TO_START
 
@@ -445,4 +447,4 @@ static func _public_table_snapshot(table: Dictionary) -> Dictionary:
 	return snapshot
 
 static func _player_id(player: Dictionary) -> String:
-	return String(player.get("player_id", player.get("id", "local_player")))
+	return str(player.get("player_id", player.get("id", "local_player")))

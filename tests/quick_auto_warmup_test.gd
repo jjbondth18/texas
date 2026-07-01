@@ -14,7 +14,7 @@ func run() -> void:
 	assert(not table.is_empty())
 	assert(String(table.get("table_type", "")) == "public_chip")
 	assert(bool(table.get("is_ai_warmup", false)) == false)
-	assert(bool(table.get("host_in_local_warmup", false)) == true)
+	assert(bool(table.get("host_in_local_warmup", false)) == false)
 	assert(String(table.get("status", "")) == "waiting_for_players")
 	assert(int(table.get("current_players", 0)) == 1)
 	assert(Array(table.get("warmup_ai_player_ids", [])).is_empty())

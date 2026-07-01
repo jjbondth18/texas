@@ -104,8 +104,9 @@ When a public hand is already in progress, a new real player may join if a seat 
 
 Quick Chip uses the selected stakes as preferences:
 
-- first tries clean waiting/open/ready public chip tables matching the selected config
-- skips dirty, full, private, training, hand-over, and disconnected-only tables
+- first tries clean waiting/ready public chip tables exactly matching buy-in, blinds, and hand count
+- prefers the matching table with the most real connected seated players, then earliest creation time, then stable table id
+- skips playing, hand_result, session_complete, dirty, full, private, training, local warm-up, hand-over, and disconnected-only tables
 - if no valid match exists, creates a new clean public chip table
 
 New local mock public tables start with:

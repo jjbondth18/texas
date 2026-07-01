@@ -85,11 +85,12 @@ Quick Play is the fast path. It keeps lightweight stake selection while avoiding
 
 Quick Play exposes Buy-in, Blinds, and Hand Count in the setup panel. These are not manual room creation controls. They are preferences for `quick_join_public_table(config)`:
 
-- First, quick join looks for a non-full, quick-joinable `public_chip` table matching the selected buy-in, blinds, and compatible hand count.
+- First, quick join looks for a non-full, quick-joinable `public_chip` table exactly matching the selected buy-in, blinds, and hand count.
 - If a matching public table exists, Quick joins that table.
 - If no matching table exists, Quick automatically creates a public chip table using the selected config and joins it.
-- The config passed to the registry/server uses `buy_in`, `small_blind`, `big_blind`, `hand_count`, `max_players`, `table_type = public_chip`, and `currency = chip`.
-- Quick never joins `hand_over`, closed, dirty, private, training, or disconnected-only tables.
+- The config passed to the registry/server uses `buy_in`, `small_blind`, `big_blind`, `hand_count`, `max_players`, `table_type = public_chip`, and `currency = chips` on the server. The local mock registry also accepts its legacy `chip` value.
+- Quick prefers the matching waiting table with the most real connected seated players; ties use earliest creation time, then stable table id.
+- Quick never joins `playing`, `hand_result`, `session_complete`, `hand_over`, closed, dirty, private, training, local warm-up, or disconnected-only tables.
 
 If the wallet cannot cover the selected public chip table buy-in, Quick Play shows "Not enough wallet chips" and does not enter a table.
 

@@ -132,6 +132,34 @@ if (Number(configTable.hand_count) !== 20) throw new Error("create_table should 
 expectThrows("invalid_table_config", () => manager.handle("db_smoke_config", { type: "create_table", buy_in: 12345, small_blind: 25, big_blind: 50, hand_count: 10 }));
 expectThrows("invalid_table_config", () => manager.handle("db_smoke_config", { type: "create_table", buy_in: 10000, small_blind: 10, big_blind: 20, hand_count: 10 }));
 
+const quickOne = manager.createRoom({ buyIn: 10000, smallBlind: 50, bigBlind: 100, handCount: 10, maxPlayers: 6 });
+const quickThree = manager.createRoom({ buyIn: 10000, smallBlind: 50, bigBlind: 100, handCount: 10, maxPlayers: 6 });
+seatPlayer("quick_one_a", "Quick One A", quickOne.id, 5);
+seatPlayer("quick_three_a", "Quick Three A", quickThree.id, 5);
+seatPlayer("quick_three_b", "Quick Three B", quickThree.id, 8);
+seatPlayer("quick_three_c", "Quick Three C", quickThree.id, 2);
+const quickClient = manager.connect();
+manager.handle(quickClient.id, { type: "hello", player_id: "quick_matcher", name: "Quick Matcher" });
+manager.handle("quick_matcher", { type: "quick_join_table", buy_in: 10000, small_blind: 50, big_blind: 100, hand_count: 10, max_players: 6 });
+if (manager.getClient("quick_matcher")?.roomId !== quickThree.id) throw new Error("quick_join_table should prefer the most populated matching waiting table");
+
+const playingRoom = manager.createRoom({ buyIn: 10000, smallBlind: 25, bigBlind: 50, handCount: 5, maxPlayers: 6 });
+seatPlayer("quick_playing_a", "Quick Playing A", playingRoom.id, 5, true);
+seatPlayer("quick_playing_b", "Quick Playing B", playingRoom.id, 8, true);
+manager.handle("quick_playing_a", { type: "start_hand", room_id: playingRoom.id });
+const quickNoPlaying = manager.connect();
+manager.handle(quickNoPlaying.id, { type: "hello", player_id: "quick_no_playing", name: "Quick No Playing" });
+manager.handle("quick_no_playing", { type: "quick_join_table", buy_in: 10000, small_blind: 25, big_blind: 50, hand_count: 5, max_players: 6 });
+if (manager.getClient("quick_no_playing")?.roomId === playingRoom.id) throw new Error("quick_join_table should not join a playing table");
+
+const quickCreate = manager.connect();
+manager.handle(quickCreate.id, { type: "hello", player_id: "quick_create", name: "Quick Create" });
+manager.handle("quick_create", { type: "quick_join_table", buy_in: 50000, small_blind: 100, big_blind: 200, hand_count: 5, max_players: 6 });
+const quickCreatedRoomId = manager.getClient("quick_create")?.roomId || "";
+const quickCreatedTable = (manager.adminSnapshot(false).table_list as Array<Record<string, unknown>>).find((table) => table.room_id === quickCreatedRoomId);
+if (!quickCreatedTable) throw new Error("quick_join_table should create and list a public table when no match exists");
+if (Number(quickCreatedTable.buy_in) !== 50000 || Number(quickCreatedTable.hand_count) !== 5) throw new Error("quick-created table should preserve selected config");
+
 const canonicalClient = manager.connect();
 manager.handle(canonicalClient.id, { type: "hello", auth_provider: "steam", external_id: "steam_canonical_flow", name: "Canonical Flow" });
 const canonicalPlayerId = canonicalClient.id;
@@ -348,6 +376,14 @@ if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeDisabledTo
 
 console.log("DB_SMOKE_OK");
 console.log(JSON.stringify({ db_path: process.env.TEXAS_DB_PATH, player_count: manager.adminSnapshot(false).player_count, total_wallet_chips: manager.adminSnapshot(false).total_wallet_chips }, null, 2));
+
+function seatPlayer(playerId: string, name: string, roomId: string, seatIndex: number, ready = false): void {
+  const client = manager.connect();
+  manager.handle(client.id, { type: "hello", player_id: playerId, name });
+  manager.handle(playerId, { type: "join_room", room_id: roomId });
+  manager.handle(playerId, { type: "sit_down", room_id: roomId, seat_index: seatIndex });
+  if (ready) manager.handle(playerId, { type: "ready", room_id: roomId, ready: true });
+}
 
 function expectThrows(expectedMessage: string, fn: () => void): void {
   try {

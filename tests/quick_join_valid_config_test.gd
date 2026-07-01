@@ -38,7 +38,7 @@ func _test_quick_creates_clean_table_when_no_match() -> void:
 	})
 	_require(not context.is_empty(), "quick join must create a table instead of returning invalid_table_config")
 	_require(String(context.get("table_type", "")) == "public_chip", "quick-created context must be public_chip")
-	_require(String(context.get("hand_state", "")) == "waiting", "quick-created context must not be hand_over")
+	_require(String(context.get("hand_state", "")) in ["waiting_for_players", "waiting_ready", "ready_to_start"], "quick-created context must be a waiting public table")
 	var listed := PublicTableRegistryScript.list_public_tables()
 	_require(listed.size() == 1, "quick-created clean table must be listed")
 	_require(int(listed[0].get("pot", -1)) == 0, "quick-created table must have clean pot")

@@ -137,6 +137,9 @@ func mock_purchase(currency: String, amount: int) -> int:
 func list_tables() -> int:
 	return send_message(PokerProtocolScript.list_tables())
 
+func quick_join_table(config: Dictionary = {}) -> int:
+	return send_message(PokerProtocolScript.quick_join_table(config))
+
 func create_table(table_name: String = "", config: Dictionary = {}) -> int:
 	return send_message(PokerProtocolScript.create_table(table_name, config))
 
@@ -171,6 +174,10 @@ func _handle_message(message: Dictionary) -> void:
 			var created_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = str(message.get("room_id", created_table.get("room_id", room_id)))
 			table_created.emit(room_id, created_table)
+		PokerProtocolScript.QUICK_TABLE_MATCHED:
+			var quick_table := Dictionary(message.get("table", {})).duplicate(true)
+			room_id = str(message.get("room_id", quick_table.get("room_id", room_id)))
+			table_joined.emit(room_id, quick_table)
 		PokerProtocolScript.TABLE_JOINED:
 			var joined_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = str(message.get("room_id", joined_table.get("room_id", room_id)))
