@@ -25,6 +25,8 @@ Warm-up exit, hand-over, next-hand start, and real-player join interrupts cancel
 
 Player Status rows are rendered in stable `seat_index` order during local public warm-up. Turn changes update the existing row highlight and status text only; rows are not reordered, recreated, or resized just because the active player changed.
 
+The poker table UI contract is locked in `docs/poker_table_ui_contract.md`: local public warm-up, training, and public rooms all use the same objective 9-player seat join order `[5, 8, 2, 6, 4, 9, 1, 7, 3]`. Player Status may slide the active row horizontally toward the table, but it must not reorder rows. BetMarkers are anchored by `seat_index`.
+
 When a real player joins the server public room, the host immediately stops local warm-up and returns to the latest server public room snapshot. The official public room remains real-player-only, and the formal hand starts only through the server authoritative public hand path.
 
 Training hand-over uses the local table flow result reveal and then starts the next training hand automatically when the session can continue.

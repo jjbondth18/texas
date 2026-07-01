@@ -64,7 +64,8 @@ const ACTION_TIMEOUT_MS = 20000;
 const READY_COUNTDOWN_MS = 3000;
 const HAND_RESULT_SHOWDOWN_MS = 5000;
 const HAND_RESULT_FOLD_MS = 2500;
-const PUBLIC_SEAT_JOIN_ORDER = [5, 8, 2, 6, 4, 9, 1, 7, 3];
+const TABLE_SEAT_JOIN_ORDER_9P = [5, 8, 2, 6, 4, 9, 1, 7, 3];
+const PUBLIC_SEAT_JOIN_ORDER = TABLE_SEAT_JOIN_ORDER_9P;
 const DEV_SIMULATED_START_BLOCK_REASON = "Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot.";
 export class RoomManager {
   private clients = new Map<string, Client>();

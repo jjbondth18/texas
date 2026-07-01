@@ -6,6 +6,8 @@ const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const TableSeatScript := preload("res://scripts/data/table_seat.gd")
 const PublicTableRegistryScript := preload("res://scripts/services/public_table_registry.gd")
 
+const TABLE_SEAT_JOIN_ORDER_9P := [5, 8, 2, 6, 4, 9, 1, 7, 3]
+
 var _current_context: Dictionary = {}
 
 func create_quick_play_table(profile: Dictionary, setup_config: Dictionary = {}) -> Dictionary:
@@ -198,12 +200,17 @@ func _public_table_config_from_setup(setup_config: Dictionary, player: Dictionar
 func _build_mock_seats(profile: Dictionary, buy_in: int, ai_count: int) -> Array[Dictionary]:
 	var seats: Array[Dictionary] = []
 	var occupied_ai := 0
+	var ai_seat_ids: Array[int] = []
+	for seat_id in TABLE_SEAT_JOIN_ORDER_9P:
+		if seat_id == 5:
+			continue
+		if occupied_ai >= ai_count:
+			break
+		ai_seat_ids.append(seat_id)
+		occupied_ai += 1
 	for seat_id in range(1, 10):
 		var is_local := seat_id == 5
-		var has_player := is_local
-		if not is_local and seat_id != 8 and occupied_ai < ai_count:
-			has_player = true
-			occupied_ai += 1
+		var has_player := is_local or seat_id in ai_seat_ids
 		var avatar_id := PlayerProfileScript.get_avatar_id(profile) if is_local else AvatarLibraryScript.avatar_id_for_seat(seat_id, false)
 		seats.append({
 			"seat_id": seat_id,
@@ -235,7 +242,10 @@ func _build_public_table_seats(table: Dictionary, profile: Dictionary, buy_in: i
 		mock_real_to_seat = max(int(table.get("current_players", 1)) - 1, 0)
 	var ai_index := 0
 	var real_index := 0
-	for i in range(seats.size()):
+	for ordered_seat_id in TABLE_SEAT_JOIN_ORDER_9P:
+		var i: int = _seat_array_index(seats, int(ordered_seat_id))
+		if i == -1:
+			continue
 		var seat: Dictionary = Dictionary(seats[i]).duplicate(true)
 		if bool(seat.get("is_local", false)):
 			seat["chips"] = buy_in
@@ -248,10 +258,10 @@ func _build_public_table_seats(table: Dictionary, profile: Dictionary, buy_in: i
 			seats[i] = seat
 			continue
 		if ai_index < warmup_ids.size():
-			var seat_id: int = int(seat.get("seat_id", seat.get("seat_index", i + 1)))
+			var warmup_seat_id: int = int(seat.get("seat_id", seat.get("seat_index", i + 1)))
 			seat["player_id"] = String(warmup_ids[ai_index])
 			seat["player_name"] = "Warm-up AI %d" % (ai_index + 1)
-			seat["avatar_id"] = AvatarLibraryScript.avatar_id_for_seat(seat_id, false)
+			seat["avatar_id"] = AvatarLibraryScript.avatar_id_for_seat(warmup_seat_id, false)
 			seat["chips"] = buy_in
 			seat["table_stack"] = buy_in
 			seat["status"] = TableSeatScript.SITTING
@@ -275,3 +285,10 @@ func _build_public_table_seats(table: Dictionary, profile: Dictionary, buy_in: i
 			real_index += 1
 		seats[i] = seat
 	return seats
+
+func _seat_array_index(seats: Array, seat_id: int) -> int:
+	for i in range(seats.size()):
+		var seat: Dictionary = Dictionary(seats[i])
+		if int(seat.get("seat_id", seat.get("seat_index", 0))) == seat_id:
+			return i
+	return -1

@@ -926,13 +926,12 @@ func _empty_server_ui_snapshot(message: String) -> Dictionary:
 	var local_avatar_id: String = PlayerProfileScript.get_avatar_id(profile)
 	var local_chips: int = SERVER_DEFAULT_BUY_IN
 	var seats: Array = []
-	var visual_local_seat: int = 5 if _is_public_chip_table() else (_server_requested_seat_index if _server_requested_seat_index >= 0 else 5)
 	for i in range(1, 10):
 		var is_local := _server_seat_confirmed and i == _server_local_seat_index
 		seats.append({
 			"seat_index": i,
 			"seat_id": i,
-			"visual_position": MockTableSimulation.visual_position_for_seat_index(i, visual_local_seat),
+			"visual_position": MockTableSimulation.visual_position_for_seat_index(i),
 			"player_id": _server_local_player_id if is_local else "",
 			"player_name": local_name if is_local else "Seat %d" % i,
 			"avatar_id": local_avatar_id if is_local else AvatarLibraryScript.avatar_id_for_seat(i + 1, false),
@@ -1009,7 +1008,6 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	var private_matches_hand := private_hand_id == server_hand_id
 	var local_server_seat: int = _server_local_seat_from_snapshot(server_snapshot, private_snapshot)
 	_server_local_seat_index = local_server_seat
-	var visual_local_seat: int = 5 if _is_public_chip_table() else (local_server_seat if local_server_seat >= 0 else (_server_requested_seat_index if _server_requested_seat_index >= 0 else 5))
 	var current_turn_seat: int = _normalized_turn_seat(int(server_snapshot.get("current_turn_seat", -1)), phase)
 	var seats: Array = []
 	for seat_item in Array(server_snapshot.get("seats", [])):
@@ -1039,7 +1037,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		seats.append({
 			"seat_index": seat_index,
 			"seat_id": seat_index,
-			"visual_position": MockTableSimulation.visual_position_for_seat_index(seat_index, visual_local_seat),
+			"visual_position": MockTableSimulation.visual_position_for_seat_index(seat_index),
 			"player_id": seat_player_id,
 			"player_name": String(server_seat.get("player_name", server_seat.get("name", "Seat %d" % seat_index))),
 			"avatar_id": avatar_id,
@@ -1773,7 +1771,7 @@ func _table_flow_to_ui_snapshot(source: Dictionary) -> Dictionary:
 		seats.append({
 			"seat_index": seat_id,
 			"seat_id": seat_id,
-			"visual_position": MockTableSimulation.visual_position_for_seat_index(seat_id, local_seat_index),
+			"visual_position": MockTableSimulation.visual_position_for_seat_index(seat_id),
 			"player_id": String(seat.get("player_id", "")),
 			"player_name": String(seat.get("player_name", "Seat %d" % seat_id)),
 			"avatar_id": avatar_id,
@@ -2933,18 +2931,23 @@ func _stop_local_public_warmup() -> void:
 
 func _activate_public_warmup_ai_seats(ai_count: int) -> void:
 	var activated := 0
-	for i in range(_table_flow.seats.size()):
+	for ordered_seat_id in MockTableSimulation.table_seat_join_order_9p():
 		if activated >= ai_count:
 			break
+		if int(ordered_seat_id) == MockTableSimulation.LOCAL_SEAT_INDEX:
+			continue
+		var i: int = _table_flow_seat_array_index(int(ordered_seat_id))
+		if i == -1:
+			continue
 		var seat: Dictionary = Dictionary(_table_flow.seats[i]).duplicate(true)
 		if bool(seat.get("is_local", false)):
 			continue
 		if bool(seat.get("occupied", false)) and String(seat.get("status", "")) != TexasTableFlowScript.EMPTY:
 			continue
-		var seat_id: int = int(seat.get("seat_id", seat.get("seat_index", i + 1)))
+		var warmup_seat_id: int = int(seat.get("seat_id", seat.get("seat_index", i + 1)))
 		seat["player_id"] = "warmup_ai_%02d" % (activated + 1)
 		seat["player_name"] = "Warm-up AI %d" % (activated + 1)
-		seat["avatar_id"] = AvatarLibraryScript.avatar_id_for_seat(seat_id, false)
+		seat["avatar_id"] = AvatarLibraryScript.avatar_id_for_seat(warmup_seat_id, false)
 		seat["chips"] = _table_session.buy_in if _table_session != null else PlayerProfileScript.DEFAULT_TABLE_BUY_IN
 		seat["current_bet"] = 0
 		seat["hole_cards"] = []
@@ -2955,6 +2958,13 @@ func _activate_public_warmup_ai_seats(ai_count: int) -> void:
 		_table_flow.seats[i] = seat
 		activated += 1
 	TableLaunchContext.set_seats(_table_flow.seats)
+
+func _table_flow_seat_array_index(seat_id: int) -> int:
+	for i in range(_table_flow.seats.size()):
+		var seat: Dictionary = Dictionary(_table_flow.seats[i])
+		if int(seat.get("seat_id", seat.get("seat_index", 0))) == seat_id:
+			return i
+	return -1
 
 func _warmup_ai_ids_from_flow() -> Array[String]:
 	var ids: Array[String] = []

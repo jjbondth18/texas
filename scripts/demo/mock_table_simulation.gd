@@ -4,6 +4,7 @@ class_name MockTableSimulation
 const HandLifecycleScript := preload("res://scripts/core/hand_lifecycle.gd")
 
 const LOCAL_SEAT_INDEX := 5
+const TABLE_SEAT_JOIN_ORDER_9P := [5, 8, 2, 6, 4, 9, 1, 7, 3]
 
 static func get_mock_table_snapshot() -> Dictionary:
 	return get_phase_snapshot("preflop")
@@ -117,8 +118,18 @@ static func run_ai_until_local_turn(table_state: Dictionary) -> Dictionary:
 static func get_legal_actions(table_state: Dictionary, seat_index: int) -> Array:
 	return HandLifecycleScript.get_legal_actions(table_state, seat_index)
 
-static func visual_position_for_seat_index(seat_index: int, local_seat_index: int = LOCAL_SEAT_INDEX) -> int:
-	return ((seat_index - local_seat_index + 4 + 9) % 9) + 1
+static func table_seat_join_order_9p() -> Array:
+	return TABLE_SEAT_JOIN_ORDER_9P.duplicate()
+
+static func seat_join_rank(seat_index: int) -> int:
+	var rank := TABLE_SEAT_JOIN_ORDER_9P.find(seat_index)
+	return rank if rank != -1 else 999 + seat_index
+
+static func visual_position_for_seat_index(seat_index: int, _local_seat_index: int = LOCAL_SEAT_INDEX) -> int:
+	# The table is objective: seat cards and bet markers never rotate around the local player.
+	if seat_index >= 1 and seat_index <= 9:
+		return seat_index
+	return 9
 
 static func _normalize_action(table_state: Dictionary, action: Dictionary) -> Dictionary:
 	var normalized := action.duplicate(true)
@@ -143,7 +154,7 @@ static func _with_ui_fields(state: Dictionary) -> Dictionary:
 	for seat in Array(next.get("seats", [])):
 		var data := Dictionary(seat).duplicate(true)
 		var seat_index := int(data.get("seat_index", 0))
-		data["visual_position"] = visual_position_for_seat_index(seat_index, LOCAL_SEAT_INDEX)
+		data["visual_position"] = visual_position_for_seat_index(seat_index)
 		data["current_bet"] = int(data.get("street_bet", data.get("current_bet", 0)))
 		data["is_local"] = seat_index == LOCAL_SEAT_INDEX
 		data["is_dealer"] = seat_index == int(next.get("dealer_seat", -1))

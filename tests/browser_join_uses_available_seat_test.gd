@@ -22,7 +22,8 @@ func _init() -> void:
 	_require(table_source.find("_poker_ws_client.sit_down(_server_requested_seat_index") != -1, "Poker table should send requested seat to server.")
 
 	_require(server_source.find("firstAvailablePublicSeat(room)") != -1, "Server must auto-pick objective public seat for seat_index -1.")
-	_require(server_source.find("const PUBLIC_SEAT_JOIN_ORDER = [5, 8, 2, 6, 4, 9, 1, 7, 3]") != -1, "Server must keep objective public seat order.")
+	_require(server_source.find("const TABLE_SEAT_JOIN_ORDER_9P = [5, 8, 2, 6, 4, 9, 1, 7, 3]") != -1, "Server must keep objective public seat order.")
+	_require(server_source.find("const PUBLIC_SEAT_JOIN_ORDER = TABLE_SEAT_JOIN_ORDER_9P") != -1, "Public auto-seat must alias the canonical table order.")
 	_require(server_source.find("return seatIndex;") != -1, "Server sitDownWithWallet must return the accepted seat.")
 	_require(server_source.find("seat_index: acceptedSeatIndex") != -1, "sit_down_result must report the accepted seat index.")
 

@@ -27,6 +27,7 @@ const BET_MARKER_OFFSETS := {
 	8: Vector2(-154.0, 48.0),
 	9: Vector2(-154.0, 48.0),
 }
+const BET_MARKER_ANCHORS_BY_SEAT := BET_MARKER_OFFSETS
 
 var _is_empty: bool = true
 var _is_local_player: bool = false
@@ -406,8 +407,8 @@ func _bet_marker_position(card_pos: Vector2) -> Vector2:
 
 
 func _bet_marker_offset() -> Vector2:
-	if BET_MARKER_OFFSETS.has(_seat_id):
-		return BET_MARKER_OFFSETS[_seat_id]
+	if BET_MARKER_ANCHORS_BY_SEAT.has(_seat_id):
+		return BET_MARKER_ANCHORS_BY_SEAT[_seat_id]
 	var marker_size := Vector2(142.0, 32.0)
 	var card_size := Vector2(308.0, 119.0)
 	var top_gap: float = 58.0

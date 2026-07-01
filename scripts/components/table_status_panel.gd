@@ -9,6 +9,7 @@ var _rows_container: VBoxContainer
 var _pills := {}
 var is_left_panel := false
 var _seat_order: Array[int] = []
+const TABLE_SEAT_JOIN_ORDER_9P := [5, 8, 2, 6, 4, 9, 1, 7, 3]
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
@@ -98,8 +99,8 @@ func set_status(snapshot: Dictionary) -> void:
 			active_players.append(seat)
 			active_seats.append(seat_index)
 			
-	# Keep the player status list stable: fixed seat_index order, never turn-order.
-	active_players.sort_custom(func(a, b): return int(a.get("seat_index", a.get("seat_id", 0))) < int(b.get("seat_index", b.get("seat_id", 0))))
+	# Keep the player status list stable: fixed objective seat join order, never turn-order.
+	active_players.sort_custom(func(a, b): return _seat_order_rank(int(a.get("seat_index", a.get("seat_id", 0)))) < _seat_order_rank(int(b.get("seat_index", b.get("seat_id", 0)))))
 	
 	# Remove pills for seats that are no longer active/present
 	for seat_idx in _pills.keys():
@@ -130,6 +131,10 @@ func set_status(snapshot: Dictionary) -> void:
 		var pill = _pills[seat_idx]
 		if pill.get_index() != i:
 			_rows_container.move_child(pill, i)
+
+func _seat_order_rank(seat_index: int) -> int:
+	var rank := TABLE_SEAT_JOIN_ORDER_9P.find(seat_index)
+	return rank if rank != -1 else 999 + seat_index
 
 func set_action_timer(turn_seat_index: int, remaining_seconds: int, total_seconds: int, active: bool) -> void:
 	for seat_idx in _pills.keys():
@@ -363,7 +368,7 @@ class PlayerRowPill extends PanelContainer:
 		chips_label.text = _format_chips(chips)
 		
 		# Determine target visual styling
-		var target_x: float = 0.0
+		var target_x: float = _active_offset() if is_turn else 0.0
 		var target_bg: Color
 		var target_border: Color
 		var target_border_width := 1
@@ -431,7 +436,7 @@ class PlayerRowPill extends PanelContainer:
 				if _tween:
 					_tween.kill()
 				_tween = create_tween().set_parallel(true)
-				position.x = target_x
+				_tween.tween_property(self, "position:x", target_x, duration)
 				_tween.tween_property(style_box, "bg_color", target_bg, 0.1 if is_turn else duration)
 				_tween.tween_property(style_box, "border_color", target_border, duration)
 				style_box.set_border_width_all(target_border_width)
@@ -472,7 +477,7 @@ class PlayerRowPill extends PanelContainer:
 		action_label.modulate.a = 1.0
 		
 		# Maintain position X alignment when not tweening
-		var target_x: float = 0.0
+		var target_x: float = _active_offset() if is_turn else 0.0
 		if _tween == null or not _tween.is_valid() or not _tween.is_running():
 			if position.x != target_x:
 				position.x = target_x
