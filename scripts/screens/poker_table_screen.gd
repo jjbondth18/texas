@@ -45,6 +45,7 @@ const SERVER_UI_SLOW_PLAYBACK_WARNING_MS := 16
 const SERVER_UI_WARNING_THROTTLE_MS := 1000
 const SHOWDOWN_REVEAL_HOLD_SECONDS := 5.0
 const FOLD_WIN_HOLD_SECONDS := 2.5
+const EXIT_SETTLEMENT_TIMEOUT_SECONDS := 6.0
 const DEV_SIMULATED_START_BLOCK_MESSAGE := "Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot."
 
 var snapshot := {}
@@ -129,6 +130,7 @@ var _session_unlock_avatar: TextureRect
 var _session_unlock_label: Label
 var _session_play_again_hint_label: Label
 var _session_play_again_button: Button
+var _exit_confirm_dialog: ConfirmationDialog
 var _hand_result_banner: PanelContainer
 var _hand_result_title_label: Label
 var _hand_result_body_label: Label
@@ -174,6 +176,7 @@ var _server_visible_community_count := -1
 var _server_waiting_for_action_ack := false
 var _server_cash_out_pending_return := false
 var _server_leave_return_pending := false
+var _server_exit_settlement_timeout_token := 0
 var _server_last_slow_ui_warning_msec := 0
 var _server_visible_hand_id := 0
 var _server_last_snapshot_debug_signature := ""
@@ -217,7 +220,7 @@ func _input(event: InputEvent) -> void:
 			return
 		match event.keycode:
 			KEY_ESCAPE:
-				_return_home()
+				_request_exit_table()
 			KEY_1:
 				_load_phase("preflop")
 			KEY_2:
@@ -259,6 +262,7 @@ func _build_scene() -> void:
 	_build_session_result_panel()
 	_build_hand_result_banner()
 	_build_public_waiting_panel()
+	_build_exit_confirm_dialog()
 	
 	# Setup seats map from static scene nodes
 	_seats[1] = $TableSurfaceLayer/TableLayer/SeatLayer/Seat1Panel
@@ -277,7 +281,7 @@ func _build_scene() -> void:
 	_build_animation_layer()
 	
 	# Connect signals
-	_exit_button.pressed.connect(_return_home)
+	_exit_button.pressed.connect(_request_exit_table)
 	_exit_button.visible = false
 	_action_bar.action_pressed.connect(_on_action_pressed)
 	
@@ -299,6 +303,23 @@ func _build_scene() -> void:
 	_local_cards_root = _action_bar.local_cards_root
 	
 	_layout()
+
+
+func _build_exit_confirm_dialog() -> void:
+	_exit_confirm_dialog = ConfirmationDialog.new()
+	_exit_confirm_dialog.name = "ExitTableConfirmDialog"
+	_exit_confirm_dialog.title = "Exit Table?"
+	_exit_confirm_dialog.dialog_text = "Exit Table?"
+	_exit_confirm_dialog.exclusive = true
+	_exit_confirm_dialog.min_size = Vector2(560, 220)
+	_exit_confirm_dialog.confirmed.connect(_confirm_exit_table)
+	add_child(_exit_confirm_dialog)
+	var ok_button: Button = _exit_confirm_dialog.get_ok_button()
+	if ok_button != null:
+		ok_button.text = "Exit Table"
+	var cancel_button: Button = _exit_confirm_dialog.get_cancel_button()
+	if cancel_button != null:
+		cancel_button.text = "Cancel"
 
 
 func _build_hand_result_banner() -> void:
@@ -667,6 +688,8 @@ func _on_server_wallet_synced(wallet: Dictionary) -> void:
 	if _add_chips_panel != null and _add_chips_panel.visible:
 		_refresh_add_chips_panel_content()
 	if _server_cash_out_pending_return:
+		var returned_chips: int = int(wallet.get("chips", 0))
+		_append_session_log("Exit settlement confirmed. Server wallet: %s chips." % _format_chips(returned_chips))
 		_complete_return_home()
 
 func _on_server_daily_login_awarded(chips: int) -> void:
@@ -898,8 +921,14 @@ func _on_server_error(message: String) -> void:
 	_server_last_error = message
 	_server_waiting_for_action_ack = false
 	if _server_leave_return_pending:
-		_append_session_log("Server leave warning: %s" % message)
-		call_deferred("_complete_return_home")
+		_server_leave_return_pending = false
+		_server_cash_out_pending_return = false
+		_server_exit_settlement_timeout_token += 1
+		_set_exit_confirm_pending(false)
+		_append_session_log("Exit settlement failed: %s" % message)
+		if _exit_confirm_dialog != null:
+			_exit_confirm_dialog.dialog_text = "Exit settlement failed:\n%s" % message
+			_exit_confirm_dialog.popup_centered()
 		return
 	_server_cash_out_pending_return = false
 	if _server_sit_down_pending and not _server_seat_confirmed:
@@ -3282,7 +3311,7 @@ func _build_session_result_panel() -> void:
 		home_button.name = "BackHomeButton"
 		home_button.text = "EXIT TABLE"
 		home_button.custom_minimum_size = Vector2(190, 48)
-		home_button.pressed.connect(_return_home)
+		home_button.pressed.connect(_request_exit_table)
 		row.add_child(home_button)
 	else:
 		_session_result_text = _session_result_panel.find_child("SessionResultText", true, false) as RichTextLabel
@@ -3794,30 +3823,105 @@ func _capture_and_quit() -> void:
 
 func _return_home() -> void:
 	_cancel_pending_next_hand_timer()
+	_request_exit_table()
+
+func _request_exit_table() -> void:
+	_cancel_pending_next_hand_timer()
+	if _server_leave_return_pending:
+		return
+	if _exit_confirm_dialog == null:
+		_confirm_exit_table()
+		return
+	_exit_confirm_dialog.title = "Exit Table?"
+	_exit_confirm_dialog.dialog_text = _exit_confirm_dialog_text()
+	_set_exit_confirm_pending(false)
+	_exit_confirm_dialog.popup_centered()
+
+func _exit_confirm_dialog_text() -> String:
+	if _local_public_warmup_active:
+		return "This is practice only. Your wallet will not be affected. Leaving will also leave the public room."
+	if server_authoritative:
+		if not _server_seat_confirmed or _server_local_seat_index < 0:
+			return "Seat is not confirmed yet. Leaving will return to the lobby without table settlement."
+		if _is_server_public_before_official_hand():
+			return "You have not started an official hand. Your table chips will be returned to your wallet."
+		if _is_authoritative_hand_in_progress():
+			return "You will fold this hand. Chips already committed to the pot stay in the pot. Your remaining table stack will be cashed out."
+		return "Your current table stack will be cashed out to your wallet."
+	if _table_session != null and _table_session.is_ai_warmup:
+		return "This is practice only. Your wallet will not be affected."
+	if _table_flow.table_state == TexasTableFlowScript.WAITING or _table_flow.table_state == TexasTableFlowScript.HAND_OVER:
+		return "Your current table stack will be cashed out to your wallet."
+	return "You will fold this hand. Chips already committed to the pot stay in the pot. Your remaining table stack will be cashed out."
+
+func _confirm_exit_table() -> void:
+	_cancel_pending_next_hand_timer()
 	if _local_public_warmup_active:
 		_stop_local_public_warmup()
 	if server_authoritative:
 		if _server_leave_return_pending:
 			return
 		_server_leave_return_pending = true
-		if _poker_ws_client != null and _server_connected:
+		_set_exit_confirm_pending(true)
+		if _poker_ws_client != null and _server_connected and _server_seat_confirmed and _server_local_seat_index >= 0:
 			_server_cash_out_pending_return = true
 			_append_session_log("Leaving table...")
 			_send_server_message(_poker_ws_client.cash_out(), "cash_out")
-			call_deferred("_complete_return_home_after_server_leave_grace")
+			_start_exit_settlement_timeout()
+			return
+		if _server_seat_confirmed:
+			_server_leave_return_pending = false
+			_server_cash_out_pending_return = false
+			_set_exit_confirm_pending(false)
+			_on_server_error("Cannot exit safely: authoritative server is not connected.")
 			return
 		call_deferred("_complete_return_home")
 		return
 	_complete_return_home()
 
-func _complete_return_home_after_server_leave_grace() -> void:
-	await get_tree().create_timer(0.45).timeout
-	if _server_leave_return_pending:
-		_complete_return_home()
+func _is_server_public_before_official_hand() -> bool:
+	if not server_authoritative:
+		return false
+	return not bool(_server_latest_ui_snapshot.get("official_hand_started", false))
+
+func _is_authoritative_hand_in_progress() -> bool:
+	var state: String = str(_server_latest_ui_snapshot.get("hand_state", _server_latest_ui_snapshot.get("table_state", "")))
+	return ["preflop", "flop", "turn", "river", "showdown", "playing"].has(state)
+
+func _set_exit_confirm_pending(pending: bool) -> void:
+	if _exit_confirm_dialog == null:
+		return
+	var ok_button: Button = _exit_confirm_dialog.get_ok_button()
+	if ok_button != null:
+		ok_button.disabled = pending
+	var cancel_button: Button = _exit_confirm_dialog.get_cancel_button()
+	if cancel_button != null:
+		cancel_button.disabled = pending
+
+func _start_exit_settlement_timeout() -> void:
+	_server_exit_settlement_timeout_token += 1
+	var token: int = _server_exit_settlement_timeout_token
+	call_deferred("_handle_exit_settlement_timeout", token)
+
+func _handle_exit_settlement_timeout(token: int) -> void:
+	await get_tree().create_timer(EXIT_SETTLEMENT_TIMEOUT_SECONDS).timeout
+	if token != _server_exit_settlement_timeout_token:
+		return
+	if not _server_leave_return_pending:
+		return
+	_server_leave_return_pending = false
+	_server_cash_out_pending_return = false
+	_set_exit_confirm_pending(false)
+	_append_session_log("Exit settlement timed out. Please retry; wallet was not assumed settled.")
+	if _exit_confirm_dialog != null:
+		_exit_confirm_dialog.dialog_text = "Exit settlement timed out.\nPlease retry so the server can cash out your table stack."
+		_exit_confirm_dialog.popup_centered()
 
 func _complete_return_home() -> void:
 	_server_leave_return_pending = false
 	_server_cash_out_pending_return = false
+	_server_exit_settlement_timeout_token += 1
+	_set_exit_confirm_pending(false)
 	if _poker_ws_client != null:
 		_poker_ws_client.close()
 	if not server_authoritative:
@@ -4199,7 +4303,7 @@ func _configure_table_flow_from_launch_context() -> void:
 	_top_bar_root.add_child(right_row)
 
 	var top_exit := _top_control_button("EXIT TABLE", Vector2(180, 56))
-	top_exit.pressed.connect(_return_home)
+	top_exit.pressed.connect(_request_exit_table)
 	right_row.add_child(top_exit)
 	right_row.add_child(_top_control_button("⚙", Vector2(56, 56)))
 	right_row.add_child(_top_control_button("♪", Vector2(56, 56)))
@@ -4300,7 +4404,7 @@ func _build_top_bar_container_layout() -> void:
 	right_container.visible = false
 
 	var top_exit := _top_control_button("EXIT TABLE", Vector2(180, 56))
-	top_exit.pressed.connect(_return_home)
+	top_exit.pressed.connect(_request_exit_table)
 	right_container.add_child(top_exit)
 	right_container.add_child(_top_control_button("⚙", Vector2(56, 56)))
 	right_container.add_child(_top_control_button("♪", Vector2(56, 56)))
@@ -4346,7 +4450,7 @@ func _build_top_action_bar() -> void:
 
 	_clear_children(_top_right_action_bar)
 	var exit_button := _top_control_button("EXIT TABLE", Vector2(180, 56))
-	exit_button.pressed.connect(_return_home)
+	exit_button.pressed.connect(_request_exit_table)
 	_top_right_action_bar.add_child(exit_button)
 	_start_exit_button_pulse(exit_button)
 

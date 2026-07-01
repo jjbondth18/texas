@@ -17,6 +17,18 @@ export interface WalletAdjustment {
   now?: string;
 }
 
+export interface WalletTransactionRecord {
+  id: string;
+  player_id: string;
+  currency: WalletCurrency;
+  amount: number;
+  reason: string;
+  balance_after: number;
+  related_room_id?: string | null;
+  related_hand_id?: string | null;
+  created_at: string;
+}
+
 export class WalletRepository {
   constructor(private readonly db: Database.Database) {}
 
@@ -83,6 +95,28 @@ export class WalletRepository {
       ? (this.db.prepare("SELECT COUNT(*) AS count FROM wallet_transactions WHERE reason = ?").get(reason) as { count: number } | undefined)
       : (this.db.prepare("SELECT COUNT(*) AS count FROM wallet_transactions").get() as { count: number } | undefined);
     return Number(row?.count ?? 0);
+  }
+
+  transactionsForPlayer(playerId: string, limit = 100): WalletTransactionRecord[] {
+    return this.db
+      .prepare(
+        "SELECT id, player_id, currency, amount, reason, balance_after, related_room_id, related_hand_id, created_at FROM wallet_transactions WHERE player_id = ? ORDER BY created_at DESC LIMIT ?",
+      )
+      .all(playerId, Math.max(1, Math.floor(limit))) as WalletTransactionRecord[];
+  }
+
+  auditWalletTransactions(playerId: string): { unmatchedBuyIns: WalletTransactionRecord[] } {
+    const transactions = this.transactionsForPlayer(playerId, 500).slice().reverse();
+    const exits = new Set(["left_before_official_hand", "table_cash_out", "session_complete_cash_out", "disconnected_cash_out", "refunded_sit_down_failed"]);
+    const unmatchedBuyIns: WalletTransactionRecord[] = [];
+    for (const transaction of transactions) {
+      if (transaction.reason === "table_buy_in") unmatchedBuyIns.push(transaction);
+      if (exits.has(transaction.reason) && transaction.related_room_id) {
+        const index = unmatchedBuyIns.findIndex((buyIn) => buyIn.related_room_id === transaction.related_room_id);
+        if (index >= 0) unmatchedBuyIns.splice(index, 1);
+      }
+    }
+    return { unmatchedBuyIns };
   }
 
   totalChips(): number {

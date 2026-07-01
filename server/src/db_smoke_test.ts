@@ -82,10 +82,10 @@ const afterCashOut = manager.adminSnapshot(false);
 if (Number(afterCashOut.total_wallet_chips) !== 9500) throw new Error("cash_out should refund remaining table chips");
 if (room.table.getSeat(0)?.playerId !== "") throw new Error("cash_out should clear the seat");
 if (countRows("wallet_transactions", "reason = 'left_before_official_hand' AND amount = 5500") !== 1) throw new Error("pre-hand cash out should write left_before_official_hand wallet transaction");
-expectThrows("not_seated", () => manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id }));
+manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id });
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 9500) throw new Error("repeat cash_out should not double refund");
 
-const handRoom = manager.createRoom();
+const handRoom = manager.createRoom({ isPublic: false });
 manager.handle("db_smoke_player", { type: "join_room", room_id: handRoom.id });
 manager.handle("db_smoke_player", { type: "sit_down", room_id: handRoom.id, seat_index: 0 });
 manager.handle("db_smoke_player", { type: "ready", room_id: handRoom.id, ready: true });
@@ -97,8 +97,14 @@ manager.handle("db_smoke_second", { type: "ready", room_id: handRoom.id, ready: 
 const beforeHandWalletTotal = Number(manager.adminSnapshot(false).total_wallet_chips);
 manager.handle("db_smoke_player", { type: "start_hand", room_id: handRoom.id });
 expectThrows("cannot_add_chips_during_hand", () => manager.handle("db_smoke_player", { type: "add_table_chips", room_id: handRoom.id, amount: 100 }));
-expectThrows("cannot_cash_out_during_hand", () => manager.handle("db_smoke_player", { type: "cash_out", room_id: handRoom.id }));
-if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeHandWalletTotal) throw new Error("active hand table chip operations should not change wallet");
+const leavingStack = handRoom.table.getSeat(0)?.chips ?? 0;
+manager.handle("db_smoke_player", { type: "cash_out", room_id: handRoom.id });
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeHandWalletTotal + leavingStack) throw new Error("active hand cash_out should refund only remaining uncommitted stack");
+if (handRoom.table.getSeat(0)?.playerId !== "") throw new Error("active hand cash_out should clear the exited seat after settlement");
+if (countRows("wallet_transactions", "reason = 'table_cash_out' AND amount = " + leavingStack) !== 1) throw new Error("active hand cash_out should write table_cash_out wallet transaction");
+manager.handle("db_smoke_player", { type: "cash_out", room_id: handRoom.id });
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeHandWalletTotal + leavingStack) throw new Error("repeat active hand cash_out should not double refund");
+if (manager.walletAudit("db_smoke_player").unmatchedBuyIns.length !== 0) throw new Error("wallet audit should find no unmatched buy-in after cash outs");
 
 const poor = manager.connect();
 manager.handle(poor.id, { type: "hello", player_id: "db_smoke_poor", name: "DB Smoke Poor" });

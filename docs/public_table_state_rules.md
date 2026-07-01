@@ -58,6 +58,10 @@ At `session_complete`, the client shows the Session Complete panel with final st
 
 If the final hand ends in showdown, the hand result remains visible for the normal result delay before the Session Complete panel appears.
 
+`EXIT TABLE` always opens a confirmation dialog. The client sends server `cash_out` and waits for a wallet snapshot before returning home. If the server errors or settlement times out, the player stays on the table and the error is shown instead of silently dropping the buy-in.
+
+When a player exits during a formal hand, the server folds that player, leaves committed chips in the pot, cashes out only the remaining table stack, and clears the seat after the hand can be settled safely.
+
 The dev-only simulated real join button is only for testing warm-up interruption and Ready UI. A dev simulated player is seated as a real-looking public seat, but it has no controller and the server rejects formal public hand start while it is present. Use a second real client for an actual public hand test.
 
 Formal public hands use a server action timeout. If a player does not act before the timeout, the server auto-checks when legal, otherwise auto-folds, logs the timeout, broadcasts a snapshot, and schedules the next turn.

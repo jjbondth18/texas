@@ -2,7 +2,8 @@ import type { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
 import type { ClientMessage, PublicTableSnapshot, ServerMessage } from "./protocol.js";
 import { applyPlayerAction, legalActions, processAutomaticTurns } from "./betting_engine.js";
-import { TableState, type Player } from "./table_state.js";
+import { settleHand } from "./showdown_engine.js";
+import { TableState, type Player, type Seat } from "./table_state.js";
 import { getDatabase } from "./db/database.js";
 import { AvatarRepository } from "./db/avatar_repository.js";
 import { LoginBonusRepository } from "./db/login_bonus_repository.js";
@@ -77,6 +78,7 @@ export class RoomManager {
   private nextPlayerId = 1;
   private nextRoomId = 1;
   private recordedHandResults = new Set<string>();
+  private settledPlayerExits = new Set<string>();
   private readonly db = getDatabase();
   private readonly players = new PlayerRepository(this.db);
   private readonly identities = new IdentityRepository(this.db);
@@ -274,6 +276,7 @@ export class RoomManager {
         throw new Error(`unsupported message: ${message.type}`);
     }
     this.recordHandResults(room);
+    this.clearSettledExitedSeats(room);
     this.rescheduleActionTimer(room);
     this.updatePublicRoomProgress(room);
     this.broadcast(room);
@@ -408,6 +411,10 @@ export class RoomManager {
       }),
       recent_server_logs: this.serverLogs.slice(-50),
     };
+  }
+
+  walletAudit(playerId: string): ReturnType<WalletRepository["auditWalletTransactions"]> {
+    return this.wallets.auditWalletTransactions(playerId);
   }
 
   private joinRoom(client: Client, roomId: string): void {
@@ -595,6 +602,11 @@ export class RoomManager {
   }
 
   private sitDownWithWallet(room: Room, client: Client, requestedSeatIndex: number, payloadPlayerId = ""): number {
+    const existingSeat = room.table.getSeatByPlayer(client.id);
+    if (existingSeat) {
+      this.recordLog(`sit_down idempotent room_id=${room.id} connection_player_id=${client.id} seat_index=${existingSeat.seatIndex}`);
+      return existingSeat.seatIndex;
+    }
     if (this.occupiedSeatCount(room) >= room.maxPlayers) throw new Error("table_full");
     const seat = requestedSeatIndex < 0 ? this.firstAvailablePublicSeat(room) : room.table.getSeat(requestedSeatIndex);
     if (!seat || seat.playerId) throw new Error("seat is not available");
@@ -893,14 +905,77 @@ export class RoomManager {
 
   private cashOut(room: Room, client: Client): void {
     const seat = room.table.getSeatByPlayer(client.id);
-    if (!seat) throw new Error("not_seated");
+    const settlementKey = `${room.id}:${client.id}`;
+    if (!seat) {
+      if (this.settledPlayerExits.has(settlementKey)) {
+        this.sendWalletSnapshot(client, room.id);
+        return;
+      }
+      throw new Error("not_seated");
+    }
     if (room.hostInLocalWarmup === client.id) room.hostInLocalWarmup = "";
-    if (!room.table.canMoveTableChips()) throw new Error("cannot_cash_out_during_hand");
-    const result = room.table.cashOut(client.id);
-    const reason = room.isPublic && !room.officialHandStarted ? "left_before_official_hand" : "table_cash_out";
-    const wallet = this.wallets.refundTableChips(client.id, result.amount, { reason, relatedRoomId: room.id });
-    this.recordLog(`Wallet refund: reason=${reason} player_id=${client.id} amount=${result.amount} wallet_after=${wallet.chips} room_id=${room.id}`);
+    const amount = Math.max(0, Math.floor(seat.chips));
+    const reason = this.exitSettlementReason(room);
+    if (this.settledPlayerExits.has(settlementKey)) {
+      this.recordLog(`Wallet refund skipped duplicate: reason=${reason} player_id=${client.id} room_id=${room.id}`);
+      this.sendWalletSnapshot(client, room.id);
+      return;
+    }
+    this.settledPlayerExits.add(settlementKey);
+    if (this.isCashOutDuringActiveHand(room)) {
+      this.foldAndZeroLeavingSeat(room, seat);
+    } else {
+      room.table.cashOut(client.id);
+    }
+    const wallet = this.wallets.refundTableChips(client.id, amount, { reason, relatedRoomId: room.id, relatedHandId: room.table.handId > 0 ? String(room.table.handId) : undefined });
+    this.recordLog(`Wallet refund: reason=${reason} player_id=${client.id} amount=${amount} wallet_after=${wallet.chips} room_id=${room.id}`);
     this.sendWalletSnapshot(client, room.id);
+    room.clients.delete(client.id);
+    client.roomId = undefined;
+  }
+
+  private exitSettlementReason(room: Room): string {
+    if (room.sessionComplete || room.table.phase === "session_complete") return "session_complete_cash_out";
+    if (room.isPublic && !room.officialHandStarted) return "left_before_official_hand";
+    return "table_cash_out";
+  }
+
+  private isCashOutDuringActiveHand(room: Room): boolean {
+    return isActionPhase(room.table.phase) || room.table.phase === "showdown";
+  }
+
+  private foldAndZeroLeavingSeat(room: Room, seat: Seat): void {
+    const playerId = seat.playerId;
+    const playerName = seat.name;
+    const wasCurrentTurn = room.table.currentTurnSeat === seat.seatIndex;
+    seat.chips = 0;
+    seat.ready = false;
+    seat.disconnected = true;
+    if (seat.status === "playing" || seat.status === "all_in") {
+      seat.status = "folded";
+      seat.acted = true;
+      seat.lastAction = "fold";
+      seat.lastActionAmount = 0;
+      room.table.addAction({
+        type: "player_action",
+        seat_id: seat.seatIndex,
+        seat_index: seat.seatIndex,
+        player_name: playerName,
+        action: "fold",
+        amount: 0,
+        message: `${playerName} leaves during the hand and auto-folds.`,
+      });
+    }
+    room.table.addLog(`${playerName} leaves the table. Remaining stack is cashed out; committed chips stay in the pot.`);
+    if (room.table.liveSeats().length <= 1) {
+      settleHand(room.table);
+      return;
+    }
+    if (wasCurrentTurn) {
+      room.table.currentTurnSeat = room.table.nextActionableSeat(seat.seatIndex);
+      processAutomaticTurns(room.table);
+    }
+    this.recordLog(`active_hand_exit_auto_fold room_id=${room.id} player_id=${playerId} seat=${seat.seatIndex}`);
   }
 
   private recordHandResults(room: Room): void {
@@ -913,6 +988,16 @@ export class RoomManager {
       const seat = room.table.getSeat(result.seat_index);
       if (!seat?.playerId) continue;
       this.results.recordHandResult(room.id, room.table.handId, seat.playerId, result.delta, JSON.stringify(result));
+    }
+  }
+
+  private clearSettledExitedSeats(room: Room): void {
+    if (this.isCashOutDuringActiveHand(room)) return;
+    for (const seat of room.table.seats) {
+      if (!seat.playerId) continue;
+      if (this.settledPlayerExits.has(`${room.id}:${seat.playerId}`)) {
+        room.table.leaveSeat(seat.playerId);
+      }
     }
   }
 

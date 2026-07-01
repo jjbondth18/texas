@@ -63,6 +63,19 @@ Gem Match remains a reserved server-required mode and does not enter the launch 
 - Training: AI practice mode using practice chips; results do not affect account balance or ranked stats.
 - Gem Match: future secure server mode; currently reserved and unavailable.
 
+## Server Table Exit Settlement
+
+Server-authoritative public tables use a wallet -> table stack -> wallet loop.
+
+- A successful server `sit_down` deducts the table buy-in from wallet with reason `table_buy_in`.
+- Leaving before the first official public hand starts refunds the current table stack with reason `left_before_official_hand`.
+- Leaving after official play has started cashes out the current uncommitted table stack with reason `table_cash_out`.
+- Leaving at session complete cashes out the final table stack with reason `session_complete_cash_out`.
+- Leaving during an active hand auto-folds the seat. Chips already committed to the pot remain in the pot; only the remaining table stack is returned.
+- Training and local AI warm-up are practice-only and never write wallet transactions for their wins or losses.
+
+See `docs/table_exit_settlement_policy.md` for the full policy.
+
 ## Quick vs Table Browser vs Friends Room
 
 Quick Play is the fast path. It keeps lightweight stake selection while avoiding explicit manual room creation flow.
