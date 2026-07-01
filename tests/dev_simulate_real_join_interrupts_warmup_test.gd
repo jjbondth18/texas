@@ -7,14 +7,15 @@ func _init() -> void:
 	var server_source := FileAccess.get_file_as_string("res://server/src/room_manager.ts")
 	var db_smoke_source := FileAccess.get_file_as_string("res://server/src/db_smoke_test.ts")
 
-	assert(table_source.find("DEV: SIMULATE REAL PLAYER JOIN") != -1)
+	assert(table_source.find("DEV: SIMULATE REAL PLAYER JOIN") == -1)
 	assert(table_source.find("func _should_show_dev_simulate_real_join()") != -1)
 	assert(table_source.find("OS.is_debug_build()") != -1)
 	assert(table_source.find("_local_public_warmup_active") != -1)
-	assert(table_source.find("_server_local_seat_index != 0") != -1)
+	assert(table_source.find("_server_local_seat_index < 0") != -1)
 	assert(table_source.find("_real_public_player_count_from_flow() == 1") != -1)
 	assert(table_source.find("_poker_ws_client.dev_simulate_real_join(_server_room_id, \"DevPlayer2\")") != -1)
 	assert(table_source.find("_return_from_local_warmup_to_public(next_snapshot)") != -1)
+	assert(table_source.find("_top_control_button(\"DEV: SIMULATE REAL PLAYER JOIN\"") == -1)
 
 	assert(protocol_source.find("const DEV_SIMULATE_REAL_JOIN := \"dev_simulate_real_join\"") != -1)
 	assert(protocol_source.find("static func dev_simulate_real_join(room_id: String, player_name: String = \"DevPlayer2\")") != -1)

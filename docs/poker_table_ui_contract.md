@@ -12,7 +12,7 @@ All 9-player table flows use this join order:
 
 The first player sits at seat 5. The second player or AI sits at seat 8. The third sits at seat 2. The fourth sits at seat 6.
 
-This applies to public rooms, local public warm-up AI, training AI, private room players, Player Status rows, SeatCard rendering, and BetMarker rendering.
+This applies to public rooms, local public warm-up AI, training AI, private room players, SeatCard rendering, and BetMarker rendering.
 
 ## Objective Seats
 
@@ -32,6 +32,8 @@ Do not calculate BetMarker positions from SeatCard label width, avatar position,
 
 ## PlayerStatus Active Row
 
-PlayerStatus rows use the fixed 9-player seat join order. Turn changes may update highlight and apply a small horizontal active offset toward the table.
+PlayerStatus rows use ascending `seat_index` order: 1 through 9. This is intentionally different from the table join order. If occupied seats are 5, 8, 2, and 6, the left status list renders 2, 5, 6, 8.
+
+Turn changes may update highlight and apply a small horizontal active offset toward the table.
 
 Rows must not reorder, resize, or rebuild just because the current turn changes. `current_turn_seat = -1` returns all rows to their neutral position.

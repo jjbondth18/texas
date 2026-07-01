@@ -40,7 +40,7 @@ The returned public room shows only real players and moves to `ready_to_start` w
 
 The host starts the formal public hand through the server authoritative `start_hand` path. The server rejects non-host starts with `not_host`, rejects starts below two real players, and never includes warm-up AI in the official hand.
 
-The dev-only `DEV: SIMULATE REAL PLAYER JOIN` button only validates the interruption path. The simulated seat is not AI and is not warm-up, but it is also not controlled by a real client. The server therefore rejects `START PUBLIC HAND` while that dev simulated player is seated:
+The dev simulated real-join command only validates the interruption path and is hidden from the normal poker table UI. The simulated seat is not AI and is not warm-up, but it is also not controlled by a real client. The server therefore rejects `START PUBLIC HAND` while that dev simulated player is seated:
 
 `Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot.`
 

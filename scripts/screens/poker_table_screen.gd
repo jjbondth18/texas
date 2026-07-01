@@ -2765,15 +2765,14 @@ func _refresh_public_waiting_controls() -> void:
 	var local_ready: bool = _is_local_public_ready()
 	var ready_text: String = "UNREADY" if local_ready else "READY"
 	var start_block_reason := _public_start_block_reason()
-	var should_show_dev_join := _should_show_dev_simulate_real_join()
 	if _ai_warmup_button != null:
 		_ai_warmup_button.text = ready_text if should_show_ready else "START AI WARM-UP"
 		_ai_warmup_button.tooltip_text = start_block_reason if start_block_reason != "" else ("Toggle your public room ready state." if should_show_ready else "Practice with AI while waiting for real players.")
 		_ai_warmup_button.visible = should_show or should_show_ready
 		_ai_warmup_button.disabled = not (should_show or should_show_ready)
 	if _dev_simulate_real_join_button != null:
-		_dev_simulate_real_join_button.visible = should_show_dev_join
-		_dev_simulate_real_join_button.disabled = not should_show_dev_join
+		_dev_simulate_real_join_button.visible = false
+		_dev_simulate_real_join_button.disabled = true
 	if _public_waiting_panel != null:
 		_public_waiting_panel.visible = should_show or (_server_seat_confirmed and _server_local_seat_index >= 0 and _is_public_ready_to_start_state())
 	if _public_waiting_button != null:
@@ -2887,7 +2886,7 @@ func _dev_simulate_real_player_join() -> void:
 	if _dev_simulate_real_join_button != null:
 		_dev_simulate_real_join_button.disabled = true
 	_send_server_message(_poker_ws_client.dev_simulate_real_join(_server_room_id, "DevPlayer2"), "dev_simulate_real_join %s" % _server_room_id)
-	_append_session_log("DEV: SIMULATE REAL PLAYER JOIN sent.")
+	_append_session_log("Dev simulated real join sent.")
 
 func _start_public_ai_warmup() -> void:
 	var start_block_reason := _public_start_block_reason()
@@ -4369,11 +4368,8 @@ func _build_top_action_bar() -> void:
 	ai_warmup_button.pressed.connect(_start_public_ai_warmup)
 	_top_right_action_bar.add_child(ai_warmup_button)
 
-	var dev_join_button := _top_control_button("DEV: SIMULATE REAL PLAYER JOIN", Vector2(300, 56))
-	_dev_simulate_real_join_button = dev_join_button
-	dev_join_button.tooltip_text = "Dev only: seat a simulated real player in the server public room."
-	dev_join_button.pressed.connect(_dev_simulate_real_player_join)
-	_top_right_action_bar.add_child(dev_join_button)
+	_dev_simulate_real_join_button = null
+
 
 	var add_chips_button := _top_control_button("ADD CHIPS", Vector2(150, 56))
 	_add_chips_button = add_chips_button

@@ -9,7 +9,6 @@ var _rows_container: VBoxContainer
 var _pills := {}
 var is_left_panel := false
 var _seat_order: Array[int] = []
-const TABLE_SEAT_JOIN_ORDER_9P := [5, 8, 2, 6, 4, 9, 1, 7, 3]
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
@@ -99,7 +98,7 @@ func set_status(snapshot: Dictionary) -> void:
 			active_players.append(seat)
 			active_seats.append(seat_index)
 			
-	# Keep the player status list stable: fixed objective seat join order, never turn-order.
+	# Keep the player status list stable: fixed seat-index order, never join-order or turn-order.
 	active_players.sort_custom(func(a, b): return _seat_order_rank(int(a.get("seat_index", a.get("seat_id", 0)))) < _seat_order_rank(int(b.get("seat_index", b.get("seat_id", 0)))))
 	
 	# Remove pills for seats that are no longer active/present
@@ -133,8 +132,7 @@ func set_status(snapshot: Dictionary) -> void:
 			_rows_container.move_child(pill, i)
 
 func _seat_order_rank(seat_index: int) -> int:
-	var rank := TABLE_SEAT_JOIN_ORDER_9P.find(seat_index)
-	return rank if rank != -1 else 999 + seat_index
+	return seat_index if seat_index > 0 else 999
 
 func set_action_timer(turn_seat_index: int, remaining_seconds: int, total_seconds: int, active: bool) -> void:
 	for seat_idx in _pills.keys():
