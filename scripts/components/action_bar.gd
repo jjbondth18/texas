@@ -468,7 +468,7 @@ func _layout_hand_panel() -> void:
 
 func _layout_action_panel() -> void:
 	var panel := $ControlZone
-	panel.position = Vector2(1139, 0)
+	panel.position = Vector2(1157, 0)
 	panel.size = Vector2(656, 368)
 	panel.custom_minimum_size = panel.size
 	_configure_card_depth(panel)
