@@ -260,10 +260,10 @@ func set_action_timer(remaining_seconds: int, total_seconds: int, active: bool, 
 	if not active:
 		timer_label.text = ""
 		return
-	var label := "YOUR TURN" if is_local_turn else "TURN TIMER"
+	var label: String = "YOUR TURN" if is_local_turn else "TURN TIMER"
 	timer_label.text = "%s  %ds" % [label, _turn_timer_remaining]
-	var ratio := clamp(float(_turn_timer_remaining) / float(_turn_timer_total), 0.0, 1.0)
-	var color := Color(1.0, 0.32, 0.80) if ratio <= 0.35 else Color(0.84, 0.87, 1.0)
+	var ratio: float = clamp(float(_turn_timer_remaining) / float(_turn_timer_total), 0.0, 1.0)
+	var color: Color = Color(1.0, 0.32, 0.80) if ratio <= 0.35 else Color(0.84, 0.87, 1.0)
 	timer_label.add_theme_color_override("font_color", color)
 
 

@@ -128,7 +128,7 @@ func set_action_timer(remaining_seconds: int, total_seconds: int, active: bool) 
 			_timer_caption_label.text = "ACTION TIMER"
 	if _timer_bar:
 		if active:
-			var total := max(total_seconds, 1)
+			var total: int = max(total_seconds, 1)
 			_timer_bar.value = clamp(float(max(remaining_seconds, 0)) / float(total) * 100.0, 0.0, 100.0)
 		else:
 			_timer_bar.value = 0

@@ -1849,11 +1849,11 @@ func _refresh() -> void:
 	_refresh_rule_debug_panel()
 
 func _sync_action_timer_from_snapshot(source_snapshot: Dictionary) -> void:
-	var phase := String(source_snapshot.get("phase", "waiting"))
-	var turn_seat := int(source_snapshot.get("turn_seat_index", -1))
-	var active := turn_seat >= 0 and phase in ["preflop", "flop", "turn", "river"]
-	var total_seconds := max(1, int(source_snapshot.get("turn_seconds", 15)))
-	var timer_key := "%s:%s:%s:%d:%s" % [
+	var phase: String = String(source_snapshot.get("phase", "waiting"))
+	var turn_seat: int = int(source_snapshot.get("turn_seat_index", -1))
+	var active: bool = turn_seat >= 0 and phase in ["preflop", "flop", "turn", "river"]
+	var total_seconds: int = max(1, int(source_snapshot.get("turn_seconds", 15)))
+	var timer_key: String = "%s:%s:%s:%d:%s" % [
 		String(source_snapshot.get("source_model", "")),
 		String(source_snapshot.get("hand_id", "")),
 		phase,
@@ -1879,16 +1879,16 @@ func _sync_action_timer_from_snapshot(source_snapshot: Dictionary) -> void:
 func _update_action_timer_ui() -> void:
 	if not _turn_timer_active:
 		return
-	var remaining_msec := max(_turn_timer_deadline_msec - Time.get_ticks_msec(), 0)
-	var remaining_seconds := int(ceil(float(remaining_msec) / 1000.0))
+	var remaining_msec: int = max(_turn_timer_deadline_msec - Time.get_ticks_msec(), 0)
+	var remaining_seconds: int = int(ceil(float(remaining_msec) / 1000.0))
 	_apply_action_timer_ui(remaining_seconds, _turn_timer_total_seconds, true, _turn_timer_seat_index)
 	if remaining_seconds <= 0 and not _turn_timer_timeout_fired:
 		_turn_timer_timeout_fired = true
 		_handle_local_action_timeout()
 
 func _apply_action_timer_ui(remaining_seconds: int, total_seconds: int, active: bool, turn_seat: int) -> void:
-	var local_seat := int(snapshot.get("local_seat_index", -1))
-	var is_local_turn := active and turn_seat == local_seat
+	var local_seat: int = int(snapshot.get("local_seat_index", -1))
+	var is_local_turn: bool = active and turn_seat == local_seat
 	if _action_bar != null and _action_bar.has_method("set_action_timer"):
 		_action_bar.call("set_action_timer", remaining_seconds, total_seconds, active, is_local_turn)
 	if _room_info_panel != null and _room_info_panel.has_method("set_action_timer"):
@@ -1904,18 +1904,18 @@ func _handle_local_action_timeout() -> void:
 	var turn_seat := int(snapshot.get("turn_seat_index", -1))
 	if turn_seat < 0:
 		return
-	var actions := _table_flow.get_legal_actions(turn_seat)
-	var check_action := _find_action(actions, "check")
-	var auto_action := {}
+	var actions: Array = _table_flow.get_legal_actions(turn_seat)
+	var check_action: Dictionary = _find_action(actions, "check")
+	var auto_action: Dictionary = {}
 	if not check_action.is_empty() and bool(check_action.get("enabled", true)):
 		auto_action = check_action
 	else:
 		auto_action = _find_action(actions, "fold")
 	if auto_action.is_empty():
 		return
-	var action_id := String(auto_action.get("id", "fold"))
-	var seat := _table_flow.get_seat_data(turn_seat)
-	var player_name := String(seat.get("player_name", seat.get("name", "Seat %d" % turn_seat)))
+	var action_id: String = String(auto_action.get("id", "fold"))
+	var seat: Dictionary = _table_flow.get_seat_data(turn_seat)
+	var player_name: String = String(seat.get("player_name", seat.get("name", "Seat %d" % turn_seat)))
 	_append_session_log("%s timed out. Auto-%s." % [player_name, "check" if action_id == "check" else "fold"])
 	snapshot = _table_flow_to_ui_snapshot(_table_flow.apply_player_action(turn_seat, auto_action))
 	_apply_launch_context(snapshot)
