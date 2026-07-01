@@ -23,6 +23,7 @@ const DealerLibraryScript := preload("res://scripts/data/dealer_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 const TableSessionScript := preload("res://scripts/data/table_session.gd")
 const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
+const IdentityServiceScript := preload("res://scripts/services/identity_service.gd")
 const PokerWsClientScript := preload("res://scripts/network/poker_ws_client.gd")
 const PokerProtocolScript := preload("res://scripts/network/poker_protocol.gd")
 const NetworkConfigScript := preload("res://scripts/network/network_config.gd")
@@ -578,6 +579,7 @@ func _load_server_profile_identity() -> void:
 	var profile: Dictionary = ProfileServiceScript.new().get_current_profile()
 	if profile.is_empty():
 		profile = TableLaunchContext.get_player_profile()
+	profile = IdentityServiceScript.new().apply_dev_overrides_to_profile(profile)
 	_server_local_identity_id = String(profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID))
 	if _server_local_identity_id == "":
 		_server_local_identity_id = PlayerProfileScript.DEFAULT_PLAYER_ID
@@ -616,6 +618,11 @@ func _on_server_connected() -> void:
 	_server_connected = true
 	_append_session_log("Connected to authoritative server.")
 	_append_session_log("CLIENT_BUILD_ID = \"%s\"" % CLIENT_BUILD_ID)
+	var identity: Dictionary = IdentityServiceScript.new().get_identity(ProfileServiceScript.new().get_current_profile())
+	_append_session_log("DEV IDENTITY")
+	_append_session_log("player_id=%s" % String(identity.get("external_id", "")))
+	_append_session_log("player_name=%s" % String(identity.get("display_name", "")))
+	_append_session_log("save_suffix=%s" % String(identity.get("save_suffix", "")))
 	var err := _poker_ws_client.send_hello(_server_local_player_name, _server_local_identity_id, PlayerProfileScript.get_avatar_id(ProfileServiceScript.new().get_current_profile()))
 	if err != OK:
 		_on_server_error("Failed to send hello: %s" % error_string(err))

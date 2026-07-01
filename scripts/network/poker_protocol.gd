@@ -58,6 +58,9 @@ static func hello(player_name: String = "", player_id: String = "", avatar_id: S
 		data["auth_provider"] = auth_provider
 	if external_id != "":
 		data["external_id"] = external_id
+		data["external_player_id"] = external_id
+		if auth_provider == "local_dev":
+			data["dev_player_id"] = external_id
 	if avatar_id != "":
 		data["avatar_id"] = avatar_id
 	return _message(HELLO, data)

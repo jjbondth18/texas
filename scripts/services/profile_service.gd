@@ -4,20 +4,31 @@ class_name ProfileService
 const MockDataProviderScript := preload("res://scripts/demo/mock_data_provider.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 const SaveManagerScript := preload("res://scripts/services/save_manager.gd")
+const IdentityServiceScript := preload("res://scripts/services/identity_service.gd")
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 
 static var _saved_profile: Dictionary = {}
+static var _loaded_save_suffix := ""
 static var _last_unlocked_avatar_ids: Array[String] = []
 static var _last_daily_bonus_claimed := false
 static var _server_profile_synced := false
 
 func get_current_profile() -> Dictionary:
-	if _saved_profile.is_empty():
-		_saved_profile = MockDataProviderScript.get_mock_player_profile()
+	var save_suffix: String = IdentityServiceScript.dev_save_suffix()
+	if _saved_profile.is_empty() or _loaded_save_suffix != save_suffix:
+		var loaded_profile: Dictionary = SaveManagerScript.load_profile_save(save_suffix)
+		if loaded_profile.is_empty():
+			loaded_profile = MockDataProviderScript.get_mock_player_profile()
+		_saved_profile = IdentityServiceScript.new().apply_dev_overrides_to_profile(loaded_profile)
+		_loaded_save_suffix = save_suffix
 	return _saved_profile.duplicate(true)
 
 func save_current_profile(profile: Dictionary) -> void:
-	_saved_profile = SaveManagerScript.profile_to_save_data(profile).get("player_profile", {})
+	var save_suffix: String = IdentityServiceScript.dev_save_suffix()
+	var resolved_profile: Dictionary = IdentityServiceScript.new().apply_dev_overrides_to_profile(profile)
+	_saved_profile = Dictionary(SaveManagerScript.profile_to_save_data(resolved_profile).get("player_profile", {}))
+	_loaded_save_suffix = save_suffix
+	SaveManagerScript.save_profile_save(_saved_profile, save_suffix)
 
 func apply_server_profile_snapshot(profile_snapshot: Dictionary, wallet_snapshot: Dictionary = {}, unlocked_avatar_ids: Array = [], daily_login_awarded: bool = false) -> Dictionary:
 	var profile := get_current_profile()
@@ -222,7 +233,8 @@ func get_last_unlocked_avatar_ids() -> Array[String]:
 	return _last_unlocked_avatar_ids.duplicate()
 
 static func reset_mock_profile() -> void:
-	_saved_profile = MockDataProviderScript.get_mock_player_profile()
+	_saved_profile = IdentityServiceScript.new().apply_dev_overrides_to_profile(MockDataProviderScript.get_mock_player_profile())
+	_loaded_save_suffix = IdentityServiceScript.dev_save_suffix()
 	_last_unlocked_avatar_ids.clear()
 	_last_daily_bonus_claimed = false
 	_server_profile_synced = false

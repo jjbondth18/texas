@@ -65,12 +65,20 @@ func send_message(message: Dictionary) -> int:
 	return _peer.send_text(PokerProtocolScript.encode(message))
 
 func send_hello(player_name: String = "", profile_player_id: String = "", avatar_id: String = "", auth_provider: String = "", external_id: String = "") -> int:
-	var identity: Dictionary = IdentityServiceScript.new().get_identity()
-	var resolved_name := player_name if player_name != "" else str(identity.get("display_name", ""))
-	var resolved_external_id := external_id if external_id != "" else str(identity.get("external_id", profile_player_id))
-	var resolved_provider := auth_provider if auth_provider != "" else str(identity.get("provider", "local_dev"))
-	var resolved_avatar_id := avatar_id if avatar_id != "" else str(identity.get("avatar_id", ""))
-	var compatible_player_id := profile_player_id if profile_player_id != "" else resolved_external_id
+	var profile_hint: Dictionary = {
+		"player_id": profile_player_id,
+		"name": player_name,
+		"player_name": player_name,
+		"avatar_id": avatar_id,
+		"selected_avatar_id": avatar_id,
+	}
+	var identity: Dictionary = IdentityServiceScript.new().get_identity(profile_hint)
+	var has_dev_override: bool = bool(identity.get("has_dev_override", false))
+	var resolved_name: String = str(identity.get("display_name", player_name)) if has_dev_override or player_name == "" else player_name
+	var resolved_external_id: String = external_id if external_id != "" else str(identity.get("external_id", profile_player_id))
+	var resolved_provider: String = auth_provider if auth_provider != "" else str(identity.get("provider", "local_dev"))
+	var resolved_avatar_id: String = avatar_id if avatar_id != "" else str(identity.get("avatar_id", ""))
+	var compatible_player_id: String = resolved_external_id if has_dev_override or profile_player_id == "" else profile_player_id
 	local_player_id = resolved_external_id
 	return send_message(PokerProtocolScript.hello(resolved_name, compatible_player_id, resolved_avatar_id, resolved_provider, resolved_external_id))
 
