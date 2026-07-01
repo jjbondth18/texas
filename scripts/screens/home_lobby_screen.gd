@@ -96,6 +96,7 @@ var _friends_room_context: Dictionary = {}
 var _friends_room_id_label: Label
 var _friends_room_seats_label: Label
 var _friends_room_ready_label: Label
+var _friends_room_code_input: LineEdit
 var _room_browser_list_vbox: VBoxContainer
 var _profile_avatar_rect: TextureRect
 var _profile_name_label: Label
@@ -716,16 +717,21 @@ func _render_table_creation_setup_panel(panel: PanelContainer, public_table: boo
 	var mode_note := Label.new()
 	var buy_in := int(values.get("buy_in", 10000))
 	var wallet_chips := _wallet_chips_for_public_chip_setup()
-	var can_afford_public_buy_in := not public_table or gem_selected or _can_afford_public_buy_in(buy_in)
+	var can_afford_chip_buy_in := gem_selected or _can_afford_public_buy_in(buy_in)
 	if public_table:
 		if gem_selected:
 			mode_note.text = "Gem public tables require secure server matchmaking."
-		elif not can_afford_public_buy_in:
+		elif not can_afford_chip_buy_in:
 			mode_note.text = "Not enough server wallet chips. Required: %s. Wallet: %s." % [_format_number(buy_in), _format_number(wallet_chips)]
 		else:
 			mode_note.text = "Create a public chip table with your selected stakes."
 	else:
-		mode_note.text = "Private casual room. Not listed in public tables." if not gem_selected else "Gem private rooms are reserved for future private match support."
+		if gem_selected:
+			mode_note.text = "Gem private rooms are reserved for future private match support."
+		elif not can_afford_chip_buy_in:
+			mode_note.text = "Not enough server wallet chips. Required: %s. Wallet: %s." % [_format_number(buy_in), _format_number(wallet_chips)]
+		else:
+			mode_note.text = "Private chip table. Share the room code with friends."
 	mode_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	mode_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	mode_note.custom_minimum_size = Vector2(520, 0)
@@ -745,7 +751,7 @@ func _render_table_creation_setup_panel(panel: PanelContainer, public_table: boo
 	confirm.text = "COMING SOON" if gem_selected else ("CREATE TABLE" if public_table else "CREATE ROOM")
 	confirm.custom_minimum_size = Vector2(180, 48)
 	confirm.focus_mode = Control.FOCUS_NONE
-	confirm.disabled = gem_selected or (public_table and not can_afford_public_buy_in)
+	confirm.disabled = gem_selected or not can_afford_chip_buy_in
 	confirm.mouse_default_cursor_shape = Control.CURSOR_ARROW if confirm.disabled else Control.CURSOR_POINTING_HAND
 	confirm.add_theme_font_size_override("font_size", 15)
 	confirm.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.68), Color(1.0, 0.0, 0.5, 0.85), 22))
@@ -782,15 +788,14 @@ func _add_table_setup_mode_switch(parent: VBoxContainer, public_table: bool, sel
 	)
 	switch_row.add_child(chip_button)
 
-	var gem_disabled: bool = public_table
+	var gem_disabled := true
 	var gem_button: Button = _table_setup_mode_button("GEM MATCH", selected_mode == "gem", gem_disabled)
 	gem_button.tooltip_text = "Gem public tables require secure server matchmaking." if public_table else "Gem private rooms are reserved for future private match support."
 	gem_button.pressed.connect(func() -> void:
 		if public_table:
 			_show_toast("Gem public tables require secure server matchmaking.")
 			return
-		_private_room_setup_mode = "gem"
-		_render_table_creation_setup_panel(_private_room_setup_panel, false)
+		_show_toast("Gem private rooms are reserved for future private match support.")
 	)
 	switch_row.add_child(gem_button)
 
@@ -868,7 +873,7 @@ func _add_table_setup_option_row(parent: VBoxContainer, values: Dictionary, key:
 	for option_item in options:
 		var option_value: int = int(option_item)
 		var button: Button = _table_setup_option_button(_table_setup_option_label(key, option_value), int(values.get(key, 0)) == option_value)
-		var disabled := public_table and key == "buy_in" and not _can_afford_public_buy_in(option_value)
+		var disabled := key == "buy_in" and not _can_afford_public_buy_in(option_value)
 		button.disabled = disabled
 		button.mouse_default_cursor_shape = Control.CURSOR_ARROW if disabled else Control.CURSOR_POINTING_HAND
 		if disabled:
@@ -1362,9 +1367,22 @@ func _on_avatar_catalog_received(catalog: Array) -> void:
 
 func _on_profile_server_error(message: String) -> void:
 	if message != "":
-		_show_toast("Server Profile\n%s", [message], 2.2)
+		_show_toast("Server\n%s", [_server_lobby_error_text(message)], 2.8)
 	if _is_launching_table:
 		_finish_table_launch_transition()
+
+func _server_lobby_error_text(message: String) -> String:
+	match message:
+		"room_not_found":
+			return "Room not found."
+		"table_full":
+			return "Room is full."
+		"room_not_available":
+			return "Room is no longer available."
+		"insufficient_chips":
+			return "Not enough chips for this buy-in."
+		_:
+			return message
 
 func _refresh_profile_views_from_server() -> void:
 	if _top_bar != null:
@@ -1375,6 +1393,8 @@ func _refresh_profile_views_from_server() -> void:
 		_refresh_quick_play_setup_options()
 	if _public_table_setup_panel != null and _public_table_setup_panel.visible:
 		_render_table_creation_setup_panel(_public_table_setup_panel, true)
+	if _private_room_setup_panel != null and _private_room_setup_panel.visible:
+		_render_table_creation_setup_panel(_private_room_setup_panel, false)
 
 func _show_pending_launch_error() -> void:
 	var message := TableLaunchContext.consume_pending_launch_error()
@@ -1411,21 +1431,27 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 	var big_blind := int(table_info.get("big_blind", 50))
 	var max_hands := int(table_info.get("hand_count", table_info.get("max_hands", 10)))
 	var action_time_seconds := int(table_info.get("action_time_seconds", DEFAULT_ACTION_TIME_SECONDS))
+	var server_table_type := str(table_info.get("table_type", "public_chip"))
+	var is_private_room := server_table_type in ["private_chip", "private_room", "private_casual"]
+	var launch_mode := "friends_room" if is_private_room else "quick_play"
+	var launch_table_type := "private_room" if is_private_room else "public_chip"
+	var room_code := str(table_info.get("room_code", ""))
 	if max_hands <= 0:
 		max_hands = 999
 	return {
-		"mode": "quick_play",
+		"mode": launch_mode,
 		"backend_type": "server_authoritative",
 		"local_player_profile": _player_profile.duplicate(true),
 		"table_id": room_id,
 		"room_id": room_id,
+		"room_code": room_code,
 		"seats": [],
 		"buy_in": buy_in,
 		"small_blind": small_blind,
 		"big_blind": big_blind,
 		"action_time_seconds": action_time_seconds,
 		"is_training": false,
-		"table_type": "public_chip",
+		"table_type": launch_table_type,
 		"uses_practice_chips": false,
 		"affects_account_balance": true,
 		"buy_in_deducted_from_wallet": false,
@@ -1433,12 +1459,12 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 		"requested_seat_index": requested_seat_index,
 		"ai_player_count": 0,
 		"max_hands": max_hands,
-		"waiting_for_real_players": int(table_info.get("current_players", table_info.get("seated_count", 0))) < 2,
+		"waiting_for_real_players": (not is_private_room) and int(table_info.get("current_players", table_info.get("seated_count", 0))) < 2,
 		"is_ai_warmup": false,
 		"warmup_ai_player_ids": [],
 		"table_session": {
-			"mode": "quick_play",
-			"table_type": "public_chip",
+			"mode": launch_mode,
+			"table_type": launch_table_type,
 			"uses_practice_chips": false,
 			"affects_account_balance": true,
 			"buy_in_deducted_from_wallet": false,
@@ -1449,7 +1475,7 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 			"big_blind": big_blind,
 			"max_hands": max_hands,
 			"action_time_seconds": action_time_seconds,
-			"waiting_for_real_players": int(table_info.get("current_players", table_info.get("seated_count", 0))) < 2,
+			"waiting_for_real_players": (not is_private_room) and int(table_info.get("current_players", table_info.get("seated_count", 0))) < 2,
 			"is_ai_warmup": false,
 			"warmup_ai_player_ids": [],
 		},
@@ -1641,9 +1667,30 @@ func _finish_table_launch_transition() -> void:
 	_start_bg_breathing()
 
 func _open_friends_room_lobby() -> void:
-	_friends_room_context = _local_backend.create_friends_room(_player_profile)
 	_update_friends_room_panel()
 	set_state(LobbyState.FRIENDS_ROOM)
+
+
+func _join_private_room_by_code() -> void:
+	var room_code := ""
+	if _friends_room_code_input != null:
+		room_code = _friends_room_code_input.text.strip_edges().to_upper()
+	if room_code == "":
+		_show_toast("Enter a room code.")
+		return
+	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
+		_start_table_launch_transition("Joining private room...", func() -> void:
+			_profile_ws_client.join_private_table(room_code)
+		)
+		return
+	_start_table_launch_transition("Joining private room...", func() -> void:
+		var context: Dictionary = _local_backend.join_room(room_code, _player_profile)
+		if context.is_empty():
+			_finish_table_launch_transition()
+			_show_toast("Room not found.")
+			return
+		_open_backend_table(context)
+	)
 
 
 func _confirm_public_table_setup() -> void:
@@ -1686,9 +1733,32 @@ func _confirm_private_room_setup() -> void:
 	if _private_room_setup_mode == "gem":
 		_show_toast("Gem private rooms are reserved for future private match support.")
 		return
+	var buy_in: int = int(_private_room_setup_values.get("buy_in", 20000))
+	if not _can_afford_public_buy_in(buy_in):
+		_show_toast("Not enough chips for this buy-in.")
+		_render_table_creation_setup_panel(_private_room_setup_panel, false)
+		return
 	_hide_table_creation_setup_panels()
+	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
+		_start_table_launch_transition("Creating private room...", func() -> void:
+			_profile_ws_client.create_private_table(_private_room_server_config_from_values())
+		)
+		return
 	_start_table_launch_transition("Creating private room...", func() -> void:
+		var service := ProfileServiceScript.new()
+		var buy_in_profile: Dictionary = service.deduct_table_buy_in(buy_in)
+		if buy_in_profile.is_empty():
+			_finish_table_launch_transition()
+			_show_toast("Not enough wallet chips.")
+			return
+		_player_profile = buy_in_profile
+		if _top_bar != null:
+			_top_bar.configure(_player_profile)
 		_friends_room_context = _local_backend.create_friends_room(_player_profile, _private_room_config_from_values())
+		_friends_room_context["buy_in_deducted_from_wallet"] = true
+		var table_session: Dictionary = Dictionary(_friends_room_context.get("table_session", {}))
+		table_session["buy_in_deducted_from_wallet"] = true
+		_friends_room_context["table_session"] = table_session
 		_open_backend_table(_friends_room_context)
 	)
 
@@ -1713,6 +1783,8 @@ func _public_table_config_from_values(values: Dictionary) -> Dictionary:
 
 func _private_room_config_from_values() -> Dictionary:
 	return {
+		"table_type": "private_room",
+		"currency": "chip",
 		"buy_in": int(_private_room_setup_values.get("buy_in", 20000)),
 		"small_blind": int(_private_room_setup_values.get("small_blind", 50)),
 		"big_blind": int(_private_room_setup_values.get("big_blind", 100)),
@@ -1720,6 +1792,16 @@ func _private_room_config_from_values() -> Dictionary:
 		"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 		"max_players": int(_private_room_setup_values.get("max_players", 6)),
 	}
+
+func _private_room_server_config_from_values() -> Dictionary:
+	var config := _private_room_config_from_values()
+	config["table_type"] = "private_chip"
+	config["currency"] = "chips"
+	config["hand_count"] = _normalized_hand_count_for_context(int(_private_room_setup_values.get("max_hands", 10)))
+	config["is_public"] = false
+	config["allow_quick_join"] = false
+	config["table_name"] = "%s's Private Room" % PlayerProfileScript.get_player_name(_player_profile)
+	return config
 
 
 func _normalized_hand_count_for_context(value: int) -> int:
@@ -2466,11 +2548,11 @@ func _build_friends_room_panel() -> void:
 	content.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "PRIVATE CASUAL ROOM - SHARE THE ROOM CODE WITH FRIENDS"
+	sub.text = "Private casual room. Share a room code with friends."
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	content.add_child(sub)
 	var room_note := Label.new()
-	room_note.text = "Not listed in public tables. Gem private rooms are reserved for future support."
+	room_note.text = "Create a private chip table or join with a room code. Private rooms are not listed in public Browser."
 	HomeTheme.make_font_settings(room_note, 12, Color(0.72, 0.78, 0.94, 0.92))
 	content.add_child(room_note)
 
@@ -2483,10 +2565,10 @@ func _build_friends_room_panel() -> void:
 	room_box.add_theme_constant_override("separation", 12)
 	room_card.add_child(room_box)
 
-	_friends_room_id_label = _room_lobby_label("ROOM ID: -", 17, Color(1.0, 0.92, 0.72, 0.96))
+	_friends_room_id_label = _room_lobby_label("ROOM CODE: -", 17, Color(1.0, 0.92, 0.72, 0.96))
 	_friends_room_seats_label = _room_lobby_label("SEATS: -", 15, Color(0.88, 0.92, 1.0, 0.92))
 	_friends_room_ready_label = _room_lobby_label("READY: -", 15, HomeTheme.PURPLE)
-	room_box.add_child(_room_lobby_label("PRIVATE CASUAL", 13, HomeTheme.CYAN))
+	room_box.add_child(_room_lobby_label("PRIVATE CASUAL ROOM", 13, HomeTheme.CYAN))
 	room_box.add_child(_friends_room_id_label)
 	room_box.add_child(_friends_room_seats_label)
 	room_box.add_child(_friends_room_ready_label)
@@ -2506,6 +2588,38 @@ func _build_friends_room_panel() -> void:
 	start_button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.82), Color(1.0, 0.0, 0.5, 1.0), 21))
 	start_button.pressed.connect(_show_private_room_setup)
 	button_row.add_child(start_button)
+
+	var join_section := VBoxContainer.new()
+	join_section.add_theme_constant_override("separation", 8)
+	room_box.add_child(join_section)
+
+	var join_title := _room_lobby_label("JOIN PRIVATE ROOM", 14, HomeTheme.TEXT)
+	join_section.add_child(join_title)
+	var join_hint := _room_lobby_label("Enter a room code from your friend.", 12, HomeTheme.MUTED)
+	join_section.add_child(join_hint)
+	var join_row := HBoxContainer.new()
+	join_row.add_theme_constant_override("separation", 10)
+	join_section.add_child(join_row)
+
+	_friends_room_code_input = LineEdit.new()
+	_friends_room_code_input.name = "PrivateRoomCodeInput"
+	_friends_room_code_input.placeholder_text = "Enter Room Code"
+	_friends_room_code_input.custom_minimum_size = Vector2(220, 42)
+	_friends_room_code_input.max_length = 12
+	_friends_room_code_input.text_submitted.connect(func(_text: String) -> void: _join_private_room_by_code())
+	join_row.add_child(_friends_room_code_input)
+
+	var join_button := Button.new()
+	join_button.text = "JOIN ROOM"
+	join_button.custom_minimum_size = Vector2(150, 42)
+	join_button.focus_mode = Control.FOCUS_NONE
+	join_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	join_button.add_theme_font_size_override("font_size", 13)
+	join_button.add_theme_color_override("font_color", Color(1, 1, 1, 0.96))
+	join_button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.60), Color(1.0, 0.0, 0.5, 0.80), 21))
+	join_button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.32, 0.12, 0.26, 0.82), Color(1.0, 0.0, 0.5, 1.0), 21))
+	join_button.pressed.connect(_join_private_room_by_code)
+	join_row.add_child(join_button)
 
 	var back_button := Button.new()
 	back_button.text = "BACK"
@@ -2533,9 +2647,12 @@ func _update_friends_room_panel() -> void:
 	for seat in seats:
 		if str(Dictionary(seat).get("status", "")) != "empty":
 			occupied += 1
-	_friends_room_id_label.text = "ROOM ID: %s" % str(_friends_room_context.get("room_id", "-"))
+	var room_code := str(_friends_room_context.get("room_code", _friends_room_context.get("room_id", "-")))
+	if room_code == "":
+		room_code = "-"
+	_friends_room_id_label.text = "ROOM CODE: %s" % room_code
 	_friends_room_seats_label.text = "SEATS: %d / 9" % occupied
-	_friends_room_ready_label.text = "READY: Seat 5 local player"
+	_friends_room_ready_label.text = "READY: Press READY at the table." if occupied > 0 else "READY: Create or join a room."
 
 func _build_replay_panel() -> void:
 	_replay_panel = PanelContainer.new()

@@ -160,6 +160,66 @@ const quickCreatedTable = (manager.adminSnapshot(false).table_list as Array<Reco
 if (!quickCreatedTable) throw new Error("quick_join_table should create and list a public table when no match exists");
 if (Number(quickCreatedTable.buy_in) !== 50000 || Number(quickCreatedTable.hand_count) !== 5) throw new Error("quick-created table should preserve selected config");
 
+const privateCreatorMessages: unknown[] = [];
+const privateCreatorWs = { OPEN: 1, readyState: 1, send: (data: string) => privateCreatorMessages.push(JSON.parse(data)) };
+const privateCreator = manager.connect(privateCreatorWs as any);
+manager.handle(privateCreator.id, { type: "hello", player_id: "private_creator", name: "Private Creator" });
+privateCreatorMessages.length = 0;
+manager.handle("private_creator", {
+  type: "create_private_table",
+  buy_in: 10000,
+  small_blind: 50,
+  big_blind: 100,
+  hand_count: 10,
+  max_players: 6,
+});
+const privateCreated = privateCreatorMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "private_table_created") as
+  | { type: string; room_id?: string; table?: { room_code?: string; is_public?: boolean; table_type?: string; visibility?: string; buy_in?: number; small_blind?: number; big_blind?: number } }
+  | undefined;
+if (!privateCreated?.room_id || !privateCreated.table?.room_code) throw new Error("create_private_table should return a room_id and room_code");
+if (privateCreated.table.is_public !== false || privateCreated.table.table_type !== "private_chip" || privateCreated.table.visibility !== "private") throw new Error("private table snapshot should be private_chip/private");
+if (!/^[A-Z2-9]{4,6}$/.test(privateCreated.table.room_code)) throw new Error("private room code should be a short shareable code");
+if (Number(privateCreated.table.buy_in) !== 10000 || Number(privateCreated.table.small_blind) !== 50 || Number(privateCreated.table.big_blind) !== 100) throw new Error("private room should preserve selected setup config");
+if ((manager.adminSnapshot(false).table_list as Array<Record<string, unknown>>).some((table) => table.room_id === privateCreated.room_id)) throw new Error("private room should not be listed in public table list");
+const privateRoom = manager.getRoom(privateCreated.room_id);
+if (!privateRoom) throw new Error("private room should exist after create_private_table");
+manager.handle("private_creator", { type: "sit_down", room_id: privateCreated.room_id, seat_index: -1 });
+if (privateRoom.table.getSeatByPlayer("private_creator")?.seatIndex !== 5) throw new Error("private creator should sit at objective seat 5");
+
+const privateJoinerMessages: unknown[] = [];
+const privateJoinerWs = { OPEN: 1, readyState: 1, send: (data: string) => privateJoinerMessages.push(JSON.parse(data)) };
+const privateJoiner = manager.connect(privateJoinerWs as any);
+manager.handle(privateJoiner.id, { type: "hello", player_id: "private_joiner", name: "Private Joiner" });
+manager.handle("private_joiner", { type: "join_private_table", room_code: privateCreated.table.room_code });
+const privateJoined = privateJoinerMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "private_table_joined") as
+  | { type: string; room_id?: string; table?: { room_code?: string } }
+  | undefined;
+if (privateJoined?.room_id !== privateCreated.room_id || privateJoined.table?.room_code !== privateCreated.table.room_code) throw new Error("join_private_table should join by room code");
+manager.handle("private_joiner", { type: "sit_down", room_id: privateCreated.room_id, seat_index: -1 });
+if (privateRoom.table.getSeatByPlayer("private_joiner")?.seatIndex !== 8) throw new Error("private second player should sit at objective seat 8");
+manager.handle("private_creator", { type: "ready", room_id: privateCreated.room_id, ready: true });
+manager.handle("private_joiner", { type: "ready", room_id: privateCreated.room_id, ready: true });
+manager.handle("private_creator", { type: "start_hand", room_id: privateCreated.room_id });
+if (privateRoom.table.phase === "waiting") throw new Error("private room should reuse ready/start hand flow");
+expectThrows("room_not_found", () => manager.handle("private_joiner", { type: "join_private_table", room_code: "ZZZZ" }));
+
+const quickPrivateMatcher = manager.connect();
+manager.handle(quickPrivateMatcher.id, { type: "hello", player_id: "quick_private_matcher", name: "Quick Private Matcher" });
+manager.handle("quick_private_matcher", { type: "quick_join_table", buy_in: 10000, small_blind: 50, big_blind: 100, hand_count: 10, max_players: 6 });
+if (manager.getClient("quick_private_matcher")?.roomId === privateCreated.room_id) throw new Error("quick_join_table should never match a private room");
+
+const privateFullCreator = manager.connect();
+manager.handle(privateFullCreator.id, { type: "hello", player_id: "private_full_creator", name: "Private Full Creator" });
+manager.handle("private_full_creator", { type: "create_private_table", buy_in: 5000, small_blind: 25, big_blind: 50, hand_count: 5, max_players: 2 });
+const fullRoomId = manager.getClient("private_full_creator")?.roomId || "";
+const fullRoom = manager.getRoom(fullRoomId);
+if (!fullRoom?.roomCode) throw new Error("full private room should have room code");
+manager.handle("private_full_creator", { type: "sit_down", room_id: fullRoomId, seat_index: -1 });
+seatPlayer("private_full_second", "Private Full Second", fullRoomId, -1);
+const privateFullThird = manager.connect();
+manager.handle(privateFullThird.id, { type: "hello", player_id: "private_full_third", name: "Private Full Third" });
+expectThrows("table_full", () => manager.handle("private_full_third", { type: "join_private_table", room_code: fullRoom.roomCode }));
+
 const canonicalClient = manager.connect();
 manager.handle(canonicalClient.id, { type: "hello", auth_provider: "steam", external_id: "steam_canonical_flow", name: "Canonical Flow" });
 const canonicalPlayerId = canonicalClient.id;

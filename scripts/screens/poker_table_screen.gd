@@ -666,7 +666,10 @@ func _on_server_hello_received(player_id: String, room_id: String) -> void:
 		_send_server_message(_poker_ws_client.join_room(_server_room_id), "join_room %s" % _server_room_id)
 	if _server_room_id == "" and not _server_create_room_requested:
 		_server_create_room_requested = true
-		_send_server_message(_poker_ws_client.create_table(_server_create_table_name(), _server_create_table_config()), "create_table")
+		if _is_private_room_table():
+			_send_server_message(_poker_ws_client.create_private_table(_server_create_table_config()), "create_private_table")
+		else:
+			_send_server_message(_poker_ws_client.create_table(_server_create_table_name(), _server_create_table_config()), "create_table")
 		return
 	_try_server_sit_down()
 
@@ -788,6 +791,8 @@ func _apply_server_table_info(room_id: String, table_info: Dictionary) -> void:
 	if room_id != "":
 		_server_room_id = room_id
 		_append_session_log("Authoritative room_id: %s" % _server_room_id)
+	var server_table_type := String(table_info.get("table_type", TableLaunchContext.table_type))
+	var room_code := String(table_info.get("room_code", TableLaunchContext.room_code))
 	var buy_in := int(table_info.get("buy_in", TableLaunchContext.buy_in))
 	var small_blind := int(table_info.get("small_blind", TableLaunchContext.small_blind))
 	var big_blind := int(table_info.get("big_blind", TableLaunchContext.big_blind))
@@ -798,7 +803,16 @@ func _apply_server_table_info(room_id: String, table_info: Dictionary) -> void:
 	TableLaunchContext.small_blind = small_blind
 	TableLaunchContext.big_blind = big_blind
 	TableLaunchContext.max_hands = max_hands
+	if server_table_type in ["private_chip", "private_room", "private_casual"]:
+		TableLaunchContext.table_type = TableSessionScript.TABLE_TYPE_PRIVATE_ROOM
+		TableLaunchContext.mode = TableSessionScript.MODE_FRIENDS_ROOM
+		TableLaunchContext.launch_mode = TableSessionScript.MODE_FRIENDS_ROOM
+	else:
+		TableLaunchContext.table_type = TableSessionScript.TABLE_TYPE_PUBLIC_CHIP
+	TableLaunchContext.room_code = room_code
 	if _table_session != null:
+		_table_session.table_type = TableLaunchContext.table_type
+		_table_session.mode = TableLaunchContext.mode
 		_table_session.buy_in = buy_in
 		_table_session.starting_chips = buy_in
 		_table_session.current_table_chips = buy_in
@@ -814,6 +828,8 @@ func _apply_server_table_info(room_id: String, table_info: Dictionary) -> void:
 		str(big_blind),
 		"Unlimited" if max_hands >= 999 else str(max_hands),
 	])
+	if room_code != "":
+		_append_session_log("Room Code: %s" % room_code)
 
 func _on_server_sit_down_result(ok: bool, room_id: String, seat_index: int, player_id: String, reason: String, wallet_chips: int = -1, required_chips: int = -1) -> void:
 	if room_id != "":
@@ -1027,6 +1043,8 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	var phase: String = String(server_snapshot.get("betting_round", server_snapshot.get("hand_state", server_snapshot.get("phase", "waiting"))))
 	var room_id: String = String(server_snapshot.get("room_id", _server_room_id))
 	var table_info: Dictionary = Dictionary(server_snapshot.get("table_info", {}))
+	var server_table_type := String(server_snapshot.get("table_type", table_info.get("table_type", TableLaunchContext.table_type)))
+	var room_code := String(server_snapshot.get("room_code", table_info.get("room_code", TableLaunchContext.room_code)))
 	var is_server_ai_warmup := bool(server_snapshot.get("is_ai_warmup", table_info.get("is_ai_warmup", false)))
 	var server_table_state := String(server_snapshot.get("table_state", table_info.get("table_state", phase)))
 	var server_room_state := String(server_snapshot.get("room_state", table_info.get("room_state", server_table_state)))
@@ -1129,8 +1147,10 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	return {
 		"source_model": "server_authoritative",
 		"table_id": room_id if room_id != "" else "authoritative_local",
-		"room_label": room_id if room_id != "" else "authoritative_local",
-		"table_name": "Authoritative Local Table",
+		"room_label": room_code if room_code != "" else (room_id if room_id != "" else "authoritative_local"),
+		"room_code": room_code,
+		"table_type": TableSessionScript.TABLE_TYPE_PRIVATE_ROOM if server_table_type in ["private_chip", "private_room", "private_casual"] else TableSessionScript.TABLE_TYPE_PUBLIC_CHIP,
+		"table_name": "Private Room" if server_table_type in ["private_chip", "private_room", "private_casual"] else "Authoritative Local Table",
 		"buy_in": server_buy_in,
 		"table_info": table_info,
 		"hand_id": "hand_%s" % str(server_hand_id),
@@ -1162,7 +1182,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"turn_prompt": turn_prompt,
 		"available_actions": available_actions,
 		"hand_history": history,
-		"system_messages": _server_system_messages(room_id, turn_prompt, local_server_seat),
+		"system_messages": _server_system_messages(room_id, turn_prompt, local_server_seat, room_code),
 		"visual_events": [],
 		"server_recent_actions": Array(server_snapshot.get("recent_actions", server_snapshot.get("action_log", []))).duplicate(true),
 		"server_hand_id": server_hand_id,
@@ -1172,11 +1192,13 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"table_session": {},
 	}
 
-func _server_system_messages(room_id: String, turn_prompt: String, local_server_seat: int) -> Array:
+func _server_system_messages(room_id: String, turn_prompt: String, local_server_seat: int, room_code: String = "") -> Array:
 	var messages: Array = [
 		"Server authoritative mode",
-		"Room: %s" % room_id,
+		"Room Code: %s" % room_code if room_code != "" else "Room: %s" % room_id,
 	]
+	if room_code != "":
+		messages.append("Share this code with friends.")
 	if local_server_seat < 0:
 		messages.append("Failed to sit down at table." if _server_sit_down_failed else "Joining table...")
 		messages.append(_server_sit_down_error if _server_sit_down_failed and _server_sit_down_error != "" else "Waiting for seat confirmation...")
@@ -1898,6 +1920,8 @@ func _local_room_label() -> String:
 		return "Local Warm-up"
 	if _table_session != null and _table_session.mode == TableSessionScript.MODE_TRAINING:
 		return "Training"
+	if _is_private_room_table() and TableLaunchContext.room_code != "":
+		return TableLaunchContext.room_code
 	if _is_public_chip_table() and _server_room_id != "":
 		return _server_room_id
 	return String(snapshot.get("table_id", "Training"))
@@ -2782,6 +2806,12 @@ func _is_training_launch() -> bool:
 func _is_public_chip_table() -> bool:
 	return TableLaunchContext.table_type == TableSessionScript.TABLE_TYPE_PUBLIC_CHIP or (_table_session != null and _table_session.table_type == TableSessionScript.TABLE_TYPE_PUBLIC_CHIP)
 
+func _is_private_room_table() -> bool:
+	return TableLaunchContext.table_type == TableSessionScript.TABLE_TYPE_PRIVATE_ROOM or TableLaunchContext.mode == TableSessionScript.MODE_FRIENDS_ROOM or (_table_session != null and (_table_session.table_type == TableSessionScript.TABLE_TYPE_PRIVATE_ROOM or _table_session.mode == TableSessionScript.MODE_FRIENDS_ROOM))
+
+func _is_server_ready_managed_table() -> bool:
+	return _is_public_chip_table() or _is_private_room_table()
+
 func _is_public_waiting_for_real_players() -> bool:
 	return _is_public_chip_table() and (TableLaunchContext.waiting_for_real_players or (_table_session != null and _table_session.waiting_for_real_players))
 
@@ -2825,7 +2855,7 @@ func _refresh_public_waiting_controls() -> void:
 			]
 		else:
 			if _public_waiting_title_label != null:
-				_public_waiting_title_label.text = "WAITING FOR READY"
+				_public_waiting_title_label.text = "PRIVATE ROOM" if _is_private_room_table() else "WAITING FOR READY"
 			_public_waiting_body_label.text = "%d / 6 seated\nReady: %d / %d\n%s" % [
 				_real_public_player_count_from_flow(),
 				ready_count,
@@ -2838,7 +2868,7 @@ func _refresh_public_waiting_controls() -> void:
 func _is_public_ready_to_start_state() -> bool:
 	if not server_authoritative or _local_public_warmup_active:
 		return false
-	if not _is_public_chip_table():
+	if not _is_server_ready_managed_table():
 		return false
 	return String(_server_latest_ui_snapshot.get("room_state", _server_latest_ui_snapshot.get("table_state", ""))) in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown"]
 
@@ -4013,6 +4043,14 @@ func _apply_launch_context(target_snapshot: Dictionary) -> void:
 		if TableLaunchContext.launch_mode == "friends_room":
 			target_snapshot["table_name"] = "Friends Room"
 			target_snapshot["connection_status"] = "LOCAL MOCK ROOM"
+			target_snapshot["room_label"] = TableLaunchContext.room_code if TableLaunchContext.room_code != "" else TableLaunchContext.room_id
+			var messages: Array = Array(target_snapshot.get("system_messages", [])).duplicate()
+			messages.insert(0, "PRIVATE ROOM")
+			if TableLaunchContext.room_code != "":
+				messages.insert(1, "Room Code: %s" % TableLaunchContext.room_code)
+				messages.insert(2, "Share this code with friends.")
+			messages.append("Waiting for ready.")
+			target_snapshot["system_messages"] = messages
 		else:
 			target_snapshot["connection_status"] = "Mock online table"
 		if _is_public_chip_table():
@@ -4063,7 +4101,7 @@ func _apply_local_profile_to_snapshot(target_snapshot: Dictionary) -> void:
 	target_snapshot["local_player"] = _find_local_player(seats)
 
 func _sync_authoritative_waiting_context(target_snapshot: Dictionary) -> void:
-	if not _is_public_chip_table():
+	if not _is_server_ready_managed_table():
 		return
 	var phase := String(target_snapshot.get("phase", "waiting"))
 	var room_state := String(target_snapshot.get("room_state", target_snapshot.get("table_state", phase)))
@@ -4071,7 +4109,7 @@ func _sync_authoritative_waiting_context(target_snapshot: Dictionary) -> void:
 	var seats: Array = Array(target_snapshot.get("seats", [])).duplicate(true)
 	var real_count := _real_public_player_count_from_snapshot(seats)
 	var local_seat_confirmed := int(target_snapshot.get("local_seat_index", -1)) >= 0 and _server_seat_confirmed
-	var waiting_for_real_players := local_seat_confirmed and room_state in ["waiting", "waiting_for_players", "waiting_ready"] and real_count < 2
+	var waiting_for_real_players := _is_public_chip_table() and local_seat_confirmed and room_state in ["waiting", "waiting_for_players", "waiting_ready"] and real_count < 2
 	if is_server_ai_warmup:
 		waiting_for_real_players = true
 	TableLaunchContext.waiting_for_real_players = waiting_for_real_players
@@ -4111,7 +4149,7 @@ func _sync_authoritative_waiting_context(target_snapshot: Dictionary) -> void:
 		var start_block_reason := _public_start_block_reason()
 		if start_block_reason == "" and (bool(target_snapshot.get("dev_simulated_player_present", false)) or _has_dev_simulated_player(target_snapshot)):
 			start_block_reason = DEV_SIMULATED_START_BLOCK_MESSAGE
-		messages.insert(0, "STARTING" if room_state == "starting_countdown" else "WAITING FOR READY")
+		messages.insert(0, "STARTING" if room_state == "starting_countdown" else ("PRIVATE ROOM" if _is_private_room_table() else "WAITING FOR READY"))
 		messages.insert(1, "%d / 6 seated" % real_count)
 		if room_state == "starting_countdown":
 			messages.insert(2, "All players ready. Starting in %d..." % _server_countdown_seconds(target_snapshot))

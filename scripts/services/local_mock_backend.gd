@@ -52,21 +52,25 @@ func quick_join_public_table(player: Dictionary, preferred_config: Dictionary = 
 	return _current_context.duplicate(true)
 
 func create_friends_room(profile: Dictionary, setup_config: Dictionary = {}) -> Dictionary:
-	var room_id := "FR-%04d" % (1000 + (Time.get_ticks_msec() % 9000))
-	_current_context = _build_table_context("friends_room", "mock_friends_table_%s" % room_id, room_id, profile, false, true, 3, setup_config)
+	var room_id := _mock_room_code()
+	_current_context = _build_table_context("friends_room", "mock_friends_table_%s" % room_id, room_id, profile, false, true, 0, setup_config)
 	_current_context["table_type"] = "private_room"
+	_current_context["room_code"] = room_id
 	var table_session: Dictionary = Dictionary(_current_context.get("table_session", {}))
 	table_session["table_type"] = "private_room"
+	table_session["status"] = "waiting_ready"
 	_current_context["table_session"] = table_session
-	_current_context["room_state"] = "waiting"
-	_current_context["ready_seats"] = [5]
+	_current_context["room_state"] = "waiting_ready"
+	_current_context["ready_seats"] = []
 	return _current_context.duplicate(true)
 
 func join_room(room_id: String, profile: Dictionary) -> Dictionary:
-	_current_context = _build_table_context("friends_room", "mock_friends_table_%s" % room_id, room_id, profile, false, true, 3, {})
+	_current_context = _build_table_context("friends_room", "mock_friends_table_%s" % room_id, room_id, profile, false, true, 0, {"room_code": room_id})
 	_current_context["table_type"] = "private_room"
+	_current_context["room_code"] = room_id
 	var table_session: Dictionary = Dictionary(_current_context.get("table_session", {}))
 	table_session["table_type"] = "private_room"
+	table_session["status"] = "waiting_ready"
 	_current_context["table_session"] = table_session
 	return _current_context.duplicate(true)
 
@@ -93,6 +97,7 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 		"local_player_profile": normalized_profile,
 		"table_id": table_id,
 		"room_id": room_id,
+		"room_code": String(setup_config.get("room_code", room_id)),
 		"seats": _build_mock_seats(normalized_profile, buy_in, ai_count),
 		"buy_in": buy_in,
 		"small_blind": small_blind,
@@ -292,3 +297,12 @@ func _seat_array_index(seats: Array, seat_id: int) -> int:
 		if int(seat.get("seat_id", seat.get("seat_index", 0))) == seat_id:
 			return i
 	return -1
+
+func _mock_room_code() -> String:
+	var chars := "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	var code := ""
+	var seed := Time.get_ticks_msec()
+	for i in range(4):
+		var index := int((seed / max(1, i + 1) + i * 17) % chars.length())
+		code += chars.substr(index, 1)
+	return code

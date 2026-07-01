@@ -123,12 +123,14 @@ Public Chip tables remain real-player public tables. When fewer than two real pl
 
 Friends Room is the private casual room flow.
 
-- Private rooms are created with a room code.
+- Private rooms are created with a room code and joined by that code.
 - Creating a private room opens a `CREATE PRIVATE ROOM` setup panel first.
 - Private room setup uses the same visual setup panel language as Quick Play and supports Starting Stack / Buy-in, Blinds, and Hand Count.
-- Private rooms use `table_type = "private_room"` or `private_casual`.
+- Authoritative private rooms use `table_type = "private_chip"`, `visibility = "private"`, and `is_public = false`.
+- Local mock private rooms may still use `table_type = "private_room"` as a fallback context label.
 - Private rooms are not listed in the public table registry and are not selected by Quick Chip.
-- Private Gem is shown as a future private match option, but the current local mock does not deduct Gems, create Gem rooms, or perform real Gem settlement.
+- Private rooms reuse the public chip table seat, Ready, hand, result, session-complete, exit, and cash-out mechanics.
+- Private Gem is shown as a future private match option, but it is disabled / Coming Soon. The current flow does not deduct Gems, create Gem rooms, or perform real Gem settlement.
 
 ## Leave / Timeout / Sit Out Rules
 

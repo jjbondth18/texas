@@ -127,3 +127,21 @@ Table Browser validates a table before entering the launch transition and again 
 `This table is no longer available.`
 
 Joining `hand_over`, `closed`, `dirty`, or disconnected-only tables is blocked.
+
+## Private Rooms
+
+Friends Room private chip tables reuse the same managed chip-room seat, Ready, hand, result, session-complete, and exit/cash-out mechanics as public chip tables.
+
+Private rooms differ only in discovery:
+
+- created through `CREATE PRIVATE ROOM`
+- joined through `JOIN PRIVATE ROOM` with a `room_code`
+- `table_type = private_chip`
+- `visibility = private`
+- `is_public = false`
+- not listed in Browser public tables
+- never matched by Quick Chip
+
+The objective seat order remains `[5, 8, 2, 6, 4, 9, 1, 7, 3]`: creator seat `5`, second player seat `8`, third player seat `2`.
+
+Private rooms do not show public AI Warm-up in the current version. Players use Ready to start real private hands.

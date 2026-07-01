@@ -23,6 +23,8 @@ const LIST_TABLES := "list_tables"
 const QUICK_JOIN_TABLE := "quick_join_table"
 const CREATE_TABLE := "create_table"
 const JOIN_TABLE := "join_table"
+const CREATE_PRIVATE_TABLE := "create_private_table"
+const JOIN_PRIVATE_TABLE := "join_private_table"
 const TABLE_SNAPSHOT := "table_snapshot"
 const PRIVATE_SNAPSHOT := "private_snapshot"
 const SIT_DOWN_RESULT := "sit_down_result"
@@ -33,6 +35,8 @@ const TABLE_LIST := "table_list"
 const QUICK_TABLE_MATCHED := "quick_table_matched"
 const TABLE_CREATED := "table_created"
 const TABLE_JOINED := "table_joined"
+const PRIVATE_TABLE_CREATED := "private_table_created"
+const PRIVATE_TABLE_JOINED := "private_table_joined"
 const MOCK_PURCHASE_RESULT := "mock_purchase_result"
 const START_AI_WARMUP_RESULT := "start_ai_warmup_result"
 const ERROR := "error"
@@ -141,6 +145,17 @@ static func create_table(table_name: String = "", config: Dictionary = {}) -> Di
 
 static func join_table(room_id: String) -> Dictionary:
 	return _message(JOIN_TABLE, {"room_id": room_id})
+
+static func create_private_table(config: Dictionary = {}) -> Dictionary:
+	var data := {}
+	for key in config.keys():
+		data[key] = config[key]
+	data["is_public"] = false
+	data["table_type"] = "private_chip"
+	return _message(CREATE_PRIVATE_TABLE, data)
+
+static func join_private_table(room_code: String) -> Dictionary:
+	return _message(JOIN_PRIVATE_TABLE, {"room_code": room_code.strip_edges().to_upper()})
 
 static func _message(type_value: String, extra: Dictionary = {}) -> Dictionary:
 	var result := {"type": type_value}

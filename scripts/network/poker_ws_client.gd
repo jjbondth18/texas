@@ -147,6 +147,12 @@ func join_table(target_room_id: String) -> int:
 	room_id = target_room_id
 	return send_message(PokerProtocolScript.join_table(target_room_id))
 
+func create_private_table(config: Dictionary = {}) -> int:
+	return send_message(PokerProtocolScript.create_private_table(config))
+
+func join_private_table(room_code: String) -> int:
+	return send_message(PokerProtocolScript.join_private_table(room_code))
+
 func _handle_message(message: Dictionary) -> void:
 	message_received.emit(message)
 	var type_value := str(message.get("type", ""))
@@ -174,6 +180,10 @@ func _handle_message(message: Dictionary) -> void:
 			var created_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = str(message.get("room_id", created_table.get("room_id", room_id)))
 			table_created.emit(room_id, created_table)
+		PokerProtocolScript.PRIVATE_TABLE_CREATED:
+			var private_created_table := Dictionary(message.get("table", {})).duplicate(true)
+			room_id = str(message.get("room_id", private_created_table.get("room_id", room_id)))
+			table_created.emit(room_id, private_created_table)
 		PokerProtocolScript.QUICK_TABLE_MATCHED:
 			var quick_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = str(message.get("room_id", quick_table.get("room_id", room_id)))
@@ -182,6 +192,10 @@ func _handle_message(message: Dictionary) -> void:
 			var joined_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = str(message.get("room_id", joined_table.get("room_id", room_id)))
 			table_joined.emit(room_id, joined_table)
+		PokerProtocolScript.PRIVATE_TABLE_JOINED:
+			var private_joined_table := Dictionary(message.get("table", {})).duplicate(true)
+			room_id = str(message.get("room_id", private_joined_table.get("room_id", room_id)))
+			table_joined.emit(room_id, private_joined_table)
 		PokerProtocolScript.MOCK_PURCHASE_RESULT:
 			var purchase_wallet := Dictionary(message.get("wallet", {})).duplicate(true)
 			if not purchase_wallet.is_empty():

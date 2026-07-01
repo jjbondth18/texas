@@ -10,6 +10,7 @@ static var mode := "quick_play"
 static var backend_type := "local_mock"
 static var table_id := "mock_table_001"
 static var room_id := ""
+static var room_code := ""
 static var is_training := false
 static var table_type := "quick_play"
 static var uses_practice_chips := false
@@ -52,6 +53,7 @@ static func configure(mode: String = "quick_play", id: String = "mock_table_001"
 		buy_in = int(setup_config.get("buy_in", buy_in))
 	backend_type = "local_mock"
 	room_id = ""
+	room_code = ""
 	allow_debug_tools = is_training
 	requested_seat_index = int(setup_config.get("requested_seat_index", 0))
 	ai_player_count = 7 if mode in ["quick_play", "training"] else 0
@@ -100,6 +102,7 @@ static func configure_from_context(context: Dictionary) -> void:
 	backend_type = String(context.get("backend_type", "local_mock"))
 	table_id = String(context.get("table_id", "mock_table_001"))
 	room_id = String(context.get("room_id", ""))
+	room_code = String(context.get("room_code", ""))
 	is_training = bool(context.get("is_training", mode == "training"))
 	table_type = String(context.get("table_type", "training_ai" if is_training else mode))
 	uses_practice_chips = bool(context.get("uses_practice_chips", is_training))
@@ -132,6 +135,7 @@ static func get_current_table_context() -> Dictionary:
 		"local_player_profile": get_player_profile(),
 		"table_id": table_id,
 		"room_id": room_id,
+		"room_code": room_code,
 		"seats": seats.duplicate(true),
 		"buy_in": buy_in,
 		"small_blind": small_blind,

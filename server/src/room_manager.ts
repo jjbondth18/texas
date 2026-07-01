@@ -27,6 +27,9 @@ interface Room {
   id: string;
   table: TableState;
   clients: Set<string>;
+  tableType: "public_chip" | "private_chip";
+  visibility: "public" | "private";
+  roomCode: string;
   tableName: string;
   smallBlind: number;
   bigBlind: number;
@@ -70,6 +73,7 @@ const HAND_RESULT_SHOWDOWN_MS = 5000;
 const HAND_RESULT_FOLD_MS = 2500;
 const TABLE_SEAT_JOIN_ORDER_9P = [5, 8, 2, 6, 4, 9, 1, 7, 3];
 const PUBLIC_SEAT_JOIN_ORDER = TABLE_SEAT_JOIN_ORDER_9P;
+const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const DEV_SIMULATED_START_BLOCK_REASON = "Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot.";
 export class RoomManager {
   private clients = new Map<string, Client>();
@@ -147,14 +151,27 @@ export class RoomManager {
       this.send(client, { type: "table_list", tables: this.publicTables() });
       return;
     }
+    if (message.type === "create_private_table") {
+      const room = this.createPrivateTable(client, message);
+      const table = this.tableSnapshot(room);
+      this.send(client, { type: "private_table_created", request_id: message.request_id, room_id: room.id, table });
+      return;
+    }
     if (message.type === "join_table") {
       const room = this.rooms.get(String(message.room_id || ""));
       if (!room) throw new Error("room_not_found");
+      if (!room.isPublic) throw new Error("room_not_found");
       if (this.occupiedSeatCount(room) >= room.maxPlayers) throw new Error("table_full");
       this.joinRoom(client, room.id);
       const table = this.tableSnapshot(room);
       this.recordLog(`${client.id} joined public table ${room.id}`);
       this.send(client, { type: "table_joined", request_id: message.request_id, room_id: room.id, table });
+      return;
+    }
+    if (message.type === "join_private_table") {
+      const room = this.joinPrivateTable(client, String(message.room_code || ""));
+      const table = this.tableSnapshot(room);
+      this.send(client, { type: "private_table_joined", request_id: message.request_id, room_id: room.id, table });
       return;
     }
     if (message.type === "get_profile") {
@@ -289,23 +306,27 @@ export class RoomManager {
     this.broadcast(room);
   }
 
-  createRoom(options: Partial<Pick<Room, "tableName" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "actionTimeSeconds" | "maxPlayers" | "isPublic">> = {}): Room {
+  createRoom(options: Partial<Pick<Room, "tableName" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "actionTimeSeconds" | "maxPlayers" | "isPublic" | "tableType" | "visibility" | "roomCode">> = {}): Room {
     const id = `room_${this.nextRoomId++}`;
     const table = new TableState(id);
     table.smallBlind = options.smallBlind ?? DEFAULT_SMALL_BLIND;
     table.bigBlind = options.bigBlind ?? DEFAULT_BIG_BLIND;
+    const isPublic = options.isPublic ?? true;
     const room: Room = {
       id,
       table,
       clients: new Set(),
-      tableName: options.tableName || `Public Table ${this.nextRoomId - 1}`,
+      tableType: options.tableType ?? (isPublic ? "public_chip" : "private_chip"),
+      visibility: options.visibility ?? (isPublic ? "public" : "private"),
+      roomCode: options.roomCode ?? "",
+      tableName: options.tableName || `${isPublic ? "Public Table" : "Private Room"} ${this.nextRoomId - 1}`,
       smallBlind: table.smallBlind,
       bigBlind: table.bigBlind,
       buyIn: options.buyIn ?? DEFAULT_TABLE_BUY_IN,
       handCount: options.handCount ?? DEFAULT_HAND_COUNT,
       actionTimeSeconds: DEFAULT_ACTION_TIME_SECONDS,
       maxPlayers: options.maxPlayers ?? DEFAULT_MAX_PLAYERS,
-      isPublic: options.isPublic ?? true,
+      isPublic,
       isAiWarmup: false,
       hostInLocalWarmup: "",
       hostPlayerId: "",
@@ -361,6 +382,9 @@ export class RoomManager {
         const snapshot = room.table.publicSnapshot();
         return {
           room_id: room.id,
+          room_code: room.roomCode,
+          table_type: room.tableType,
+          visibility: room.visibility,
           table_name: room.tableName,
           small_blind: room.smallBlind,
           big_blind: room.bigBlind,
@@ -430,6 +454,44 @@ export class RoomManager {
     room.clients.add(client.id);
   }
 
+  private createPrivateTable(client: Client, message: ClientMessage): Room {
+    const tableConfig = this.tableConfigFromMessage({ ...message, is_public: false });
+    const roomCode = this.generateRoomCode();
+    const room = this.createRoom({
+      ...tableConfig,
+      tableName: tableConfig.tableName || `${client.name}'s Private Room`,
+      isPublic: false,
+      tableType: "private_chip",
+      visibility: "private",
+      roomCode,
+    });
+    room.hostPlayerId = client.id;
+    this.joinRoom(client, room.id);
+    this.recordLog(`${client.id} created private table ${room.id} code=${roomCode}`);
+    return room;
+  }
+
+  private joinPrivateTable(client: Client, roomCodeRaw: string): Room {
+    const roomCode = normalizeRoomCode(roomCodeRaw);
+    if (roomCode === "") throw new Error("room_not_found");
+    const room = [...this.rooms.values()].find((candidate) => !candidate.isPublic && candidate.roomCode === roomCode);
+    if (!room) throw new Error("room_not_found");
+    if (room.sessionComplete || this.publicRoomState(room) === "session_complete") throw new Error("room_not_available");
+    if (this.occupiedSeatCount(room) >= room.maxPlayers) throw new Error("table_full");
+    this.joinRoom(client, room.id);
+    this.recordLog(`${client.id} joined private table ${room.id} code=${roomCode}`);
+    return room;
+  }
+
+  private generateRoomCode(): string {
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      let code = "";
+      for (let i = 0; i < 4; i += 1) code += ROOM_CODE_ALPHABET[Math.floor(Math.random() * ROOM_CODE_ALPHABET.length)];
+      if (![...this.rooms.values()].some((room) => room.roomCode === code)) return code;
+    }
+    return randomUUID().slice(0, 6).toUpperCase();
+  }
+
   private quickJoinTable(client: Client, message: ClientMessage): Room {
     const tableConfig = this.tableConfigFromMessage(message);
     const matchedRoom = this.bestQuickJoinRoom(tableConfig);
@@ -473,9 +535,11 @@ export class RoomManager {
     const roomState = this.publicRoomState(room);
     return {
       room_id: room.id,
-      table_type: "public_chip",
+      table_type: room.tableType,
       currency: "chips",
-      allow_quick_join: true,
+      allow_quick_join: room.isPublic,
+      room_code: room.roomCode || undefined,
+      visibility: room.visibility,
       table_name: room.tableName,
       small_blind: room.smallBlind,
       big_blind: room.bigBlind,
@@ -678,12 +742,16 @@ export class RoomManager {
   }
 
   private firstAvailablePublicSeat(room: Room) {
-    if (!room.isPublic) return room.table.seats.find((candidate) => candidate.playerId === "");
+    if (!this.isManagedChipRoom(room)) return room.table.seats.find((candidate) => candidate.playerId === "");
     for (const seatIndex of PUBLIC_SEAT_JOIN_ORDER) {
       const seat = room.table.getSeat(seatIndex);
       if (seat && seat.playerId === "") return seat;
     }
     return room.table.seats.find((candidate) => candidate.playerId === "");
+  }
+
+  private isManagedChipRoom(room: Room): boolean {
+    return room.tableType === "public_chip" || room.tableType === "private_chip";
   }
 
   private requireSeated(room: Room, client: Client, message: ClientMessage, command: string): void {
@@ -693,7 +761,7 @@ export class RoomManager {
   }
 
   private requirePublicHandStartAllowed(room: Room, client: Client): void {
-    if (!room.isPublic) return;
+    if (!this.isManagedChipRoom(room)) return;
     if (room.hostPlayerId === "") room.hostPlayerId = client.id;
     if (client.id !== room.hostPlayerId) throw new Error("not_host");
     if (room.sessionComplete) throw new Error("session_complete");
@@ -744,7 +812,7 @@ export class RoomManager {
   }
 
   private canStartPublicCountdown(room: Room): boolean {
-    if (!room.isPublic) return false;
+    if (!this.isManagedChipRoom(room)) return false;
     if (room.sessionComplete || !this.canStartAnotherSessionHand(room)) return false;
     if (room.isAiWarmup || this.hasUncontrolledDevSimulatedPlayer(room)) return false;
     if (!["waiting", "hand_over"].includes(room.table.phase)) return false;
@@ -756,7 +824,7 @@ export class RoomManager {
   }
 
   private canAutoContinuePublicHand(room: Room): boolean {
-    if (!room.isPublic || !room.officialHandStarted) return false;
+    if (!this.isManagedChipRoom(room) || !room.officialHandStarted) return false;
     if (room.sessionComplete || !this.canStartAnotherSessionHand(room)) return false;
     if (room.isAiWarmup || this.hasUncontrolledDevSimulatedPlayer(room)) return false;
     if (!["waiting", "hand_over"].includes(room.table.phase)) return false;
@@ -765,7 +833,7 @@ export class RoomManager {
   }
 
   private updatePublicRoomProgress(room: Room): void {
-    if (!room.isPublic) return;
+    if (!this.isManagedChipRoom(room)) return;
     if (room.sessionComplete) {
       this.clearReadyCountdown(room);
       this.clearHandResultTimer(room);
@@ -836,10 +904,10 @@ export class RoomManager {
     }
     this.clearReadyCountdown(room);
     this.clearHandResultTimer(room);
-    room.table.startHand(Date.now(), room.isPublic);
+    room.table.startHand(Date.now(), this.isManagedChipRoom(room));
     room.officialHandStarted = true;
     processAutomaticTurns(room.table);
-    this.recordLog(`public_hand_started room_id=${room.id} reason=${reason} hand_id=${room.table.handId}`);
+    this.recordLog(`chip_hand_started room_id=${room.id} reason=${reason} hand_id=${room.table.handId}`);
     return true;
   }
 
@@ -904,7 +972,7 @@ export class RoomManager {
   }
 
   private restartPublicSession(room: Room, client: Client): void {
-    if (!room.isPublic) throw new Error("not_public_table");
+    if (!this.isManagedChipRoom(room)) throw new Error("not_public_table");
     if (!room.sessionComplete) throw new Error("not_session_complete");
     if (!room.table.getSeatByPlayer(client.id)) throw new Error("not_seated");
     room.sessionComplete = false;
@@ -981,7 +1049,7 @@ export class RoomManager {
 
   private exitSettlementReason(room: Room): string {
     if (room.sessionComplete || room.table.phase === "session_complete") return "session_complete_cash_out";
-    if (room.isPublic && !room.officialHandStarted) return "left_before_official_hand";
+    if (this.isManagedChipRoom(room) && !room.officialHandStarted) return "left_before_official_hand";
     return "table_cash_out";
   }
 
@@ -1161,7 +1229,6 @@ export class RoomManager {
   private publicRoomState(room: Room): string {
     if (room.sessionComplete) return "session_complete";
     if (room.isAiWarmup) return "ai_warmup";
-    if (!room.isPublic) return room.table.phase;
     if (isActionPhase(room.table.phase)) return "playing";
     if (room.table.phase === "showdown") return "hand_result";
     if (room.table.phase === "hand_over" && room.officialHandStarted && room.handResultTimer) return "hand_result";
@@ -1256,6 +1323,10 @@ function normalizeIdentityProvider(value: string): string {
 
 function normalizeExternalId(value: string): string {
   return String(value || "").trim().slice(0, 128);
+}
+
+function normalizeRoomCode(value: string): string {
+  return String(value || "").trim().replace(/\s+/g, "").toUpperCase().slice(0, 12);
 }
 
 function normalizeAvatarId(value: string): string {

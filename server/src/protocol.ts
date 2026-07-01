@@ -20,7 +20,9 @@ export type ClientMessageType =
   | "list_tables"
   | "quick_join_table"
   | "create_table"
-  | "join_table";
+  | "join_table"
+  | "create_private_table"
+  | "join_private_table";
 
 export type ServerMessageType =
   | "hello"
@@ -34,6 +36,8 @@ export type ServerMessageType =
   | "quick_table_matched"
   | "table_created"
   | "table_joined"
+  | "private_table_created"
+  | "private_table_joined"
   | "mock_purchase_result"
   | "start_ai_warmup_result"
   | "error";
@@ -46,6 +50,7 @@ export type ErrorCode =
   | "already_unlocked"
   | "avatar_not_unlocked"
   | "room_not_found"
+  | "room_not_available"
   | "table_full"
   | "invalid_table_config"
   | "invalid_identity_provider"
@@ -95,6 +100,7 @@ export interface ClientMessage {
   table_name?: string;
   currency?: "chips" | "gems";
   source?: string;
+  room_code?: string;
 }
 
 export interface ServerMessage {
@@ -158,6 +164,8 @@ export interface PublicTableSnapshot {
   table_type?: string;
   currency?: string;
   allow_quick_join?: boolean;
+  room_code?: string;
+  visibility?: string;
   table_name: string;
   small_blind: number;
   big_blind: number;
