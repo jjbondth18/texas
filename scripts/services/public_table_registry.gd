@@ -4,7 +4,9 @@ class_name PublicTableRegistry
 const TABLE_TYPE_PUBLIC_CHIP := "public_chip"
 const STATUS_WAITING := "waiting"
 const STATUS_WAITING_FOR_PLAYERS := "waiting_for_players"
-const STATUS_READY_TO_START := "ready_to_start"
+const STATUS_READY_TO_START := "waiting_ready"
+const STATUS_STARTING_COUNTDOWN := "starting_countdown"
+const STATUS_HAND_RESULT := "hand_result"
 const STATUS_AI_WARMUP := "ai_warmup"
 const STATUS_OPEN := "open"
 const STATUS_PLAYING := "playing"
@@ -239,7 +241,7 @@ static func _best_quick_join_table_id(waiting_only: bool, preferred_config: Dict
 		var table: Dictionary = _normalized_public_table(Dictionary(_tables[table_id]))
 		if not _is_clean_joinable_public_table(table, true):
 			continue
-		if waiting_only and String(table.get("status", "")) not in [STATUS_WAITING, STATUS_OPEN, STATUS_READY_TO_START]:
+		if waiting_only and String(table.get("status", "")) not in [STATUS_WAITING, STATUS_OPEN, STATUS_READY_TO_START, STATUS_STARTING_COUNTDOWN]:
 			continue
 		if not _table_matches_preferred_config(table, preferred_config):
 			continue
@@ -326,11 +328,11 @@ static func _is_clean_joinable_public_table(table: Dictionary, quick_join: bool)
 		return false
 	if hand_state in [STATUS_CLOSED, STATUS_DIRTY, STATUS_PAUSED, STATUS_HAND_OVER, STATUS_SHOWDOWN_REVEAL, "finished"]:
 		return false
-	if status not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_OPEN, STATUS_PLAYING, STATUS_AI_WARMUP]:
+	if status not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_STARTING_COUNTDOWN, STATUS_HAND_RESULT, STATUS_OPEN, STATUS_PLAYING, STATUS_AI_WARMUP]:
 		return false
-	if hand_state not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_OPEN, STATUS_PLAYING, "preflop", "flop", "turn", "river", "showdown", STATUS_AI_WARMUP, "idle", "pre_hand"]:
+	if hand_state not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_STARTING_COUNTDOWN, STATUS_HAND_RESULT, STATUS_OPEN, STATUS_PLAYING, "preflop", "flop", "turn", "river", "showdown", STATUS_AI_WARMUP, "idle", "pre_hand"]:
 		return false
-	if current_turn == -1 and hand_state not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_OPEN, STATUS_PLAYING, "preflop", "flop", "turn", "river", "showdown", STATUS_AI_WARMUP, "idle", "pre_hand"]:
+	if current_turn == -1 and hand_state not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_STARTING_COUNTDOWN, STATUS_HAND_RESULT, STATUS_OPEN, STATUS_PLAYING, "preflop", "flop", "turn", "river", "showdown", STATUS_AI_WARMUP, "idle", "pre_hand"]:
 		return false
 	if int(table.get("current_players", 0)) >= int(table.get("max_players", 9)):
 		return false

@@ -1388,7 +1388,7 @@ func _on_server_table_list_received(tables: Array) -> void:
 	_refresh_room_browser_rows()
 
 func _on_server_table_created(room_id: String, table_info: Dictionary) -> void:
-	_open_server_table(room_id, table_info, 0)
+	_open_server_table(room_id, table_info, -1)
 
 func _on_server_table_joined(room_id: String, table_info: Dictionary) -> void:
 	_open_server_table(room_id, table_info, -1)
@@ -2309,11 +2309,11 @@ func _is_joinable_room_browser_table(room: Dictionary) -> bool:
 		return false
 	if hand_state in ["closed", "dirty", "paused", "hand_over", "showdown_reveal", "finished"]:
 		return false
-	if status not in ["waiting", "waiting_for_players", "ready_to_start", "open", "playing", "ai_warmup"]:
+	if status not in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown", "hand_result", "ready_to_start", "open", "playing", "ai_warmup"]:
 		return false
-	if hand_state not in ["waiting", "waiting_for_players", "ready_to_start", "open", "playing", "preflop", "flop", "turn", "river", "showdown", "ai_warmup", "idle", "pre_hand"]:
+	if hand_state not in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown", "hand_result", "ready_to_start", "open", "playing", "preflop", "flop", "turn", "river", "showdown", "ai_warmup", "idle", "pre_hand"]:
 		return false
-	if int(room.get("current_turn_seat", -1)) == -1 and hand_state not in ["waiting", "waiting_for_players", "ready_to_start", "open", "playing", "preflop", "flop", "turn", "river", "showdown", "ai_warmup", "idle", "pre_hand"]:
+	if int(room.get("current_turn_seat", -1)) == -1 and hand_state not in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown", "hand_result", "ready_to_start", "open", "playing", "preflop", "flop", "turn", "river", "showdown", "ai_warmup", "idle", "pre_hand"]:
 		return false
 	if int(room.get("seated_count", 0)) >= int(room.get("max_players", 6)):
 		return false

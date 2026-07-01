@@ -20,6 +20,7 @@ export interface Seat {
   warmupAi: boolean;
   chips: number;
   status: SeatStatus;
+  ready: boolean;
   disconnected: boolean;
   holeCards: Card[];
   currentBet: number;
@@ -50,7 +51,7 @@ export interface HandResultRecord {
 
 export class TableState {
   readonly roomId: string;
-  readonly maxSeats = 6;
+  readonly maxSeats = 10;
   smallBlind = 25;
   bigBlind = 50;
   phase: Phase = "waiting";
@@ -118,6 +119,7 @@ export class TableState {
       warmupAi: Boolean(player.warmupAi),
       chips: Math.max(1, Math.floor(buyIn)),
       status: (joinsNextHand ? "waiting_next_hand" : "sitting") satisfies SeatStatus,
+      ready: false,
       disconnected: false,
     });
     this.addLog(joinsNextHand ? `${player.name} joins and waits for the next hand.` : `${player.name} sits at seat ${seatIndex}.`);
@@ -155,9 +157,13 @@ export class TableState {
     return { playerId, playerName, amount };
   }
 
-  setReady(playerId: string, ready: boolean): void {
+  setReady(playerId: string, ready: boolean, handActive = false): void {
     const seat = this.getSeatByPlayer(playerId);
     if (!seat) throw new Error("player is not seated");
+    if (handActive && !ready && !["sitting", "ready", "waiting_next_hand", "sit_out"].includes(seat.status)) {
+      throw new Error("already_playing");
+    }
+    seat.ready = ready;
     if (seat.status === "sitting" || seat.status === "ready") seat.status = ready ? "ready" : "sitting";
   }
 
@@ -166,11 +172,12 @@ export class TableState {
     if (!seat) return;
     seat.disconnected = true;
     if (["sitting", "ready", "waiting_next_hand"].includes(seat.status)) seat.status = "disconnected";
+    seat.ready = false;
   }
 
-  startHand(seed = Date.now()): void {
+  startHand(seed = Date.now(), requireReady = false): void {
     if (!["waiting", "hand_over"].includes(this.phase)) throw new Error("cannot start a new hand while a hand is active");
-    const eligible = this.seats.filter((seat) => ["ready", "sitting", "waiting_next_hand"].includes(seat.status) && seat.chips > 0 && !seat.disconnected);
+    const eligible = this.seats.filter((seat) => ["ready", "sitting", "waiting_next_hand"].includes(seat.status) && seat.chips > 0 && !seat.disconnected && (!requireReady || seat.ready));
     if (eligible.length < 2) throw new Error("at least two connected seated players are required");
     this.handId += 1;
     this.phase = "preflop";
@@ -193,7 +200,13 @@ export class TableState {
       seat.isSmallBlind = false;
       seat.isBigBlind = false;
       if (eligible.includes(seat)) seat.status = "playing";
-      else if (seat.playerId && seat.chips > 0) seat.status = seat.disconnected ? "disconnected" : "sit_out";
+      else if (seat.playerId && seat.chips > 0) {
+        if (seat.status === "waiting_next_hand" && requireReady && !seat.ready) {
+          seat.status = "waiting_next_hand";
+        } else {
+          seat.status = seat.disconnected ? "disconnected" : "sit_out";
+        }
+      }
     }
     this.addAction({ type: "system", message: `----- Hand ${this.handId} -----` });
     this.assignButtonAndBlinds();
@@ -230,6 +243,7 @@ export class TableState {
         all_in: seat.status === "all_in",
         disconnected: seat.disconnected,
         connected: seat.playerId !== "" && !seat.disconnected,
+        ready: seat.ready,
         is_ai: seat.isAi,
         warmup_ai: seat.warmupAi,
         current_bet: seat.currentBet,
@@ -414,6 +428,7 @@ export class TableState {
       warmupAi: false,
       chips: 0,
       status: "empty",
+      ready: false,
       disconnected: false,
       holeCards: [],
       currentBet: 0,

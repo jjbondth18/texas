@@ -167,6 +167,10 @@ export interface PublicTableSnapshot {
   host_in_local_warmup?: boolean;
   host_player_id?: string;
   official_hand_started?: boolean;
+  ready_count?: number;
+  ready_required_count?: number;
+  ready_countdown_deadline_at?: string;
+  hand_result_deadline_at?: string;
   action_timeout_ms?: number;
   action_deadline_at?: string;
   dev_simulated_player_present?: boolean;
@@ -190,6 +194,7 @@ export interface PublicSeatSnapshot {
   all_in: boolean;
   disconnected: boolean;
   connected: boolean;
+  ready: boolean;
   is_ai: boolean;
   warmup_ai: boolean;
   current_bet: number;
@@ -237,6 +242,10 @@ export interface TableSnapshot {
   host_in_local_warmup?: boolean;
   host_player_id?: string;
   official_hand_started?: boolean;
+  ready_count?: number;
+  ready_required_count?: number;
+  ready_countdown_deadline_at?: string;
+  hand_result_deadline_at?: string;
   action_timeout_ms?: number;
   action_deadline_at?: string;
   dev_simulated_player_present?: boolean;

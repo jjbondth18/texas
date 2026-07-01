@@ -247,9 +247,12 @@ manager.handle("ready_joiner", { type: "sit_down", room_id: readyRoom.id, seat_i
 const readySnapshot = readyHostMessages.filter((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "table_snapshot").pop() as
   | { type: string; snapshot?: { table_state?: string; room_state?: string; host_player_id?: string; current_players?: number } }
   | undefined;
-if (readySnapshot?.snapshot?.room_state !== "ready_to_start" || readySnapshot.snapshot.table_state !== "ready_to_start") throw new Error("public room should enter ready_to_start after second real player joins");
-if (readySnapshot.snapshot.host_player_id !== "ready_host") throw new Error("ready_to_start snapshot should include host player id");
+if (readySnapshot?.snapshot?.room_state !== "waiting_ready" || readySnapshot.snapshot.table_state !== "waiting_ready") throw new Error("public room should wait for player ready after second real player joins");
+if (readySnapshot.snapshot.host_player_id !== "ready_host") throw new Error("waiting_ready snapshot should include host player id");
 expectThrows("not_host", () => manager.handle("ready_joiner", { type: "start_hand", room_id: readyRoom.id }));
+expectThrows("not_ready_to_start", () => manager.handle("ready_host", { type: "start_hand", room_id: readyRoom.id }));
+manager.handle("ready_host", { type: "ready", room_id: readyRoom.id, ready: true });
+manager.handle("ready_joiner", { type: "ready", room_id: readyRoom.id, ready: true });
 manager.handle("ready_host", { type: "start_hand", room_id: readyRoom.id });
 if (readyRoom.table.phase === "waiting") throw new Error("host should be able to start public hand from ready_to_start");
 if (readyRoom.table.seats.filter((seat) => seat.isAi || seat.warmupAi).length !== 0) throw new Error("public hand should start with real players only");
@@ -262,13 +265,24 @@ if (!midSeat || midSeat.status !== "waiting_next_hand") throw new Error("mid-han
 if (midSeat.holeCards.length !== 0) throw new Error("mid-hand joiner should not receive current hand hole cards");
 if (readyRoom.table.currentTurnSeat === 2) throw new Error("mid-hand joiner should not enter current turn order");
 readyRoom.table.phase = "hand_over";
-readyRoom.table.currentTurnSeat = -1;
-for (const seat of readyRoom.table.seats) {
-  if (seat.status === "playing") seat.status = "sitting";
+const handBeforeUnreadyMidJoinerContinue = readyRoom.table.handId;
+const readyHostSeatForNextHand = readyRoom.table.getSeatByPlayer("ready_host");
+const readyJoinerSeatForNextHand = readyRoom.table.getSeatByPlayer("ready_joiner");
+if (readyHostSeatForNextHand) {
+  readyHostSeatForNextHand.status = "ready";
+  readyHostSeatForNextHand.ready = true;
 }
-manager.handle("ready_host", { type: "start_hand", room_id: readyRoom.id });
+if (readyJoinerSeatForNextHand) {
+  readyJoinerSeatForNextHand.status = "ready";
+  readyJoinerSeatForNextHand.ready = true;
+}
+(readyRoom as unknown as { handResultShownHandId: number }).handResultShownHandId = handBeforeUnreadyMidJoinerContinue;
+(manager as unknown as { updatePublicRoomProgress(room: typeof readyRoom): void }).updatePublicRoomProgress(readyRoom);
+if (readyRoom.table.handId !== handBeforeUnreadyMidJoinerContinue + 1) throw new Error("mid-hand unready joiner should not block ready players from continuing");
+if (midSeat.holeCards.length !== 0) throw new Error("mid-hand unready joiner should not receive next hand cards before ready");
+manager.handle("mid_joiner", { type: "ready", room_id: readyRoom.id, ready: true });
 const nextSeat = readyRoom.table.getSeatByPlayer("mid_joiner");
-if (!nextSeat || nextSeat.status !== "playing" || nextSeat.holeCards.length !== 2) throw new Error("mid-hand joiner should receive cards on the next hand");
+if (!nextSeat || nextSeat.status !== "waiting_next_hand" || !nextSeat.ready || nextSeat.holeCards.length !== 0) throw new Error("mid-hand joiner should be marked ready for the next hand without joining current hand");
 const normalOnePlayer = manager.connect();
 manager.handle(normalOnePlayer.id, { type: "hello", player_id: "normal_one_player", name: "Normal One" });
 const normalOnePlayerRoom = manager.createRoom();

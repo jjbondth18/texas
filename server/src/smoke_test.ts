@@ -58,8 +58,7 @@ send(cy, { type: "ready", room_id: roomId, ready: true });
 await waitForSnapshot((snapshot) => snapshot.seats.filter((seat) => seat.player_id).length === 3);
 const before = new Map(lastSnapshot()!.seats.map((seat) => [seat.seat_index, seat.chips]));
 
-send(ada, { type: "start_hand", room_id: roomId });
-await waitForSnapshot((snapshot) => snapshot.phase === "preflop");
+await waitForSnapshot((snapshot) => snapshot.phase === "preflop", 5000);
 
 let guard = 0;
 while (lastSnapshot()?.phase !== "hand_over" && guard < 80) {
@@ -108,8 +107,7 @@ const handOneDealer = finalSnapshot.dealer_seat;
 const handOneSmallBlind = finalSnapshot.small_blind_seat;
 const inheritedStacks = new Map(finalSnapshot.seats.map((seat) => [seat.seat_index, seat.chips]));
 
-send(ada, { type: "start_hand", room_id: roomId });
-const nextHandSnapshot = await waitForSnapshot((snapshot) => snapshot.hand_id === finalSnapshot.hand_id + 1 && snapshot.phase === "preflop");
+const nextHandSnapshot = await waitForSnapshot((snapshot) => snapshot.hand_id === finalSnapshot.hand_id + 1 && snapshot.phase === "preflop", 9000);
 if (nextHandSnapshot.community_cards.length !== 0) throw new Error("next hand should start with no community cards");
 if (nextHandSnapshot.pot <= 0) throw new Error("next hand should post blinds into the pot");
 if (nextHandSnapshot.dealer_seat === handOneDealer && nextHandSnapshot.seats.filter((seat) => seat.player_id && seat.chips > 0).length > 2) {

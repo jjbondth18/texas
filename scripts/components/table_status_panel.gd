@@ -335,6 +335,7 @@ class PlayerRowPill extends PanelContainer:
 		var last_action := String(player_data.get("last_action", ""))
 		var last_action_amount := int(player_data.get("last_action_amount", 0))
 		var status_value := String(player_data.get("raw_status", player_data.get("status", "")))
+		var is_ready: bool = bool(player_data.get("ready", status_value == "ready"))
 		var is_fold := status_value == "folded"
 		var player_id := String(player_data.get("player_id", ""))
 		
@@ -407,10 +408,13 @@ class PlayerRowPill extends PanelContainer:
 					action_label.text = "ALL-IN"
 					action_label.add_theme_color_override("font_color", _action_color("ALL-IN"))
 				elif status_value == "waiting_next_hand":
-					action_label.text = "WAITING NEXT HAND"
+					action_label.text = "READY NEXT HAND" if is_ready else "WAITING NEXT HAND"
 					action_label.add_theme_color_override("font_color", Color(0.72, 0.78, 1.0))
+				elif is_ready:
+					action_label.text = "READY"
+					action_label.add_theme_color_override("font_color", Color(0.42, 1.0, 0.72))
 				else:
-					action_label.text = "WAITING"
+					action_label.text = "NOT READY"
 					action_label.add_theme_color_override("font_color", Color(0.58, 0.78, 1.0))
 					
 		# Animate transition of position, style box background, border color (No scale changes!)

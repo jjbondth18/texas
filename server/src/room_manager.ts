@@ -37,6 +37,13 @@ interface Room {
   hostInLocalWarmup: string;
   hostPlayerId: string;
   officialHandStarted: boolean;
+  readyCountdownTimer?: ReturnType<typeof setTimeout>;
+  readyCountdownToken: number;
+  readyCountdownDeadlineAt?: string;
+  handResultTimer?: ReturnType<typeof setTimeout>;
+  handResultToken: number;
+  handResultDeadlineAt?: string;
+  handResultShownHandId: number;
   actionTimer?: ReturnType<typeof setTimeout>;
   actionTimerToken: number;
   actionDeadlineAt?: string;
@@ -54,6 +61,10 @@ const ALLOWED_BLIND_PAIRS = new Set(["25/50", "50/100", "100/200"]);
 const ALLOWED_HAND_COUNTS = new Set([0, 5, 10, 20]);
 const ALLOWED_IDENTITY_PROVIDERS = new Set(["local_dev", "steam"]);
 const ACTION_TIMEOUT_MS = 20000;
+const READY_COUNTDOWN_MS = 3000;
+const HAND_RESULT_SHOWDOWN_MS = 5000;
+const HAND_RESULT_FOLD_MS = 2500;
+const PUBLIC_SEAT_JOIN_ORDER = [5, 8, 2, 6, 4, 9, 1, 7, 3];
 const DEV_SIMULATED_START_BLOCK_REASON = "Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot.";
 export class RoomManager {
   private clients = new Map<string, Client>();
@@ -86,6 +97,7 @@ export class RoomManager {
       room.table.markDisconnected(playerId);
       processAutomaticTurns(room.table);
       this.rescheduleActionTimer(room);
+      this.updatePublicRoomProgress(room);
       this.broadcast(room);
     }
     client.ws = undefined;
@@ -215,15 +227,13 @@ export class RoomManager {
         break;
       case "ready":
         this.requireSeated(room, client, message, "ready");
-        room.table.setReady(client.id, message.ready ?? true);
+        room.table.setReady(client.id, message.ready ?? true, isActionPhase(room.table.phase));
         this.recordLog(`${client.id} ready=${message.ready ?? true} in ${room.id}`);
         break;
       case "start_hand":
         this.requireSeated(room, client, message, "start_hand");
         this.requirePublicHandStartAllowed(room, client);
-        room.table.startHand();
-        room.officialHandStarted = true;
-        processAutomaticTurns(room.table);
+        this.startOfficialPublicHand(room, "manual_start_hand");
         this.recordLog(`${client.id} started hand in ${room.id}`);
         break;
       case "start_ai_warmup": {
@@ -254,6 +264,7 @@ export class RoomManager {
     }
     this.recordHandResults(room);
     this.rescheduleActionTimer(room);
+    this.updatePublicRoomProgress(room);
     this.broadcast(room);
   }
 
@@ -277,6 +288,9 @@ export class RoomManager {
       hostInLocalWarmup: "",
       hostPlayerId: "",
       officialHandStarted: false,
+      readyCountdownToken: 0,
+      handResultToken: 0,
+      handResultShownHandId: 0,
       actionTimerToken: 0,
       createdAt: new Date().toISOString(),
     };
@@ -336,6 +350,10 @@ export class RoomManager {
           host_in_local_warmup: room.hostInLocalWarmup !== "",
           host_player_id: room.hostPlayerId,
           official_hand_started: room.officialHandStarted,
+          ready_count: this.publicReadyCount(room),
+          ready_required_count: this.publicReadyRequiredCount(room),
+          ready_countdown_deadline_at: room.readyCountdownDeadlineAt,
+          hand_result_deadline_at: room.handResultDeadlineAt,
           action_timeout_ms: ACTION_TIMEOUT_MS,
           action_deadline_at: room.actionDeadlineAt,
           dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
@@ -360,6 +378,7 @@ export class RoomManager {
             status: seat.status,
             disconnected: seat.disconnected,
             connected: seat.playerId !== "" && !seat.disconnected,
+            ready: seat.ready,
             is_ai: seat.isAi,
             warmup_ai: seat.warmupAi,
             last_action: seat.lastAction,
@@ -403,6 +422,10 @@ export class RoomManager {
       host_in_local_warmup: room.hostInLocalWarmup !== "",
       host_player_id: room.hostPlayerId,
       official_hand_started: room.officialHandStarted,
+      ready_count: this.publicReadyCount(room),
+      ready_required_count: this.publicReadyRequiredCount(room),
+      ready_countdown_deadline_at: room.readyCountdownDeadlineAt,
+      hand_result_deadline_at: room.handResultDeadlineAt,
       action_timeout_ms: ACTION_TIMEOUT_MS,
       action_deadline_at: room.actionDeadlineAt,
       dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
@@ -549,7 +572,8 @@ export class RoomManager {
   }
 
   private sitDownWithWallet(room: Room, client: Client, requestedSeatIndex: number, payloadPlayerId = ""): number {
-    const seat = requestedSeatIndex < 0 ? room.table.seats.find((candidate) => candidate.playerId === "") : room.table.getSeat(requestedSeatIndex);
+    if (this.occupiedSeatCount(room) >= room.maxPlayers) throw new Error("table_full");
+    const seat = requestedSeatIndex < 0 ? this.firstAvailablePublicSeat(room) : room.table.getSeat(requestedSeatIndex);
     if (!seat || seat.playerId) throw new Error("seat is not available");
     const seatIndex = seat.seatIndex;
     this.wallets.ensure(client.id);
@@ -573,6 +597,15 @@ export class RoomManager {
     return seatIndex;
   }
 
+  private firstAvailablePublicSeat(room: Room) {
+    if (!room.isPublic) return room.table.seats.find((candidate) => candidate.playerId === "");
+    for (const seatIndex of PUBLIC_SEAT_JOIN_ORDER) {
+      const seat = room.table.getSeat(seatIndex);
+      if (seat && seat.playerId === "") return seat;
+    }
+    return room.table.seats.find((candidate) => candidate.playerId === "");
+  }
+
   private requireSeated(room: Room, client: Client, message: ClientMessage, command: string): void {
     if (room.table.getSeatByPlayer(client.id)) return;
     this.recordNotSeated(room, client, message, command);
@@ -583,11 +616,153 @@ export class RoomManager {
     if (!room.isPublic) return;
     if (room.hostPlayerId === "") room.hostPlayerId = client.id;
     if (client.id !== room.hostPlayerId) throw new Error("not_host");
-    if (this.realConnectedSeatedCount(room) < 2) throw new Error("not_enough_players");
+    if (this.publicReadyRequiredCount(room) < 2) throw new Error("not_enough_players");
     if (this.hasUncontrolledDevSimulatedPlayer(room)) throw new Error(DEV_SIMULATED_START_BLOCK_REASON);
     if (room.isAiWarmup) throw new Error("already_playing");
     if (!["waiting", "hand_over"].includes(room.table.phase)) throw new Error("already_playing");
-    if (this.publicRoomState(room) !== "ready_to_start") throw new Error("not_ready_to_start");
+    if (!this.canStartPublicCountdown(room)) throw new Error("not_ready_to_start");
+  }
+
+  private publicReadySeats(room: Room) {
+    return room.table.seats.filter((seat) => seat.playerId && !seat.isAi && !seat.warmupAi && !seat.disconnected && seat.chips > 0 && !["empty", "sit_out"].includes(seat.status));
+  }
+
+  private publicReadyCandidates(room: Room) {
+    return this.publicReadySeats(room).filter((seat) => seat.ready);
+  }
+
+  private publicReadyRequiredCount(room: Room): number {
+    return this.publicReadySeats(room).length;
+  }
+
+  private publicReadyCount(room: Room): number {
+    return this.publicReadySeats(room).filter((seat) => seat.ready).length;
+  }
+
+  private canStartPublicCountdown(room: Room): boolean {
+    if (!room.isPublic) return false;
+    if (room.isAiWarmup || this.hasUncontrolledDevSimulatedPlayer(room)) return false;
+    if (!["waiting", "hand_over"].includes(room.table.phase)) return false;
+    if (room.handResultTimer) return false;
+    if (room.officialHandStarted && room.handResultShownHandId === room.table.handId) return false;
+    const seats = this.publicReadySeats(room);
+    if (seats.length < 2) return false;
+    return seats.every((seat) => seat.ready);
+  }
+
+  private canAutoContinuePublicHand(room: Room): boolean {
+    if (!room.isPublic || !room.officialHandStarted) return false;
+    if (room.isAiWarmup || this.hasUncontrolledDevSimulatedPlayer(room)) return false;
+    if (!["waiting", "hand_over"].includes(room.table.phase)) return false;
+    if (room.handResultTimer) return false;
+    return this.publicReadyCandidates(room).length >= 2;
+  }
+
+  private updatePublicRoomProgress(room: Room): void {
+    if (!room.isPublic) return;
+    if (isActionPhase(room.table.phase)) {
+      this.clearReadyCountdown(room);
+      return;
+    }
+    if (room.table.phase === "hand_over" && room.officialHandStarted) {
+      this.clearReadyCountdown(room);
+      if (room.handResultShownHandId !== room.table.handId) {
+        this.scheduleHandResultTransition(room);
+      } else if (this.canAutoContinuePublicHand(room)) {
+        this.startOfficialPublicHand(room, "auto_next_hand");
+        this.recordHandResults(room);
+        this.rescheduleActionTimer(room);
+      }
+      return;
+    }
+    if (this.canStartPublicCountdown(room)) {
+      this.scheduleReadyCountdown(room);
+    } else {
+      this.clearReadyCountdown(room);
+    }
+  }
+
+  private scheduleReadyCountdown(room: Room): void {
+    if (room.readyCountdownTimer) return;
+    room.readyCountdownToken += 1;
+    const token = room.readyCountdownToken;
+    room.readyCountdownDeadlineAt = new Date(Date.now() + READY_COUNTDOWN_MS).toISOString();
+    room.table.addAction({ type: "system", action: "ready_countdown", message: "All players ready. Starting in 3..." });
+    room.readyCountdownTimer = setTimeout(() => this.handleReadyCountdown(room.id, token), READY_COUNTDOWN_MS);
+    (room.readyCountdownTimer as { unref?: () => void }).unref?.();
+  }
+
+  private clearReadyCountdown(room: Room): void {
+    if (room.readyCountdownTimer) clearTimeout(room.readyCountdownTimer);
+    room.readyCountdownTimer = undefined;
+    room.readyCountdownDeadlineAt = undefined;
+    room.readyCountdownToken += 1;
+  }
+
+  private handleReadyCountdown(roomId: string, token: number): void {
+    const room = this.rooms.get(roomId);
+    if (!room || token !== room.readyCountdownToken) return;
+    room.readyCountdownTimer = undefined;
+    room.readyCountdownDeadlineAt = undefined;
+    if (!this.canStartPublicCountdown(room)) {
+      this.broadcast(room);
+      return;
+    }
+    this.startOfficialPublicHand(room, "ready_countdown");
+    this.recordHandResults(room);
+    this.rescheduleActionTimer(room);
+    this.broadcast(room);
+  }
+
+  private startOfficialPublicHand(room: Room, reason: string): void {
+    this.clearReadyCountdown(room);
+    this.clearHandResultTimer(room);
+    room.table.startHand(Date.now(), room.isPublic);
+    room.officialHandStarted = true;
+    processAutomaticTurns(room.table);
+    this.recordLog(`public_hand_started room_id=${room.id} reason=${reason} hand_id=${room.table.handId}`);
+  }
+
+  private scheduleHandResultTransition(room: Room): void {
+    if (room.handResultTimer) return;
+    room.handResultToken += 1;
+    const token = room.handResultToken;
+    const delay = this.handResultDelayMs(room);
+    room.handResultDeadlineAt = new Date(Date.now() + delay).toISOString();
+    room.handResultTimer = setTimeout(() => this.handleHandResultComplete(room.id, token), delay);
+    (room.handResultTimer as { unref?: () => void }).unref?.();
+  }
+
+  private clearHandResultTimer(room: Room): void {
+    if (room.handResultTimer) clearTimeout(room.handResultTimer);
+    room.handResultTimer = undefined;
+    room.handResultDeadlineAt = undefined;
+    room.handResultToken += 1;
+  }
+
+  private handResultDelayMs(room: Room): number {
+    const showdown = room.table.recentActions.some((entry) => entry.hand_id === room.table.handId && (entry.action === "showdown" || entry.type === "winner" || entry.message === "Showdown."));
+    return showdown ? HAND_RESULT_SHOWDOWN_MS : HAND_RESULT_FOLD_MS;
+  }
+
+  private handleHandResultComplete(roomId: string, token: number): void {
+    const room = this.rooms.get(roomId);
+    if (!room || token !== room.handResultToken) return;
+    room.handResultTimer = undefined;
+    room.handResultDeadlineAt = undefined;
+    room.handResultShownHandId = room.table.handId;
+    if (this.canStartPublicCountdown(room)) {
+      this.startOfficialPublicHand(room, "auto_next_hand");
+      this.recordHandResults(room);
+      this.rescheduleActionTimer(room);
+    } else if (this.canAutoContinuePublicHand(room)) {
+      this.startOfficialPublicHand(room, "auto_next_hand");
+      this.recordHandResults(room);
+      this.rescheduleActionTimer(room);
+    } else {
+      this.clearReadyCountdown(room);
+    }
+    this.broadcast(room);
   }
 
   private hasUncontrolledDevSimulatedPlayer(room: Room): boolean {
@@ -660,6 +835,10 @@ export class RoomManager {
       host_in_local_warmup: room.hostInLocalWarmup !== "",
       host_player_id: room.hostPlayerId,
       official_hand_started: room.officialHandStarted,
+      ready_count: this.publicReadyCount(room),
+      ready_required_count: this.publicReadyRequiredCount(room),
+      ready_countdown_deadline_at: room.readyCountdownDeadlineAt,
+      hand_result_deadline_at: room.handResultDeadlineAt,
       action_timeout_ms: ACTION_TIMEOUT_MS,
       action_deadline_at: room.actionDeadlineAt,
       dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
@@ -724,6 +903,7 @@ export class RoomManager {
     }
     this.rescheduleActionTimer(room);
     this.recordHandResults(room);
+    this.updatePublicRoomProgress(room);
     this.broadcast(room);
   }
 
@@ -743,9 +923,11 @@ export class RoomManager {
   private publicRoomState(room: Room): string {
     if (room.isAiWarmup) return "ai_warmup";
     if (!room.isPublic) return room.table.phase;
-    const realCount = this.realConnectedSeatedCount(room);
-    if (realCount < 2 && ["waiting", "hand_over"].includes(room.table.phase)) return "waiting_for_players";
-    if (["waiting", "hand_over"].includes(room.table.phase)) return "ready_to_start";
+    if (isActionPhase(room.table.phase)) return "playing";
+    if (room.table.phase === "showdown") return "hand_result";
+    if (room.table.phase === "hand_over" && room.officialHandStarted && room.handResultTimer) return "hand_result";
+    if (room.readyCountdownTimer) return "starting_countdown";
+    if (["waiting", "hand_over"].includes(room.table.phase)) return "waiting_ready";
     return "playing";
   }
 

@@ -29,4 +29,4 @@ func run() -> void:
 	assert(Array(seated.get("warmup_ai_player_ids", [])).is_empty())
 	assert(Array(seated.get("pending_real_joiners", [])).is_empty())
 	assert(int(seated.get("current_players", 0)) == 2)
-	assert(String(seated.get("status", "")) == "ready_to_start")
+	assert(String(seated.get("status", "")) == "waiting_ready")
