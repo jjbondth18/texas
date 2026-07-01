@@ -99,6 +99,9 @@ func start_hand() -> int:
 func start_ai_warmup(target_room_id: String = room_id) -> int:
 	return send_message(PokerProtocolScript.start_ai_warmup(target_room_id))
 
+func dev_simulate_real_join(target_room_id: String = room_id, player_name: String = "DevPlayer2") -> int:
+	return send_message(PokerProtocolScript.dev_simulate_real_join(target_room_id, player_name))
+
 func player_action(action: String, amount: int = 0) -> int:
 	return send_message(PokerProtocolScript.player_action(action, amount))
 

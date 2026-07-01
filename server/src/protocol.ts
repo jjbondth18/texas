@@ -8,6 +8,7 @@ export type ClientMessageType =
   | "ready"
   | "start_hand"
   | "start_ai_warmup"
+  | "dev_simulate_real_join"
   | "add_table_chips"
   | "player_action"
   | "get_profile"

@@ -10,6 +10,7 @@ const CASH_OUT := "cash_out"
 const READY := "ready"
 const START_HAND := "start_hand"
 const START_AI_WARMUP := "start_ai_warmup"
+const DEV_SIMULATE_REAL_JOIN := "dev_simulate_real_join"
 const PLAYER_ACTION := "player_action"
 const ADD_TABLE_CHIPS := "add_table_chips"
 const GET_PROFILE := "get_profile"
@@ -84,6 +85,9 @@ static func start_hand() -> Dictionary:
 
 static func start_ai_warmup(room_id: String) -> Dictionary:
 	return _message(START_AI_WARMUP, {"room_id": room_id})
+
+static func dev_simulate_real_join(room_id: String, player_name: String = "DevPlayer2") -> Dictionary:
+	return _message(DEV_SIMULATE_REAL_JOIN, {"room_id": room_id, "player_name": player_name})
 
 static func player_action(action: String, amount: int = 0) -> Dictionary:
 	var data := {"action": action}

@@ -218,16 +218,14 @@ const repeatedWarmup = warmupMessages.find((message) => typeof message === "obje
   | { type: string; ok?: boolean; reason?: string; room_id?: string; local_warmup?: boolean }
   | undefined;
 if (!repeatedWarmup || repeatedWarmup.ok !== true || repeatedWarmup.local_warmup !== true) throw new Error("repeated local warm-up start should remain idempotent");
-const warmupJoiner = manager.connect();
-manager.handle(warmupJoiner.id, { type: "hello", player_id: "warmup_joiner", name: "Warmup Joiner" });
-manager.handle("warmup_joiner", { type: "join_room", room_id: warmupRoom.id });
-manager.handle("warmup_joiner", { type: "sit_down", room_id: warmupRoom.id, seat_index: 1 });
+manager.handle("warmup_player", { type: "dev_simulate_real_join", room_id: warmupRoom.id, player_name: "DevPlayer2" });
 const joinedSnapshot = warmupMessages.filter((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "table_snapshot").pop() as
-  | { type: string; snapshot?: { host_in_local_warmup?: boolean; current_players?: number; seats?: Array<{ warmup_ai?: boolean; is_ai?: boolean }> } }
+  | { type: string; snapshot?: { host_in_local_warmup?: boolean; current_players?: number; seats?: Array<{ player_name?: string; warmup_ai?: boolean; is_ai?: boolean }> } }
   | undefined;
-if (!joinedSnapshot?.snapshot || joinedSnapshot.snapshot.host_in_local_warmup) throw new Error("real join should interrupt host local warm-up");
-if (Number(joinedSnapshot.snapshot.current_players) !== 2) throw new Error("real join should return public room to two real players");
+if (!joinedSnapshot?.snapshot || joinedSnapshot.snapshot.host_in_local_warmup) throw new Error("dev simulated real join should interrupt host local warm-up");
+if (Number(joinedSnapshot.snapshot.current_players) !== 2) throw new Error("dev simulated real join should return public room to two real players");
 if ((joinedSnapshot.snapshot.seats ?? []).filter((seat) => seat.warmup_ai || seat.is_ai).length !== 0) throw new Error("real public room should remain AI-free after join");
+if ((joinedSnapshot.snapshot.seats ?? []).filter((seat) => seat.player_name === "DevPlayer2").length !== 1) throw new Error("dev simulated real join should seat DevPlayer2 in the server public room");
 const beforeWarmupCashOutWallet = Number(manager.adminSnapshot(false).total_wallet_chips);
 manager.handle("warmup_player", { type: "cash_out", room_id: warmupRoom.id });
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeWarmupCashOutWallet + warmupBaselineStack) throw new Error("public cash out after local warm-up should refund official table stack only");

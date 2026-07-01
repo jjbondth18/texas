@@ -225,6 +225,10 @@ export class RoomManager {
         }
         break;
       }
+      case "dev_simulate_real_join":
+        this.devSimulateRealJoin(room, client, String(message.player_name || "DevPlayer2"));
+        this.recordLog(`dev_simulate_real_join room_id=${room.id} host_player_id=${client.id} real_player_count=${this.realConnectedSeatedCount(room)} seats=${this.seatDebug(room)}`);
+        break;
       case "player_action":
         if (!message.action) throw new Error("action is required");
         this.requireSeated(room, client, message, "player_action");
@@ -485,6 +489,31 @@ export class RoomManager {
       return this.wallets.addGems(client.id, normalized, { reason: "store_mock_purchase" });
     }
     return this.wallets.addChips(client.id, normalized, { reason: "store_mock_purchase" });
+  }
+
+  private devSimulateRealJoin(room: Room, hostClient: Client, playerNameRaw: string): void {
+    if (config.nodeEnv === "production" || !config.allowMockPurchases) throw new Error("dev_command_disabled");
+    if (!room.isPublic) throw new Error("not_public_table");
+    if (room.hostInLocalWarmup !== hostClient.id) throw new Error("not_waiting");
+    if (this.realConnectedSeatedCount(room) !== 1) throw new Error("too_many_real_players");
+    const seat = room.table.seats.find((candidate) => candidate.playerId === "");
+    if (!seat) throw new Error("table_full");
+    const playerName = playerNameRaw.trim().slice(0, 32) || "DevPlayer2";
+    const simulatedId = `dev_real_${randomUUID()}`;
+    const simulatedClient: Client = {
+      id: simulatedId,
+      name: playerName,
+      avatarId: "default",
+      roomId: room.id,
+    };
+    this.clients.set(simulatedId, simulatedClient);
+    room.clients.add(simulatedId);
+    room.table.sitDown(toPlayer(simulatedClient), seat.seatIndex, room.buyIn);
+    const hostId = room.hostInLocalWarmup;
+    room.hostInLocalWarmup = "";
+    room.isAiWarmup = false;
+    room.table.addAction({ type: "system", action: "real_player_joined", message: "Dev simulated real player joined. Return from local AI warm-up to public table." });
+    this.recordLog(`real_player_joined_interrupts_local_warmup room_id=${room.id} host_player_id=${hostId} joined_player_id=${simulatedId} simulated=true`);
   }
 
   private sitDownWithWallet(room: Room, client: Client, seatIndex: number, payloadPlayerId = ""): void {

@@ -80,6 +80,7 @@ var _settings_button: Button
 var _add_chips_button: Button
 var _dealer_cosmetic_button: Button
 var _ai_warmup_button: Button
+var _dev_simulate_real_join_button: Button
 var _settings_panel: PanelContainer
 var _popover_layer: Control
 var _add_chips_panel: PanelContainer
@@ -2529,15 +2530,32 @@ func _is_public_ai_warmup() -> bool:
 
 func _refresh_public_waiting_controls() -> void:
 	var should_show := _should_show_public_warmup_entry()
+	var should_show_dev_join := _should_show_dev_simulate_real_join()
 	if _ai_warmup_button != null:
 		_ai_warmup_button.visible = should_show
 		_ai_warmup_button.disabled = not _ai_warmup_button.visible
+	if _dev_simulate_real_join_button != null:
+		_dev_simulate_real_join_button.visible = should_show_dev_join
+		_dev_simulate_real_join_button.disabled = not should_show_dev_join
 	if _public_waiting_panel != null:
 		_public_waiting_panel.visible = should_show
 	if _public_waiting_button != null:
 		_public_waiting_button.disabled = not should_show
 	if _public_waiting_body_label != null and should_show:
 		_public_waiting_body_label.text = "%d / 6 seated\nStart local AI warm-up while waiting.\nPractice chips only. Public room stays open." % _real_public_player_count_from_flow()
+
+func _should_show_dev_simulate_real_join() -> bool:
+	if not OS.is_debug_build():
+		return false
+	if not server_authoritative or not _local_public_warmup_active:
+		return false
+	if _server_room_id == "":
+		return false
+	if _server_local_seat_index != 0:
+		return false
+	if not _has_local_public_seat():
+		return false
+	return _real_public_player_count_from_flow() == 1
 
 func _should_show_public_warmup_entry() -> bool:
 	if server_authoritative and (not _server_seat_confirmed or _server_local_seat_index < 0):
@@ -2549,6 +2567,17 @@ func _should_show_public_warmup_entry() -> bool:
 	if not _has_local_public_seat():
 		return false
 	return _real_public_player_count_from_flow() == 1
+
+func _dev_simulate_real_player_join() -> void:
+	if not _should_show_dev_simulate_real_join():
+		return
+	if _poker_ws_client == null or not _server_connected:
+		_on_server_error("Cannot simulate real join: authoritative server is not connected.")
+		return
+	if _dev_simulate_real_join_button != null:
+		_dev_simulate_real_join_button.disabled = true
+	_send_server_message(_poker_ws_client.dev_simulate_real_join(_server_room_id, "DevPlayer2"), "dev_simulate_real_join %s" % _server_room_id)
+	_append_session_log("DEV: SIMULATE REAL PLAYER JOIN sent.")
 
 func _start_public_ai_warmup() -> void:
 	_append_session_log("START AI WARM-UP clicked")
@@ -3929,6 +3958,12 @@ func _build_top_action_bar() -> void:
 	ai_warmup_button.tooltip_text = "Practice with AI while waiting for real players."
 	ai_warmup_button.pressed.connect(_start_public_ai_warmup)
 	_top_right_action_bar.add_child(ai_warmup_button)
+
+	var dev_join_button := _top_control_button("DEV: SIMULATE REAL PLAYER JOIN", Vector2(300, 56))
+	_dev_simulate_real_join_button = dev_join_button
+	dev_join_button.tooltip_text = "Dev only: seat a simulated real player in the server public room."
+	dev_join_button.pressed.connect(_dev_simulate_real_player_join)
+	_top_right_action_bar.add_child(dev_join_button)
 
 	var add_chips_button := _top_control_button("ADD CHIPS", Vector2(150, 56))
 	_add_chips_button = add_chips_button
