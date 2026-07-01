@@ -37,10 +37,5 @@ func set_cards(cards: Array) -> void:
 			card.modulate = Color.WHITE
 
 
-func get_card_slot_global_center(slot_index: int) -> Vector2:
-	if slot_index < 0 or slot_index >= _slots.size():
-		return get_global_rect().get_center()
-	var slot_control: Control = _slots[slot_index] as Control
-	if slot_control == null:
-		return get_global_rect().get_center()
-	return slot_control.get_global_rect().get_center()
+func get_deal_reveal_center_global() -> Vector2:
+	return get_global_rect().get_center()

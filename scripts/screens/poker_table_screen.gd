@@ -2337,7 +2337,7 @@ func _animate_single_community_card(card_data: Dictionary, board_index: int, tok
 	card.scale = Vector2(0.62, 0.62)
 	card.rotation_degrees = -5.0
 	_flying_cards_root.add_child(card)
-	var target_position: Vector2 = _community_card_point(board_index) - card_size * 0.5
+	var target_position: Vector2 = _community_deal_target_point() - card_size * 0.5
 	var flight := create_tween().set_parallel(true)
 	flight.tween_property(card, "position", target_position, COMMUNITY_CARD_FLY_SECONDS).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	flight.tween_property(card, "scale", Vector2.ONE, COMMUNITY_CARD_FLY_SECONDS).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
@@ -2572,17 +2572,13 @@ func _pot_animation_point() -> Vector2:
 	return _animation_layer_local_from_global(_pot_display.get_global_rect().get_center())
 
 
-func _community_card_point(board_index: int) -> Vector2:
+func _community_deal_target_point() -> Vector2:
 	if _animation_layer == null or _community_board == null:
 		return _dealer_origin()
 	var board: CommunityBoard = _community_board as CommunityBoard
 	if board != null:
-		return _animation_layer_local_from_global(board.get_card_slot_global_center(board_index))
-	var rect: Rect2 = _community_board.get_global_rect()
-	var spacing: float = rect.size.x / 5.0
-	var x: float = rect.position.x + spacing * (float(board_index) + 0.5)
-	var y: float = rect.position.y + rect.size.y * 0.5
-	return _animation_layer_local_from_global(Vector2(x, y))
+		return _animation_layer_local_from_global(board.get_deal_reveal_center_global())
+	return _animation_layer_local_from_global(_community_board.get_global_rect().get_center())
 
 
 func _community_card_face_texture(card_data: Dictionary) -> Texture2D:
