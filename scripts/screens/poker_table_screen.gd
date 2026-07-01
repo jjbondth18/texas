@@ -35,6 +35,7 @@ const DEFAULT_ACTION_TIME_SECONDS := 60
 const CLIENT_BUILD_ID := "sitdown-ack-v1"
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
 const FLYING_CARD_BACK_PATH := "res://assets/ui/cardback/asset_02.png"
+const COMMUNITY_FLYING_CARD_BACK_PATH := "res://assets/ui/cardback/asset_01.png"
 const FLYING_CHIP_PATH := "res://assets/ui/chips/chip_stack_purple.png"
 const DEALER_DECK_PATH := "res://assets/ui/cardback/asset_03.png"
 const COMMUNITY_CARD_FLY_SECONDS := 0.22
@@ -2324,7 +2325,7 @@ func _animate_single_community_card(card_data: Dictionary, board_index: int, tok
 	var card_size := Vector2(88, 138)
 	var card := TextureRect.new()
 	card.name = "CommunityDealCard_%d" % board_index
-	card.texture = _load_texture(FLYING_CARD_BACK_PATH)
+	card.texture = _load_texture(COMMUNITY_FLYING_CARD_BACK_PATH)
 	card.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	card.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	card.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -2574,6 +2575,9 @@ func _pot_animation_point() -> Vector2:
 func _community_card_point(board_index: int) -> Vector2:
 	if _animation_layer == null or _community_board == null:
 		return _dealer_origin()
+	var board: CommunityBoard = _community_board as CommunityBoard
+	if board != null:
+		return _animation_layer_local_from_global(board.get_card_slot_global_center(board_index))
 	var rect: Rect2 = _community_board.get_global_rect()
 	var spacing: float = rect.size.x / 5.0
 	var x: float = rect.position.x + spacing * (float(board_index) + 0.5)
