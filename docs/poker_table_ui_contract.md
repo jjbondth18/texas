@@ -26,6 +26,10 @@ BetMarker positions are fixed by `seat_index`.
 
 They must not depend on PlayerStatus row order, dynamic name text, avatar position, current action text, current turn, or the local player's seat. Updating a bet amount should only change the marker label, not the marker anchor.
 
+The implementation uses fixed design-space anchors in `SeatPlayerCard.BET_MARKER_ANCHORS_BY_SEAT`, converted from the stable `SeatPanel` origins. These anchors point toward the pot center and are shared by public authoritative tables, local public warm-up, and training.
+
+Do not calculate BetMarker positions from SeatCard label width, avatar position, left status panel position, snapshot order, or client-local perspective.
+
 ## PlayerStatus Active Row
 
 PlayerStatus rows use the fixed 9-player seat join order. Turn changes may update highlight and apply a small horizontal active offset toward the table.

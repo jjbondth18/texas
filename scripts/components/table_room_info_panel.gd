@@ -3,6 +3,7 @@ class_name TableRoomInfoPanel
 
 var _room_label: Label
 var _blinds_label: Label
+var _table_room_label: Label
 var _hand_label: Label
 var _progress_label: Label
 var _seat_label: Label
@@ -42,6 +43,13 @@ func _ready() -> void:
 	_blinds_label.add_theme_font_size_override("font_size", 13)
 	_blinds_label.add_theme_color_override("font_color", Color(1.0, 0.88, 0.45))
 	vbox.add_child(_blinds_label)
+
+	_table_room_label = Label.new()
+	_table_room_label.name = "RoomIdLabel"
+	_table_room_label.text = "Room: Training"
+	_table_room_label.add_theme_font_size_override("font_size", 12)
+	_table_room_label.add_theme_color_override("font_color", Color(0.72, 0.94, 1.0, 0.82))
+	vbox.add_child(_table_room_label)
 	
 	var separator := ColorRect.new()
 	separator.custom_minimum_size = Vector2(0, 1)
@@ -97,18 +105,24 @@ func _process(_delta: float) -> void:
 		return
 
 func set_room_info(table_id: String, blinds_text: String) -> void:
+	if _table_room_label:
+		_table_room_label.text = "Room: %s" % _safe_room_text(table_id)
 	if _hand_label:
 		_hand_label.text = "Hand #%d" % int(abs(table_id.hash()) % 100000000)
 	if _blinds_label:
 		_blinds_label.text = "NLH %s" % blinds_text
 
-func set_table_context(stage: String, hand_id: String, seat_id: int, blinds_text: String) -> void:
+func set_table_context(stage: String, hand_id: String, seat_id: int, blinds_text: String, room_text: String = "", progress_text: String = "") -> void:
 	if _room_label:
 		_room_label.text = stage.to_upper()
 	if _hand_label:
-		_hand_label.text = "ID: %s" % hand_id
+		_hand_label.text = "Hand ID: %s" % _safe_room_text(hand_id)
+	if _table_room_label:
+		_table_room_label.text = "Room: %s" % _safe_room_text(room_text)
 	if _blinds_label:
 		_blinds_label.text = "NLH %s" % blinds_text
+	if progress_text != "":
+		set_hand_progress(progress_text)
 	set_seat(seat_id)
 
 func set_hand_progress(progress_text: String) -> void:
@@ -132,3 +146,9 @@ func set_action_timer(remaining_seconds: int, total_seconds: int, active: bool) 
 			_timer_bar.value = clamp(float(max(remaining_seconds, 0)) / float(total) * 100.0, 0.0, 100.0)
 		else:
 			_timer_bar.value = 0
+
+func _safe_room_text(value: String) -> String:
+	var text := value.strip_edges()
+	if text == "" or text.to_lower() in ["null", "undefined", "<null>"]:
+		return "Training"
+	return text

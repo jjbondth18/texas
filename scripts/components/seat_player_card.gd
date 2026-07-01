@@ -15,19 +15,30 @@ const BIG_BLIND_BADGE := preload("res://assets/ui/neon_poker_ui_clean/big_blind_
 const ACTIVE_TURN_GLOW := preload("res://assets/ui/neon_poker_ui_clean/active_turn_glow.png")
 const CardViewScene := preload("res://scenes/components/card_view.tscn")
 const VERBOSE_BET_MARKER_LOGS := false
-const BET_MARKER_OFFSETS := {
-	0: Vector2(83.0, -90.0),
-	1: Vector2(320.0, 48.0),
-	2: Vector2(320.0, 48.0),
-	3: Vector2(320.0, 48.0),
-	4: Vector2(18.0, -90.0),
-	5: Vector2(83.0, -90.0),
-	6: Vector2(148.0, -90.0),
-	7: Vector2(-154.0, 48.0),
-	8: Vector2(-154.0, 48.0),
-	9: Vector2(-154.0, 48.0),
+const TABLE_POT_CENTER_DESIGN := Vector2(1280.0, 405.0)
+const SEAT_PANEL_ORIGINS_BY_SEAT := {
+	1: Vector2(1580.0, 190.0),
+	2: Vector2(1880.0, 300.0),
+	3: Vector2(2030.0, 520.0),
+	4: Vector2(1760.0, 700.0),
+	5: Vector2(1180.0, 710.0),
+	6: Vector2(720.0, 700.0),
+	7: Vector2(410.0, 520.0),
+	8: Vector2(560.0, 300.0),
+	9: Vector2(900.0, 190.0),
 }
-const BET_MARKER_ANCHORS_BY_SEAT := BET_MARKER_OFFSETS
+const BET_MARKER_ANCHORS_BY_SEAT := {
+	0: Vector2(1210.0, 590.0),
+	1: Vector2(1540.0, 322.0),
+	2: Vector2(1660.0, 392.0),
+	3: Vector2(1650.0, 535.0),
+	4: Vector2(1540.0, 610.0),
+	5: Vector2(1210.0, 590.0),
+	6: Vector2(890.0, 610.0),
+	7: Vector2(850.0, 535.0),
+	8: Vector2(900.0, 392.0),
+	9: Vector2(1015.0, 322.0),
+}
 
 var _is_empty: bool = true
 var _is_local_player: bool = false
@@ -403,12 +414,15 @@ func _build_toast() -> void:
 
 
 func _bet_marker_position(card_pos: Vector2) -> Vector2:
-	return card_pos + _bet_marker_offset()
+	return _bet_marker_offset(card_pos)
 
 
-func _bet_marker_offset() -> Vector2:
+func _bet_marker_offset(_card_pos: Vector2 = Vector2.ZERO) -> Vector2:
 	if BET_MARKER_ANCHORS_BY_SEAT.has(_seat_id):
-		return BET_MARKER_ANCHORS_BY_SEAT[_seat_id]
+		var seat_key: int = 5 if _seat_id == 0 else _seat_id
+		var seat_origin: Vector2 = SEAT_PANEL_ORIGINS_BY_SEAT.get(seat_key, SEAT_PANEL_ORIGINS_BY_SEAT[5])
+		var design_anchor: Vector2 = BET_MARKER_ANCHORS_BY_SEAT[_seat_id]
+		return design_anchor - seat_origin - position
 	var marker_size := Vector2(142.0, 32.0)
 	var card_size := Vector2(308.0, 119.0)
 	var top_gap: float = 58.0

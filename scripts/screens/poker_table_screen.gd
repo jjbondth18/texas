@@ -852,6 +852,7 @@ func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
 	snapshot = _server_apply_playback_projection(_server_latest_ui_snapshot)
 	_apply_launch_context(snapshot)
 	_refresh()
+	_handle_server_session_complete_state(snapshot)
 	_warn_if_server_ui_slow("server snapshot apply", apply_start, SERVER_UI_SLOW_APPLY_WARNING_MS)
 	_start_server_action_playback()
 
@@ -888,6 +889,7 @@ func _on_server_private_snapshot_received(private_snapshot: Dictionary) -> void:
 		snapshot = _server_apply_playback_projection(_server_latest_ui_snapshot)
 		_apply_launch_context(snapshot)
 		_refresh()
+		_handle_server_session_complete_state(snapshot)
 		_warn_if_server_ui_slow("server private snapshot apply", apply_start, SERVER_UI_SLOW_APPLY_WARNING_MS)
 
 func _on_server_error(message: String) -> void:
@@ -1003,6 +1005,10 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	var server_small_blind := int(table_info.get("small_blind", server_snapshot.get("small_blind", 25)))
 	var server_big_blind := int(table_info.get("big_blind", server_snapshot.get("big_blind", 50)))
 	var server_hand_id := int(server_snapshot.get("hand_id", 0))
+	var server_max_hands: int = int(server_snapshot.get("max_hands", server_snapshot.get("hand_count", table_info.get("max_hands", table_info.get("hand_count", TableLaunchContext.max_hands)))))
+	var server_hands_played: int = int(server_snapshot.get("hands_played", table_info.get("hands_played", 0)))
+	var server_current_hand_number: int = int(server_snapshot.get("current_hand_number", table_info.get("current_hand_number", server_hand_id)))
+	var server_session_complete: bool = bool(server_snapshot.get("session_complete", table_info.get("session_complete", server_room_state == "session_complete")))
 	var action_timeout_seconds: int = max(1, int(ceil(float(server_snapshot.get("action_timeout_ms", 15000)) / 1000.0)))
 	var private_hand_id := int(private_snapshot.get("hand_id", -1))
 	var private_matches_hand := private_hand_id == server_hand_id
@@ -1090,6 +1096,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	return {
 		"source_model": "server_authoritative",
 		"table_id": room_id if room_id != "" else "authoritative_local",
+		"room_label": room_id if room_id != "" else "authoritative_local",
 		"table_name": "Authoritative Local Table",
 		"buy_in": server_buy_in,
 		"table_info": table_info,
@@ -1098,6 +1105,10 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"phase": phase,
 		"room_state": server_room_state,
 		"table_state": server_table_state,
+		"max_hands": server_max_hands,
+		"hands_played": server_hands_played,
+		"current_hand_number": server_current_hand_number,
+		"session_complete": server_session_complete,
 		"host_player_id": String(server_snapshot.get("host_player_id", table_info.get("host_player_id", ""))),
 		"dev_simulated_player_present": bool(server_snapshot.get("dev_simulated_player_present", table_info.get("dev_simulated_player_present", false))),
 		"ready_count": int(server_snapshot.get("ready_count", table_info.get("ready_count", 0))),
@@ -1802,6 +1813,11 @@ func _table_flow_to_ui_snapshot(source: Dictionary) -> Dictionary:
 		"table_id": "mock_table_001",
 		"table_name": "Neon Table 01",
 		"hand_id": String(hand.get("hand_id", "waiting")),
+		"room_label": _local_room_label(),
+		"max_hands": _table_session.max_hands if _table_session != null else TableLaunchContext.max_hands,
+		"hands_played": _table_session.hands_played if _table_session != null else 0,
+		"current_hand_number": _table_session.current_hand_index if _table_session != null else 0,
+		"session_complete": _table_session.is_session_over if _table_session != null else false,
 		"blinds_text": "%d / %d" % [_table_flow.small_blind, _table_flow.big_blind],
 		"phase": stage,
 		"room_state": stage,
@@ -1842,6 +1858,15 @@ func _is_showdown_eligible_status(status: String) -> bool:
 		"all_in",
 		"active",
 	]
+
+func _local_room_label() -> String:
+	if _is_public_ai_warmup():
+		return "Local Warm-up"
+	if _table_session != null and _table_session.mode == TableSessionScript.MODE_TRAINING:
+		return "Training"
+	if _is_public_chip_table() and _server_room_id != "":
+		return _server_room_id
+	return String(snapshot.get("table_id", "Training"))
 
 func _refresh() -> void:
 	_hide_legacy_top_center_bars()
@@ -1885,10 +1910,12 @@ func _refresh() -> void:
 				String(snapshot.get("phase", "waiting")),
 				String(snapshot.get("hand_id", snapshot.get("table_id", "mock_table_001"))),
 				int(snapshot.get("local_seat_index", 5)),
-				String(snapshot.get("blinds_text", "25/50"))
+				String(snapshot.get("blinds_text", "25/50")),
+				_room_label_from_snapshot(snapshot),
+				_session_progress_text_from_snapshot(snapshot)
 			)
 			if _room_info_panel.has_method("set_hand_progress"):
-				_room_info_panel.call("set_hand_progress", _session_progress_text())
+				_room_info_panel.call("set_hand_progress", _session_progress_text_from_snapshot(snapshot))
 		else:
 			_room_info_panel.set_room_info(
 				snapshot.get("table_id", "mock_table_001"),
@@ -2570,9 +2597,6 @@ func _record_session_hand_result_once() -> void:
 	if _recorded_session_hand_ids.has(hand_id):
 		return
 	_recorded_session_hand_ids[hand_id] = true
-	if _is_public_ai_warmup():
-		_append_session_log("AI warm-up hand complete. Account chips, gems, and stats were not updated.")
-		return
 	var settlement: Dictionary = Dictionary(hand.get("settlement", {}))
 	var local_seat_id: int = int(snapshot.get("local_seat_index", 5))
 	var local_chips: int = _local_table_chips()
@@ -2585,6 +2609,8 @@ func _record_session_hand_result_once() -> void:
 		", ".join(winner_names) if not winner_names.is_empty() else "-",
 		int(settlement.get("win_amount", 0)),
 	])
+	if _is_public_ai_warmup():
+		_append_session_log("AI warm-up practice chips only. Account chips, gems, and stats were not updated.")
 	if _table_session.is_session_over:
 		_append_session_log("Table session complete. Profit %+d." % _table_session.session_profit)
 
@@ -2613,6 +2639,30 @@ func _enter_session_over_with_reason(reason: String) -> void:
 	_table_session.session_profit = _table_session.session_end_chips - _table_session.session_start_chips
 	_append_session_log("Table session complete: %s." % reason)
 	_enter_session_over()
+
+
+func _handle_server_session_complete_state(source_snapshot: Dictionary) -> void:
+	if not server_authoritative:
+		return
+	var room_state: String = String(source_snapshot.get("room_state", source_snapshot.get("table_state", "")))
+	if not bool(source_snapshot.get("session_complete", false)) and room_state != "session_complete":
+		return
+	if _table_session == null:
+		_configure_table_session_from_launch_context()
+	if _table_session == null:
+		return
+	_table_session.max_hands = int(source_snapshot.get("max_hands", source_snapshot.get("hand_count", _table_session.max_hands)))
+	_table_session.current_hand_index = int(source_snapshot.get("current_hand_number", source_snapshot.get("server_hand_id", _table_session.current_hand_index)))
+	_table_session.hands_played = int(source_snapshot.get("hands_played", max(_table_session.current_hand_index, _table_session.hands_played)))
+	_table_session.current_table_chips = _local_table_chips_from_snapshot(Array(source_snapshot.get("seats", [])))
+	_table_session.session_end_chips = _table_session.current_table_chips
+	_table_session.session_profit = _table_session.session_end_chips - _table_session.session_start_chips
+	_table_session.is_session_over = true
+	if _table_session.end_reason == "":
+		_table_session.end_reason = "Hands completed"
+	_update_launch_context_session()
+	_show_session_result_panel()
+	_refresh_rule_debug_panel()
 
 
 func _can_table_flow_start_next_hand() -> bool:
@@ -3067,8 +3117,36 @@ func _session_progress_text() -> String:
 	if _table_session == null:
 		return "Hand 0 / 0"
 	if _table_session.max_hands <= 0 or _table_session.max_hands >= 999:
-		return "Hand %d / ∞" % max(_table_session.current_hand_index, _table_session.hands_played)
+		return "Hand %d / Unlimited" % max(_table_session.current_hand_index, _table_session.hands_played)
 	return "Hand %d / %d" % [max(_table_session.current_hand_index, _table_session.hands_played), _table_session.max_hands]
+
+
+func _session_progress_text_from_snapshot(source_snapshot: Dictionary) -> String:
+	if source_snapshot.has("max_hands") or source_snapshot.has("hands_played") or source_snapshot.has("current_hand_number"):
+		var max_hands: int = int(source_snapshot.get("max_hands", source_snapshot.get("hand_count", 0)))
+		var hands_played: int = int(source_snapshot.get("hands_played", 0))
+		var current_hand: int = int(source_snapshot.get("current_hand_number", source_snapshot.get("server_hand_id", hands_played)))
+		if bool(source_snapshot.get("session_complete", false)):
+			current_hand = hands_played
+		var visible_hand: int = max(current_hand, hands_played)
+		if max_hands <= 0 or max_hands >= 999:
+			return "Hand %d / Unlimited" % visible_hand
+		return "Hand %d / %d" % [min(visible_hand, max_hands), max_hands]
+	return _session_progress_text()
+
+
+func _room_label_from_snapshot(source_snapshot: Dictionary) -> String:
+	var room_label: String = String(source_snapshot.get("room_label", ""))
+	if room_label != "":
+		return room_label
+	if bool(source_snapshot.get("is_ai_warmup", false)) or _local_public_warmup_active:
+		return "Local Warm-up"
+	if _table_session != null and _table_session.mode == TableSessionScript.MODE_TRAINING:
+		return "Training"
+	var table_id: String = String(source_snapshot.get("table_id", ""))
+	if table_id != "" and table_id != "mock_table_001":
+		return table_id
+	return "Training"
 
 
 func _local_table_chips() -> int:
@@ -3198,7 +3276,7 @@ func _build_session_result_panel() -> void:
 		_session_play_again_button = play_again
 		var home_button := Button.new()
 		home_button.name = "BackHomeButton"
-		home_button.text = "BACK TO HOME"
+		home_button.text = "EXIT TABLE"
 		home_button.custom_minimum_size = Vector2(190, 48)
 		home_button.pressed.connect(_return_home)
 		row.add_child(home_button)
@@ -3224,6 +3302,7 @@ func _show_session_result_panel() -> void:
 		_apply_session_button_style(_session_play_again_button, "primary", not can_play_again)
 	var back_button: Button = _session_result_panel.find_child("BackHomeButton", true, false) as Button
 	if back_button != null:
+		back_button.text = "EXIT TABLE"
 		_apply_session_button_style(back_button, "secondary", false)
 	if _session_play_again_hint_label != null:
 		_session_play_again_hint_label.text = "" if can_play_again else "Not enough chips for this buy-in"
@@ -3248,6 +3327,7 @@ func _show_session_result_panel() -> void:
 	var profit_color := "#35f5c8" if _table_session.session_profit >= 0 else "#ff4f9a"
 	var reason: String = _table_session.end_reason if _table_session.end_reason != "" else "Session ended"
 	var result_lines: Array[String] = [
+		"[center][b]%s hands played[/b][/center]" % _table_session.hand_count_text(),
 		"[center][font_size=30][color=%s][b]%+d[/b][/color][/font_size][/center]" % [profit_color, _table_session.session_profit],
 		"[center][color=#8fa8ff]%s[/color][/center]" % ("Practice chips only. Results do not affect your account balance." if is_practice else "Buy-in moved from wallet to table. Final table chips returned to wallet."),
 		"",
@@ -3272,12 +3352,30 @@ func _show_session_result_panel() -> void:
 		"Last Winner: %s" % _table_session.last_winner,
 		"End Reason: %s" % reason,
 	]
+	var final_stacks: Array[String] = _final_stack_lines_from_snapshot(snapshot)
+	if not final_stacks.is_empty():
+		result_lines.append("")
+		result_lines.append("[b]Final Stacks:[/b]")
+		result_lines.append_array(final_stacks)
 	if is_practice:
 		result_lines.append("Training uses practice chips only. Results do not affect your account balance.")
 	_session_result_text.text = "\n".join(result_lines)
 	if _session_result_scrim != null:
 		_session_result_scrim.visible = true
 	_session_result_panel.visible = true
+
+
+func _final_stack_lines_from_snapshot(source_snapshot: Dictionary) -> Array[String]:
+	var lines: Array[String] = []
+	for seat_item in Array(source_snapshot.get("seats", [])):
+		var seat: Dictionary = Dictionary(seat_item)
+		var occupied: bool = bool(seat.get("occupied", String(seat.get("player_id", "")) != ""))
+		if not occupied:
+			continue
+		var player_name: String = String(seat.get("player_name", seat.get("name", "Seat %d" % int(seat.get("seat_index", 0)))))
+		var chips: int = int(seat.get("table_stack", seat.get("chips", 0)))
+		lines.append("%s: %s" % [player_name, _format_chips(chips)])
+	return lines
 
 
 func _restart_session() -> void:
@@ -3288,6 +3386,14 @@ func _restart_session() -> void:
 		_session_result_panel.visible = false
 	if _session_result_scrim != null:
 		_session_result_scrim.visible = false
+	if server_authoritative:
+		if _poker_ws_client == null or not _server_connected:
+			_on_server_error("Cannot play again: authoritative server is not connected.")
+			return
+		_server_ready_sent = false
+		_send_server_message(_poker_ws_client.restart_session(), "restart_session")
+		_append_session_log("Play Again requested. Waiting for all players to READY.")
+		return
 	if _table_session != null and not (_table_session.mode == TableSessionScript.MODE_TRAINING or _table_session.uses_practice_chips):
 		var service := ProfileServiceScript.new()
 		var buy_in_profile: Dictionary = service.deduct_table_buy_in(_table_session.buy_in)
@@ -3311,6 +3417,10 @@ func _apply_session_profit_to_profile() -> void:
 	if _profile_settlement_applied or _table_session == null:
 		return
 	_profile_settlement_applied = true
+	if server_authoritative:
+		_session_unlocked_avatar_ids.clear()
+		_append_session_log("Server session complete. Use Exit Table to cash out table chips to the server wallet.")
+		return
 	if _table_session.is_ai_warmup:
 		_session_unlocked_avatar_ids.clear()
 		_append_session_log("AI warm-up results were not written to account balance or stats.")
@@ -3364,6 +3474,8 @@ func _reset_launch_context_session_for_play_again() -> void:
 func _can_play_again() -> bool:
 	if _table_session == null:
 		return false
+	if server_authoritative:
+		return _server_connected and _server_room_id != "" and bool(snapshot.get("session_complete", _table_session.is_session_over))
 	if _table_session.mode == TableSessionScript.MODE_TRAINING or _table_session.uses_practice_chips:
 		return true
 	var profile := ProfileServiceScript.new().get_current_profile()
@@ -3862,10 +3974,13 @@ func _sync_authoritative_waiting_context(target_snapshot: Dictionary) -> void:
 		_table_session.waiting_for_real_players = waiting_for_real_players
 		_table_session.is_ai_warmup = is_server_ai_warmup
 		_table_session.warmup_ai_player_ids = TableLaunchContext.warmup_ai_player_ids.duplicate()
-		_table_session.status = TableSessionScript.TABLE_AI_WARMUP if is_server_ai_warmup else (TableSessionScript.TABLE_WAITING_FOR_PLAYERS if waiting_for_real_players else (TableSessionScript.TABLE_READY_TO_START if room_state in ["waiting_ready", "starting_countdown"] else TableSessionScript.TABLE_PLAYING))
+		_table_session.status = TableSessionScript.TABLE_CLOSED if room_state == "session_complete" else (TableSessionScript.TABLE_AI_WARMUP if is_server_ai_warmup else (TableSessionScript.TABLE_WAITING_FOR_PLAYERS if waiting_for_real_players else (TableSessionScript.TABLE_READY_TO_START if room_state in ["waiting_ready", "starting_countdown"] else TableSessionScript.TABLE_PLAYING)))
 		_table_session.current_table_chips = _local_table_chips_from_snapshot(seats)
 		_update_launch_context_session()
-	if phase in ["waiting", "waiting_for_players"] or room_state in ["waiting_ready", "starting_countdown"]:
+	if room_state == "session_complete":
+		_table_flow.table_state = TexasTableFlowScript.HAND_OVER
+		_table_flow.seats = _server_ui_seats_to_table_flow_seats(seats)
+	elif phase in ["waiting", "waiting_for_players"] or room_state in ["waiting_ready", "starting_countdown"]:
 		_table_flow.table_state = TexasTableFlowScript.WAITING
 		_table_flow.seats = _server_ui_seats_to_table_flow_seats(seats)
 	elif is_server_ai_warmup:

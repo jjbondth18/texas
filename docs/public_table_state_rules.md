@@ -24,6 +24,7 @@ Display-only blind labels such as `50 / 100` can exist in UI, but backend logic 
 - `starting_countdown`: all required real players are ready. The server starts a 3 second countdown and then automatically starts the formal public hand.
 - `playing`: a formal public hand is active. New real players may join an open seat, but their seat status is `waiting_next_hand`.
 - `hand_result` / `hand_over`: settlement completed. After the first formal public hand starts, later hands continue automatically after the result display if at least two ready real candidates remain.
+- `session_complete`: the selected hand count has been reached. The server cancels ready/action/next-hand timers, stops dealing, broadcasts a final snapshot, and rejects further player actions until the session is reset or the player exits.
 
 AI warm-up is always local practice. Warm-up AI never enters public seats and never joins official public hands.
 
@@ -32,6 +33,30 @@ Ready does not replace `sit_down`: clients must wait for `sit_down_result` or a 
 With one seated real player, the table still shows local `START AI WARM-UP` for practice. This warm-up does not use server seats and does not change wallet, gems, formal stats, or public profit.
 
 The official account-wallet boundary is the first successful server public `start_hand`. A player who leaves a public table before that formal hand starts receives the full server table stack back to the wallet with reason `left_before_official_hand`. Local warm-up hands do not change wallet chips, gems, formal stats, or public profit.
+
+## Hand Count Limit
+
+Public tables honor the selected hand count as a hard limit: `5`, `10`, `20`, or `Unlimited`.
+
+The server snapshot exposes:
+
+- `max_hands`
+- `hands_played`
+- `current_hand_number`
+- `session_complete`
+
+For a 10-hand table, the first hand is `current_hand_number = 1`, and after the tenth result display finishes the room enters `session_complete`. The server must not create hand 11 through any auto-next-hand, ready countdown, manual start, bot, or debug path.
+
+Unlimited tables use `max_hands = 0` and the UI displays `Hand N / Unlimited`.
+
+## Session Complete
+
+At `session_complete`, the client shows the Session Complete panel with final stacks and two actions:
+
+- `PLAY AGAIN`: resets the same room session counter, clears board/cards/bets/pot, keeps seated players and current table stacks, sets all players `ready=false`, and returns to `waiting_ready`. It does not deduct a new buy-in.
+- `EXIT TABLE`: leaves the table, cashes out the player's current table stack to the authoritative server wallet, cancels pending timers, and returns home/browser.
+
+If the final hand ends in showdown, the hand result remains visible for the normal result delay before the Session Complete panel appears.
 
 The dev-only simulated real join button is only for testing warm-up interruption and Ready UI. A dev simulated player is seated as a real-looking public seat, but it has no controller and the server rejects formal public hand start while it is present. Use a second real client for an actual public hand test.
 

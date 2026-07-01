@@ -8,6 +8,7 @@ const SIT_DOWN := "sit_down"
 const LEAVE_SEAT := "leave_seat"
 const CASH_OUT := "cash_out"
 const READY := "ready"
+const RESTART_SESSION := "restart_session"
 const START_HAND := "start_hand"
 const START_AI_WARMUP := "start_ai_warmup"
 const DEV_SIMULATE_REAL_JOIN := "dev_simulate_real_join"
@@ -82,6 +83,9 @@ static func cash_out() -> Dictionary:
 
 static func ready(is_ready: bool = true) -> Dictionary:
 	return _message(READY, {"ready": is_ready})
+
+static func restart_session() -> Dictionary:
+	return _message(RESTART_SESSION)
 
 static func start_hand() -> Dictionary:
 	return _message(START_HAND)

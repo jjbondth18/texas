@@ -101,6 +101,9 @@ func cash_out() -> int:
 func ready(is_ready: bool = true) -> int:
 	return send_message(PokerProtocolScript.ready(is_ready))
 
+func restart_session() -> int:
+	return send_message(PokerProtocolScript.restart_session())
+
 func start_hand() -> int:
 	return send_message(PokerProtocolScript.start_hand())
 

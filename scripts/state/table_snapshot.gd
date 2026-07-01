@@ -9,6 +9,11 @@ var hand_state := "waiting"
 var table_state := "waiting"
 var room_state := "waiting"
 var hand_id := 0
+var hand_count := 0
+var max_hands := 0
+var hands_played := 0
+var current_hand_number := 0
+var session_complete := false
 var seats: Array = []
 var community_cards: Array = []
 var pot := 0
@@ -51,6 +56,11 @@ func apply_table_snapshot(data: Dictionary) -> void:
 	table_state = String(data.get("table_state", table_info.get("table_state", table_state)))
 	room_state = String(data.get("room_state", table_info.get("room_state", room_state)))
 	hand_id = int(data.get("hand_id", hand_id))
+	hand_count = int(data.get("hand_count", table_info.get("hand_count", hand_count)))
+	max_hands = int(data.get("max_hands", data.get("hand_count", table_info.get("max_hands", table_info.get("hand_count", max_hands)))))
+	hands_played = int(data.get("hands_played", table_info.get("hands_played", hands_played)))
+	current_hand_number = int(data.get("current_hand_number", table_info.get("current_hand_number", current_hand_number)))
+	session_complete = bool(data.get("session_complete", table_info.get("session_complete", session_complete)))
 	seats = Array(data.get("seats", [])).duplicate(true)
 	community_cards = Array(data.get("community_cards", [])).duplicate(true)
 	pot = int(data.get("pot", pot))
@@ -104,6 +114,11 @@ func to_dict() -> Dictionary:
 		"table_state": table_state,
 		"room_state": room_state,
 		"hand_id": hand_id,
+		"hand_count": hand_count,
+		"max_hands": max_hands,
+		"hands_played": hands_played,
+		"current_hand_number": current_hand_number,
+		"session_complete": session_complete,
 		"seats": seats.duplicate(true),
 		"community_cards": community_cards.duplicate(true),
 		"pot": pot,

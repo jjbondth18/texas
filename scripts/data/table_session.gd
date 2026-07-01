@@ -265,7 +265,7 @@ func _normalized_dealer_id(dealer_id: String) -> String:
 
 func hand_count_text() -> String:
 	if max_hands <= 0 or max_hands >= 999:
-		return "%d / unlimited" % max(current_hand_index, hands_played)
+		return "%d / Unlimited" % max(current_hand_index, hands_played)
 	return "%d / %d" % [max(current_hand_index, hands_played), max_hands]
 
 func to_dict() -> Dictionary:

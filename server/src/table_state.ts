@@ -132,7 +132,7 @@ export class TableState {
   }
 
   canMoveTableChips(): boolean {
-    return ["waiting", "hand_over"].includes(this.phase);
+    return ["waiting", "hand_over", "session_complete"].includes(this.phase);
   }
 
   addTableChips(playerId: string, amount: number): void {
@@ -219,6 +219,44 @@ export class TableState {
     this.minRaiseTo = this.currentBet + this.bigBlind;
     this.currentTurnSeat = this.nextActionableSeat(this.bigBlindSeat);
     this.addAction({ type: "system", message: `Hand ${this.handId} started.` });
+  }
+
+  resetForNewSession(): void {
+    this.phase = "waiting";
+    this.handId = 0;
+    this.communityCards = [];
+    this.deck = [];
+    this.currentBet = 0;
+    this.minRaiseTo = this.bigBlind;
+    this.currentTurnSeat = -1;
+    this.dealerSeat = -1;
+    this.smallBlindSeat = -1;
+    this.bigBlindSeat = -1;
+    this.winners = [];
+    this.lastHandResults = [];
+    this.handStartChips = new Map();
+    for (const seat of this.seats) {
+      seat.holeCards = [];
+      seat.currentBet = 0;
+      seat.contribution = 0;
+      seat.acted = false;
+      seat.lastAction = "";
+      seat.lastActionAmount = 0;
+      seat.isDealer = false;
+      seat.isSmallBlind = false;
+      seat.isBigBlind = false;
+      seat.ready = false;
+      if (!seat.playerId) {
+        Object.assign(seat, this.emptySeat(seat.seatIndex));
+      } else if (seat.disconnected) {
+        seat.status = "disconnected";
+      } else if (seat.chips <= 0) {
+        seat.status = "sit_out";
+      } else {
+        seat.status = "sitting";
+      }
+    }
+    this.addAction({ type: "system", action: "session_restart", message: "Session reset. Waiting for ready." });
   }
 
   publicSnapshot(): TableSnapshot {

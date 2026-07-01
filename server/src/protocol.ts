@@ -6,6 +6,7 @@ export type ClientMessageType =
   | "leave_seat"
   | "cash_out"
   | "ready"
+  | "restart_session"
   | "start_hand"
   | "start_ai_warmup"
   | "dev_simulate_real_join"
@@ -57,7 +58,7 @@ export type ErrorCode =
   | "cannot_add_chips_during_hand"
   | "cannot_cash_out_during_hand";
 export type PlayerActionType = "fold" | "check" | "call" | "bet" | "raise" | "all_in";
-export type Phase = "waiting" | "preflop" | "flop" | "turn" | "river" | "showdown" | "hand_over";
+export type Phase = "waiting" | "preflop" | "flop" | "turn" | "river" | "showdown" | "hand_over" | "session_complete";
 export type SeatStatus = "empty" | "sitting" | "ready" | "playing" | "folded" | "all_in" | "sit_out" | "waiting_next_hand" | "disconnected";
 export type Suit = "C" | "D" | "H" | "S";
 export type Rank = "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "T" | "J" | "Q" | "K" | "A";
@@ -156,6 +157,10 @@ export interface PublicTableSnapshot {
   big_blind: number;
   buy_in: number;
   hand_count: number;
+  max_hands?: number;
+  hands_played?: number;
+  current_hand_number?: number;
+  session_complete?: boolean;
   max_players: number;
   seated_count: number;
   current_players: number;
@@ -229,6 +234,10 @@ export interface TableSnapshot {
   table_info?: PublicTableSnapshot;
   buy_in?: number;
   hand_count?: number;
+  max_hands?: number;
+  hands_played?: number;
+  current_hand_number?: number;
+  session_complete?: boolean;
   seated_count?: number;
   current_players?: number;
   hand_state: Phase;
