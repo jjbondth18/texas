@@ -474,8 +474,8 @@ func _layout_action_panel() -> void:
 	_configure_card_depth(panel)
 	_bet_title_label.position = Vector2(0, 28)
 	_bet_title_label.size = Vector2(656, 18)
-	_raise_value_label.position = Vector2(238, 50)
-	_raise_value_label.size = Vector2(180, 42)
+	_raise_value_label.position = Vector2(202, -48)
+	_raise_value_label.size = Vector2(180, 34)
 
 	var controls := $ControlZone/RaiseControlPanel
 	controls.position = Vector2(36, 92)

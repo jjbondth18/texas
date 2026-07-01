@@ -34,7 +34,8 @@ func _ready() -> void:
 	_amount.add_theme_font_size_override("font_size", 25)
 	_amount.add_theme_color_override("font_color", Color(1.0, 0.88, 0.45))
 	_amount.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_amount.offset_left = 66
+	_amount.offset_left = 42
+	_amount.offset_right = -18
 	_amount.offset_top = 34
 	_amount.offset_bottom = -4
 	add_child(_amount)

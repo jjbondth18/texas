@@ -37,6 +37,10 @@ const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_
 const FLYING_CARD_BACK_PATH := "res://assets/ui/cardback/asset_02.png"
 const FLYING_CHIP_PATH := "res://assets/ui/chips/chip_stack_purple.png"
 const DEALER_DECK_PATH := "res://assets/ui/cardback/asset_03.png"
+const COMMUNITY_CARD_FLY_SECONDS := 0.22
+const COMMUNITY_CARD_SETTLE_SECONDS := 0.06
+const COMMUNITY_CARD_FLIP_SECONDS := 0.16
+const COMMUNITY_CARD_SEQUENCE_GAP_SECONDS := 0.08
 const ADD_CHIPS_POPOVER_SIZE := Vector2(312, 286)
 const POPOVER_LAYER_Z_INDEX := 240
 const SERVER_UI_VERBOSE_LOGS := false
@@ -116,6 +120,8 @@ var _turn_timer_seat_index := -1
 var _turn_timer_timeout_fired := false
 var _visible_community_cards: Array = []
 var _community_reveal_token: int = 0
+var _community_deal_animation_active := false
+var _community_animation_target_count := 0
 var _local_cards_reveal_token: int = 0
 var _rule_debug_panel: PanelContainer
 var _rule_debug_text: RichTextLabel
@@ -1942,10 +1948,7 @@ func _refresh() -> void:
 			_seats[visual_position].set_seat_data(data)
 				
 	var community_cards: Array = Array(snapshot.get("community_cards", []))
-	if has_new_community_deal:
-		_schedule_community_cards_reveal(community_cards, _deal_reveal_delay(visual_events, "deal_community"))
-	else:
-		_apply_community_cards(community_cards)
+	_sync_community_cards_display(community_cards, has_new_community_deal, visual_events)
 	_play_visual_events(visual_events)
 	
 	var pot_data = snapshot.get("pot_data", snapshot.get("pot", 0))
@@ -2216,10 +2219,8 @@ func _play_visual_events(events: Array) -> void:
 				_extend_visual_pause(hole_delay + 0.88)
 				deal_order += 1
 			"deal_community":
-				var board_delay: float = deal_delay_offset + float(deal_order) * 0.14
-				var board_index: int = int(event.get("board_index", 0))
-				_play_flying_card(_dealer_origin(), _community_card_point(board_index), board_delay, "deal_community", "board slot %d" % (board_index + 1))
-				_extend_visual_pause(board_delay + 0.88)
+				# Community cards are animated by _sync_community_cards_display so the board
+				# can reveal each card back-first, then flip it face-up in the final slot.
 				deal_order += 1
 
 
@@ -2251,13 +2252,117 @@ func _deal_reveal_delay(events: Array, event_type: String) -> float:
 	return last_delay + 0.56
 
 
-func _schedule_community_cards_reveal(cards: Array, delay: float) -> void:
+func _community_deal_start_delay(events: Array) -> float:
+	var delay: float = 0.0
+	for event_item in events:
+		var event: Dictionary = Dictionary(event_item)
+		var event_id: int = int(event.get("id", -1))
+		if event_id == -1 or _seen_visual_event_ids.has(event_id):
+			continue
+		var current_type: String = String(event.get("type", ""))
+		if current_type == "collect_bets":
+			delay += _collect_bets_duration(event)
+		elif current_type == "deal_community":
+			break
+	return delay
+
+
+func _sync_community_cards_display(cards: Array, has_new_community_deal: bool, visual_events: Array) -> void:
+	if _community_board == null:
+		return
+	var current_count: int = _visible_community_cards.size()
+	var target_count: int = cards.size()
+	if _community_deal_animation_active and target_count >= _community_animation_target_count:
+		return
+	if target_count <= current_count:
+		_apply_community_cards(cards)
+		return
+	if has_new_community_deal or current_count < target_count:
+		_schedule_community_cards_reveal(cards, _community_deal_start_delay(visual_events), current_count)
+	else:
+		_apply_community_cards(cards)
+
+
+func _schedule_community_cards_reveal(cards: Array, delay: float, start_index: int = -1) -> void:
 	_community_reveal_token += 1
 	var token: int = _community_reveal_token
-	await get_tree().create_timer(delay).timeout
-	if token != _community_reveal_token:
+	var first_new_index: int = start_index if start_index >= 0 else _visible_community_cards.size()
+	first_new_index = clampi(first_new_index, 0, cards.size())
+	var cards_to_reveal: int = max(cards.size() - first_new_index, 0)
+	if cards_to_reveal <= 0:
+		_apply_community_cards(cards)
 		return
-	_apply_community_cards(cards)
+	_community_deal_animation_active = true
+	_community_animation_target_count = cards.size()
+	_apply_community_cards(cards.slice(0, first_new_index))
+	var total_seconds: float = delay + float(cards_to_reveal) * (COMMUNITY_CARD_FLY_SECONDS + COMMUNITY_CARD_SETTLE_SECONDS + COMMUNITY_CARD_FLIP_SECONDS + COMMUNITY_CARD_SEQUENCE_GAP_SECONDS)
+	_extend_visual_pause(total_seconds + 0.05)
+	if delay > 0.0:
+		await get_tree().create_timer(delay).timeout
+	if token != _community_reveal_token:
+		_community_deal_animation_active = false
+		return
+	for board_index in range(first_new_index, cards.size()):
+		if token != _community_reveal_token:
+			_community_deal_animation_active = false
+			return
+		var card_data: Dictionary = Dictionary(cards[board_index]).duplicate(true)
+		await _animate_single_community_card(card_data, board_index, token)
+		if token != _community_reveal_token:
+			_community_deal_animation_active = false
+			return
+		_apply_community_cards(cards.slice(0, board_index + 1))
+		if board_index < cards.size() - 1:
+			await get_tree().create_timer(COMMUNITY_CARD_SEQUENCE_GAP_SECONDS).timeout
+	_community_deal_animation_active = false
+	_community_animation_target_count = 0
+
+
+func _animate_single_community_card(card_data: Dictionary, board_index: int, token: int) -> void:
+	if _flying_cards_root == null:
+		return
+	var card_size := Vector2(88, 138)
+	var card := TextureRect.new()
+	card.name = "CommunityDealCard_%d" % board_index
+	card.texture = _load_texture(FLYING_CARD_BACK_PATH)
+	card.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	card.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	card.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.size = card_size
+	card.pivot_offset = card_size * 0.5
+	card.z_index = 124
+	card.position = _community_deal_origin() - card_size * 0.5
+	card.scale = Vector2(0.62, 0.62)
+	card.rotation_degrees = -5.0
+	_flying_cards_root.add_child(card)
+	var target_position: Vector2 = _community_card_point(board_index) - card_size * 0.5
+	var flight := create_tween().set_parallel(true)
+	flight.tween_property(card, "position", target_position, COMMUNITY_CARD_FLY_SECONDS).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	flight.tween_property(card, "scale", Vector2.ONE, COMMUNITY_CARD_FLY_SECONDS).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	flight.tween_property(card, "rotation_degrees", 0.0, COMMUNITY_CARD_FLY_SECONDS).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	await flight.finished
+	if token != _community_reveal_token:
+		card.queue_free()
+		return
+	await get_tree().create_timer(COMMUNITY_CARD_SETTLE_SECONDS).timeout
+	if token != _community_reveal_token:
+		card.queue_free()
+		return
+	var flip_half: float = COMMUNITY_CARD_FLIP_SECONDS * 0.5
+	var flip_in := create_tween()
+	flip_in.tween_property(card, "scale:x", 0.05, flip_half).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	await flip_in.finished
+	if token != _community_reveal_token:
+		card.queue_free()
+		return
+	var face_texture := _community_card_face_texture(card_data)
+	if face_texture != null:
+		card.texture = face_texture
+	var flip_out := create_tween()
+	flip_out.tween_property(card, "scale:x", 1.0, flip_half).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	await flip_out.finished
+	card.queue_free()
 
 
 func _apply_community_cards(cards: Array) -> void:
@@ -2291,6 +2396,8 @@ func _reset_visual_hand_state() -> void:
 	_visual_pause_until_msec = 0
 	_visible_community_cards.clear()
 	_community_reveal_token += 1
+	_community_deal_animation_active = false
+	_community_animation_target_count = 0
 	_local_cards_reveal_token += 1
 	if _community_board != null:
 		_community_board.set_cards([])
@@ -2440,6 +2547,10 @@ func _dealer_origin() -> Vector2:
 	return _animation_layer_local_from_global(_dealer_label.get_global_rect().get_center())
 
 
+func _community_deal_origin() -> Vector2:
+	return _dealer_origin() + Vector2(0, 18)
+
+
 func _dealer_origin_global() -> Vector2:
 	if _animation_layer == null:
 		return _dealer_origin()
@@ -2468,6 +2579,34 @@ func _community_card_point(board_index: int) -> Vector2:
 	var x: float = rect.position.x + spacing * (float(board_index) + 0.5)
 	var y: float = rect.position.y + rect.size.y * 0.5
 	return _animation_layer_local_from_global(Vector2(x, y))
+
+
+func _community_card_face_texture(card_data: Dictionary) -> Texture2D:
+	var rank: String = String(card_data.get("rank", ""))
+	if rank == "T":
+		rank = "10"
+	var suit: String = String(card_data.get("suit", ""))
+	var folder := ""
+	var prefix := ""
+	match suit:
+		"club", "clubs", "C":
+			folder = "club"
+			prefix = "cardClubs_"
+		"diamond", "diamonds", "D":
+			folder = "diamond"
+			prefix = "cardDiamonds_"
+		"heart", "hearts", "H":
+			folder = "heart"
+			prefix = "cardHearts_"
+		"spade", "spades", "S":
+			folder = "spade"
+			prefix = "cardSpades_"
+	if folder == "" or rank == "":
+		return null
+	var texture_path := "res://assets/card/%s/%s%s.png" % [folder, prefix, rank]
+	if ResourceLoader.exists(texture_path):
+		return _load_texture(texture_path)
+	return null
 
 
 func _animation_layer_local_from_global(global_point: Vector2) -> Vector2:
