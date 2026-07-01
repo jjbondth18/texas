@@ -109,6 +109,7 @@ export class TableState {
   sitDown(player: Player, seatIndex: number, buyIn = 5000): void {
     const seat = this.getSeat(seatIndex);
     if (!seat || seat.playerId) throw new Error("seat is not available");
+    const joinsNextHand = !["waiting", "hand_over"].includes(this.phase);
     Object.assign(seat, {
       playerId: player.id,
       name: player.name,
@@ -116,10 +117,10 @@ export class TableState {
       isAi: Boolean(player.isAi),
       warmupAi: Boolean(player.warmupAi),
       chips: Math.max(1, Math.floor(buyIn)),
-      status: "sitting" satisfies SeatStatus,
+      status: (joinsNextHand ? "waiting_next_hand" : "sitting") satisfies SeatStatus,
       disconnected: false,
     });
-    this.addLog(`${player.name} sits at seat ${seatIndex}.`);
+    this.addLog(joinsNextHand ? `${player.name} joins and waits for the next hand.` : `${player.name} sits at seat ${seatIndex}.`);
   }
 
   leaveSeat(playerId: string): void {
@@ -164,12 +165,12 @@ export class TableState {
     const seat = this.getSeatByPlayer(playerId);
     if (!seat) return;
     seat.disconnected = true;
-    if (["sitting", "ready"].includes(seat.status)) seat.status = "disconnected";
+    if (["sitting", "ready", "waiting_next_hand"].includes(seat.status)) seat.status = "disconnected";
   }
 
   startHand(seed = Date.now()): void {
     if (!["waiting", "hand_over"].includes(this.phase)) throw new Error("cannot start a new hand while a hand is active");
-    const eligible = this.seats.filter((seat) => ["ready", "sitting"].includes(seat.status) && seat.chips > 0 && !seat.disconnected);
+    const eligible = this.seats.filter((seat) => ["ready", "sitting", "waiting_next_hand"].includes(seat.status) && seat.chips > 0 && !seat.disconnected);
     if (eligible.length < 2) throw new Error("at least two connected seated players are required");
     this.handId += 1;
     this.phase = "preflop";

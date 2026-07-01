@@ -30,4 +30,16 @@ Quick Chip first tries to join a clean waiting/open public chip table. If none e
 
 Real players join the real server public room, not the host's local warm-up table. When another real player sits in the public room, the host client must interrupt local warm-up immediately, clear local AI timers/seats/cards/pot, apply the latest server room snapshot, and return to the public table ready/waiting-to-start state.
 
-The returned public room shows only real players. The host can then start a formal public hand through the server authoritative `start_hand` path.
+The returned public room shows only real players and moves to `ready_to_start` when at least two real connected players are seated. The host sees `START PUBLIC HAND`; non-host players see `Waiting for host to start.` The first version does not auto-start a formal public hand after warm-up interruption.
+
+## Formal Public Hand Start
+
+- `waiting_for_players`: fewer than two real connected seated players; host can start local AI warm-up.
+- `ready_to_start`: at least two real connected seated players and no active formal hand; only the host can start the public hand.
+- `playing`: a formal public hand is active; public seats are real players only.
+
+The host starts the formal public hand through the server authoritative `start_hand` path. The server rejects non-host starts with `not_host`, rejects starts below two real players, and never includes warm-up AI in the official hand.
+
+## Mid-hand Real Join
+
+If a real player joins while a public hand is active, the server seats that player as `waiting_next_hand`. The player is visible in the public room, but receives no current hand hole cards, does not post a blind in the current hand, and does not enter the current turn order. On the next host-started hand, `waiting_next_hand` players become eligible active players and receive cards normally.

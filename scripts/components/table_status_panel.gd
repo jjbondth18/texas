@@ -397,6 +397,9 @@ class PlayerRowPill extends PanelContainer:
 				elif status_value == "all_in":
 					action_label.text = "ALL-IN"
 					action_label.add_theme_color_override("font_color", _action_color("ALL-IN"))
+				elif status_value == "waiting_next_hand":
+					action_label.text = "WAITING NEXT HAND"
+					action_label.add_theme_color_override("font_color", Color(0.72, 0.78, 1.0))
 				else:
 					action_label.text = "WAITING"
 					action_label.add_theme_color_override("font_color", Color(0.58, 0.78, 1.0))

@@ -17,13 +17,22 @@ Quick Chip and Table Browser Create both normalize public table setup into these
 
 Display-only blind labels such as `50 / 100` can exist in UI, but backend logic uses `small_blind` and `big_blind`.
 
+## Lifecycle
+
+- `waiting_for_players`: fewer than two real connected seated players. The host can use local AI warm-up, but no server public hand starts.
+- `ready_to_start`: at least two real connected seated players and no active hand. The host sees `START PUBLIC HAND`; non-host players wait for the host.
+- `playing`: a formal public hand is active. New real players may join an open seat, but their seat status is `waiting_next_hand`.
+- `hand_over`: settlement completed. The room returns to `ready_to_start` when at least two real connected players remain.
+
+AI warm-up is always local practice. Warm-up AI never enters public seats and never joins official public hands.
+
 ## Clean Joinable Tables
 
 Table Browser only lists clean joinable public chip tables:
 
 - `table_type = public_chip`
 - `currency = chip`
-- `status` / `hand_state` is `waiting`, `open`, `idle`, or `pre_hand`
+- `status` / `hand_state` is `waiting`, `waiting_for_players`, `ready_to_start`, `open`, `playing`, an active hand phase (`preflop`, `flop`, `turn`, `river`, `showdown`), `idle`, or `pre_hand`
 - not full
 - not private room
 - not training table
@@ -45,11 +54,15 @@ Browser player counts only include connected seated players:
 
 Disconnected bots do not count as current players and are not reused as active opponents. Local mock tables may generate fresh connected AI seats after a clean join, but stale disconnected bot residue is ignored.
 
+## Mid-hand Join
+
+When a public hand is already in progress, a new real player may join if a seat is open. The player is marked `waiting_next_hand`, gets no current hand hole cards, does not post a blind for the current hand, and does not affect the current pot or turn order. On the next hand, `waiting_next_hand` players become eligible to receive cards.
+
 ## Quick Join
 
 Quick Chip uses the selected stakes as preferences:
 
-- first tries clean waiting/open public chip tables matching the selected config
+- first tries clean waiting/open/ready public chip tables matching the selected config
 - skips dirty, full, private, training, hand-over, and disconnected-only tables
 - if no valid match exists, creates a new clean public chip table
 

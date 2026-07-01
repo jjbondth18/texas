@@ -34,6 +34,7 @@ interface Room {
   isPublic: boolean;
   isAiWarmup: boolean;
   hostInLocalWarmup: string;
+  hostPlayerId: string;
   createdAt: string;
 }
 
@@ -92,6 +93,7 @@ export class RoomManager {
     }
     if (message.type === "create_room") {
       const room = this.createRoom();
+      room.hostPlayerId = client.id;
       this.joinRoom(client, room.id);
       this.recordLog(`${client.id} created ${room.id}`);
       this.send(client, { type: "hello", request_id: message.request_id, room_id: room.id, player_id: client.id, server_player_id: client.id });
@@ -104,6 +106,7 @@ export class RoomManager {
     }
     if (message.type === "create_table") {
       const room = this.createRoom(this.tableConfigFromMessage(message));
+      room.hostPlayerId = client.id;
       this.joinRoom(client, room.id);
       const table = this.tableSnapshot(room);
       this.recordLog(`${client.id} created public table ${room.id}`);
@@ -208,6 +211,7 @@ export class RoomManager {
         break;
       case "start_hand":
         this.requireSeated(room, client, message, "start_hand");
+        this.requirePublicHandStartAllowed(room, client);
         room.table.startHand();
         processAutomaticTurns(room.table);
         this.recordLog(`${client.id} started hand in ${room.id}`);
@@ -260,6 +264,7 @@ export class RoomManager {
       isPublic: options.isPublic ?? true,
       isAiWarmup: false,
       hostInLocalWarmup: "",
+      hostPlayerId: "",
       createdAt: new Date().toISOString(),
     };
     this.rooms.set(id, room);
@@ -316,6 +321,7 @@ export class RoomManager {
           is_public: room.isPublic,
           is_ai_warmup: room.isAiWarmup,
           host_in_local_warmup: room.hostInLocalWarmup !== "",
+          host_player_id: room.hostPlayerId,
           connected_player_ids: [...room.clients],
           hand_state: snapshot.phase,
           betting_round: snapshot.phase,
@@ -361,6 +367,7 @@ export class RoomManager {
   }
 
   private tableSnapshot(room: Room): PublicTableSnapshot {
+    const roomState = this.publicRoomState(room);
     return {
       room_id: room.id,
       table_name: room.tableName,
@@ -372,9 +379,12 @@ export class RoomManager {
       seated_count: this.publicSeatedCount(room),
       current_players: this.publicSeatedCount(room),
       hand_state: room.table.phase,
-      table_state: room.isAiWarmup ? "ai_warmup" : room.table.phase,
+      status: roomState,
+      table_state: roomState,
+      room_state: roomState,
       is_ai_warmup: room.isAiWarmup,
       host_in_local_warmup: room.hostInLocalWarmup !== "",
+      host_player_id: room.hostPlayerId,
       is_public: room.isPublic,
       created_at: room.createdAt,
       seats: room.table.publicSnapshot().seats,
@@ -523,6 +533,7 @@ export class RoomManager {
     const wallet = this.wallets.get(client.id);
     if (!wallet || wallet.chips < room.buyIn) throw new Error("insufficient_chips");
     this.wallets.deductChips(client.id, room.buyIn, { reason: "table_buy_in", relatedRoomId: room.id });
+    if (room.hostPlayerId === "") room.hostPlayerId = client.id;
     room.table.sitDown(toPlayer(client), seatIndex, room.buyIn);
     if (room.hostInLocalWarmup !== "" && this.realConnectedSeatedCount(room) >= 2) {
       const hostId = room.hostInLocalWarmup;
@@ -542,6 +553,16 @@ export class RoomManager {
     if (room.table.getSeatByPlayer(client.id)) return;
     this.recordNotSeated(room, client, message, command);
     throw new Error("player is not seated");
+  }
+
+  private requirePublicHandStartAllowed(room: Room, client: Client): void {
+    if (!room.isPublic) return;
+    if (room.hostPlayerId === "") room.hostPlayerId = client.id;
+    if (client.id !== room.hostPlayerId) throw new Error("not_host");
+    if (this.realConnectedSeatedCount(room) < 2) throw new Error("not_enough_players");
+    if (room.isAiWarmup) throw new Error("already_playing");
+    if (!["waiting", "hand_over"].includes(room.table.phase)) throw new Error("already_playing");
+    if (this.publicRoomState(room) !== "ready_to_start") throw new Error("not_ready_to_start");
   }
 
   private recordNotSeated(room: Room, client: Client, message: ClientMessage, command: string): void {
@@ -590,15 +611,19 @@ export class RoomManager {
   }
 
   private broadcast(room: Room): void {
+    const roomState = this.publicRoomState(room);
     const snapshot = {
       ...room.table.publicSnapshot(),
       buy_in: room.buyIn,
       hand_count: room.handCount,
       seated_count: this.publicSeatedCount(room),
       current_players: this.publicSeatedCount(room),
-      table_state: room.isAiWarmup ? "ai_warmup" : room.table.phase,
+      status: roomState,
+      table_state: roomState,
+      room_state: roomState,
       is_ai_warmup: room.isAiWarmup,
       host_in_local_warmup: room.hostInLocalWarmup !== "",
+      host_player_id: room.hostPlayerId,
       table_info: this.tableSnapshot(room),
     };
     for (const playerId of room.clients) {
@@ -623,6 +648,15 @@ export class RoomManager {
 
   private seatDebug(room: Room): string {
     return `[${room.table.seats.map((seat) => `${seat.seatIndex}:${seat.playerId || "-"}:${seat.status}:${seat.chips}:${seat.warmupAi ? "warmup_ai" : seat.isAi ? "ai" : "real"}`).join(",")}]`;
+  }
+
+  private publicRoomState(room: Room): string {
+    if (room.isAiWarmup) return "ai_warmup";
+    if (!room.isPublic) return room.table.phase;
+    const realCount = this.realConnectedSeatedCount(room);
+    if (realCount < 2 && ["waiting", "hand_over"].includes(room.table.phase)) return "waiting_for_players";
+    if (["waiting", "hand_over"].includes(room.table.phase)) return "ready_to_start";
+    return "playing";
   }
 
   private resolveIdentity(message: ClientMessage, fallbackPlayerId: string): { provider: string; externalId: string; playerId: string } {

@@ -4,6 +4,7 @@ class_name PublicTableRegistry
 const TABLE_TYPE_PUBLIC_CHIP := "public_chip"
 const STATUS_WAITING := "waiting"
 const STATUS_WAITING_FOR_PLAYERS := "waiting_for_players"
+const STATUS_READY_TO_START := "ready_to_start"
 const STATUS_AI_WARMUP := "ai_warmup"
 const STATUS_OPEN := "open"
 const STATUS_PLAYING := "playing"
@@ -166,7 +167,7 @@ static func settle_pending_real_joiners(table_id: String) -> Dictionary:
 	table["host_in_local_warmup"] = false
 	table["waiting_for_real_players"] = real_player_ids.size() < 2
 	table["current_players"] = min(real_player_ids.size(), int(table.get("max_players", 9)))
-	table["status"] = STATUS_OPEN if real_player_ids.size() >= 2 else STATUS_WAITING_FOR_PLAYERS
+	table["status"] = STATUS_READY_TO_START if real_player_ids.size() >= 2 else STATUS_WAITING_FOR_PLAYERS
 	table["hand_state"] = table["status"]
 	_tables[table_id] = table
 	return _public_table_snapshot(table)
@@ -238,7 +239,7 @@ static func _best_quick_join_table_id(waiting_only: bool, preferred_config: Dict
 		var table: Dictionary = _normalized_public_table(Dictionary(_tables[table_id]))
 		if not _is_clean_joinable_public_table(table, true):
 			continue
-		if waiting_only and String(table.get("status", "")) not in [STATUS_WAITING, STATUS_OPEN]:
+		if waiting_only and String(table.get("status", "")) not in [STATUS_WAITING, STATUS_OPEN, STATUS_READY_TO_START]:
 			continue
 		if not _table_matches_preferred_config(table, preferred_config):
 			continue
@@ -323,13 +324,13 @@ static func _is_clean_joinable_public_table(table: Dictionary, quick_join: bool)
 		return false
 	if status in [STATUS_CLOSED, STATUS_DIRTY, STATUS_PAUSED, STATUS_FULL, STATUS_HAND_OVER, STATUS_SHOWDOWN_REVEAL, "showdown", "finished"]:
 		return false
-	if hand_state in [STATUS_CLOSED, STATUS_DIRTY, STATUS_PAUSED, STATUS_HAND_OVER, STATUS_SHOWDOWN_REVEAL, "showdown", "finished"]:
+	if hand_state in [STATUS_CLOSED, STATUS_DIRTY, STATUS_PAUSED, STATUS_HAND_OVER, STATUS_SHOWDOWN_REVEAL, "finished"]:
 		return false
-	if status not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_OPEN, STATUS_AI_WARMUP]:
+	if status not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_OPEN, STATUS_PLAYING, STATUS_AI_WARMUP]:
 		return false
-	if hand_state not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_OPEN, STATUS_AI_WARMUP, "idle", "pre_hand"]:
+	if hand_state not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_OPEN, STATUS_PLAYING, "preflop", "flop", "turn", "river", "showdown", STATUS_AI_WARMUP, "idle", "pre_hand"]:
 		return false
-	if current_turn == -1 and hand_state not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_OPEN, STATUS_AI_WARMUP, "idle", "pre_hand"]:
+	if current_turn == -1 and hand_state not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_OPEN, STATUS_PLAYING, "preflop", "flop", "turn", "river", "showdown", STATUS_AI_WARMUP, "idle", "pre_hand"]:
 		return false
 	if int(table.get("current_players", 0)) >= int(table.get("max_players", 9)):
 		return false
@@ -428,9 +429,9 @@ static func _update_public_table_status(table: Dictionary) -> void:
 	elif current_players < 2:
 		table["status"] = STATUS_WAITING_FOR_PLAYERS
 		table["hand_state"] = STATUS_WAITING_FOR_PLAYERS
-	elif String(table.get("status", STATUS_WAITING)) in [STATUS_FULL, STATUS_WAITING_FOR_PLAYERS]:
-		table["status"] = STATUS_OPEN
-		table["hand_state"] = STATUS_OPEN
+	elif String(table.get("status", STATUS_WAITING)) in [STATUS_FULL, STATUS_WAITING_FOR_PLAYERS, STATUS_WAITING, STATUS_OPEN]:
+		table["status"] = STATUS_READY_TO_START
+		table["hand_state"] = STATUS_READY_TO_START
 
 static func _public_table_snapshot(table: Dictionary) -> Dictionary:
 	var snapshot := table.duplicate(true)

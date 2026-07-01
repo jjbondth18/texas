@@ -2306,13 +2306,13 @@ func _is_joinable_room_browser_table(room: Dictionary) -> bool:
 	var hand_state := String(room.get("hand_state", status))
 	if status in ["full", "closed", "dirty", "paused", "hand_over", "showdown_reveal", "showdown", "finished"]:
 		return false
-	if hand_state in ["closed", "dirty", "paused", "hand_over", "showdown_reveal", "showdown", "finished"]:
+	if hand_state in ["closed", "dirty", "paused", "hand_over", "showdown_reveal", "finished"]:
 		return false
-	if status not in ["waiting", "waiting_for_players", "open", "ai_warmup"]:
+	if status not in ["waiting", "waiting_for_players", "ready_to_start", "open", "playing", "ai_warmup"]:
 		return false
-	if hand_state not in ["waiting", "waiting_for_players", "open", "ai_warmup", "idle", "pre_hand"]:
+	if hand_state not in ["waiting", "waiting_for_players", "ready_to_start", "open", "playing", "preflop", "flop", "turn", "river", "showdown", "ai_warmup", "idle", "pre_hand"]:
 		return false
-	if int(room.get("current_turn_seat", -1)) == -1 and hand_state not in ["waiting", "waiting_for_players", "open", "ai_warmup", "idle", "pre_hand"]:
+	if int(room.get("current_turn_seat", -1)) == -1 and hand_state not in ["waiting", "waiting_for_players", "ready_to_start", "open", "playing", "preflop", "flop", "turn", "river", "showdown", "ai_warmup", "idle", "pre_hand"]:
 		return false
 	if int(room.get("seated_count", 0)) >= int(room.get("max_players", 6)):
 		return false

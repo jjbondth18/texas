@@ -48,6 +48,9 @@ export type ErrorCode =
   | "invalid_identity_provider"
   | "mock_purchase_disabled"
   | "not_public_table"
+  | "not_host"
+  | "not_enough_players"
+  | "not_ready_to_start"
   | "already_playing"
   | "not_waiting"
   | "too_many_real_players"
@@ -55,7 +58,7 @@ export type ErrorCode =
   | "cannot_cash_out_during_hand";
 export type PlayerActionType = "fold" | "check" | "call" | "bet" | "raise" | "all_in";
 export type Phase = "waiting" | "preflop" | "flop" | "turn" | "river" | "showdown" | "hand_over";
-export type SeatStatus = "empty" | "sitting" | "ready" | "playing" | "folded" | "all_in" | "sit_out" | "disconnected";
+export type SeatStatus = "empty" | "sitting" | "ready" | "playing" | "folded" | "all_in" | "sit_out" | "waiting_next_hand" | "disconnected";
 export type Suit = "C" | "D" | "H" | "S";
 export type Rank = "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "T" | "J" | "Q" | "K" | "A";
 
@@ -157,9 +160,12 @@ export interface PublicTableSnapshot {
   seated_count: number;
   current_players: number;
   hand_state: Phase;
+  status?: string;
   table_state?: string;
+  room_state?: string;
   is_ai_warmup?: boolean;
   host_in_local_warmup?: boolean;
+  host_player_id?: string;
   is_public: boolean;
   created_at: string;
   seats?: PublicSeatSnapshot[];
@@ -220,9 +226,12 @@ export interface TableSnapshot {
   betting_round: Phase;
   phase: Phase;
   hand_id: number;
+  status?: string;
   table_state?: string;
+  room_state?: string;
   is_ai_warmup?: boolean;
   host_in_local_warmup?: boolean;
+  host_player_id?: string;
   seats: PublicSeatSnapshot[];
   community_cards: Card[];
   pot: number;

@@ -229,12 +229,49 @@ if ((joinedSnapshot.snapshot.seats ?? []).filter((seat) => seat.player_name === 
 const beforeWarmupCashOutWallet = Number(manager.adminSnapshot(false).total_wallet_chips);
 manager.handle("warmup_player", { type: "cash_out", room_id: warmupRoom.id });
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeWarmupCashOutWallet + warmupBaselineStack) throw new Error("public cash out after local warm-up should refund official table stack only");
+
+const readyHostMessages: unknown[] = [];
+const readyHostWs = { OPEN: 1, readyState: 1, send: (data: string) => readyHostMessages.push(JSON.parse(data)) };
+const readyHost = manager.connect(readyHostWs as any);
+manager.handle(readyHost.id, { type: "hello", player_id: "ready_host", name: "Ready Host" });
+const readyJoiner = manager.connect();
+manager.handle(readyJoiner.id, { type: "hello", player_id: "ready_joiner", name: "Ready Joiner" });
+const readyRoom = manager.createRoom();
+manager.handle("ready_host", { type: "join_room", room_id: readyRoom.id });
+manager.handle("ready_host", { type: "sit_down", room_id: readyRoom.id, seat_index: 0 });
+manager.handle("ready_joiner", { type: "join_room", room_id: readyRoom.id });
+manager.handle("ready_joiner", { type: "sit_down", room_id: readyRoom.id, seat_index: 1 });
+const readySnapshot = readyHostMessages.filter((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "table_snapshot").pop() as
+  | { type: string; snapshot?: { table_state?: string; room_state?: string; host_player_id?: string; current_players?: number } }
+  | undefined;
+if (readySnapshot?.snapshot?.room_state !== "ready_to_start" || readySnapshot.snapshot.table_state !== "ready_to_start") throw new Error("public room should enter ready_to_start after second real player joins");
+if (readySnapshot.snapshot.host_player_id !== "ready_host") throw new Error("ready_to_start snapshot should include host player id");
+expectThrows("not_host", () => manager.handle("ready_joiner", { type: "start_hand", room_id: readyRoom.id }));
+manager.handle("ready_host", { type: "start_hand", room_id: readyRoom.id });
+if (readyRoom.table.phase === "waiting") throw new Error("host should be able to start public hand from ready_to_start");
+if (readyRoom.table.seats.filter((seat) => seat.isAi || seat.warmupAi).length !== 0) throw new Error("public hand should start with real players only");
+const midJoiner = manager.connect();
+manager.handle(midJoiner.id, { type: "hello", player_id: "mid_joiner", name: "Mid Joiner" });
+manager.handle("mid_joiner", { type: "join_room", room_id: readyRoom.id });
+manager.handle("mid_joiner", { type: "sit_down", room_id: readyRoom.id, seat_index: 2 });
+const midSeat = readyRoom.table.getSeatByPlayer("mid_joiner");
+if (!midSeat || midSeat.status !== "waiting_next_hand") throw new Error("mid-hand joiner should wait for next hand");
+if (midSeat.holeCards.length !== 0) throw new Error("mid-hand joiner should not receive current hand hole cards");
+if (readyRoom.table.currentTurnSeat === 2) throw new Error("mid-hand joiner should not enter current turn order");
+readyRoom.table.phase = "hand_over";
+readyRoom.table.currentTurnSeat = -1;
+for (const seat of readyRoom.table.seats) {
+  if (seat.status === "playing") seat.status = "sitting";
+}
+manager.handle("ready_host", { type: "start_hand", room_id: readyRoom.id });
+const nextSeat = readyRoom.table.getSeatByPlayer("mid_joiner");
+if (!nextSeat || nextSeat.status !== "playing" || nextSeat.holeCards.length !== 2) throw new Error("mid-hand joiner should receive cards on the next hand");
 const normalOnePlayer = manager.connect();
 manager.handle(normalOnePlayer.id, { type: "hello", player_id: "normal_one_player", name: "Normal One" });
 const normalOnePlayerRoom = manager.createRoom();
 manager.handle("normal_one_player", { type: "join_room", room_id: normalOnePlayerRoom.id });
 manager.handle("normal_one_player", { type: "sit_down", room_id: normalOnePlayerRoom.id, seat_index: 0 });
-expectThrows("at least two connected seated players are required", () => manager.handle("normal_one_player", { type: "start_hand", room_id: normalOnePlayerRoom.id }));
+expectThrows("not_enough_players", () => manager.handle("normal_one_player", { type: "start_hand", room_id: normalOnePlayerRoom.id }));
 const nonSeatedWarmupMessages: unknown[] = [];
 const nonSeatedWarmupWs = { OPEN: 1, readyState: 1, send: (data: string) => nonSeatedWarmupMessages.push(JSON.parse(data)) };
 const nonSeatedWarmup = manager.connect(nonSeatedWarmupWs as any);

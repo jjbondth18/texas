@@ -968,6 +968,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	var table_info: Dictionary = Dictionary(server_snapshot.get("table_info", {}))
 	var is_server_ai_warmup := bool(server_snapshot.get("is_ai_warmup", table_info.get("is_ai_warmup", false)))
 	var server_table_state := String(server_snapshot.get("table_state", table_info.get("table_state", phase)))
+	var server_room_state := String(server_snapshot.get("room_state", table_info.get("room_state", server_table_state)))
 	var server_buy_in: int = int(server_snapshot.get("buy_in", table_info.get("buy_in", SERVER_DEFAULT_BUY_IN)))
 	if server_buy_in <= 0:
 		server_buy_in = SERVER_DEFAULT_BUY_IN
@@ -1048,6 +1049,8 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	if local_server_seat < 0 or current_turn_seat != local_server_seat:
 		available_actions = []
 	var turn_prompt := "Waiting for seat confirmation..." if local_server_seat < 0 else _server_turn_message(seats, current_turn_seat, local_server_seat, phase)
+	if local_server_seat >= 0 and server_room_state == "ready_to_start":
+		turn_prompt = "Ready to start." if _is_authoritative_public_host(server_snapshot) else "Waiting for host to start."
 	return {
 		"source_model": "server_authoritative",
 		"table_id": room_id if room_id != "" else "authoritative_local",
@@ -1057,8 +1060,9 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"hand_id": "hand_%s" % str(server_hand_id),
 		"blinds_text": "%d / %d" % [server_small_blind, server_big_blind],
 		"phase": phase,
-		"room_state": phase,
+		"room_state": server_room_state,
 		"table_state": server_table_state,
+		"host_player_id": String(server_snapshot.get("host_player_id", table_info.get("host_player_id", ""))),
 		"is_ai_warmup": is_server_ai_warmup,
 		"pot": total_pot,
 		"pot_data": {"main": total_pot, "side_pots": side_pots, "total": total_pot},
@@ -1092,6 +1096,15 @@ func _server_system_messages(room_id: String, turn_prompt: String, local_server_
 	else:
 		messages.append(turn_prompt)
 	return messages
+
+func _is_authoritative_public_host(server_snapshot: Dictionary = {}) -> bool:
+	var host_id := String(server_snapshot.get("host_player_id", ""))
+	if host_id == "":
+		var table_info: Dictionary = Dictionary(server_snapshot.get("table_info", {}))
+		host_id = String(table_info.get("host_player_id", ""))
+	if host_id != "":
+		return host_id == _server_local_player_id
+	return _server_local_seat_index == 0
 
 func _server_card_to_ui_card(card: Dictionary, face_up: bool) -> Dictionary:
 	var rank: String = String(card.get("rank", ""))
@@ -1143,7 +1156,7 @@ func _server_status_to_ui_status(status: String) -> String:
 			return "empty"
 		"folded":
 			return "folded"
-		"sit_out", "disconnected":
+		"sit_out", "waiting_next_hand", "disconnected":
 			return "out"
 	return "active"
 
@@ -2490,6 +2503,11 @@ func _auto_start_session_if_ready() -> void:
 		_refresh_public_waiting_controls()
 		_refresh()
 		return
+	if server_authoritative and _is_public_ready_to_start_state():
+		_append_session_log("Ready to start public hand. Waiting for host action.")
+		_refresh_public_waiting_controls()
+		_refresh()
+		return
 	_session_started = true
 	_append_session_log("Table session started.")
 	if _table_session.mode == TableSessionScript.MODE_TRAINING:
@@ -2530,19 +2548,53 @@ func _is_public_ai_warmup() -> bool:
 
 func _refresh_public_waiting_controls() -> void:
 	var should_show := _should_show_public_warmup_entry()
+	var should_show_ready := _should_show_public_start_hand_entry()
 	var should_show_dev_join := _should_show_dev_simulate_real_join()
 	if _ai_warmup_button != null:
-		_ai_warmup_button.visible = should_show
+		_ai_warmup_button.text = "START PUBLIC HAND" if should_show_ready else "START AI WARM-UP"
+		_ai_warmup_button.tooltip_text = "Start the official server public hand." if should_show_ready else "Practice with AI while waiting for real players."
+		_ai_warmup_button.visible = should_show or should_show_ready
 		_ai_warmup_button.disabled = not _ai_warmup_button.visible
 	if _dev_simulate_real_join_button != null:
 		_dev_simulate_real_join_button.visible = should_show_dev_join
 		_dev_simulate_real_join_button.disabled = not should_show_dev_join
 	if _public_waiting_panel != null:
-		_public_waiting_panel.visible = should_show
+		_public_waiting_panel.visible = should_show or _is_public_ready_to_start_state()
 	if _public_waiting_button != null:
-		_public_waiting_button.disabled = not should_show
+		_public_waiting_button.text = "START PUBLIC HAND" if should_show_ready else "START AI WARM-UP"
+		_public_waiting_button.visible = should_show or should_show_ready
+		_public_waiting_button.disabled = not (should_show or should_show_ready)
 	if _public_waiting_body_label != null and should_show:
+		if _public_waiting_title_label != null:
+			_public_waiting_title_label.text = "WAITING FOR PLAYERS"
 		_public_waiting_body_label.text = "%d / 6 seated\nStart local AI warm-up while waiting.\nPractice chips only. Public room stays open." % _real_public_player_count_from_flow()
+	elif _public_waiting_body_label != null and _is_public_ready_to_start_state():
+		if should_show_ready:
+			if _public_waiting_title_label != null:
+				_public_waiting_title_label.text = "READY TO START"
+			_public_waiting_body_label.text = "%d / 6 seated\nStart the official public hand when ready.\nWarm-up AI is not part of this room." % _real_public_player_count_from_flow()
+		else:
+			if _public_waiting_title_label != null:
+				_public_waiting_title_label.text = "READY TO START"
+			_public_waiting_body_label.text = "%d / 6 seated\nWaiting for host to start.\nNew players join the next hand once play begins." % _real_public_player_count_from_flow()
+	elif _public_waiting_title_label != null:
+		_public_waiting_title_label.text = "WAITING FOR PLAYERS"
+
+func _is_public_ready_to_start_state() -> bool:
+	if not server_authoritative or _local_public_warmup_active:
+		return false
+	if not _is_public_chip_table():
+		return false
+	if String(_server_latest_ui_snapshot.get("room_state", _server_latest_ui_snapshot.get("table_state", ""))) != "ready_to_start":
+		return false
+	return _real_public_player_count_from_flow() >= 2
+
+func _should_show_public_start_hand_entry() -> bool:
+	if not _is_public_ready_to_start_state():
+		return false
+	if not _server_seat_confirmed or _server_local_seat_index < 0:
+		return false
+	return _is_authoritative_public_host(_server_latest_ui_snapshot)
 
 func _should_show_dev_simulate_real_join() -> bool:
 	if not OS.is_debug_build():
@@ -2580,6 +2632,9 @@ func _dev_simulate_real_player_join() -> void:
 	_append_session_log("DEV: SIMULATE REAL PLAYER JOIN sent.")
 
 func _start_public_ai_warmup() -> void:
+	if _should_show_public_start_hand_entry():
+		_start_next_hand()
+		return
 	_append_session_log("START AI WARM-UP clicked")
 	if server_authoritative and (not _server_seat_confirmed or _server_local_seat_index < 0):
 		_on_server_error("Cannot start AI warm-up: waiting for seat confirmation.")
@@ -3569,11 +3624,12 @@ func _sync_authoritative_waiting_context(target_snapshot: Dictionary) -> void:
 	if not _is_public_chip_table():
 		return
 	var phase := String(target_snapshot.get("phase", "waiting"))
+	var room_state := String(target_snapshot.get("room_state", target_snapshot.get("table_state", phase)))
 	var is_server_ai_warmup := bool(target_snapshot.get("is_ai_warmup", false)) or String(target_snapshot.get("table_state", "")) == "ai_warmup"
 	var seats: Array = Array(target_snapshot.get("seats", [])).duplicate(true)
 	var real_count := _real_public_player_count_from_snapshot(seats)
 	var local_seat_confirmed := int(target_snapshot.get("local_seat_index", -1)) >= 0 and _server_seat_confirmed
-	var waiting_for_real_players := local_seat_confirmed and phase in ["waiting", "waiting_for_players"] and real_count < 2
+	var waiting_for_real_players := local_seat_confirmed and room_state in ["waiting", "waiting_for_players"] and real_count < 2
 	if is_server_ai_warmup:
 		waiting_for_real_players = true
 	TableLaunchContext.waiting_for_real_players = waiting_for_real_players
@@ -3584,10 +3640,10 @@ func _sync_authoritative_waiting_context(target_snapshot: Dictionary) -> void:
 		_table_session.waiting_for_real_players = waiting_for_real_players
 		_table_session.is_ai_warmup = is_server_ai_warmup
 		_table_session.warmup_ai_player_ids = TableLaunchContext.warmup_ai_player_ids.duplicate()
-		_table_session.status = TableSessionScript.TABLE_AI_WARMUP if is_server_ai_warmup else (TableSessionScript.TABLE_WAITING_FOR_PLAYERS if waiting_for_real_players else TableSessionScript.TABLE_PLAYING)
+		_table_session.status = TableSessionScript.TABLE_AI_WARMUP if is_server_ai_warmup else (TableSessionScript.TABLE_WAITING_FOR_PLAYERS if waiting_for_real_players else (TableSessionScript.TABLE_READY_TO_START if room_state == "ready_to_start" else TableSessionScript.TABLE_PLAYING))
 		_table_session.current_table_chips = _local_table_chips_from_snapshot(seats)
 		_update_launch_context_session()
-	if phase in ["waiting", "waiting_for_players"]:
+	if phase in ["waiting", "waiting_for_players"] or room_state == "ready_to_start":
 		_table_flow.table_state = TexasTableFlowScript.WAITING
 		_table_flow.seats = _server_ui_seats_to_table_flow_seats(seats)
 	elif is_server_ai_warmup:
@@ -3604,6 +3660,12 @@ func _sync_authoritative_waiting_context(target_snapshot: Dictionary) -> void:
 		messages.insert(0, "AI WARM-UP")
 		messages.insert(1, "Practice chips only")
 		messages.insert(2, "Waiting for real players...")
+		target_snapshot["system_messages"] = messages
+	elif room_state == "ready_to_start":
+		var messages: Array = Array(target_snapshot.get("system_messages", [])).duplicate()
+		messages.insert(0, "READY TO START")
+		messages.insert(1, "%d / 6 seated" % real_count)
+		messages.insert(2, "START PUBLIC HAND" if _is_authoritative_public_host(target_snapshot) else "Waiting for host to start.")
 		target_snapshot["system_messages"] = messages
 	var can_show_warmup := _should_show_public_warmup_entry()
 	target_snapshot["server_waiting_for_real_players"] = waiting_for_real_players
