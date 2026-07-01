@@ -46,6 +46,8 @@ The dev-only `DEV: SIMULATE REAL PLAYER JOIN` button only validates the interrup
 
 Use a second Godot client or a future controllable dev bot to test a real public hand.
 
+When a dev simulated player is present in `ready_to_start`, the host UI must show the reason and keep `START PUBLIC HAND` disabled instead of appearing unresponsive.
+
 ## Mid-hand Real Join
 
 If a real player joins while a public hand is active, the server seats that player as `waiting_next_hand`. The player is visible in the public room, but receives no current hand hole cards, does not post a blind in the current hand, and does not enter the current turn order. On the next host-started hand, `waiting_next_hand` players become eligible active players and receive cards normally.
@@ -53,3 +55,9 @@ If a real player joins while a public hand is active, the server seats that play
 ## Exit and Wallet
 
 Joining a public table moves the selected buy-in from wallet chips to the official server table stack. If the player exits before any formal public hand starts, the server refunds the full table stack with `left_before_official_hand`. Local warm-up is practice-only and never commits its chip result back to the account wallet.
+
+## Action Timer and Markers
+
+Public hands use the server action timer. The client displays the remaining seconds in the bottom action bar, the player status row, and the table info timer bar. Timeout auto-checks when legal, otherwise auto-folds.
+
+Bet markers are anchored by fixed `seat_index` offsets. They must not depend on Player Status row order, dynamic text width, or warm-up snapshot rebuilds.

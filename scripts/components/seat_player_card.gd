@@ -15,6 +15,18 @@ const BIG_BLIND_BADGE := preload("res://assets/ui/neon_poker_ui_clean/big_blind_
 const ACTIVE_TURN_GLOW := preload("res://assets/ui/neon_poker_ui_clean/active_turn_glow.png")
 const CardViewScene := preload("res://scenes/components/card_view.tscn")
 const VERBOSE_BET_MARKER_LOGS := false
+const BET_MARKER_OFFSETS := {
+	0: Vector2(83.0, -90.0),
+	1: Vector2(320.0, 48.0),
+	2: Vector2(320.0, 48.0),
+	3: Vector2(320.0, 48.0),
+	4: Vector2(18.0, -90.0),
+	5: Vector2(83.0, -90.0),
+	6: Vector2(148.0, -90.0),
+	7: Vector2(-154.0, 48.0),
+	8: Vector2(-154.0, 48.0),
+	9: Vector2(-154.0, 48.0),
+}
 
 var _is_empty: bool = true
 var _is_local_player: bool = false
@@ -394,6 +406,8 @@ func _bet_marker_position(card_pos: Vector2) -> Vector2:
 
 
 func _bet_marker_offset() -> Vector2:
+	if BET_MARKER_OFFSETS.has(_seat_id):
+		return BET_MARKER_OFFSETS[_seat_id]
 	var marker_size := Vector2(142.0, 32.0)
 	var card_size := Vector2(308.0, 119.0)
 	var top_gap: float = 58.0

@@ -32,6 +32,8 @@ The dev-only simulated real join button is only for testing warm-up interruption
 
 Formal public hands use a server action timeout. If a player does not act before the timeout, the server auto-checks when legal, otherwise auto-folds, logs the timeout, broadcasts a snapshot, and schedules the next turn.
 
+The client displays the same action timer in the bottom action area, Player Status, and the table info timer bar. Bet markers are positioned by stable `seat_index` anchors, not by Player Status order or dynamic seat-card text.
+
 ## Clean Joinable Tables
 
 Table Browser only lists clean joinable public chip tables:

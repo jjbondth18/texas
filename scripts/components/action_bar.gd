@@ -59,6 +59,10 @@ var _bold_font: SystemFont
 var _glass_shader: Shader
 var _avatar_shader: Shader
 var _accum_time := 0.0
+var _turn_timer_active := false
+var _turn_timer_remaining := 0
+var _turn_timer_total := 0
+var _turn_timer_is_local := false
 
 
 func _ready() -> void:
@@ -243,6 +247,24 @@ func set_turn_prompt(prompt: String) -> void:
 	if _bet_title_label == null:
 		return
 	_bet_title_label.text = prompt.to_upper()
+
+
+func set_action_timer(remaining_seconds: int, total_seconds: int, active: bool, is_local_turn: bool) -> void:
+	_turn_timer_active = active
+	_turn_timer_remaining = max(remaining_seconds, 0)
+	_turn_timer_total = max(total_seconds, 1)
+	_turn_timer_is_local = is_local_turn
+	if timer_label == null:
+		return
+	timer_label.visible = active
+	if not active:
+		timer_label.text = ""
+		return
+	var label := "YOUR TURN" if is_local_turn else "TURN TIMER"
+	timer_label.text = "%s  %ds" % [label, _turn_timer_remaining]
+	var ratio := clamp(float(_turn_timer_remaining) / float(_turn_timer_total), 0.0, 1.0)
+	var color := Color(1.0, 0.32, 0.80) if ratio <= 0.35 else Color(0.84, 0.87, 1.0)
+	timer_label.add_theme_color_override("font_color", color)
 
 
 func _build_player_info_overlay() -> void:

@@ -337,6 +337,7 @@ export class RoomManager {
           official_hand_started: room.officialHandStarted,
           action_timeout_ms: ACTION_TIMEOUT_MS,
           action_deadline_at: room.actionDeadlineAt,
+          dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
           connected_player_ids: [...room.clients],
           hand_state: snapshot.phase,
           betting_round: snapshot.phase,
@@ -403,6 +404,7 @@ export class RoomManager {
       official_hand_started: room.officialHandStarted,
       action_timeout_ms: ACTION_TIMEOUT_MS,
       action_deadline_at: room.actionDeadlineAt,
+      dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
       is_public: room.isPublic,
       created_at: room.createdAt,
       seats: room.table.publicSnapshot().seats,
@@ -657,6 +659,7 @@ export class RoomManager {
       official_hand_started: room.officialHandStarted,
       action_timeout_ms: ACTION_TIMEOUT_MS,
       action_deadline_at: room.actionDeadlineAt,
+      dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
       table_info: this.tableSnapshot(room),
     };
     for (const playerId of room.clients) {

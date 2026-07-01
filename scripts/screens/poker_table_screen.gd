@@ -43,6 +43,7 @@ const SERVER_UI_SLOW_PLAYBACK_WARNING_MS := 16
 const SERVER_UI_WARNING_THROTTLE_MS := 1000
 const SHOWDOWN_REVEAL_HOLD_SECONDS := 5.0
 const FOLD_WIN_HOLD_SECONDS := 2.5
+const DEV_SIMULATED_START_BLOCK_MESSAGE := "Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot."
 
 var snapshot := {}
 var server_authoritative := true
@@ -104,6 +105,12 @@ var _hand_result_message: String = ""
 var _hand_result_hold_seconds: float = 0.0
 var _pending_next_hand_token: int = 0
 var _bet_marker_overrides: Dictionary = {}
+var _turn_timer_key := ""
+var _turn_timer_active := false
+var _turn_timer_deadline_msec := 0
+var _turn_timer_total_seconds := 15
+var _turn_timer_seat_index := -1
+var _turn_timer_timeout_fired := false
 var _visible_community_cards: Array = []
 var _community_reveal_token: int = 0
 var _local_cards_reveal_token: int = 0
@@ -231,6 +238,9 @@ func _input(event: InputEvent) -> void:
 				_force_test_showdown()
 			KEY_R:
 				_reset_test_table()
+
+func _process(_delta: float) -> void:
+	_update_action_timer_ui()
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
@@ -1064,6 +1074,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"room_state": server_room_state,
 		"table_state": server_table_state,
 		"host_player_id": String(server_snapshot.get("host_player_id", table_info.get("host_player_id", ""))),
+		"dev_simulated_player_present": bool(server_snapshot.get("dev_simulated_player_present", table_info.get("dev_simulated_player_present", false))),
 		"is_ai_warmup": is_server_ai_warmup,
 		"pot": total_pot,
 		"pot_data": {"main": total_pot, "side_pots": side_pots, "total": total_pot},
@@ -1524,6 +1535,10 @@ func _start_next_hand() -> void:
 		if not _server_seat_confirmed or _server_local_seat_index < 0:
 			_on_server_error("Cannot start hand: waiting for seat confirmation.")
 			return
+		var start_block_reason := _public_start_block_reason()
+		if start_block_reason != "":
+			_on_server_error(start_block_reason)
+			return
 		_server_start_hand_requested = true
 		_send_server_message(_poker_ws_client.start_hand(), "start_hand")
 		return
@@ -1815,7 +1830,7 @@ func _refresh() -> void:
 				snapshot.get("blinds_text", "25/50")
 			)
 	_status_panel.set_status(snapshot)
-	_timer_label.text = "TURN TIMER  %ds" % int(snapshot.get("turn_seconds", 15))
+	_sync_action_timer_from_snapshot(snapshot)
 	
 	var local := Dictionary(snapshot.get("local_player", {}))
 	
@@ -1833,8 +1848,84 @@ func _refresh() -> void:
 	_refresh_public_waiting_controls()
 	_refresh_rule_debug_panel()
 
+func _sync_action_timer_from_snapshot(source_snapshot: Dictionary) -> void:
+	var phase := String(source_snapshot.get("phase", "waiting"))
+	var turn_seat := int(source_snapshot.get("turn_seat_index", -1))
+	var active := turn_seat >= 0 and phase in ["preflop", "flop", "turn", "river"]
+	var total_seconds := max(1, int(source_snapshot.get("turn_seconds", 15)))
+	var timer_key := "%s:%s:%s:%d:%s" % [
+		String(source_snapshot.get("source_model", "")),
+		String(source_snapshot.get("hand_id", "")),
+		phase,
+		turn_seat,
+		String(source_snapshot.get("action_deadline_at", "")),
+	]
+	if not active:
+		_turn_timer_key = ""
+		_turn_timer_active = false
+		_turn_timer_seat_index = -1
+		_turn_timer_timeout_fired = false
+		_apply_action_timer_ui(0, total_seconds, false, turn_seat)
+		return
+	if timer_key != _turn_timer_key:
+		_turn_timer_key = timer_key
+		_turn_timer_active = true
+		_turn_timer_total_seconds = total_seconds
+		_turn_timer_seat_index = turn_seat
+		_turn_timer_deadline_msec = Time.get_ticks_msec() + total_seconds * 1000
+		_turn_timer_timeout_fired = false
+	_update_action_timer_ui()
+
+func _update_action_timer_ui() -> void:
+	if not _turn_timer_active:
+		return
+	var remaining_msec := max(_turn_timer_deadline_msec - Time.get_ticks_msec(), 0)
+	var remaining_seconds := int(ceil(float(remaining_msec) / 1000.0))
+	_apply_action_timer_ui(remaining_seconds, _turn_timer_total_seconds, true, _turn_timer_seat_index)
+	if remaining_seconds <= 0 and not _turn_timer_timeout_fired:
+		_turn_timer_timeout_fired = true
+		_handle_local_action_timeout()
+
+func _apply_action_timer_ui(remaining_seconds: int, total_seconds: int, active: bool, turn_seat: int) -> void:
+	var local_seat := int(snapshot.get("local_seat_index", -1))
+	var is_local_turn := active and turn_seat == local_seat
+	if _action_bar != null and _action_bar.has_method("set_action_timer"):
+		_action_bar.call("set_action_timer", remaining_seconds, total_seconds, active, is_local_turn)
+	if _room_info_panel != null and _room_info_panel.has_method("set_action_timer"):
+		_room_info_panel.call("set_action_timer", remaining_seconds, total_seconds, active)
+	if _status_panel != null and _status_panel.has_method("set_action_timer"):
+		_status_panel.call("set_action_timer", turn_seat, remaining_seconds, total_seconds, active)
+
+func _handle_local_action_timeout() -> void:
+	if server_authoritative and not _local_public_warmup_active:
+		return
+	if String(snapshot.get("source_model", "")) != "texas_table_flow":
+		return
+	var turn_seat := int(snapshot.get("turn_seat_index", -1))
+	if turn_seat < 0:
+		return
+	var actions := _table_flow.get_legal_actions(turn_seat)
+	var check_action := _find_action(actions, "check")
+	var auto_action := {}
+	if not check_action.is_empty() and bool(check_action.get("enabled", true)):
+		auto_action = check_action
+	else:
+		auto_action = _find_action(actions, "fold")
+	if auto_action.is_empty():
+		return
+	var action_id := String(auto_action.get("id", "fold"))
+	var seat := _table_flow.get_seat_data(turn_seat)
+	var player_name := String(seat.get("player_name", seat.get("name", "Seat %d" % turn_seat)))
+	_append_session_log("%s timed out. Auto-%s." % [player_name, "check" if action_id == "check" else "fold"])
+	snapshot = _table_flow_to_ui_snapshot(_table_flow.apply_player_action(turn_seat, auto_action))
+	_apply_launch_context(snapshot)
+	_refresh()
+	_schedule_ai_turns()
+
 func _on_action_pressed(action: Dictionary) -> void:
 	var action_id := String(action.get("id", ""))
+	_turn_timer_active = false
+	_apply_action_timer_ui(0, _turn_timer_total_seconds, false, _turn_timer_seat_index)
 	if server_authoritative and not _local_public_warmup_active:
 		if _poker_ws_client == null or not _server_connected:
 			_on_server_error("Cannot send action: authoritative server is not connected.")
@@ -2551,30 +2642,36 @@ func _is_public_ai_warmup() -> bool:
 func _refresh_public_waiting_controls() -> void:
 	var should_show := _should_show_public_warmup_entry()
 	var should_show_ready := _should_show_public_start_hand_entry()
+	var is_host_ready := _is_public_ready_to_start_state() and _server_seat_confirmed and _server_local_seat_index >= 0 and _is_authoritative_public_host(_server_latest_ui_snapshot)
+	var start_block_reason := _public_start_block_reason()
 	var should_show_dev_join := _should_show_dev_simulate_real_join()
 	if _ai_warmup_button != null:
-		_ai_warmup_button.text = "START PUBLIC HAND" if should_show_ready else "START AI WARM-UP"
-		_ai_warmup_button.tooltip_text = "Start the official server public hand." if should_show_ready else "Practice with AI while waiting for real players."
-		_ai_warmup_button.visible = should_show or should_show_ready
-		_ai_warmup_button.disabled = not _ai_warmup_button.visible
+		_ai_warmup_button.text = "START PUBLIC HAND" if is_host_ready else "START AI WARM-UP"
+		_ai_warmup_button.tooltip_text = start_block_reason if start_block_reason != "" else ("Start the official server public hand." if is_host_ready else "Practice with AI while waiting for real players.")
+		_ai_warmup_button.visible = should_show or is_host_ready
+		_ai_warmup_button.disabled = not (should_show or should_show_ready)
 	if _dev_simulate_real_join_button != null:
 		_dev_simulate_real_join_button.visible = should_show_dev_join
 		_dev_simulate_real_join_button.disabled = not should_show_dev_join
 	if _public_waiting_panel != null:
 		_public_waiting_panel.visible = should_show or _is_public_ready_to_start_state()
 	if _public_waiting_button != null:
-		_public_waiting_button.text = "START PUBLIC HAND" if should_show_ready else "START AI WARM-UP"
-		_public_waiting_button.visible = should_show or should_show_ready
+		_public_waiting_button.text = "START PUBLIC HAND" if is_host_ready else "START AI WARM-UP"
+		_public_waiting_button.tooltip_text = start_block_reason
+		_public_waiting_button.visible = should_show or is_host_ready
 		_public_waiting_button.disabled = not (should_show or should_show_ready)
 	if _public_waiting_body_label != null and should_show:
 		if _public_waiting_title_label != null:
 			_public_waiting_title_label.text = "WAITING FOR PLAYERS"
 		_public_waiting_body_label.text = "%d / 6 seated\nStart local AI warm-up while waiting.\nPractice chips only. Public room stays open." % _real_public_player_count_from_flow()
 	elif _public_waiting_body_label != null and _is_public_ready_to_start_state():
-		if should_show_ready:
+		if is_host_ready:
 			if _public_waiting_title_label != null:
 				_public_waiting_title_label.text = "READY TO START"
-			_public_waiting_body_label.text = "%d / 6 seated\nStart the official public hand when ready.\nWarm-up AI is not part of this room." % _real_public_player_count_from_flow()
+			_public_waiting_body_label.text = "%d / 6 seated\n%s" % [
+				_real_public_player_count_from_flow(),
+				start_block_reason if start_block_reason != "" else "Start the official public hand when ready.\nWarm-up AI is not part of this room.",
+			]
 		else:
 			if _public_waiting_title_label != null:
 				_public_waiting_title_label.text = "READY TO START"
@@ -2596,7 +2693,24 @@ func _should_show_public_start_hand_entry() -> bool:
 		return false
 	if not _server_seat_confirmed or _server_local_seat_index < 0:
 		return false
+	if _public_start_block_reason() != "":
+		return false
 	return _is_authoritative_public_host(_server_latest_ui_snapshot)
+
+func _public_start_block_reason() -> String:
+	if not _is_public_ready_to_start_state():
+		return ""
+	if bool(_server_latest_ui_snapshot.get("dev_simulated_player_present", false)) or _has_dev_simulated_player(_server_latest_ui_snapshot):
+		return DEV_SIMULATED_START_BLOCK_MESSAGE
+	return ""
+
+func _has_dev_simulated_player(source_snapshot: Dictionary) -> bool:
+	for seat_item in Array(source_snapshot.get("seats", [])):
+		var seat: Dictionary = Dictionary(seat_item)
+		var player_id := String(seat.get("player_id", ""))
+		if player_id.begins_with("dev_real_"):
+			return true
+	return false
 
 func _should_show_dev_simulate_real_join() -> bool:
 	if not OS.is_debug_build():
@@ -2634,6 +2748,10 @@ func _dev_simulate_real_player_join() -> void:
 	_append_session_log("DEV: SIMULATE REAL PLAYER JOIN sent.")
 
 func _start_public_ai_warmup() -> void:
+	var start_block_reason := _public_start_block_reason()
+	if start_block_reason != "" and _is_public_ready_to_start_state() and _is_authoritative_public_host(_server_latest_ui_snapshot):
+		_on_server_error(start_block_reason)
+		return
 	if _should_show_public_start_hand_entry():
 		_start_next_hand()
 		return
@@ -3665,9 +3783,12 @@ func _sync_authoritative_waiting_context(target_snapshot: Dictionary) -> void:
 		target_snapshot["system_messages"] = messages
 	elif room_state == "ready_to_start":
 		var messages: Array = Array(target_snapshot.get("system_messages", [])).duplicate()
+		var start_block_reason := _public_start_block_reason()
+		if start_block_reason == "" and (bool(target_snapshot.get("dev_simulated_player_present", false)) or _has_dev_simulated_player(target_snapshot)):
+			start_block_reason = DEV_SIMULATED_START_BLOCK_MESSAGE
 		messages.insert(0, "READY TO START")
 		messages.insert(1, "%d / 6 seated" % real_count)
-		messages.insert(2, "START PUBLIC HAND" if _is_authoritative_public_host(target_snapshot) else "Waiting for host to start.")
+		messages.insert(2, start_block_reason if start_block_reason != "" else ("START PUBLIC HAND" if _is_authoritative_public_host(target_snapshot) else "Waiting for host to start."))
 		target_snapshot["system_messages"] = messages
 	var can_show_warmup := _should_show_public_warmup_entry()
 	target_snapshot["server_waiting_for_real_players"] = waiting_for_real_players

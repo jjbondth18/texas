@@ -6,8 +6,9 @@ var _blinds_label: Label
 var _hand_label: Label
 var _progress_label: Label
 var _seat_label: Label
+var _timer_caption_label: Label
 var _timer_bar: ProgressBar
-var _seconds_left := 45.0
+var _timer_active := false
 
 func _ready() -> void:
 	# Sci-fi styled flat glass panel
@@ -67,11 +68,11 @@ func _ready() -> void:
 	_seat_label.add_theme_color_override("font_color", Color(0.72, 0.86, 1.0, 0.78))
 	vbox.add_child(_seat_label)
 	
-	var timer_label := Label.new()
-	timer_label.text = "BLINDS UP COUNTDOWN"
-	timer_label.add_theme_font_size_override("font_size", 10)
-	timer_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5, 0.8)) # Pink label
-	vbox.add_child(timer_label)
+	_timer_caption_label = Label.new()
+	_timer_caption_label.text = "ACTION TIMER"
+	_timer_caption_label.add_theme_font_size_override("font_size", 10)
+	_timer_caption_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5, 0.8)) # Pink label
+	vbox.add_child(_timer_caption_label)
 	
 	_timer_bar = ProgressBar.new()
 	_timer_bar.custom_minimum_size = Vector2(0, 6)
@@ -87,13 +88,13 @@ func _ready() -> void:
 	
 	_timer_bar.add_theme_stylebox_override("background", bar_bg)
 	_timer_bar.add_theme_stylebox_override("fill", bar_fg)
+	_timer_bar.max_value = 100
+	_timer_bar.value = 0
 	vbox.add_child(_timer_bar)
 
-func _process(delta: float) -> void:
-	_seconds_left -= delta
-	if _seconds_left <= 0:
-		_seconds_left = 60.0
-	_timer_bar.value = (_seconds_left / 60.0) * 100.0
+func _process(_delta: float) -> void:
+	if not _timer_active:
+		return
 
 func set_room_info(table_id: String, blinds_text: String) -> void:
 	if _hand_label:
@@ -117,3 +118,17 @@ func set_hand_progress(progress_text: String) -> void:
 func set_seat(seat_id: int) -> void:
 	if _seat_label:
 		_seat_label.text = "Seat: %d" % seat_id
+
+func set_action_timer(remaining_seconds: int, total_seconds: int, active: bool) -> void:
+	_timer_active = active
+	if _timer_caption_label:
+		if active:
+			_timer_caption_label.text = "ACTION TIMER  %ds" % max(remaining_seconds, 0)
+		else:
+			_timer_caption_label.text = "ACTION TIMER"
+	if _timer_bar:
+		if active:
+			var total := max(total_seconds, 1)
+			_timer_bar.value = clamp(float(max(remaining_seconds, 0)) / float(total) * 100.0, 0.0, 100.0)
+		else:
+			_timer_bar.value = 0

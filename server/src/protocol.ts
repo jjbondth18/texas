@@ -169,6 +169,7 @@ export interface PublicTableSnapshot {
   official_hand_started?: boolean;
   action_timeout_ms?: number;
   action_deadline_at?: string;
+  dev_simulated_player_present?: boolean;
   is_public: boolean;
   created_at: string;
   seats?: PublicSeatSnapshot[];
@@ -238,6 +239,7 @@ export interface TableSnapshot {
   official_hand_started?: boolean;
   action_timeout_ms?: number;
   action_deadline_at?: string;
+  dev_simulated_player_present?: boolean;
   seats: PublicSeatSnapshot[];
   community_cards: Card[];
   pot: number;

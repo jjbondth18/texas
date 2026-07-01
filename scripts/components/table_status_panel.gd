@@ -131,6 +131,12 @@ func set_status(snapshot: Dictionary) -> void:
 		if pill.get_index() != i:
 			_rows_container.move_child(pill, i)
 
+func set_action_timer(turn_seat_index: int, remaining_seconds: int, total_seconds: int, active: bool) -> void:
+	for seat_idx in _pills.keys():
+		var pill = _pills[seat_idx]
+		if pill != null and pill.has_method("set_turn_timer"):
+			pill.call("set_turn_timer", remaining_seconds, total_seconds, active and int(seat_idx) == turn_seat_index)
+
 # Inner class representing a high-fidelity sliding player row pill in the list
 class PlayerRowPill extends PanelContainer:
 	var player_data: Dictionary
@@ -153,6 +159,9 @@ class PlayerRowPill extends PanelContainer:
 	var _is_turn := false
 	var _is_fold := false
 	var _tween: Tween
+	var _turn_timer_active := false
+	var _turn_timer_remaining := 0
+	var _turn_timer_total := 0
 	
 	func _init(data: Dictionary, left_side: bool) -> void:
 		player_data = data
@@ -384,7 +393,7 @@ class PlayerRowPill extends PanelContainer:
 				
 			if is_turn:
 				action_label.visible = true
-				action_label.text = "YOUR TURN" if is_local else "THINKING..."
+				action_label.text = _turn_text(is_local)
 				action_label.add_theme_color_override("font_color", Color(1.0, 0.90, 0.42) if is_local else Color(0.46, 1.0, 0.86))
 				target_bg = Color(0.22, 0.14, 0.45, 0.90)
 				target_border = Color(0.0, 1.0, 0.7, 0.9) # Turn: Neon Cyan/Green Outline
@@ -464,6 +473,14 @@ class PlayerRowPill extends PanelContainer:
 			if position.x != target_x:
 				position.x = target_x
 
+	func set_turn_timer(remaining_seconds: int, total_seconds: int, active: bool) -> void:
+		_turn_timer_active = active
+		_turn_timer_remaining = max(remaining_seconds, 0)
+		_turn_timer_total = max(total_seconds, 1)
+		if not bool(player_data.get("is_turn", false)):
+			return
+		action_label.text = _turn_text(bool(player_data.get("is_local", false)))
+
 	func _apply_text_alignment() -> void:
 		var alignment := HORIZONTAL_ALIGNMENT_RIGHT if is_left else HORIZONTAL_ALIGNMENT_LEFT
 		name_label.horizontal_alignment = alignment
@@ -492,6 +509,12 @@ class PlayerRowPill extends PanelContainer:
 		if amount > 0 and label not in ["CHECK", "FOLD"]:
 			return "%s %s" % [label, _format_chips(amount)]
 		return label
+
+	func _turn_text(is_local: bool) -> String:
+		var base := "YOUR TURN" if is_local else "THINKING..."
+		if _turn_timer_active:
+			return "%s %ds" % [base, _turn_timer_remaining]
+		return base
 
 	func _action_color(action_label: String) -> Color:
 		match action_label.to_upper():
