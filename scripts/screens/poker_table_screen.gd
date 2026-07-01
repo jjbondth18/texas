@@ -31,6 +31,7 @@ const ServerTableSnapshotScript := preload("res://scripts/state/table_snapshot.g
 
 const DESIGN_SIZE := Vector2(2560, 1000)
 const SERVER_DEFAULT_BUY_IN := 5000
+const DEFAULT_ACTION_TIME_SECONDS := 60
 const CLIENT_BUILD_ID := "sitdown-ack-v1"
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
 const FLYING_CARD_BACK_PATH := "res://assets/ui/cardback/asset_02.png"
@@ -109,7 +110,7 @@ var _bet_marker_overrides: Dictionary = {}
 var _turn_timer_key := ""
 var _turn_timer_active := false
 var _turn_timer_deadline_msec := 0
-var _turn_timer_total_seconds := 15
+var _turn_timer_total_seconds := DEFAULT_ACTION_TIME_SECONDS
 var _turn_timer_seat_index := -1
 var _turn_timer_timeout_fired := false
 var _visible_community_cards: Array = []
@@ -747,6 +748,7 @@ func _server_create_table_config() -> Dictionary:
 		"small_blind": TableLaunchContext.small_blind,
 		"big_blind": TableLaunchContext.big_blind,
 		"hand_count": hand_count,
+		"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 		"max_players": 6,
 		"is_public": true,
 	}
@@ -971,7 +973,7 @@ func _empty_server_ui_snapshot(message: String) -> Dictionary:
 		"local_player": local_player,
 		"local_seat_index": _server_local_seat_index if _server_seat_confirmed else -1,
 		"turn_seat_index": -1,
-		"turn_seconds": 15,
+		"turn_seconds": DEFAULT_ACTION_TIME_SECONDS,
 		"turn_prompt": "Connecting...",
 		"available_actions": [],
 		"hand_history": [message],
@@ -1009,7 +1011,9 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	var server_hands_played: int = int(server_snapshot.get("hands_played", table_info.get("hands_played", 0)))
 	var server_current_hand_number: int = int(server_snapshot.get("current_hand_number", table_info.get("current_hand_number", server_hand_id)))
 	var server_session_complete: bool = bool(server_snapshot.get("session_complete", table_info.get("session_complete", server_room_state == "session_complete")))
-	var action_timeout_seconds: int = max(1, int(ceil(float(server_snapshot.get("action_timeout_ms", 15000)) / 1000.0)))
+	var configured_action_seconds: int = int(server_snapshot.get("action_time_seconds", table_info.get("action_time_seconds", DEFAULT_ACTION_TIME_SECONDS)))
+	var action_timeout_ms: int = int(server_snapshot.get("action_timeout_ms", table_info.get("action_timeout_ms", configured_action_seconds * 1000)))
+	var action_timeout_seconds: int = max(1, int(ceil(float(action_timeout_ms) / 1000.0)))
 	var private_hand_id := int(private_snapshot.get("hand_id", -1))
 	var private_matches_hand := private_hand_id == server_hand_id
 	var local_server_seat: int = _server_local_seat_from_snapshot(server_snapshot, private_snapshot)
@@ -1124,6 +1128,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"local_seat_index": local_server_seat,
 		"turn_seat_index": current_turn_seat,
 		"turn_seconds": action_timeout_seconds,
+		"action_time_seconds": configured_action_seconds,
 		"action_deadline_at": str(server_snapshot.get("action_deadline_at", "")),
 		"turn_prompt": turn_prompt,
 		"available_actions": available_actions,
@@ -1828,7 +1833,7 @@ func _table_flow_to_ui_snapshot(source: Dictionary) -> Dictionary:
 		"local_player": local_player,
 		"local_seat_index": local_seat_index,
 		"turn_seat_index": int(hand.get("current_turn_seat", -1)),
-		"turn_seconds": 15,
+		"turn_seconds": _table_session.action_time_seconds if _table_session != null else DEFAULT_ACTION_TIME_SECONDS,
 		"available_actions": _table_flow.get_legal_actions(local_seat_index),
 		"hand_history": table_log,
 		"system_messages": ["TexasTableFlow data binding active"],
@@ -1944,7 +1949,7 @@ func _sync_action_timer_from_snapshot(source_snapshot: Dictionary) -> void:
 	var phase: String = String(source_snapshot.get("phase", "waiting"))
 	var turn_seat: int = int(source_snapshot.get("turn_seat_index", -1))
 	var active: bool = turn_seat >= 0 and phase in ["preflop", "flop", "turn", "river"]
-	var total_seconds: int = max(1, int(source_snapshot.get("turn_seconds", 15)))
+	var total_seconds: int = max(1, int(source_snapshot.get("turn_seconds", DEFAULT_ACTION_TIME_SECONDS)))
 	var timer_key: String = "%s:%s:%s:%d:%s" % [
 		String(source_snapshot.get("source_model", "")),
 		String(source_snapshot.get("hand_id", "")),

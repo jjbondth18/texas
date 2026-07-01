@@ -20,11 +20,13 @@ const NAV_WIDTH := 280.0
 const MAIN_LEFT := 360.0
 const MAIN_RIGHT := 70.0
 const ROOM_BROWSER_COL_WIDTHS := [320, 200, 200, 260, 160]
+const DEFAULT_ACTION_TIME_SECONDS := 60
 const DEFAULT_QUICK_PUBLIC_TABLE_CONFIG := {
 	"buy_in": 10000,
 	"small_blind": 50,
 	"big_blind": 100,
 	"max_hands": 10,
+	"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 	"max_players": 9,
 }
 
@@ -126,6 +128,7 @@ var _public_table_setup_values := {
 	"small_blind": 50,
 	"big_blind": 100,
 	"max_hands": 10,
+	"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 	"max_players": 6,
 }
 var _private_room_setup_values := {
@@ -133,6 +136,7 @@ var _private_room_setup_values := {
 	"small_blind": 50,
 	"big_blind": 100,
 	"max_hands": 10,
+	"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 	"max_players": 6,
 }
 var _public_table_setup_mode := "chip"
@@ -1206,6 +1210,7 @@ func _start_quick_play_from_setup() -> void:
 		"big_blind": _selected_quick_big_blind,
 		"hand_count": _normalized_hand_count_for_context(_selected_quick_max_hands),
 		"max_hands": _selected_quick_max_hands,
+		"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 		"max_players": int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("max_players", 9)),
 		"allow_quick_join": true,
 		"buy_in_deducted_from_wallet": true,
@@ -1247,6 +1252,7 @@ func _quick_server_table_config() -> Dictionary:
 		"small_blind": _selected_quick_small_blind,
 		"big_blind": _selected_quick_big_blind,
 		"hand_count": hand_count,
+		"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 		"max_players": int(DEFAULT_QUICK_PUBLIC_TABLE_CONFIG.get("max_players", 9)),
 		"allow_quick_join": true,
 		"is_public": true,
@@ -1405,6 +1411,7 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 	var small_blind := int(table_info.get("small_blind", 25))
 	var big_blind := int(table_info.get("big_blind", 50))
 	var max_hands := int(table_info.get("hand_count", table_info.get("max_hands", 10)))
+	var action_time_seconds := int(table_info.get("action_time_seconds", DEFAULT_ACTION_TIME_SECONDS))
 	if max_hands <= 0:
 		max_hands = 999
 	return {
@@ -1417,6 +1424,7 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 		"buy_in": buy_in,
 		"small_blind": small_blind,
 		"big_blind": big_blind,
+		"action_time_seconds": action_time_seconds,
 		"is_training": false,
 		"table_type": "public_chip",
 		"uses_practice_chips": false,
@@ -1441,6 +1449,7 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 			"small_blind": small_blind,
 			"big_blind": big_blind,
 			"max_hands": max_hands,
+			"action_time_seconds": action_time_seconds,
 			"waiting_for_real_players": int(table_info.get("current_players", table_info.get("seated_count", 0))) < 2,
 			"is_ai_warmup": false,
 			"warmup_ai_player_ids": [],
@@ -1657,6 +1666,7 @@ func _confirm_public_table_setup() -> void:
 				"small_blind": int(_public_table_setup_values.get("small_blind", 50)),
 				"big_blind": int(_public_table_setup_values.get("big_blind", 100)),
 				"hand_count": _normalized_hand_count_for_context(int(_public_table_setup_values.get("max_hands", 10))),
+				"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 				"max_players": int(_public_table_setup_values.get("max_players", 6)),
 				"allow_quick_join": true,
 				"is_public": true,
@@ -1695,6 +1705,7 @@ func _public_table_config_from_values(values: Dictionary) -> Dictionary:
 		"big_blind": big_blind,
 		"buy_in": int(values.get("buy_in", 10000)),
 		"hand_count": int(values.get("max_hands", 10)),
+		"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 		"max_players": int(values.get("max_players", 6)),
 		"created_by": str(_player_profile.get("player_id", "local_player")),
 		"allow_quick_join": true,
@@ -1707,6 +1718,7 @@ func _private_room_config_from_values() -> Dictionary:
 		"small_blind": int(_private_room_setup_values.get("small_blind", 50)),
 		"big_blind": int(_private_room_setup_values.get("big_blind", 100)),
 		"max_hands": int(_private_room_setup_values.get("max_hands", 10)),
+		"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 		"max_players": int(_private_room_setup_values.get("max_players", 6)),
 	}
 

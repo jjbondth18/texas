@@ -23,6 +23,7 @@ const TABLE_PAUSED := "paused"
 const TABLE_CLOSED := "closed"
 const HOST_LEFT_MOCK_MESSAGE := "Host left. Table closed safely. Account balances were not changed."
 const DEFAULT_DEALER_ID := "dealer_01_dog"
+const DEFAULT_ACTION_TIME_SECONDS := 60
 
 var mode := MODE_QUICK_PLAY
 var table_type := MODE_QUICK_PLAY
@@ -39,6 +40,7 @@ var current_table_chips := 20000
 var small_blind := 25
 var big_blind := 50
 var max_hands := 10
+var action_time_seconds := DEFAULT_ACTION_TIME_SECONDS
 var current_hand_index := 0
 var session_start_chips := 20000
 var session_end_chips := 20000
@@ -79,6 +81,7 @@ func configure_from_context(context: Dictionary) -> void:
 	small_blind = int(context.get("small_blind", small_blind))
 	big_blind = int(context.get("big_blind", big_blind))
 	max_hands = int(context.get("max_hands", 10))
+	action_time_seconds = DEFAULT_ACTION_TIME_SECONDS
 	session_start_chips = int(context.get("session_start_chips", starting_chips))
 	session_end_chips = int(context.get("session_end_chips", current_table_chips))
 	session_profit = int(context.get("session_profit", session_end_chips - session_start_chips))
@@ -285,6 +288,7 @@ func to_dict() -> Dictionary:
 		"small_blind": small_blind,
 		"big_blind": big_blind,
 		"max_hands": max_hands,
+		"action_time_seconds": action_time_seconds,
 		"current_hand_index": current_hand_index,
 		"session_start_chips": session_start_chips,
 		"session_end_chips": session_end_chips,

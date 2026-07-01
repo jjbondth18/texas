@@ -5,6 +5,7 @@ const HandLifecycleScript := preload("res://scripts/core/hand_lifecycle.gd")
 
 const LOCAL_SEAT_INDEX := 5
 const TABLE_SEAT_JOIN_ORDER_9P := [5, 8, 2, 6, 4, 9, 1, 7, 3]
+const DEFAULT_ACTION_TIME_SECONDS := 60
 
 static func get_mock_table_snapshot() -> Dictionary:
 	return get_phase_snapshot("preflop")
@@ -148,7 +149,7 @@ static func _with_ui_fields(state: Dictionary) -> Dictionary:
 	next["pot"] = int(Dictionary(next["pot_data"]).get("main", 0))
 	next["local_seat_index"] = LOCAL_SEAT_INDEX
 	next["turn_seat_index"] = int(next.get("current_turn_seat", -1))
-	next["turn_seconds"] = 15
+	next["turn_seconds"] = DEFAULT_ACTION_TIME_SECONDS
 	next["room_state"] = _room_state_for_phase(String(next.get("phase", "waiting")))
 	var seats: Array = []
 	for seat in Array(next.get("seats", [])):

@@ -84,6 +84,7 @@ export interface ClientMessage {
   small_blind?: number;
   big_blind?: number;
   hand_count?: number | string;
+  action_time_seconds?: number;
   max_players?: number;
   is_public?: boolean;
   ready?: boolean;
@@ -157,6 +158,7 @@ export interface PublicTableSnapshot {
   big_blind: number;
   buy_in: number;
   hand_count: number;
+  action_time_seconds?: number;
   max_hands?: number;
   hands_played?: number;
   current_hand_number?: number;
@@ -234,6 +236,7 @@ export interface TableSnapshot {
   table_info?: PublicTableSnapshot;
   buy_in?: number;
   hand_count?: number;
+  action_time_seconds?: number;
   max_hands?: number;
   hands_played?: number;
   current_hand_number?: number;

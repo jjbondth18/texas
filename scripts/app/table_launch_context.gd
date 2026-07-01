@@ -3,6 +3,8 @@ class_name TableLaunchContext
 
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 
+const DEFAULT_ACTION_TIME_SECONDS := 60
+
 static var launch_mode := "quick_play"
 static var mode := "quick_play"
 static var backend_type := "local_mock"
@@ -21,6 +23,7 @@ static var allow_debug_tools := false
 static var requested_seat_index := 0
 static var ai_player_count := 0
 static var max_hands := 10
+static var action_time_seconds := DEFAULT_ACTION_TIME_SECONDS
 static var buy_in := PlayerProfileScript.DEFAULT_TABLE_BUY_IN
 static var small_blind := 25
 static var big_blind := 50
@@ -53,6 +56,7 @@ static func configure(mode: String = "quick_play", id: String = "mock_table_001"
 	requested_seat_index = int(setup_config.get("requested_seat_index", 0))
 	ai_player_count = 7 if mode in ["quick_play", "training"] else 0
 	max_hands = 999 if is_training else int(setup_config.get("max_hands", 10))
+	action_time_seconds = DEFAULT_ACTION_TIME_SECONDS
 	small_blind = int(setup_config.get("small_blind", 25))
 	big_blind = int(setup_config.get("big_blind", 50))
 	seats.clear()
@@ -113,6 +117,7 @@ static func configure_from_context(context: Dictionary) -> void:
 	requested_seat_index = int(context.get("requested_seat_index", 0))
 	ai_player_count = int(context.get("ai_player_count", 0))
 	max_hands = int(context.get("max_hands", 10))
+	action_time_seconds = DEFAULT_ACTION_TIME_SECONDS
 	buy_in = int(context.get("buy_in", PlayerProfileScript.DEFAULT_TABLE_BUY_IN))
 	small_blind = int(context.get("small_blind", 25))
 	big_blind = int(context.get("big_blind", 50))
@@ -144,6 +149,7 @@ static func get_current_table_context() -> Dictionary:
 		"requested_seat_index": requested_seat_index,
 		"ai_player_count": ai_player_count,
 		"max_hands": max_hands,
+		"action_time_seconds": action_time_seconds,
 		"table_session": table_session.duplicate(true),
 	}
 
@@ -168,6 +174,7 @@ static func _default_table_session() -> Dictionary:
 		"small_blind": small_blind,
 		"big_blind": big_blind,
 		"max_hands": max_hands,
+		"action_time_seconds": action_time_seconds,
 		"current_hand_index": 0,
 		"session_start_chips": session_buy_in,
 		"session_end_chips": session_buy_in,

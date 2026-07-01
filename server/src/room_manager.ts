@@ -31,6 +31,7 @@ interface Room {
   bigBlind: number;
   buyIn: number;
   handCount: number;
+  actionTimeSeconds: number;
   maxPlayers: number;
   isPublic: boolean;
   isAiWarmup: boolean;
@@ -55,13 +56,14 @@ const DEFAULT_TABLE_BUY_IN = 5000;
 const DEFAULT_SMALL_BLIND = 25;
 const DEFAULT_BIG_BLIND = 50;
 const DEFAULT_HAND_COUNT = 10;
+const DEFAULT_ACTION_TIME_SECONDS = 60;
 const DEFAULT_MAX_PLAYERS = 6;
 const DEV_BOT_MIN_WALLET_CHIPS = 50000;
 const ALLOWED_BUY_INS = new Set([5000, 10000, 20000, 50000]);
 const ALLOWED_BLIND_PAIRS = new Set(["25/50", "50/100", "100/200"]);
 const ALLOWED_HAND_COUNTS = new Set([0, 5, 10, 20]);
 const ALLOWED_IDENTITY_PROVIDERS = new Set(["local_dev", "steam"]);
-const ACTION_TIMEOUT_MS = 20000;
+const ACTION_TIMEOUT_MS = DEFAULT_ACTION_TIME_SECONDS * 1000;
 const READY_COUNTDOWN_MS = 3000;
 const HAND_RESULT_SHOWDOWN_MS = 5000;
 const HAND_RESULT_FOLD_MS = 2500;
@@ -277,7 +279,7 @@ export class RoomManager {
     this.broadcast(room);
   }
 
-  createRoom(options: Partial<Pick<Room, "tableName" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "maxPlayers" | "isPublic">> = {}): Room {
+  createRoom(options: Partial<Pick<Room, "tableName" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "actionTimeSeconds" | "maxPlayers" | "isPublic">> = {}): Room {
     const id = `room_${this.nextRoomId++}`;
     const table = new TableState(id);
     table.smallBlind = options.smallBlind ?? DEFAULT_SMALL_BLIND;
@@ -291,6 +293,7 @@ export class RoomManager {
       bigBlind: table.bigBlind,
       buyIn: options.buyIn ?? DEFAULT_TABLE_BUY_IN,
       handCount: options.handCount ?? DEFAULT_HAND_COUNT,
+      actionTimeSeconds: DEFAULT_ACTION_TIME_SECONDS,
       maxPlayers: options.maxPlayers ?? DEFAULT_MAX_PLAYERS,
       isPublic: options.isPublic ?? true,
       isAiWarmup: false,
@@ -353,6 +356,7 @@ export class RoomManager {
           big_blind: room.bigBlind,
           buy_in: room.buyIn,
           hand_count: room.handCount,
+          action_time_seconds: room.actionTimeSeconds,
           seated_count: this.publicSeatedCount(room),
           current_players: this.publicSeatedCount(room),
           is_public: room.isPublic,
@@ -368,7 +372,7 @@ export class RoomManager {
           ready_required_count: this.publicReadyRequiredCount(room),
           ready_countdown_deadline_at: room.readyCountdownDeadlineAt,
           hand_result_deadline_at: room.handResultDeadlineAt,
-          action_timeout_ms: ACTION_TIMEOUT_MS,
+          action_timeout_ms: this.actionTimeoutMs(room),
           action_deadline_at: room.actionDeadlineAt,
           dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
           connected_player_ids: [...room.clients],
@@ -425,6 +429,7 @@ export class RoomManager {
       big_blind: room.bigBlind,
       buy_in: room.buyIn,
       hand_count: room.handCount,
+      action_time_seconds: room.actionTimeSeconds,
       max_hands: room.handCount,
       hands_played: this.handsPlayed(room),
       current_hand_number: this.currentHandNumber(room),
@@ -444,7 +449,7 @@ export class RoomManager {
       ready_required_count: this.publicReadyRequiredCount(room),
       ready_countdown_deadline_at: room.readyCountdownDeadlineAt,
       hand_result_deadline_at: room.handResultDeadlineAt,
-      action_timeout_ms: ACTION_TIMEOUT_MS,
+      action_timeout_ms: this.actionTimeoutMs(room),
       action_deadline_at: room.actionDeadlineAt,
       dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
       is_public: room.isPublic,
@@ -917,6 +922,7 @@ export class RoomManager {
       ...room.table.publicSnapshot(),
       buy_in: room.buyIn,
       hand_count: room.handCount,
+      action_time_seconds: room.actionTimeSeconds,
       max_hands: room.handCount,
       hands_played: this.handsPlayed(room),
       current_hand_number: this.currentHandNumber(room),
@@ -934,7 +940,7 @@ export class RoomManager {
       ready_required_count: this.publicReadyRequiredCount(room),
       ready_countdown_deadline_at: room.readyCountdownDeadlineAt,
       hand_result_deadline_at: room.handResultDeadlineAt,
-      action_timeout_ms: ACTION_TIMEOUT_MS,
+      action_timeout_ms: this.actionTimeoutMs(room),
       action_deadline_at: room.actionDeadlineAt,
       dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
       table_info: this.tableSnapshot(room),
@@ -958,8 +964,9 @@ export class RoomManager {
     if (seat.isAi || seat.warmupAi || seat.disconnected) return;
     room.actionTimerToken += 1;
     const token = room.actionTimerToken;
-    room.actionDeadlineAt = new Date(Date.now() + ACTION_TIMEOUT_MS).toISOString();
-    room.actionTimer = setTimeout(() => this.handleActionTimeout(room.id, token), ACTION_TIMEOUT_MS);
+    const timeoutMs = this.actionTimeoutMs(room);
+    room.actionDeadlineAt = new Date(Date.now() + timeoutMs).toISOString();
+    room.actionTimer = setTimeout(() => this.handleActionTimeout(room.id, token), timeoutMs);
     (room.actionTimer as { unref?: () => void }).unref?.();
   }
 
@@ -967,6 +974,12 @@ export class RoomManager {
     if (room.actionTimer) clearTimeout(room.actionTimer);
     room.actionTimer = undefined;
     room.actionDeadlineAt = undefined;
+  }
+
+  private actionTimeoutMs(room: Room): number {
+    if (!Number.isFinite(room.actionTimeSeconds)) return ACTION_TIMEOUT_MS;
+    const configuredSeconds = room.actionTimeSeconds;
+    return Math.max(1, Math.floor(configuredSeconds)) * 1000;
   }
 
   private handleActionTimeout(roomId: string, token: number): void {
@@ -1040,7 +1053,7 @@ export class RoomManager {
     return { provider, externalId, playerId };
   }
 
-  private tableConfigFromMessage(message: ClientMessage): Partial<Pick<Room, "tableName" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "maxPlayers" | "isPublic">> {
+  private tableConfigFromMessage(message: ClientMessage): Partial<Pick<Room, "tableName" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "actionTimeSeconds" | "maxPlayers" | "isPublic">> {
     const buyIn = Math.floor(numberOr(message.buy_in, DEFAULT_TABLE_BUY_IN));
     const smallBlind = Math.floor(numberOr(message.small_blind, DEFAULT_SMALL_BLIND));
     const bigBlind = Math.floor(numberOr(message.big_blind, DEFAULT_BIG_BLIND));
@@ -1056,6 +1069,7 @@ export class RoomManager {
       bigBlind,
       buyIn,
       handCount,
+      actionTimeSeconds: DEFAULT_ACTION_TIME_SECONDS,
       maxPlayers,
       isPublic: message.is_public ?? true,
     };

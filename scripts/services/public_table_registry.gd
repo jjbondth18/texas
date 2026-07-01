@@ -16,6 +16,7 @@ const STATUS_DIRTY := "dirty"
 const STATUS_PAUSED := "paused"
 const STATUS_HAND_OVER := "hand_over"
 const STATUS_SHOWDOWN_REVEAL := "showdown_reveal"
+const DEFAULT_ACTION_TIME_SECONDS := 60
 
 static var _tables: Dictionary = {}
 static var _next_table_number := 1
@@ -50,6 +51,7 @@ static func create_public_table(config: Dictionary = {}) -> Dictionary:
 	var big_blind: int = int(normalized_config.get("big_blind", 50))
 	var buy_in: int = int(normalized_config.get("buy_in", 20000))
 	var max_players: int = int(normalized_config.get("max_players", 9))
+	var action_time_seconds: int = int(normalized_config.get("action_time_seconds", DEFAULT_ACTION_TIME_SECONDS))
 	var player_ids: Array[String] = []
 	for player_id in Array(normalized_config.get("player_ids", [])):
 		player_ids.append(String(player_id))
@@ -74,6 +76,7 @@ static func create_public_table(config: Dictionary = {}) -> Dictionary:
 		"buy_in_min": buy_in,
 		"buy_in_max": buy_in,
 		"hand_count": int(normalized_config.get("hand_count", normalized_config.get("max_hands", 10))),
+		"action_time_seconds": action_time_seconds,
 		"max_players": max_players,
 		"current_players": min(max(real_player_ids.size(), int(normalized_config.get("current_players", player_ids.size()))), max_players),
 		"created_by": String(normalized_config.get("created_by", "local_mock")),
@@ -276,6 +279,7 @@ static func _normalized_public_table_config(config: Dictionary) -> Dictionary:
 	result["small_blind"] = int(result.get("small_blind", 25))
 	result["big_blind"] = int(result.get("big_blind", 50))
 	result["hand_count"] = int(result.get("hand_count", result.get("max_hands", 10)))
+	result["action_time_seconds"] = DEFAULT_ACTION_TIME_SECONDS
 	result["max_players"] = int(result.get("max_players", 9))
 	result["allow_quick_join"] = bool(result.get("allow_quick_join", true))
 	return result
