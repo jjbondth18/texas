@@ -975,6 +975,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	var server_small_blind := int(table_info.get("small_blind", server_snapshot.get("small_blind", 25)))
 	var server_big_blind := int(table_info.get("big_blind", server_snapshot.get("big_blind", 50)))
 	var server_hand_id := int(server_snapshot.get("hand_id", 0))
+	var action_timeout_seconds: int = max(1, int(ceil(float(server_snapshot.get("action_timeout_ms", 15000)) / 1000.0)))
 	var private_hand_id := int(private_snapshot.get("hand_id", -1))
 	var private_matches_hand := private_hand_id == server_hand_id
 	var local_server_seat: int = _server_local_seat_from_snapshot(server_snapshot, private_snapshot)
@@ -1071,7 +1072,8 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"local_player": local_player,
 		"local_seat_index": local_server_seat,
 		"turn_seat_index": current_turn_seat,
-		"turn_seconds": 15,
+		"turn_seconds": action_timeout_seconds,
+		"action_deadline_at": str(server_snapshot.get("action_deadline_at", "")),
 		"turn_prompt": turn_prompt,
 		"available_actions": available_actions,
 		"hand_history": history,

@@ -26,6 +26,12 @@ Display-only blind labels such as `50 / 100` can exist in UI, but backend logic 
 
 AI warm-up is always local practice. Warm-up AI never enters public seats and never joins official public hands.
 
+The official account-wallet boundary is the first successful server public `start_hand`. A player who leaves a public table before that formal hand starts receives the full server table stack back to the wallet with reason `left_before_official_hand`. Local warm-up hands do not change wallet chips, gems, formal stats, or public profit.
+
+The dev-only simulated real join button is only for testing warm-up interruption and `ready_to_start` UI. A dev simulated player is seated as a real-looking public seat, but it has no controller and the server rejects formal public `start_hand` while it is present. Use a second real client for an actual public hand test.
+
+Formal public hands use a server action timeout. If a player does not act before the timeout, the server auto-checks when legal, otherwise auto-folds, logs the timeout, broadcasts a snapshot, and schedules the next turn.
+
 ## Clean Joinable Tables
 
 Table Browser only lists clean joinable public chip tables:

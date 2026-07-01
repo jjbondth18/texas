@@ -19,6 +19,7 @@ interface Client {
   avatarId: string;
   ws?: WebSocket;
   roomId?: string;
+  devSimulated?: boolean;
 }
 
 interface Room {
@@ -35,6 +36,10 @@ interface Room {
   isAiWarmup: boolean;
   hostInLocalWarmup: string;
   hostPlayerId: string;
+  officialHandStarted: boolean;
+  actionTimer?: ReturnType<typeof setTimeout>;
+  actionTimerToken: number;
+  actionDeadlineAt?: string;
   createdAt: string;
 }
 
@@ -48,6 +53,8 @@ const ALLOWED_BUY_INS = new Set([5000, 10000, 20000, 50000]);
 const ALLOWED_BLIND_PAIRS = new Set(["25/50", "50/100", "100/200"]);
 const ALLOWED_HAND_COUNTS = new Set([0, 5, 10, 20]);
 const ALLOWED_IDENTITY_PROVIDERS = new Set(["local_dev", "steam"]);
+const ACTION_TIMEOUT_MS = 20000;
+const DEV_SIMULATED_START_BLOCK_REASON = "Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot.";
 export class RoomManager {
   private clients = new Map<string, Client>();
   private rooms = new Map<string, Room>();
@@ -78,6 +85,7 @@ export class RoomManager {
     if (room) {
       room.table.markDisconnected(playerId);
       processAutomaticTurns(room.table);
+      this.rescheduleActionTimer(room);
       this.broadcast(room);
     }
     client.ws = undefined;
@@ -213,6 +221,7 @@ export class RoomManager {
         this.requireSeated(room, client, message, "start_hand");
         this.requirePublicHandStartAllowed(room, client);
         room.table.startHand();
+        room.officialHandStarted = true;
         processAutomaticTurns(room.table);
         this.recordLog(`${client.id} started hand in ${room.id}`);
         break;
@@ -243,6 +252,7 @@ export class RoomManager {
         throw new Error(`unsupported message: ${message.type}`);
     }
     this.recordHandResults(room);
+    this.rescheduleActionTimer(room);
     this.broadcast(room);
   }
 
@@ -265,6 +275,8 @@ export class RoomManager {
       isAiWarmup: false,
       hostInLocalWarmup: "",
       hostPlayerId: "",
+      officialHandStarted: false,
+      actionTimerToken: 0,
       createdAt: new Date().toISOString(),
     };
     this.rooms.set(id, room);
@@ -322,6 +334,9 @@ export class RoomManager {
           is_ai_warmup: room.isAiWarmup,
           host_in_local_warmup: room.hostInLocalWarmup !== "",
           host_player_id: room.hostPlayerId,
+          official_hand_started: room.officialHandStarted,
+          action_timeout_ms: ACTION_TIMEOUT_MS,
+          action_deadline_at: room.actionDeadlineAt,
           connected_player_ids: [...room.clients],
           hand_state: snapshot.phase,
           betting_round: snapshot.phase,
@@ -385,6 +400,9 @@ export class RoomManager {
       is_ai_warmup: room.isAiWarmup,
       host_in_local_warmup: room.hostInLocalWarmup !== "",
       host_player_id: room.hostPlayerId,
+      official_hand_started: room.officialHandStarted,
+      action_timeout_ms: ACTION_TIMEOUT_MS,
+      action_deadline_at: room.actionDeadlineAt,
       is_public: room.isPublic,
       created_at: room.createdAt,
       seats: room.table.publicSnapshot().seats,
@@ -515,6 +533,7 @@ export class RoomManager {
       name: playerName,
       avatarId: "default",
       roomId: room.id,
+      devSimulated: true,
     };
     this.clients.set(simulatedId, simulatedClient);
     room.clients.add(simulatedId);
@@ -560,9 +579,18 @@ export class RoomManager {
     if (room.hostPlayerId === "") room.hostPlayerId = client.id;
     if (client.id !== room.hostPlayerId) throw new Error("not_host");
     if (this.realConnectedSeatedCount(room) < 2) throw new Error("not_enough_players");
+    if (this.hasUncontrolledDevSimulatedPlayer(room)) throw new Error(DEV_SIMULATED_START_BLOCK_REASON);
     if (room.isAiWarmup) throw new Error("already_playing");
     if (!["waiting", "hand_over"].includes(room.table.phase)) throw new Error("already_playing");
     if (this.publicRoomState(room) !== "ready_to_start") throw new Error("not_ready_to_start");
+  }
+
+  private hasUncontrolledDevSimulatedPlayer(room: Room): boolean {
+    return room.table.seats.some((seat) => {
+      if (!seat.playerId) return false;
+      const client = this.clients.get(seat.playerId);
+      return Boolean(client?.devSimulated) || seat.playerId.startsWith("dev_real_");
+    });
   }
 
   private recordNotSeated(room: Room, client: Client, message: ClientMessage, command: string): void {
@@ -593,7 +621,9 @@ export class RoomManager {
     if (room.hostInLocalWarmup === client.id) room.hostInLocalWarmup = "";
     if (!room.table.canMoveTableChips()) throw new Error("cannot_cash_out_during_hand");
     const result = room.table.cashOut(client.id);
-    this.wallets.refundTableChips(client.id, result.amount, { reason: "table_cash_out", relatedRoomId: room.id });
+    const reason = room.isPublic && !room.officialHandStarted ? "left_before_official_hand" : "table_cash_out";
+    const wallet = this.wallets.refundTableChips(client.id, result.amount, { reason, relatedRoomId: room.id });
+    this.recordLog(`Wallet refund: reason=${reason} player_id=${client.id} amount=${result.amount} wallet_after=${wallet.chips} room_id=${room.id}`);
     this.sendWalletSnapshot(client, room.id);
   }
 
@@ -624,6 +654,9 @@ export class RoomManager {
       is_ai_warmup: room.isAiWarmup,
       host_in_local_warmup: room.hostInLocalWarmup !== "",
       host_player_id: room.hostPlayerId,
+      official_hand_started: room.officialHandStarted,
+      action_timeout_ms: ACTION_TIMEOUT_MS,
+      action_deadline_at: room.actionDeadlineAt,
       table_info: this.tableSnapshot(room),
     };
     for (const playerId of room.clients) {
@@ -635,6 +668,57 @@ export class RoomManager {
       const privateSnapshot = room.table.privateSnapshot(playerId, legalActions(room.table, playerId));
       if (privateSnapshot) this.send(client, { type: "private_snapshot", room_id: room.id, snapshot: privateSnapshot });
     }
+  }
+
+  private rescheduleActionTimer(room: Room): void {
+    this.clearActionTimer(room);
+    if (!isActionPhase(room.table.phase)) return;
+    const seat = room.table.getSeat(room.table.currentTurnSeat);
+    if (!seat || !seat.playerId || seat.status !== "playing") return;
+    if (seat.isAi || seat.warmupAi || seat.disconnected) return;
+    room.actionTimerToken += 1;
+    const token = room.actionTimerToken;
+    room.actionDeadlineAt = new Date(Date.now() + ACTION_TIMEOUT_MS).toISOString();
+    room.actionTimer = setTimeout(() => this.handleActionTimeout(room.id, token), ACTION_TIMEOUT_MS);
+    (room.actionTimer as { unref?: () => void }).unref?.();
+  }
+
+  private clearActionTimer(room: Room): void {
+    if (room.actionTimer) clearTimeout(room.actionTimer);
+    room.actionTimer = undefined;
+    room.actionDeadlineAt = undefined;
+  }
+
+  private handleActionTimeout(roomId: string, token: number): void {
+    const room = this.rooms.get(roomId);
+    if (!room || token !== room.actionTimerToken) return;
+    room.actionTimer = undefined;
+    room.actionDeadlineAt = undefined;
+    if (!isActionPhase(room.table.phase)) return;
+    const seat = room.table.getSeat(room.table.currentTurnSeat);
+    if (!seat || !seat.playerId || seat.status !== "playing") return;
+    const available = legalActions(room.table, seat.playerId);
+    const canCheck = available.some((action) => action.action === "check");
+    const autoAction = canCheck ? "check" : "fold";
+    room.table.addAction({
+      type: "system",
+      seat_id: seat.seatIndex,
+      seat_index: seat.seatIndex,
+      player_name: seat.name,
+      action: "timeout",
+      message: `${seat.name} timed out. Auto-${autoAction === "check" ? "check" : "fold"}.`,
+    });
+    try {
+      applyPlayerAction(room.table, seat.playerId, autoAction);
+      processAutomaticTurns(room.table);
+      this.recordLog(`action_timeout room_id=${room.id} player_id=${seat.playerId} seat=${seat.seatIndex} auto_action=${autoAction}`);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.recordLog(`action_timeout_failed room_id=${room.id} player_id=${seat.playerId} reason=${reason}`);
+    }
+    this.rescheduleActionTimer(room);
+    this.recordHandResults(room);
+    this.broadcast(room);
   }
 
   private send(client: Client, message: ServerMessage): void {
@@ -749,4 +833,8 @@ function normalizeExternalId(value: string): string {
 function normalizeAvatarId(value: string): string {
   const trimmed = String(value || "").trim();
   return trimmed === "4_05" ? "default" : trimmed || "default";
+}
+
+function isActionPhase(phase: string): boolean {
+  return ["preflop", "flop", "turn", "river"].includes(phase);
 }

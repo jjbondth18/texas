@@ -66,10 +66,10 @@ func send_message(message: Dictionary) -> int:
 
 func send_hello(player_name: String = "", profile_player_id: String = "", avatar_id: String = "", auth_provider: String = "", external_id: String = "") -> int:
 	var identity: Dictionary = IdentityServiceScript.new().get_identity()
-	var resolved_name := player_name if player_name != "" else String(identity.get("display_name", ""))
-	var resolved_external_id := external_id if external_id != "" else String(identity.get("external_id", profile_player_id))
-	var resolved_provider := auth_provider if auth_provider != "" else String(identity.get("provider", "local_dev"))
-	var resolved_avatar_id := avatar_id if avatar_id != "" else String(identity.get("avatar_id", ""))
+	var resolved_name := player_name if player_name != "" else str(identity.get("display_name", ""))
+	var resolved_external_id := external_id if external_id != "" else str(identity.get("external_id", profile_player_id))
+	var resolved_provider := auth_provider if auth_provider != "" else str(identity.get("provider", "local_dev"))
+	var resolved_avatar_id := avatar_id if avatar_id != "" else str(identity.get("avatar_id", ""))
 	var compatible_player_id := profile_player_id if profile_player_id != "" else resolved_external_id
 	local_player_id = resolved_external_id
 	return send_message(PokerProtocolScript.hello(resolved_name, compatible_player_id, resolved_avatar_id, resolved_provider, resolved_external_id))
@@ -135,13 +135,13 @@ func join_table(target_room_id: String) -> int:
 
 func _handle_message(message: Dictionary) -> void:
 	message_received.emit(message)
-	var type_value := String(message.get("type", ""))
+	var type_value := str(message.get("type", ""))
 	match type_value:
 		PokerProtocolScript.HELLO:
-			var canonical_player_id := String(message.get("server_player_id", message.get("player_id", player_id)))
+			var canonical_player_id := str(message.get("server_player_id", message.get("player_id", player_id)))
 			if canonical_player_id != "":
 				player_id = canonical_player_id
-			room_id = String(message.get("room_id", room_id))
+			room_id = str(message.get("room_id", room_id))
 			_emit_profile_payload(message)
 			var is_authenticated_hello := message.has("server_player_id") or message.has("profile") or message.has("wallet") or message.has("unlocked_avatar_ids")
 			if is_authenticated_hello or room_id != "":
@@ -158,11 +158,11 @@ func _handle_message(message: Dictionary) -> void:
 			table_list_received.emit(Array(message.get("tables", [])).duplicate(true))
 		PokerProtocolScript.TABLE_CREATED:
 			var created_table := Dictionary(message.get("table", {})).duplicate(true)
-			room_id = String(message.get("room_id", created_table.get("room_id", room_id)))
+			room_id = str(message.get("room_id", created_table.get("room_id", room_id)))
 			table_created.emit(room_id, created_table)
 		PokerProtocolScript.TABLE_JOINED:
 			var joined_table := Dictionary(message.get("table", {})).duplicate(true)
-			room_id = String(message.get("room_id", joined_table.get("room_id", room_id)))
+			room_id = str(message.get("room_id", joined_table.get("room_id", room_id)))
 			table_joined.emit(room_id, joined_table)
 		PokerProtocolScript.MOCK_PURCHASE_RESULT:
 			var purchase_wallet := Dictionary(message.get("wallet", {})).duplicate(true)
@@ -170,39 +170,39 @@ func _handle_message(message: Dictionary) -> void:
 				wallet_synced.emit(purchase_wallet)
 			mock_purchase_result_received.emit(
 				bool(message.get("ok", false)),
-				String(message.get("currency", "")),
+				str(message.get("currency", "")),
 				int(message.get("amount", 0)),
 				purchase_wallet
 			)
 		PokerProtocolScript.START_AI_WARMUP_RESULT:
-			room_id = String(message.get("room_id", room_id))
+			room_id = str(message.get("room_id", room_id))
 			start_ai_warmup_result_received.emit(
 				bool(message.get("ok", false)),
 				room_id,
-				String(message.get("reason", ""))
+				str(message.get("reason", ""))
 			)
 		PokerProtocolScript.SIT_DOWN_RESULT:
-			var result_player_id := String(message.get("server_player_id", message.get("player_id", player_id)))
+			var result_player_id := str(message.get("server_player_id", message.get("player_id", player_id)))
 			if result_player_id != "":
 				player_id = result_player_id
-			room_id = String(message.get("room_id", room_id))
+			room_id = str(message.get("room_id", room_id))
 			sit_down_result_received.emit(
 				bool(message.get("ok", false)),
 				room_id,
 				int(message.get("seat_index", -1)),
 				result_player_id,
-				String(message.get("reason", "")),
+				str(message.get("reason", "")),
 				int(message.get("wallet_chips", -1)),
 				int(message.get("required_chips", -1))
 			)
 		PokerProtocolScript.TABLE_SNAPSHOT:
 			var snapshot := Dictionary(message.get("snapshot", {})).duplicate(true)
-			room_id = String(message.get("room_id", snapshot.get("room_id", room_id)))
+			room_id = str(message.get("room_id", snapshot.get("room_id", room_id)))
 			table_snapshot_received.emit(snapshot)
 		PokerProtocolScript.PRIVATE_SNAPSHOT:
 			private_snapshot_received.emit(Dictionary(message.get("snapshot", {})).duplicate(true))
 		PokerProtocolScript.ERROR:
-			server_error.emit(String(message.get("error_code", message.get("error", "Unknown server error"))))
+			server_error.emit(str(message.get("error_code", message.get("error", "Unknown server error"))))
 
 func _emit_profile_payload(message: Dictionary) -> void:
 	var profile := Dictionary(message.get("profile", {})).duplicate(true)

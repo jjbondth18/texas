@@ -166,6 +166,9 @@ export interface PublicTableSnapshot {
   is_ai_warmup?: boolean;
   host_in_local_warmup?: boolean;
   host_player_id?: string;
+  official_hand_started?: boolean;
+  action_timeout_ms?: number;
+  action_deadline_at?: string;
   is_public: boolean;
   created_at: string;
   seats?: PublicSeatSnapshot[];
@@ -232,6 +235,9 @@ export interface TableSnapshot {
   is_ai_warmup?: boolean;
   host_in_local_warmup?: boolean;
   host_player_id?: string;
+  official_hand_started?: boolean;
+  action_timeout_ms?: number;
+  action_deadline_at?: string;
   seats: PublicSeatSnapshot[];
   community_cards: Card[];
   pot: number;

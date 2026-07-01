@@ -81,7 +81,7 @@ manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id });
 const afterCashOut = manager.adminSnapshot(false);
 if (Number(afterCashOut.total_wallet_chips) !== 9500) throw new Error("cash_out should refund remaining table chips");
 if (room.table.getSeat(0)?.playerId !== "") throw new Error("cash_out should clear the seat");
-if (countRows("wallet_transactions", "reason = 'table_cash_out' AND amount = 5500") !== 1) throw new Error("cash out should write positive wallet transaction");
+if (countRows("wallet_transactions", "reason = 'left_before_official_hand' AND amount = 5500") !== 1) throw new Error("pre-hand cash out should write left_before_official_hand wallet transaction");
 expectThrows("not_seated", () => manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id }));
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 9500) throw new Error("repeat cash_out should not double refund");
 
@@ -226,9 +226,12 @@ if (!joinedSnapshot?.snapshot || joinedSnapshot.snapshot.host_in_local_warmup) t
 if (Number(joinedSnapshot.snapshot.current_players) !== 2) throw new Error("dev simulated real join should return public room to two real players");
 if ((joinedSnapshot.snapshot.seats ?? []).filter((seat) => seat.warmup_ai || seat.is_ai).length !== 0) throw new Error("real public room should remain AI-free after join");
 if ((joinedSnapshot.snapshot.seats ?? []).filter((seat) => seat.player_name === "DevPlayer2").length !== 1) throw new Error("dev simulated real join should seat DevPlayer2 in the server public room");
+expectThrows("Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot.", () => manager.handle("warmup_player", { type: "start_hand", room_id: warmupRoom.id }));
+if (warmupRoom.table.phase !== "waiting") throw new Error("dev simulated real player must not be allowed to start a formal public hand");
 const beforeWarmupCashOutWallet = Number(manager.adminSnapshot(false).total_wallet_chips);
 manager.handle("warmup_player", { type: "cash_out", room_id: warmupRoom.id });
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeWarmupCashOutWallet + warmupBaselineStack) throw new Error("public cash out after local warm-up should refund official table stack only");
+if (countRows("wallet_transactions", "reason = 'left_before_official_hand' AND related_room_id = '" + warmupRoom.id + "'") !== 1) throw new Error("local warm-up exit before official hand should refund with left_before_official_hand reason");
 
 const readyHostMessages: unknown[] = [];
 const readyHostWs = { OPEN: 1, readyState: 1, send: (data: string) => readyHostMessages.push(JSON.parse(data)) };

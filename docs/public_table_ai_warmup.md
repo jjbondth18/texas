@@ -40,6 +40,16 @@ The returned public room shows only real players and moves to `ready_to_start` w
 
 The host starts the formal public hand through the server authoritative `start_hand` path. The server rejects non-host starts with `not_host`, rejects starts below two real players, and never includes warm-up AI in the official hand.
 
+The dev-only `DEV: SIMULATE REAL PLAYER JOIN` button only validates the interruption path. The simulated seat is not AI and is not warm-up, but it is also not controlled by a real client. The server therefore rejects `START PUBLIC HAND` while that dev simulated player is seated:
+
+`Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot.`
+
+Use a second Godot client or a future controllable dev bot to test a real public hand.
+
 ## Mid-hand Real Join
 
 If a real player joins while a public hand is active, the server seats that player as `waiting_next_hand`. The player is visible in the public room, but receives no current hand hole cards, does not post a blind in the current hand, and does not enter the current turn order. On the next host-started hand, `waiting_next_hand` players become eligible active players and receive cards normally.
+
+## Exit and Wallet
+
+Joining a public table moves the selected buy-in from wallet chips to the official server table stack. If the player exits before any formal public hand starts, the server refunds the full table stack with `left_before_official_hand`. Local warm-up is practice-only and never commits its chip result back to the account wallet.
