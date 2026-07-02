@@ -58,6 +58,7 @@ var _replay_playback_step := 0
 var _replay_playback_speed := 1.0
 var _replay_playback_is_playing := false
 var _replay_playback_players_vbox: VBoxContainer
+var _replay_playback_table_layer: Control
 var _replay_playback_board_label: Label
 var _replay_playback_pot_label: Label
 var _replay_playback_action_label: Label
@@ -3105,7 +3106,7 @@ func _render_replay_playback() -> void:
 	_replay_detail_vbox.add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "Read-only hand playback. Recorded actions are applied without server, wallet, or gem changes."
+	subtitle.text = "Read-only hand playback. Replay Table View renders the recorded hand without server, wallet, or gem changes."
 	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	HomeTheme.make_font_settings(subtitle, 12, HomeTheme.MUTED)
 	_replay_detail_vbox.add_child(subtitle)
@@ -3119,29 +3120,22 @@ func _render_replay_playback() -> void:
 	body_hbox.add_theme_constant_override("separation", 18)
 	_replay_detail_vbox.add_child(body_hbox)
 
-	var players_box := _make_replay_section("SEATS", Vector2(320, 0))
-	body_hbox.add_child(players_box)
-	_replay_playback_players_vbox = players_box.get_node("Content") as VBoxContainer
-
-	var table_box := _make_replay_section("READ-ONLY TABLE", Vector2(420, 0))
+	var table_box := _make_replay_section("REPLAY TABLE VIEW", Vector2(720, 430))
 	table_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body_hbox.add_child(table_box)
 	var table_vbox: VBoxContainer = table_box.get_node("Content") as VBoxContainer
-	_replay_playback_board_label = _make_replay_value_label("BOARD\n-", Color(0.92, 0.96, 1.0))
-	_replay_playback_board_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_replay_playback_board_label.custom_minimum_size = Vector2(0, 86)
-	table_vbox.add_child(_replay_playback_board_label)
-	_replay_playback_pot_label = _make_replay_value_label("POT\n0", HomeTheme.GOLD)
-	_replay_playback_pot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_replay_playback_pot_label.custom_minimum_size = Vector2(0, 58)
-	table_vbox.add_child(_replay_playback_pot_label)
-	_replay_playback_action_label = _make_replay_value_label("CURRENT STEP\nInitial state", Color(0.90, 0.94, 1.0, 0.96))
-	_replay_playback_action_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_replay_playback_action_label.custom_minimum_size = Vector2(0, 70)
-	table_vbox.add_child(_replay_playback_action_label)
+	_replay_playback_table_layer = Control.new()
+	_replay_playback_table_layer.name = "ReplayTableLayer"
+	_replay_playback_table_layer.custom_minimum_size = Vector2(700, 390)
+	_replay_playback_table_layer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_replay_playback_table_layer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	table_vbox.add_child(_replay_playback_table_layer)
+	_replay_playback_players_vbox = VBoxContainer.new()
+	_replay_playback_players_vbox.visible = false
+	_replay_playback_board_label = Label.new()
+	_replay_playback_pot_label = Label.new()
+	_replay_playback_action_label = Label.new()
 	_replay_playback_result_vbox = VBoxContainer.new()
-	_replay_playback_result_vbox.add_theme_constant_override("separation", 4)
-	table_vbox.add_child(_replay_playback_result_vbox)
 
 	var timeline_box := _make_replay_section("PLAYER ACTIONS / HAND EVENTS", Vector2(390, 0))
 	body_hbox.add_child(timeline_box)
@@ -3271,16 +3265,13 @@ func _stop_replay_playback() -> void:
 func _refresh_replay_playback_view() -> void:
 	var playback_state: Dictionary = _replay_playback_state_for_step(_replay_playback_record, _replay_playback_step)
 	var players: Array = Array(playback_state.get("players", []))
-	_replace_replay_children(_replay_playback_players_vbox)
-	if players.is_empty():
-		_add_replay_text(_replay_playback_players_vbox, "No players recorded.", HomeTheme.MUTED)
-	else:
-		for player_item in players:
-			var player: Dictionary = Dictionary(player_item)
-			_add_replay_playback_player(_replay_playback_players_vbox, player)
-
 	if _replay_playback_step_label != null:
-		_replay_playback_step_label.text = "Step %d / %d" % [_replay_playback_step, _replay_playback_steps.size()]
+		_replay_playback_step_label.text = "%s\nStep %d / %d\n%s" % [
+			_replay_playback_header_line(_replay_playback_record),
+			_replay_playback_step,
+			_replay_playback_steps.size(),
+			str(playback_state.get("action_text", "Initial state")),
+		]
 	if _replay_playback_board_label != null:
 		_replay_playback_board_label.text = "BOARD\n%s" % str(playback_state.get("board_text", "-"))
 	if _replay_playback_pot_label != null:
@@ -3288,13 +3279,154 @@ func _refresh_replay_playback_view() -> void:
 	if _replay_playback_action_label != null:
 		_replay_playback_action_label.text = "CURRENT STEP\n%s" % str(playback_state.get("action_text", "Initial state"))
 
-	_replace_replay_children(_replay_playback_result_vbox)
-	if _replay_playback_step >= _replay_playback_steps.size():
-		_add_replay_board_and_results(_replay_playback_result_vbox, _replay_playback_record)
-	else:
-		_add_replay_text(_replay_playback_result_vbox, "Result appears at showdown / final step.", HomeTheme.MUTED)
-
+	_render_replay_table_view(playback_state, players)
 	_render_replay_playback_timeline()
+
+
+func _render_replay_table_view(playback_state: Dictionary, players: Array) -> void:
+	if _replay_playback_table_layer == null:
+		return
+	_replace_replay_children(_replay_playback_table_layer)
+	var table_size := Vector2(700, 390)
+	var felt := PanelContainer.new()
+	felt.name = "ReplayTableFelt"
+	felt.position = Vector2(0, 0)
+	felt.custom_minimum_size = table_size
+	felt.size = table_size
+	felt.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.026, 0.012, 0.055, 0.88), Color(0.72, 0.30, 1.0, 0.48), 28, 2))
+	_replay_playback_table_layer.add_child(felt)
+
+	var center_panel := PanelContainer.new()
+	center_panel.name = "ReplayTableCenter"
+	center_panel.position = Vector2(210, 128)
+	center_panel.custom_minimum_size = Vector2(280, 132)
+	center_panel.size = Vector2(280, 132)
+	center_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.008, 0.010, 0.026, 0.82), Color(0.22, 0.86, 1.0, 0.30), 10, 1))
+	_replay_playback_table_layer.add_child(center_panel)
+	var center_vbox := VBoxContainer.new()
+	center_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	center_vbox.add_theme_constant_override("separation", 8)
+	center_panel.add_child(center_vbox)
+
+	var board_label := Label.new()
+	board_label.name = "ReplayTableBoard"
+	board_label.text = "BOARD\n%s" % str(playback_state.get("board_text", "-"))
+	board_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	board_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(board_label, 15, Color(0.92, 0.96, 1.0, 0.96))
+	center_vbox.add_child(board_label)
+
+	var pot_label := Label.new()
+	pot_label.name = "ReplayTablePot"
+	pot_label.text = "TOTAL POT  %s" % _format_number(int(playback_state.get("pot", 0)))
+	pot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HomeTheme.make_font_settings(pot_label, 16, HomeTheme.GOLD)
+	center_vbox.add_child(pot_label)
+
+	var action_label := Label.new()
+	action_label.name = "ReplayTableCurrentAction"
+	action_label.text = str(playback_state.get("action_text", "Initial state"))
+	action_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	action_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	action_label.custom_minimum_size = Vector2(0, 42)
+	HomeTheme.make_font_settings(action_label, 12, HomeTheme.CYAN)
+	center_vbox.add_child(action_label)
+
+	if players.is_empty():
+		var empty_label := Label.new()
+		empty_label.text = "No players recorded."
+		empty_label.position = Vector2(250, 275)
+		HomeTheme.make_font_settings(empty_label, 13, HomeTheme.MUTED)
+		_replay_playback_table_layer.add_child(empty_label)
+		return
+
+	var current_actor_seat: int = int(playback_state.get("current_actor_seat", -1))
+	var winner_seats: Dictionary = _replay_winner_seats(_replay_playback_record)
+	for player_item in players:
+		var player: Dictionary = Dictionary(player_item)
+		_add_replay_table_seat_card(_replay_playback_table_layer, player, current_actor_seat, winner_seats)
+
+
+func _add_replay_table_seat_card(parent: Control, player: Dictionary, current_actor_seat: int, winner_seats: Dictionary) -> void:
+	var seat_index: int = int(player.get("seat_index", -1))
+	var seat_card := PanelContainer.new()
+	seat_card.name = "ReplaySeat%d" % seat_index
+	seat_card.position = _replay_table_seat_position(seat_index)
+	seat_card.custom_minimum_size = Vector2(150, 82)
+	seat_card.size = Vector2(150, 82)
+	var status_text: String = str(player.get("status", "active"))
+	var is_folded: bool = status_text.to_lower().find("fold") != -1
+	var is_active: bool = seat_index == current_actor_seat
+	var is_winner: bool = winner_seats.has(seat_index) and _replay_playback_step >= _replay_playback_steps.size()
+	var bg_color := Color(0.016, 0.018, 0.046, 0.82)
+	var border_color := Color(0.34, 0.52, 0.90, 0.32)
+	if is_folded:
+		bg_color = Color(0.010, 0.010, 0.018, 0.54)
+		border_color = Color(0.42, 0.42, 0.52, 0.24)
+	elif is_winner:
+		bg_color = Color(0.045, 0.034, 0.010, 0.88)
+		border_color = HomeTheme.GOLD
+	elif is_active:
+		bg_color = Color(0.034, 0.036, 0.082, 0.90)
+		border_color = HomeTheme.CYAN
+	seat_card.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(bg_color, border_color, 8, 2 if is_active or is_winner else 1))
+	parent.add_child(seat_card)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 1)
+	seat_card.add_child(vbox)
+	var name_text: String = str(player.get("player_name", player.get("player_id", "Unknown")))
+	_add_replay_text(vbox, "Seat %d - %s" % [seat_index, name_text], Color(0.94, 0.96, 1.0, 0.96))
+	_add_replay_text(vbox, "Cards: %s" % str(player.get("cards_text", "Unknown")), Color(0.82, 0.86, 1.0, 0.92))
+	_add_replay_text(vbox, "Stack: %s  Bet: %s" % [
+		_replay_stack_text(player.get("stack", null)),
+		_format_number(int(player.get("current_bet", 0))),
+	], HomeTheme.GOLD)
+	var state_label: String = "WINNER" if is_winner else status_text
+	_add_replay_text(vbox, "Status: %s" % _title_case_replay_status(state_label), HomeTheme.PINK if is_active else Color(0.78, 0.82, 0.95, 0.92))
+
+
+func _replay_table_seat_position(seat_index: int) -> Vector2:
+	match seat_index:
+		1:
+			return Vector2(34, 118)
+		2:
+			return Vector2(126, 28)
+		3:
+			return Vector2(424, 28)
+		4:
+			return Vector2(516, 118)
+		5:
+			return Vector2(274, 298)
+		6:
+			return Vector2(118, 270)
+		7:
+			return Vector2(34, 210)
+		8:
+			return Vector2(516, 210)
+		9:
+			return Vector2(432, 270)
+	return Vector2(274, 298)
+
+
+func _replay_winner_seats(record: Dictionary) -> Dictionary:
+	var winner_map: Dictionary = {}
+	var results: Dictionary = Dictionary(record.get("results", {}))
+	for winner_item in Array(results.get("winners", [])):
+		var winner: Dictionary = Dictionary(winner_item)
+		var seat_index: int = _winner_seat(winner)
+		if seat_index >= 0:
+			winner_map[seat_index] = true
+	return winner_map
+
+
+func _replay_playback_header_line(record: Dictionary) -> String:
+	var hand_id: String = str(record.get("hand_id", _replay_playback_index_entry.get("replay_id", "Unknown")))
+	return "Hand #%s - %s - NLH %s" % [
+		_compact_hand_number(hand_id),
+		_mode_label_for_replay(str(record.get("mode", ""))),
+		_replay_blinds_label(record),
+	]
 
 
 func _add_replay_playback_player(parent: VBoxContainer, player: Dictionary) -> void:
@@ -3322,22 +3454,43 @@ func _render_replay_playback_timeline() -> void:
 		_add_replay_text(_replay_playback_timeline_vbox, "No actions recorded.", HomeTheme.MUTED)
 		return
 	var players: Array = Array(_replay_playback_record.get("players", []))
-	var last_kind: String = ""
+	_add_replay_text(_replay_playback_timeline_vbox, "PLAYER ACTIONS", HomeTheme.PINK)
+	var action_count := 0
 	for i in range(_replay_playback_steps.size()):
 		var step: Dictionary = Dictionary(_replay_playback_steps[i])
 		var kind: String = str(step.get("kind", "event"))
-		if kind != last_kind:
-			last_kind = kind
-			_add_replay_text(_replay_playback_timeline_vbox, "PLAYER ACTIONS" if kind == "action" else "HAND EVENTS", HomeTheme.PINK if kind == "action" else HomeTheme.CYAN)
+		if kind != "action":
+			continue
+		action_count += 1
 		var prefix: String = "> " if i == _replay_playback_step - 1 else "  "
 		var color: Color = HomeTheme.GOLD if i == _replay_playback_step - 1 else Color(0.82, 0.86, 1.0, 0.86)
 		var line: String = "%s%d. %s - %s" % [
 			prefix,
-			i + 1,
+			action_count,
 			_street_label(str(step.get("street", ""))),
 			_replay_playback_step_label_text(step, players),
 		]
 		_add_replay_text(_replay_playback_timeline_vbox, line, color)
+	if action_count == 0:
+		_add_replay_text(_replay_playback_timeline_vbox, "No player actions recorded.", HomeTheme.MUTED)
+	_add_replay_text(_replay_playback_timeline_vbox, "HAND EVENTS", HomeTheme.CYAN)
+	var event_count := 0
+	for i in range(_replay_playback_steps.size()):
+		var step: Dictionary = Dictionary(_replay_playback_steps[i])
+		var kind: String = str(step.get("kind", "event"))
+		if kind == "action":
+			continue
+		event_count += 1
+		var prefix: String = "> " if i == _replay_playback_step - 1 else "  "
+		var color: Color = HomeTheme.GOLD if i == _replay_playback_step - 1 else Color(0.72, 0.82, 1.0, 0.80)
+		var line: String = "%s- %s - %s" % [
+			prefix,
+			_street_label(str(step.get("street", ""))),
+			_replay_playback_step_label_text(step, players),
+		]
+		_add_replay_text(_replay_playback_timeline_vbox, line, color)
+	if event_count == 0:
+		_add_replay_text(_replay_playback_timeline_vbox, "No hand events recorded.", HomeTheme.MUTED)
 
 
 func _replace_replay_children(parent: Node) -> void:
@@ -3460,6 +3613,7 @@ func _replay_playback_state_for_step(record: Dictionary, target_step: int) -> Di
 	var pot: int = 0
 	var current_street: String = "preflop"
 	var action_text: String = "Initial state"
+	var current_actor_seat: int = -1
 	var steps_to_apply: int = clampi(target_step, 0, _replay_playback_steps.size())
 	for i in range(steps_to_apply):
 		var step: Dictionary = Dictionary(_replay_playback_steps[i])
@@ -3469,14 +3623,38 @@ func _replay_playback_state_for_step(record: Dictionary, target_step: int) -> Di
 		if str(step.get("kind", "")) == "action":
 			var action: Dictionary = Dictionary(step.get("action", {}))
 			pot = _apply_replay_action_to_state(player_states, pot, action)
+			current_actor_seat = int(action.get("actor_seat", action.get("seat_id", -1)))
+		else:
+			current_actor_seat = -1
 		action_text = "%s - %s" % [_street_label(current_street), _replay_playback_step_label_text(step, Array(record.get("players", [])))]
+	if steps_to_apply >= _replay_playback_steps.size():
+		_apply_replay_final_player_state(player_states, record)
+		current_actor_seat = -1
 	var board_cards: Array = _replay_board_for_street(Dictionary(record.get("community_cards", {})), current_street, steps_to_apply >= _replay_playback_steps.size())
 	return {
 		"players": player_states,
 		"pot": pot,
 		"board_text": _card_list_text(board_cards) if not board_cards.is_empty() else "-",
+		"board_cards": board_cards,
 		"action_text": action_text,
+		"current_actor_seat": current_actor_seat,
 	}
+
+
+func _apply_replay_final_player_state(player_states: Array, record: Dictionary) -> void:
+	var winner_seats: Dictionary = _replay_winner_seats(record)
+	for i in range(player_states.size()):
+		var player_state: Dictionary = Dictionary(player_states[i])
+		var seat_index: int = int(player_state.get("seat_index", -1))
+		if player_state.has("ending_stack"):
+			player_state["stack"] = int(player_state.get("ending_stack", 0))
+		var final_status: String = str(player_state.get("final_status", ""))
+		if winner_seats.has(seat_index):
+			player_state["status"] = "winner"
+		elif final_status != "":
+			player_state["status"] = final_status
+		player_state["current_bet"] = 0
+		player_states[i] = player_state
 
 
 func _initial_replay_player_states(players: Array) -> Array:

@@ -188,6 +188,35 @@ Malformed or incomplete records must degrade gracefully:
 
 Future phases may add a 20-gem unlock, animated table replay, and objective or player-view equity graphs. Those are intentionally out of scope for v2.
 
+## Replay Table View v3
+
+Replay Table View v3 upgrades playback from a text-heavy review panel into a read-only poker-table renderer. It is still launched from `PLAY REPLAY`, still lives inside the Replay Room, and still does not enter or reuse live `PokerTableScreen` session logic.
+
+The table view renders the existing playback state:
+
+- objective `seat_index` positions for all recorded players
+- player names, seats, hole cards, current stack, current bet, and status
+- folded players with dimmed seat cards
+- the current actor with a highlighted seat card
+- final winners with a winner highlight at the last step
+- board cards revealed by street
+- total pot from recorded `pot_after` / display fallback state
+- current step text
+- separated `PLAYER ACTIONS` and `HAND EVENTS` timeline sections
+
+The controls remain read-only:
+
+- `BACK TO DETAIL`
+- `PREV`
+- `NEXT`
+- `PLAY` / `PAUSE`
+- `SPEED 1x` / `SPEED 2x`
+- `BACK TO REPLAYS`
+
+Real table controls such as fold, check, call, raise, bet, add chips, ready, warm-up, cash-out, dealer changes, server connection, and player actions must not appear or run in Replay Table View. The renderer reuses the v2 playback state builder and does not re-run poker rules.
+
+Replay Table View v3 intentionally does not include animated dealing, chip movement, equity graphs, gem unlocks, cloud loading, or paid replay access. Future phases may add replay-specific animations, an equity timeline, and a separately designed 20-gem unlock.
+
 ## Future Phases
 
 Later replay work can add:
