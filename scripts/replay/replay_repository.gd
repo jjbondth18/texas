@@ -37,6 +37,19 @@ static func load_index_entries() -> Array:
 	return []
 
 
+static func load_hand_record(file_path: String) -> Dictionary:
+	if file_path == "" or not FileAccess.file_exists(file_path):
+		return {}
+	var file: FileAccess = FileAccess.open(file_path, FileAccess.READ)
+	if file == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	if parsed is Dictionary:
+		return Dictionary(parsed).duplicate(true)
+	return {}
+
+
 static func _update_index(record: Dictionary, file_path: String) -> void:
 	var index: Array = load_index_entries()
 	var entry: Dictionary = _index_entry(record, file_path)
@@ -58,17 +71,19 @@ static func _update_index(record: Dictionary, file_path: String) -> void:
 static func _index_entry(record: Dictionary, file_path: String) -> Dictionary:
 	var profit: int = _local_profit(record)
 	var sign: String = "+" if profit >= 0 else ""
+	var mode: String = str(record.get("mode", ""))
 	var mode_label: String = _mode_label(str(record.get("mode", "")))
 	var hand_id: String = str(record.get("hand_id", "hand_000000"))
+	var result_text: String = "Practice" if mode in ["training", "local_warmup"] else "%s%d Chips" % [sign, profit]
 	return {
 		"hand_id": hand_id,
 		"room_id": str(record.get("room_id", "")),
 		"room_code": str(record.get("room_code", "")),
-		"mode": str(record.get("mode", "")),
+		"mode": mode,
 		"ended_at": str(record.get("ended_at", "")),
-		"player_result": "%s%d Chips" % [sign, profit],
+		"player_result": result_text,
 		"profit": profit,
-		"summary": "%s - %s" % [hand_id, mode_label],
+		"summary": _summary_text(record, hand_id, mode_label),
 		"file_path": file_path,
 	}
 
@@ -96,6 +111,23 @@ static func _mode_label(mode: String) -> String:
 		"local_warmup":
 			return "Local Warm-up"
 	return "Table"
+
+
+static func _summary_text(record: Dictionary, hand_id: String, mode_label: String) -> String:
+	var results: Dictionary = Dictionary(record.get("results", {}))
+	var winners: Array = Array(results.get("winners", []))
+	var winner_text: String = "No winner"
+	if not winners.is_empty():
+		var winner_names: Array[String] = []
+		for winner_item in winners:
+			var winner: Dictionary = Dictionary(winner_item)
+			var winner_name: String = str(winner.get("winner_player_id", ""))
+			if winner_name == "":
+				winner_name = "Seat %d" % int(winner.get("winner_seat", -1))
+			winner_names.append(winner_name)
+		winner_text = ", ".join(winner_names)
+	var final_pot: int = int(results.get("final_pot", 0))
+	return "%s - %s - Winner: %s - Pot %d" % [hand_id, mode_label, winner_text, final_pot]
 
 
 static func _record_file_path(record: Dictionary) -> String:

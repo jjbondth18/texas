@@ -43,6 +43,7 @@ var _play_panel: PanelContainer
 var _room_browser_panel: PanelContainer
 var _friends_room_panel: PanelContainer
 var _replay_panel: PanelContainer
+var _replay_detail_vbox: VBoxContainer
 var _store_panel: PanelContainer
 var _profile_panel: PanelContainer
 var _settings_panel: PanelContainer
@@ -2734,20 +2735,25 @@ func _build_replay_panel() -> void:
 	for hand_item in replay_records:
 		var hand: Dictionary = Dictionary(hand_item)
 		var item := PanelContainer.new()
-		item.custom_minimum_size = Vector2(0, 72)
-		item.mouse_filter = Control.MOUSE_FILTER_PASS
+		item.custom_minimum_size = Vector2(0, 88)
+		item.mouse_filter = Control.MOUSE_FILTER_STOP
+		item.tooltip_text = "Open static hand review"
+		item.gui_input.connect(_on_replay_item_gui_input.bind(hand))
 		item.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.012, 0.016, 0.035, 0.65), Color(0.3, 0.35, 0.55, 0.15), 6, 1))
 		var item_hbox := HBoxContainer.new()
+		item_hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		item_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 		item_hbox.add_theme_constant_override("separation", 10)
 		item.add_child(item_hbox)
 		
 		var icon_rect := ColorRect.new()
+		icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		icon_rect.custom_minimum_size = Vector2(40, 40)
 		icon_rect.color = Color(0.18, 0.22, 0.38, 0.45)
 		item_hbox.add_child(icon_rect)
 		
 		var desc_vbox := VBoxContainer.new()
+		desc_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		desc_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		item_hbox.add_child(desc_vbox)
 		
@@ -2760,6 +2766,12 @@ func _build_replay_panel() -> void:
 		item_time.text = str(hand.get("played_at", ""))
 		HomeTheme.make_font_settings(item_time, 11, HomeTheme.MUTED)
 		desc_vbox.add_child(item_time)
+
+		var item_summary := Label.new()
+		item_summary.text = str(hand.get("table_name", ""))
+		item_summary.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		HomeTheme.make_font_settings(item_summary, 11, Color(0.70, 0.74, 0.92, 0.88))
+		desc_vbox.add_child(item_summary)
 		
 		var item_res := Label.new()
 		var net_chips: int = int(hand.get("net_chips", 0))
@@ -2780,30 +2792,16 @@ func _build_replay_panel() -> void:
 	var prev_box := PanelContainer.new()
 	prev_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	prev_box.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.006, 0.012, 0.50), Color(0.2, 0.24, 0.38, 0.25), 8, 1))
-	var prev_vbox := VBoxContainer.new()
-	prev_vbox.add_theme_constant_override("separation", 12)
-	prev_box.add_child(prev_vbox)
-	
-	var prev_title := Label.new()
-	prev_title.text = "HAND RECORDS"
-	HomeTheme.make_font_settings(prev_title, 16, HomeTheme.CYAN)
-	prev_vbox.add_child(prev_title)
-	
-	var cards_hbox := HBoxContainer.new()
-	cards_hbox.add_theme_constant_override("separation", 15)
-	prev_vbox.add_child(cards_hbox)
-	
-	var cards_desc := Label.new()
-	cards_desc.text = "Replay records are saved locally after each completed hand."
-	HomeTheme.make_font_settings(cards_desc, 13, Color(0.85, 0.90, 1.0))
-	cards_hbox.add_child(cards_desc)
-	
-	var showdown_desc := Label.new()
-	showdown_desc.text = "Step-by-step playback and analysis will be added in a later replay phase."
-	HomeTheme.make_font_settings(showdown_desc, 13, Color(0.72, 0.76, 0.92))
-	prev_vbox.add_child(showdown_desc)
-	
+	var detail_scroll := ScrollContainer.new()
+	detail_scroll.mouse_filter = Control.MOUSE_FILTER_PASS
+	detail_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	prev_box.add_child(detail_scroll)
+	_replay_detail_vbox = VBoxContainer.new()
+	_replay_detail_vbox.add_theme_constant_override("separation", 12)
+	_replay_detail_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_scroll.add_child(_replay_detail_vbox)
 	right_vbox.add_child(prev_box)
+	_render_replay_detail_empty(not replay_records.is_empty())
 	
 	# Equity Timeline Premium Lock Box
 	var equity_box := PanelContainer.new()
@@ -2838,6 +2836,313 @@ func _build_replay_panel() -> void:
 	eq_vbox.add_child(upgrade_btn)
 	
 	right_vbox.add_child(equity_box)
+
+
+func _on_replay_item_gui_input(event: InputEvent, hand: Dictionary) -> void:
+	if event is InputEventMouseButton:
+		var mouse_event: InputEventMouseButton = event as InputEventMouseButton
+		if mouse_event.button_index == MOUSE_BUTTON_LEFT and mouse_event.pressed:
+			_open_replay_detail(hand)
+
+
+func _open_replay_detail(hand: Dictionary) -> void:
+	var file_path: String = str(hand.get("file_path", ""))
+	if file_path == "" or not FileAccess.file_exists(file_path):
+		_render_replay_detail_error("Replay file missing.")
+		return
+	var record: Dictionary = ReplayServiceScript.new().load_replay_record(file_path)
+	if record.is_empty():
+		_render_replay_detail_error("Replay file missing.")
+		return
+	_render_replay_detail(record, hand)
+
+
+func _render_replay_detail_empty(has_records: bool) -> void:
+	_clear_replay_detail()
+	var title := Label.new()
+	title.text = "HAND RECORDS"
+	HomeTheme.make_font_settings(title, 16, HomeTheme.CYAN)
+	_replay_detail_vbox.add_child(title)
+	var body := Label.new()
+	body.text = "Select a recorded hand to open the static review." if has_records else "No hands recorded yet.\nPlay a table to generate replay records."
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(body, 13, Color(0.72, 0.76, 0.92))
+	_replay_detail_vbox.add_child(body)
+
+
+func _render_replay_detail_error(message: String) -> void:
+	_clear_replay_detail()
+	var title := Label.new()
+	title.text = "HAND REVIEW"
+	HomeTheme.make_font_settings(title, 16, HomeTheme.CYAN)
+	_replay_detail_vbox.add_child(title)
+	var error_label := Label.new()
+	error_label.text = message
+	error_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(error_label, 14, HomeTheme.PINK)
+	_replay_detail_vbox.add_child(error_label)
+	var back_button := _make_replay_back_button()
+	_replay_detail_vbox.add_child(back_button)
+
+
+func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
+	_clear_replay_detail()
+	var hand_id: String = str(record.get("hand_id", index_entry.get("replay_id", "Unknown")))
+	var title := Label.new()
+	title.text = "HAND REVIEW - HAND %s" % hand_id
+	HomeTheme.make_font_settings(title, 16, HomeTheme.CYAN)
+	_replay_detail_vbox.add_child(title)
+
+	var summary_panel := PanelContainer.new()
+	summary_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.012, 0.016, 0.035, 0.62), Color(0.4, 0.48, 0.82, 0.22), 6, 1))
+	var summary_grid := GridContainer.new()
+	summary_grid.columns = 4
+	summary_grid.add_theme_constant_override("h_separation", 18)
+	summary_grid.add_theme_constant_override("v_separation", 8)
+	summary_panel.add_child(summary_grid)
+	_replay_detail_vbox.add_child(summary_panel)
+
+	var results: Dictionary = Dictionary(record.get("results", {}))
+	_add_replay_metric(summary_grid, "Mode", _mode_label_for_replay(str(record.get("mode", ""))))
+	_add_replay_metric(summary_grid, "Room", _replay_room_label(record))
+	_add_replay_metric(summary_grid, "Blinds", "%s / %s" % [_format_number(int(record.get("small_blind", 0))), _format_number(int(record.get("big_blind", 0)))])
+	_add_replay_metric(summary_grid, "Hand", str(record.get("hand_number", hand_id)))
+	_add_replay_metric(summary_grid, "Result", str(index_entry.get("result", index_entry.get("player_result", "-"))))
+	_add_replay_metric(summary_grid, "Profit", _format_replay_delta(int(index_entry.get("net_chips", 0))))
+	_add_replay_metric(summary_grid, "Final Pot", _format_number(int(results.get("final_pot", 0))))
+	_add_replay_metric(summary_grid, "Winner", _winner_summary(results))
+
+	var body_hbox := HBoxContainer.new()
+	body_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body_hbox.add_theme_constant_override("separation", 16)
+	_replay_detail_vbox.add_child(body_hbox)
+
+	var players_box := _make_replay_section("PLAYERS", Vector2(260, 0))
+	body_hbox.add_child(players_box)
+	var players_vbox: VBoxContainer = players_box.get_node("Content") as VBoxContainer
+	_add_replay_players(players_vbox, Array(record.get("players", [])))
+
+	var board_box := _make_replay_section("BOARD & RESULT", Vector2(230, 0))
+	body_hbox.add_child(board_box)
+	var board_vbox: VBoxContainer = board_box.get_node("Content") as VBoxContainer
+	_add_replay_board_and_results(board_vbox, record)
+
+	var actions_box := _make_replay_section("ACTION TIMELINE", Vector2(360, 0))
+	actions_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body_hbox.add_child(actions_box)
+	var actions_vbox: VBoxContainer = actions_box.get_node("Content") as VBoxContainer
+	_add_replay_actions(actions_vbox, Array(record.get("actions", [])))
+
+	var back_button := _make_replay_back_button()
+	_replay_detail_vbox.add_child(back_button)
+
+
+func _clear_replay_detail() -> void:
+	if _replay_detail_vbox == null:
+		return
+	for child in _replay_detail_vbox.get_children():
+		_replay_detail_vbox.remove_child(child)
+		child.queue_free()
+
+
+func _make_replay_back_button() -> Button:
+	var back_button := Button.new()
+	back_button.text = "BACK TO REPLAYS"
+	back_button.custom_minimum_size = Vector2(180, 36)
+	back_button.focus_mode = Control.FOCUS_NONE
+	back_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	back_button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.66), Color(0.52, 0.78, 1.0, 0.34), 18))
+	back_button.add_theme_color_override("font_color", Color(0.90, 0.94, 1.0, 0.94))
+	back_button.pressed.connect(_render_replay_detail_empty.bind(true))
+	return back_button
+
+
+func _make_replay_section(title_text: String, min_size: Vector2) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.name = title_text.replace(" ", "_").capitalize()
+	panel.custom_minimum_size = min_size
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.018, 0.58), Color(0.26, 0.30, 0.52, 0.24), 6, 1))
+	var vbox := VBoxContainer.new()
+	vbox.name = "Content"
+	vbox.add_theme_constant_override("separation", 8)
+	panel.add_child(vbox)
+	var title := Label.new()
+	title.text = title_text
+	HomeTheme.make_font_settings(title, 13, HomeTheme.PINK)
+	vbox.add_child(title)
+	return panel
+
+
+func _add_replay_metric(parent: Container, label_text: String, value_text: String) -> void:
+	var label := Label.new()
+	label.text = label_text.to_upper()
+	HomeTheme.make_font_settings(label, 10, HomeTheme.MUTED)
+	parent.add_child(label)
+	var value := Label.new()
+	value.text = value_text if value_text != "" else "-"
+	value.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	HomeTheme.make_font_settings(value, 12, Color(0.90, 0.94, 1.0, 0.96))
+	parent.add_child(value)
+
+
+func _add_replay_players(parent: VBoxContainer, players: Array) -> void:
+	var sorted_players: Array = players.duplicate(true)
+	sorted_players.sort_custom(func(a, b): return int(Dictionary(a).get("seat_index", 99)) < int(Dictionary(b).get("seat_index", 99)))
+	if sorted_players.is_empty():
+		_add_replay_text(parent, "No player data.", HomeTheme.MUTED)
+		return
+	for player_item in sorted_players:
+		var player: Dictionary = Dictionary(player_item)
+		var start_stack: int = int(player.get("starting_stack", 0))
+		var end_stack: int = int(player.get("ending_stack", 0))
+		var line := Label.new()
+		line.text = "Seat %d - %s\nCards: %s\nStack: %s -> %s (%s)\nStatus: %s" % [
+			int(player.get("seat_index", -1)),
+			str(player.get("player_name", player.get("player_id", "Unknown"))),
+			_card_list_text(Array(player.get("hole_cards", []))),
+			_format_number(start_stack),
+			_format_number(end_stack),
+			_format_replay_delta(end_stack - start_stack),
+			str(player.get("final_status", "-")),
+		]
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		HomeTheme.make_font_settings(line, 11, Color(0.84, 0.88, 1.0, 0.94))
+		parent.add_child(line)
+
+
+func _add_replay_board_and_results(parent: VBoxContainer, record: Dictionary) -> void:
+	var community: Dictionary = Dictionary(record.get("community_cards", {}))
+	_add_replay_text(parent, "Board:", HomeTheme.CYAN)
+	_add_replay_text(parent, "Flop: %s" % _card_list_text(Array(community.get("flop", []))), Color(0.86, 0.90, 1.0))
+	_add_replay_text(parent, "Turn: %s" % _card_list_text(Array(community.get("turn", []))), Color(0.86, 0.90, 1.0))
+	_add_replay_text(parent, "River: %s" % _card_list_text(Array(community.get("river", []))), Color(0.86, 0.90, 1.0))
+	var results: Dictionary = Dictionary(record.get("results", {}))
+	_add_replay_text(parent, "Results:", HomeTheme.CYAN)
+	var winners: Array = Array(results.get("winners", []))
+	if winners.is_empty():
+		_add_replay_text(parent, "Winner: -", HomeTheme.MUTED)
+	else:
+		for winner_item in winners:
+			var winner: Dictionary = Dictionary(winner_item)
+			_add_replay_text(parent, "Seat %d wins %s (%s)" % [
+				int(winner.get("winner_seat", -1)),
+				_format_number(int(winner.get("amount_won", 0))),
+				str(winner.get("hand_rank_text", "-")),
+			], Color(0.92, 0.84, 0.45, 0.96))
+	var side_pots: Array = Array(results.get("side_pots", []))
+	if not side_pots.is_empty():
+		_add_replay_text(parent, "Side pots: %d" % side_pots.size(), HomeTheme.MUTED)
+
+
+func _add_replay_actions(parent: VBoxContainer, actions: Array) -> void:
+	var sorted_actions: Array = actions.duplicate(true)
+	sorted_actions.sort_custom(func(a, b): return int(Dictionary(a).get("seq", 0)) < int(Dictionary(b).get("seq", 0)))
+	if sorted_actions.is_empty():
+		_add_replay_text(parent, "No action timeline.", HomeTheme.MUTED)
+		return
+	var current_street := ""
+	for action_item in sorted_actions:
+		var action: Dictionary = Dictionary(action_item)
+		var street: String = str(action.get("street", ""))
+		if street != current_street:
+			current_street = street
+			_add_replay_text(parent, _street_label(street), HomeTheme.PINK)
+		_add_replay_text(parent, "%d. %s" % [int(action.get("seq", 0)), _action_line(action)], Color(0.82, 0.86, 1.0, 0.92))
+
+
+func _add_replay_text(parent: VBoxContainer, text: String, color: Color) -> void:
+	var label := Label.new()
+	label.text = text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(label, 11, color)
+	parent.add_child(label)
+
+
+func _card_list_text(cards: Array) -> String:
+	var codes: Array[String] = []
+	for card_item in cards:
+		if card_item is Dictionary:
+			var card: Dictionary = Dictionary(card_item)
+			codes.append(str(card.get("code", "-")))
+		else:
+			codes.append(str(card_item))
+	if codes.is_empty():
+		return "Unknown"
+	return " ".join(codes)
+
+
+func _action_line(action: Dictionary) -> String:
+	var message: String = str(action.get("message", ""))
+	if message != "":
+		return message
+	var actor: String = str(action.get("actor_player_id", ""))
+	if actor == "":
+		actor = "Seat %d" % int(action.get("actor_seat", -1))
+	var action_name: String = str(action.get("action", "-"))
+	var amount: int = int(action.get("amount", 0))
+	return "%s %s %s" % [actor, action_name, _format_number(amount) if amount > 0 else ""]
+
+
+func _winner_summary(results: Dictionary) -> String:
+	var winners: Array = Array(results.get("winners", []))
+	if winners.is_empty():
+		return "-"
+	var labels: Array[String] = []
+	for winner_item in winners:
+		var winner: Dictionary = Dictionary(winner_item)
+		var label: String = str(winner.get("winner_player_id", ""))
+		if label == "":
+			label = "Seat %d" % int(winner.get("winner_seat", -1))
+		labels.append(label)
+	return ", ".join(labels)
+
+
+func _replay_room_label(record: Dictionary) -> String:
+	var room_code: String = str(record.get("room_code", ""))
+	if room_code != "":
+		return room_code
+	var room_id: String = str(record.get("room_id", ""))
+	return room_id if room_id != "" else "-"
+
+
+func _mode_label_for_replay(mode: String) -> String:
+	match mode:
+		"public":
+			return "Public"
+		"private":
+			return "Private"
+		"training":
+			return "Training"
+		"local_warmup":
+			return "Warm-up"
+	return "Unknown"
+
+
+func _street_label(street: String) -> String:
+	match street:
+		"preflop":
+			return "Preflop"
+		"flop":
+			return "Flop"
+		"turn":
+			return "Turn"
+		"river":
+			return "River"
+		"showdown":
+			return "Showdown"
+		"hand_over":
+			return "Hand Over"
+	return "Other"
+
+
+func _format_replay_delta(value: int) -> String:
+	if value > 0:
+		return "+%s" % _format_number(value)
+	if value < 0:
+		return "-%s" % _format_number(abs(value))
+	return _format_number(value)
+
 
 func _build_store_panel() -> void:
 	_store_panel = PanelContainer.new()

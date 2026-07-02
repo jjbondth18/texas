@@ -2,6 +2,7 @@ extends RefCounted
 class_name ReplayRecord
 
 var replay_id := ""
+var file_path := ""
 var played_at := ""
 var mode := ""
 var table_name := ""
@@ -16,6 +17,7 @@ var favorite := false
 
 func _init(data: Dictionary = {}) -> void:
 	replay_id = str(data.get("replay_id", ""))
+	file_path = str(data.get("file_path", ""))
 	played_at = str(data.get("played_at", ""))
 	mode = str(data.get("mode", ""))
 	table_name = str(data.get("table_name", ""))
@@ -35,6 +37,7 @@ func _init(data: Dictionary = {}) -> void:
 func to_dict() -> Dictionary:
 	return {
 		"replay_id": replay_id,
+		"file_path": file_path,
 		"played_at": played_at,
 		"mode": mode,
 		"table_name": table_name,

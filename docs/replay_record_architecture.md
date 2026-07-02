@@ -1,6 +1,6 @@
 # Replay Record Architecture
 
-This is replay phase 1. The game records completed hands and saves local JSON files, but it does not include a replay viewer, gem unlocks, payment, equity graphs, or cloud replay storage.
+Replay phase 1 records completed hands and saves local JSON files. Replay Viewer v1 adds a static local hand review for those files. This replay stack still does not include animation playback, gem unlocks, payment, equity graphs, or cloud replay storage.
 
 ## Storage
 
@@ -63,7 +63,29 @@ The Replay Room currently reads only `replay_index.json`. If no records exist, i
 
 `No hands recorded yet. Play a table to generate replay records.`
 
-The step-by-step replay viewer and equity timeline are future phases. This phase does not charge gems or unlock paid analysis.
+## Replay Viewer v1
+
+Replay Viewer v1 is a static local hand review. Clicking a replay row in the Replay Room loads the row's `file_path` JSON from `user://replays/` and renders a detail panel in the lobby. It does not enter `PokerTableScreen`.
+
+The static detail panel shows:
+
+- hand id / hand number
+- mode
+- room id or room code
+- blinds
+- result / profit
+- final pot
+- winner summary
+- players sorted by `seat_index`
+- player hole cards when present
+- starting and ending stacks
+- board cards grouped as flop / turn / river
+- actions sorted by `seq`
+- winners and side pot count
+
+Missing fields are tolerated. Missing hole cards display `Unknown`, missing winner/rank fields display `-`, and a missing JSON file displays `Replay file missing.` without crashing.
+
+Viewer v1 does not do playback animation, equity charts, cloud loading, gem checks, gem spending, store integration, or paid unlocks.
 
 ## Future Phases
 

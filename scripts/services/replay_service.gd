@@ -11,6 +11,7 @@ func get_replay_view_model() -> Dictionary:
 		var entry: Dictionary = Dictionary(entry_item)
 		records.append(ReplayRecordScript.new({
 			"replay_id": str(entry.get("hand_id", "")),
+			"file_path": str(entry.get("file_path", "")),
 			"played_at": str(entry.get("ended_at", "")),
 			"mode": _mode_label(str(entry.get("mode", ""))),
 			"table_name": str(entry.get("summary", "")),
@@ -24,6 +25,9 @@ func get_replay_view_model() -> Dictionary:
 			"favorite": false,
 		}))
 	return ReplayViewModelScript.new(records, null, false).to_dict()
+
+func load_replay_record(file_path: String) -> Dictionary:
+	return ReplayRepositoryScript.load_hand_record(file_path)
 
 func _mode_label(mode: String) -> String:
 	match mode:
