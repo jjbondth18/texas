@@ -28,6 +28,8 @@ Display-only blind labels such as `50 / 100` can exist in UI, but backend logic 
 
 AI warm-up is always local practice. Warm-up AI never enters public seats and never joins official public hands.
 
+When a host starts local AI warm-up, the server public room remains a public chip room and stays listed in Browser. The snapshot/list entry uses `host_in_local_warmup=true`, keeps `is_ai_warmup=false`, and remains joinable by Browser or Quick if the table config matches. A real join interrupts the host's local practice and returns every client to the real public room.
+
 Ready does not replace `sit_down`: clients must wait for `sit_down_result` or a `table_snapshot` with their own occupied seat before showing Ready controls. If `local_player_seat_index == -1`, the table shows a joining / waiting-for-seat state instead of a valid ready table.
 
 With one seated real player, the table still shows local `START AI WARM-UP` for practice. This warm-up does not use server seats and does not change wallet, gems, formal stats, or public profit.
@@ -106,7 +108,8 @@ Quick Chip uses the selected stakes as preferences:
 
 - first tries clean waiting/ready public chip tables exactly matching buy-in, blinds, and hand count
 - prefers the matching table with the most real connected seated players, then earliest creation time, then stable table id
-- skips playing, hand_result, session_complete, dirty, full, private, training, local warm-up, hand-over, and disconnected-only tables
+- skips playing, hand_result, session_complete, dirty, full, private, training, local-only warm-up, hand-over, and disconnected-only tables
+- may join a listed public room whose host is in local warm-up (`host_in_local_warmup=true`) because that room is still waiting for real players
 - if no valid match exists, creates a new clean public chip table
 
 New local mock public tables start with:

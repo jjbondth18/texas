@@ -15,8 +15,10 @@ Public Chip tables are real-player public tables. When fewer than two real playe
 ## AI Warm-up
 
 - AI Warm-up is a separate local practice table on the host client.
-- The server public room remains real-player-only and stays open in `waiting_for_players`.
+- The server public room remains real-player-only, stays open in `waiting_for_players` / `waiting_ready`, and remains visible in Browser.
 - The compatibility `start_ai_warmup` command only marks `host_in_local_warmup=true`; it does not start a server hand.
+- Public table snapshots/list entries keep `is_ai_warmup=false`; `host_in_local_warmup=true` is the signal that the host is practicing locally while the real room waits.
+- Quick may match this public room when stakes and hand count match. It must not treat host local warm-up as a playing table or a local-only AI table.
 - AI never enters server public seats, never occupies public room capacity, and never appears in public table snapshots.
 - Local warm-up uses practice chips only.
 - Local warm-up does not change account chips, gems, ranked stats, public profit, leaderboard progress, or formal public hand results.
@@ -28,25 +30,25 @@ Quick Chip first tries to join a clean waiting/open public chip table. If none e
 
 ## Real Players Joining Warm-up
 
-Real players join the real server public room, not the host's local warm-up table. When another real player sits in the public room, the host client must interrupt local warm-up immediately, clear local AI timers/seats/cards/pot, apply the latest server room snapshot, and return to the public table ready/waiting-to-start state.
+Real players join the real server public room, not the host's local warm-up table. When another real player sits in the public room through Browser or Quick, the host client must interrupt local warm-up immediately, clear local AI timers/seats/cards/pot, apply the latest server room snapshot, and return to the public table ready/waiting state.
 
-The returned public room shows only real players and moves to `ready_to_start` when at least two real connected players are seated. The host sees `START PUBLIC HAND`; non-host players see `Waiting for host to start.` The first version does not auto-start a formal public hand after warm-up interruption.
+The returned public room shows only real players. With the Ready system, each seated real player must press `READY`; when enough real players are ready, the server countdown starts the formal public hand.
 
 ## Formal Public Hand Start
 
 - `waiting_for_players`: fewer than two real connected seated players; host can start local AI warm-up.
-- `ready_to_start`: at least two real connected seated players and no active formal hand; only the host can start the public hand.
+- `waiting_ready`: at least two real connected seated players and no active formal hand; players use `READY` / `UNREADY`.
 - `playing`: a formal public hand is active; public seats are real players only.
 
-The host starts the formal public hand through the server authoritative `start_hand` path. The server rejects non-host starts with `not_host`, rejects starts below two real players, and never includes warm-up AI in the official hand.
+The server starts the formal public hand through the Ready countdown path. It rejects starts below two ready real players and never includes warm-up AI in the official hand.
 
-The dev simulated real-join command only validates the interruption path and is hidden from the normal poker table UI. The simulated seat is not AI and is not warm-up, but it is also not controlled by a real client. The server therefore rejects `START PUBLIC HAND` while that dev simulated player is seated:
+The dev simulated real-join command only validates the interruption path and is hidden from the normal poker table UI. The simulated seat is not AI and is not warm-up, but it is also not controlled by a real client. The server therefore rejects formal public hand start while that dev simulated player is seated:
 
 `Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot.`
 
 Use a second Godot client or a future controllable dev bot to test a real public hand.
 
-When a dev simulated player is present in `ready_to_start`, the host UI must show the reason and keep `START PUBLIC HAND` disabled instead of appearing unresponsive.
+When a dev simulated player is present in the waiting/ready room, the host UI must show the reason and block formal hand start instead of appearing unresponsive.
 
 ## Mid-hand Real Join
 

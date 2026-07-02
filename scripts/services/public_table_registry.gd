@@ -240,7 +240,8 @@ static func _best_quick_join_table_id(waiting_only: bool, preferred_config: Dict
 		var table: Dictionary = _normalized_public_table(Dictionary(_tables[table_id]))
 		if not _is_clean_joinable_public_table(table, true):
 			continue
-		if waiting_only and str(table.get("status", "")) not in [STATUS_WAITING, STATUS_OPEN, STATUS_READY_TO_START, STATUS_READY_TO_START_ALIAS, STATUS_STARTING_COUNTDOWN]:
+		var host_warming: bool = bool(table.get("host_in_local_warmup", false))
+		if waiting_only and not host_warming and str(table.get("status", "")) not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_OPEN, STATUS_READY_TO_START, STATUS_READY_TO_START_ALIAS, STATUS_STARTING_COUNTDOWN]:
 			continue
 		if not _table_matches_preferred_config(table, preferred_config):
 			continue
@@ -326,9 +327,10 @@ static func _is_clean_joinable_public_table(table: Dictionary, quick_join: bool)
 	var status: String = str(table.get("status", ""))
 	var hand_state: String = str(table.get("hand_state", status))
 	var current_turn: int = int(table.get("current_turn_seat", -1))
-	if quick_join and bool(table.get("is_ai_warmup", false)):
+	var host_warming: bool = bool(table.get("host_in_local_warmup", false))
+	if bool(table.get("is_ai_warmup", false)) and not host_warming:
 		return false
-	if quick_join and status not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_READY_TO_START_ALIAS]:
+	if quick_join and not host_warming and status not in [STATUS_WAITING, STATUS_WAITING_FOR_PLAYERS, STATUS_READY_TO_START, STATUS_READY_TO_START_ALIAS]:
 		return false
 	if status in [STATUS_CLOSED, STATUS_DIRTY, STATUS_PAUSED, STATUS_FULL, STATUS_HAND_OVER, STATUS_SHOWDOWN_REVEAL, "showdown", "finished"]:
 		return false
@@ -425,6 +427,14 @@ static func _normalized_hand_count(value: int) -> int:
 	return 999 if value <= 0 or value >= 999 else value
 
 static func _update_public_table_status(table: Dictionary) -> void:
+	if bool(table.get("host_in_local_warmup", false)):
+		var warming_count: int = _real_player_count(table)
+		table["current_players"] = warming_count
+		table["waiting_for_real_players"] = warming_count < 2
+		table["status"] = STATUS_READY_TO_START if warming_count >= 2 else STATUS_WAITING_FOR_PLAYERS
+		table["hand_state"] = table["status"]
+		table["is_ai_warmup"] = false
+		return
 	if bool(table.get("is_ai_warmup", false)):
 		table["status"] = STATUS_AI_WARMUP
 		table["hand_state"] = STATUS_AI_WARMUP
@@ -432,6 +442,7 @@ static func _update_public_table_status(table: Dictionary) -> void:
 	var current_players: int = _real_player_count(table)
 	var max_players: int = int(table.get("max_players", 9))
 	table["current_players"] = current_players
+	table["waiting_for_real_players"] = current_players < 2
 	if current_players >= max_players:
 		table["status"] = STATUS_FULL
 	elif current_players < 2:

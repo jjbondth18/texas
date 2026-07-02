@@ -521,7 +521,8 @@ export class RoomManager {
   }
 
   private isQuickJoinMatch(room: Room, tableConfig: Partial<Pick<Room, "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): boolean {
-    if (!room.isPublic || room.isAiWarmup || room.sessionComplete) return false;
+    if (!room.isPublic || room.visibility !== "public" || room.tableType !== "public_chip" || room.sessionComplete) return false;
+    if (room.isAiWarmup && room.hostInLocalWarmup === "") return false;
     if (room.buyIn !== tableConfig.buyIn || room.smallBlind !== tableConfig.smallBlind || room.bigBlind !== tableConfig.bigBlind || room.handCount !== tableConfig.handCount) return false;
     if (this.occupiedSeatCount(room) >= room.maxPlayers) return false;
     if (this.publicSeatedCount(room) <= 0 && this.occupiedSeatCount(room) > 0) return false;
@@ -529,7 +530,15 @@ export class RoomManager {
   }
 
   private publicTables(): PublicTableSnapshot[] {
-    return [...this.rooms.values()].filter((room) => room.isPublic).map((room) => this.tableSnapshot(room));
+    return [...this.rooms.values()].filter((room) => this.isListedPublicChipTable(room)).map((room) => this.tableSnapshot(room));
+  }
+
+  private isListedPublicChipTable(room: Room): boolean {
+    if (!room.isPublic || room.visibility !== "public" || room.tableType !== "public_chip") return false;
+    if (room.sessionComplete || this.publicRoomState(room) === "session_complete") return false;
+    if (this.occupiedSeatCount(room) >= room.maxPlayers) return false;
+    if (this.publicSeatedCount(room) <= 0 && this.occupiedSeatCount(room) > 0) return false;
+    return true;
   }
 
   private tableSnapshot(room: Room): PublicTableSnapshot {
@@ -538,7 +547,7 @@ export class RoomManager {
       room_id: room.id,
       table_type: room.tableType,
       currency: "chips",
-      allow_quick_join: room.isPublic,
+      allow_quick_join: this.isQuickJoinablePublicChipTable(room),
       room_code: room.roomCode || undefined,
       visibility: room.visibility,
       table_name: room.tableName,
@@ -585,6 +594,11 @@ export class RoomManager {
 
   private publicSeatedCount(room: Room): number {
     return room.table.seats.filter((seat) => seat.playerId !== "" && !seat.disconnected && !seat.isAi).length;
+  }
+
+  private isQuickJoinablePublicChipTable(room: Room): boolean {
+    if (!this.isListedPublicChipTable(room)) return false;
+    return ["waiting_for_players", "waiting_ready", "ready_to_start"].includes(this.publicRoomState(room));
   }
 
   private handleHello(client: Client, message: ClientMessage): Omit<ServerMessage, "type" | "request_id" | "player_id"> {
@@ -1238,6 +1252,9 @@ export class RoomManager {
 
   private publicRoomState(room: Room): string {
     if (room.sessionComplete) return "session_complete";
+    if (room.hostInLocalWarmup !== "" && ["waiting", "hand_over"].includes(room.table.phase)) {
+      return this.publicSeatedCount(room) < 2 ? "waiting_for_players" : "waiting_ready";
+    }
     if (room.isAiWarmup) return "ai_warmup";
     if (isActionPhase(room.table.phase)) return "playing";
     if (room.table.phase === "showdown") return "hand_result";

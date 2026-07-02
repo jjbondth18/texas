@@ -2382,6 +2382,7 @@ func _normalized_room_browser_table(room: Dictionary) -> Dictionary:
 		"hand_state": hand_state,
 		"status": "full" if seated_count >= max_players else status,
 		"is_ai_warmup": bool(room.get("is_ai_warmup", false)),
+		"host_in_local_warmup": bool(room.get("host_in_local_warmup", false)),
 		"waiting_for_real_players": bool(room.get("waiting_for_real_players", false)),
 		"pending_real_joiners": Array(room.get("pending_real_joiners", [])).duplicate(true),
 		"warmup_ai_player_ids": Array(room.get("warmup_ai_player_ids", [])).duplicate(),
@@ -2400,15 +2401,18 @@ func _is_joinable_room_browser_table(room: Dictionary) -> bool:
 		return false
 	var status := str(room.get("status", ""))
 	var hand_state := str(room.get("hand_state", status))
+	var host_warming := bool(room.get("host_in_local_warmup", false))
+	if bool(room.get("is_ai_warmup", false)) and not host_warming:
+		return false
 	if status in ["full", "closed", "dirty", "paused", "hand_over", "showdown_reveal", "showdown", "finished"]:
 		return false
 	if hand_state in ["closed", "dirty", "paused", "hand_over", "showdown_reveal", "finished"]:
 		return false
-	if status not in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown", "hand_result", "ready_to_start", "open", "playing", "ai_warmup"]:
+	if not host_warming and status not in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown", "hand_result", "ready_to_start", "open", "playing", "ai_warmup"]:
 		return false
-	if hand_state not in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown", "hand_result", "ready_to_start", "open", "playing", "preflop", "flop", "turn", "river", "showdown", "ai_warmup", "idle", "pre_hand"]:
+	if not host_warming and hand_state not in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown", "hand_result", "ready_to_start", "open", "playing", "preflop", "flop", "turn", "river", "showdown", "ai_warmup", "idle", "pre_hand"]:
 		return false
-	if int(room.get("current_turn_seat", -1)) == -1 and hand_state not in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown", "hand_result", "ready_to_start", "open", "playing", "preflop", "flop", "turn", "river", "showdown", "ai_warmup", "idle", "pre_hand"]:
+	if not host_warming and int(room.get("current_turn_seat", -1)) == -1 and hand_state not in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown", "hand_result", "ready_to_start", "open", "playing", "preflop", "flop", "turn", "river", "showdown", "ai_warmup", "idle", "pre_hand"]:
 		return false
 	if int(room.get("seated_count", 0)) >= int(room.get("max_players", 6)):
 		return false
@@ -2480,7 +2484,7 @@ func _add_room_browser_row(room: Dictionary) -> void:
 	HomeTheme.make_font_settings(name_lbl, 15, Color(1, 1, 1, 0.95))
 	name_box.add_child(name_lbl)
 	var public_badge := Label.new()
-	public_badge.text = "WARM-UP / WAITING FOR PLAYERS" if bool(room.get("host_in_local_warmup", false)) else ("SERVER PUBLIC CHIP" if _profile_server_connected else "LOCAL MOCK CHIP")
+	public_badge.text = "HOST WARMING UP / JOINABLE" if bool(room.get("host_in_local_warmup", false)) else ("SERVER PUBLIC CHIP" if _profile_server_connected else "LOCAL MOCK CHIP")
 	HomeTheme.make_font_settings(public_badge, 11, HomeTheme.CYAN)
 	name_box.add_child(public_badge)
 	var blinds_lbl := Label.new()

@@ -26,7 +26,8 @@ The first version uses strict config matching:
 - not full
 - public, not private
 - not training
-- not local warm-up
+- not a local-only warm-up table
+- host local warm-up public rooms remain joinable
 - not closed
 - not `session_complete`
 
@@ -39,6 +40,8 @@ Quick only joins waiting public tables:
 - `waiting_for_players`
 - `waiting_ready`
 - `ready_to_start`
+
+If a host has started local AI warm-up, the real server public room still remains in `waiting_for_players` / `waiting_ready` with `host_in_local_warmup=true`. Quick may match that room when the selected stakes and hand count match. Joining it interrupts the host's local practice and returns both real clients to the public room.
 
 Quick does not join `playing`, `hand_result`, `session_complete`, `closed`, or `paused` tables in this first version. Browser can later expose an explicit Join Next Hand flow for playing tables.
 
