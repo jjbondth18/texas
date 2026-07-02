@@ -33,8 +33,14 @@ var _speed_button: Button
 var _replay_controls_panel: PanelContainer
 var _replay_info_action_label: Label
 var _equity_table_panel: PanelContainer
+var _equity_header_grid: GridContainer
 var _equity_table_grid: GridContainer
 var _equity_table_empty_label: Label
+var _equity_mode_label: Label
+var _equity_objective_button: Button
+var _equity_perceived_button: Button
+var _equity_mode: String = ReplayEquityTableScript.MODE_OBJECTIVE
+var _equity_hero_seat: int = -1
 
 @onready var _table_surface_layer: Control = $TableSurfaceLayer
 @onready var _ui_layer: Control = $UIFloatingLayer
@@ -301,14 +307,32 @@ func _setup_equity_table_panel() -> void:
 	_equity_table_panel.add_child(margin)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
+	vbox.add_theme_constant_override("separation", 6)
 	margin.add_child(vbox)
+
+	var title_row := HBoxContainer.new()
+	title_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(title_row)
 
 	var title := Label.new()
 	title.name = "ReplayEquityTableTitle"
 	title.text = "EQUITY TABLE"
+	title.custom_minimum_size = Vector2(250, 24)
 	HomeTheme.make_font_settings(title, 15, Color(0.93, 0.88, 1.0, 0.96))
-	vbox.add_child(title)
+	title_row.add_child(title)
+
+	_equity_objective_button = _make_equity_mode_button("OBJECTIVE", ReplayEquityTableScript.MODE_OBJECTIVE)
+	title_row.add_child(_equity_objective_button)
+	_equity_perceived_button = _make_equity_mode_button("PERCEIVED", ReplayEquityTableScript.MODE_PERCEIVED)
+	title_row.add_child(_equity_perceived_button)
+
+	_equity_mode_label = Label.new()
+	_equity_mode_label.name = "ReplayEquityModeDescription"
+	_equity_mode_label.custom_minimum_size = Vector2(720, 20)
+	_equity_mode_label.clip_text = true
+	_equity_mode_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	HomeTheme.make_font_settings(_equity_mode_label, 11, Color(0.72, 0.78, 0.94, 0.86))
+	vbox.add_child(_equity_mode_label)
 
 	_equity_table_empty_label = Label.new()
 	_equity_table_empty_label.name = "ReplayEquityTableEmpty"
@@ -316,12 +340,36 @@ func _setup_equity_table_panel() -> void:
 	HomeTheme.make_font_settings(_equity_table_empty_label, 12, Color(0.74, 0.78, 0.94, 0.82))
 	vbox.add_child(_equity_table_empty_label)
 
+	_equity_header_grid = GridContainer.new()
+	_equity_header_grid.name = "ReplayEquityTableHeaderGrid"
+	_equity_header_grid.columns = 7
+	_equity_header_grid.add_theme_constant_override("h_separation", 4)
+	_equity_header_grid.add_theme_constant_override("v_separation", 0)
+	vbox.add_child(_equity_header_grid)
+
+	var scroll := ScrollContainer.new()
+	scroll.name = "ReplayEquityTableScroll"
+	scroll.custom_minimum_size = Vector2(730, 132)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	vbox.add_child(scroll)
+
 	_equity_table_grid = GridContainer.new()
 	_equity_table_grid.name = "ReplayEquityTableGrid"
 	_equity_table_grid.columns = 7
 	_equity_table_grid.add_theme_constant_override("h_separation", 4)
-	_equity_table_grid.add_theme_constant_override("v_separation", 4)
-	vbox.add_child(_equity_table_grid)
+	_equity_table_grid.add_theme_constant_override("v_separation", 3)
+	scroll.add_child(_equity_table_grid)
+
+
+func _make_equity_mode_button(text: String, mode: String) -> Button:
+	var button := _make_replay_button(text, Vector2(104, 26))
+	button.name = "ReplayEquityMode%sButton" % text.capitalize()
+	button.pressed.connect(func() -> void:
+		_equity_mode = mode
+		_render_equity_table(_current_equity_phase())
+	)
+	return button
 
 
 func _layout() -> void:
@@ -442,9 +490,13 @@ func _set_bottom_hole_cards(cards: Array) -> void:
 func _render_equity_table(active_phase: String) -> void:
 	if _equity_table_grid == null:
 		return
-	var table: Dictionary = ReplayEquityTableScript.build_table(_record, active_phase)
+	var table: Dictionary = ReplayEquityTableScript.build_table(_record, active_phase, _equity_mode, _equity_hero_seat)
 	var rows: Array = Array(table.get("rows", []))
 	var normalized_phase: String = str(table.get("active_phase", "preflop"))
+	_equity_hero_seat = int(table.get("hero_seat", _equity_hero_seat))
+	_update_equity_mode_header(table)
+	if _equity_header_grid != null:
+		_clear_children(_equity_header_grid)
 	_clear_children(_equity_table_grid)
 	if _equity_table_empty_label != null:
 		_equity_table_empty_label.visible = rows.is_empty()
@@ -463,7 +515,11 @@ func _render_equity_table(active_phase: String) -> void:
 	]
 	for column_item in columns:
 		var column: Dictionary = Dictionary(column_item)
-		_equity_table_grid.add_child(_make_equity_cell(str(column.get("label", "")), int(column.get("width", 70)), true, str(column.get("key", "")) == normalized_phase))
+		var header_cell: PanelContainer = _make_equity_cell(str(column.get("label", "")), int(column.get("width", 70)), true, str(column.get("key", "")) == normalized_phase)
+		if _equity_header_grid != null:
+			_equity_header_grid.add_child(header_cell)
+		else:
+			_equity_table_grid.add_child(header_cell)
 	for row_item in rows:
 		var row: Dictionary = Dictionary(row_item)
 		for column_item in columns:
@@ -473,10 +529,35 @@ func _render_equity_table(active_phase: String) -> void:
 			_equity_table_grid.add_child(_make_equity_cell(value, int(column.get("width", 70)), false, key == normalized_phase, key, value))
 
 
+func _update_equity_mode_header(table: Dictionary) -> void:
+	var mode: String = str(table.get("mode", ReplayEquityTableScript.MODE_OBJECTIVE))
+	var hero_name: String = str(table.get("hero_name", "-"))
+	if _equity_mode_label != null:
+		if mode == ReplayEquityTableScript.MODE_PERCEIVED:
+			_equity_mode_label.text = "Perceived - player-view estimate for %s." % hero_name
+		else:
+			_equity_mode_label.text = "Objective - all hole cards known."
+	_style_equity_mode_button(_equity_objective_button, mode == ReplayEquityTableScript.MODE_OBJECTIVE)
+	_style_equity_mode_button(_equity_perceived_button, mode == ReplayEquityTableScript.MODE_PERCEIVED)
+
+
+func _style_equity_mode_button(button: Button, active: bool) -> void:
+	if button == null:
+		return
+	var fill: Color = Color(0.030, 0.025, 0.070, 0.72)
+	var border: Color = Color(0.42, 0.20, 0.80, 0.42)
+	if active:
+		fill = Color(0.06, 0.16, 0.24, 0.88)
+		border = Color(0.24, 0.86, 1.0, 0.75)
+	button.add_theme_stylebox_override("normal", HomeTheme.make_panel_style(fill, border, 7, 1))
+	button.add_theme_stylebox_override("hover", HomeTheme.make_panel_style(fill.lightened(0.08), border.lightened(0.08), 7, 1))
+	button.add_theme_stylebox_override("pressed", HomeTheme.make_panel_style(fill.darkened(0.05), border, 7, 1))
+
+
 func _make_equity_cell(text: String, width: int, is_header: bool, is_active_phase: bool, key: String = "", value: String = "") -> PanelContainer:
 	var cell := PanelContainer.new()
 	cell.name = "ReplayEquityCell_%s" % (key if key != "" else "header")
-	cell.custom_minimum_size = Vector2(width, 24)
+	cell.custom_minimum_size = Vector2(width, 21 if not is_header else 23)
 	var fill: Color = Color(0.035, 0.025, 0.080, 0.60)
 	var border: Color = Color(0.34, 0.20, 0.70, 0.28)
 	if is_header:
@@ -504,7 +585,7 @@ func _make_equity_cell(text: String, width: int, is_header: bool, is_active_phas
 		color = Color(0.58, 0.61, 0.70, 0.90)
 	elif value == "Loss":
 		color = Color(0.70, 0.74, 0.84, 0.90)
-	HomeTheme.make_font_settings(label, 10 if not is_header else 11, color)
+	HomeTheme.make_font_settings(label, 9 if not is_header else 10, color)
 	cell.add_child(label)
 	return cell
 

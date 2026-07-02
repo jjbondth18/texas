@@ -294,9 +294,16 @@ The table columns are:
 - `River`
 - `Final`
 
-Rows include only players recorded in the replay, sorted by objective `seat_index` and capped at nine players. Missing streets display `-`; insufficient card data displays `N/A`; folded players remain listed and show `Folded` after they leave active equity calculation. `Final` displays `Win`, `Loss`, `Folded`, `Split`, or `-` depending on replay results.
+Rows include only players recorded in the replay, sorted by objective `seat_index` and capped at nine players. The table keeps the header visible and places player rows inside an internal scroll area so nine-player hands do not expand the bottom HUD or overlap `YOUR HAND` / `REPLAY CONTROLS`. Missing streets display `-`; insufficient card data displays `N/A`; folded players remain listed and show `Folded` after they leave active equity calculation. `Final` displays `Win`, `Loss`, `Folded`, `Split`, or `-` depending on replay results.
 
 The active replay step highlights the matching phase column: preflop, flop, turn, river, or final for showdown/hand-over steps. Equity values are produced by a replay-only deterministic Monte Carlo helper using recorded hole cards, board cards, and final results where available. The fixed seed makes the same replay render consistently.
+
+The table supports two display modes:
+
+- `Objective`: an all-seeing replay view that knows every recorded player's hole cards. Active player equities share the pot probability and folded players leave active calculations after their fold street.
+- `Perceived`: a player-view estimate for the replay hero. The default hero is the recorded local player, then seat 5, then the first real player, then the first recorded player. Perceived mode shows the hero row and an `Opponents combined` range row rather than pretending every player has the same information set.
+
+Both modes currently use deterministic Monte Carlo rather than exact enumeration. Objective mode samples remaining board cards from the known deck after recorded hole cards and current board cards are removed. Perceived mode samples unknown opponent hole cards and remaining board cards from the hero's information set. The fixed seed prevents UI jitter between renders of the same replay.
 
 This table does not connect to the server, does not mutate wallet or gems, does not change replay records, and does not touch live `PokerTableScreen` logic. Future phases may add richer charts or player-perspective equity views.
 
