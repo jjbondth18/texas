@@ -217,6 +217,33 @@ Real table controls such as fold, check, call, raise, bet, add chips, ready, war
 
 Replay Table View v3 intentionally does not include animated dealing, chip movement, equity graphs, gem unlocks, cloud loading, or paid replay access. Future phases may add replay-specific animations, an equity timeline, and a separately designed 20-gem unlock.
 
+## Replay Table View v4 Display Contract
+
+Replay Table View v4 keeps the v3 read-only renderer but makes the playback surface visually closer to the official poker table. It may reuse poker table visual assets and layout constants, but it must not reuse live session control paths.
+
+The v4 renderer uses:
+
+- `assets/poker_table/backgrounds/table_neon_v1.png` as the replay table background
+- the official seat design coordinates scaled into the Replay panel
+- the official bet marker design coordinates scaled into the Replay panel
+- `CardView` for board cards and visible player hole cards
+- chip stack and avatar ring assets from the neon poker UI kit
+- official-style pot and bet marker panels
+
+The renderer remains objective: seats are positioned by recorded `seat_index`, with no local-player camera rotation. Folded seats dim, the current actor seat highlights, and final winner seats receive a winner highlight at the last step.
+
+Replay Table View v4 is still isolated from:
+
+- server connections
+- `player_action`
+- live `PokerTableScreen` state
+- wallet or gem mutation
+- store purchases
+- ready / warm-up / cash-out controls
+- live betting, dealing, settlement, or hand progression logic
+
+Future replay phases may add replay-specific card movement, chip movement, street transition animations, equity charts, and an explicitly designed gem unlock. Those remain out of scope for v4.
+
 ## Future Phases
 
 Later replay work can add:

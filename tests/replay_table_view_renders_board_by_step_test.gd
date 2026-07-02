@@ -5,5 +5,6 @@ func run() -> void:
 	assert(source.find("_replay_playback_state_for_step") != -1)
 	assert(source.find("_replay_board_for_street") != -1)
 	assert(source.find("\"board_cards\": board_cards") != -1)
-	assert(source.find("ReplayTableBoard") != -1)
-	assert(source.find("BOARD\\n%s") != -1)
+	assert(source.find("ReplayTableBoardCards") != -1)
+	assert(source.find("_add_replay_board_cards") != -1)
+	assert(source.find("_add_replay_card_views") != -1)

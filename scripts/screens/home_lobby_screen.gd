@@ -96,6 +96,11 @@ const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 const SettingsServiceScript := preload("res://scripts/services/settings_service.gd")
 const PokerWsClientScript := preload("res://scripts/network/poker_ws_client.gd")
 const NetworkConfigScript := preload("res://scripts/network/network_config.gd")
+const ReplayCardViewScene := preload("res://scenes/components/card_view.tscn")
+const REPLAY_TABLE_BACKGROUND := preload("res://assets/poker_table/backgrounds/table_neon_v1.png")
+const REPLAY_CHIP_STACK := preload("res://assets/ui/neon_poker_ui_clean/chip_stack.png")
+const REPLAY_AVATAR_RING := preload("res://assets/ui/neon_poker_ui_clean/avatar_ring.png")
+const REPLAY_ACTIVE_TURN_GLOW := preload("res://assets/ui/neon_poker_ui_clean/active_turn_glow.png")
 const MODE_IMAGES := {
 	"quick_play": "res://assets/home_lobby/mode_cards/mode_quick_play.png",
 	"room_browser": "res://assets/home_lobby/mode_cards/mode_cash_tables.png",
@@ -108,6 +113,32 @@ const LOGO_COLLAPSED_Y := 275.0
 const LOGO_EXPANDED_Y := 20.0
 const LOGO_COLLAPSED_SCALE := Vector2(1.0, 1.0)
 const LOGO_EXPANDED_SCALE := Vector2(0.58, 0.58)
+const REPLAY_TABLE_DESIGN_SIZE := Vector2(2560.0, 900.0)
+const REPLAY_TABLE_VIEW_SIZE := Vector2(960.0, 470.0)
+const REPLAY_SEAT_CARD_SIZE := Vector2(132.0, 74.0)
+const REPLAY_BET_MARKER_SIZE := Vector2(78.0, 24.0)
+const REPLAY_SEAT_PANEL_ORIGINS_BY_SEAT := {
+	1: Vector2(1580.0, 190.0),
+	2: Vector2(1880.0, 300.0),
+	3: Vector2(2030.0, 520.0),
+	4: Vector2(1760.0, 700.0),
+	5: Vector2(1180.0, 710.0),
+	6: Vector2(720.0, 700.0),
+	7: Vector2(410.0, 520.0),
+	8: Vector2(560.0, 300.0),
+	9: Vector2(900.0, 190.0),
+}
+const REPLAY_BET_MARKER_ANCHORS_BY_SEAT := {
+	1: Vector2(1540.0, 322.0),
+	2: Vector2(1660.0, 392.0),
+	3: Vector2(1650.0, 535.0),
+	4: Vector2(1540.0, 610.0),
+	5: Vector2(1210.0, 590.0),
+	6: Vector2(890.0, 610.0),
+	7: Vector2(850.0, 535.0),
+	8: Vector2(900.0, 392.0),
+	9: Vector2(1015.0, 322.0),
+}
 
 var _cta_button: Button
 var _cta_float_time := 0.0
@@ -3120,13 +3151,13 @@ func _render_replay_playback() -> void:
 	body_hbox.add_theme_constant_override("separation", 18)
 	_replay_detail_vbox.add_child(body_hbox)
 
-	var table_box := _make_replay_section("REPLAY TABLE VIEW", Vector2(720, 430))
+	var table_box := _make_replay_section("REPLAY TABLE VIEW", Vector2(980, 520))
 	table_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body_hbox.add_child(table_box)
 	var table_vbox: VBoxContainer = table_box.get_node("Content") as VBoxContainer
 	_replay_playback_table_layer = Control.new()
 	_replay_playback_table_layer.name = "ReplayTableLayer"
-	_replay_playback_table_layer.custom_minimum_size = Vector2(700, 390)
+	_replay_playback_table_layer.custom_minimum_size = REPLAY_TABLE_VIEW_SIZE
 	_replay_playback_table_layer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_replay_playback_table_layer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	table_vbox.add_child(_replay_playback_table_layer)
@@ -3287,20 +3318,31 @@ func _render_replay_table_view(playback_state: Dictionary, players: Array) -> vo
 	if _replay_playback_table_layer == null:
 		return
 	_replace_replay_children(_replay_playback_table_layer)
-	var table_size := Vector2(700, 390)
-	var felt := PanelContainer.new()
-	felt.name = "ReplayTableFelt"
-	felt.position = Vector2(0, 0)
-	felt.custom_minimum_size = table_size
-	felt.size = table_size
-	felt.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.026, 0.012, 0.055, 0.88), Color(0.72, 0.30, 1.0, 0.48), 28, 2))
-	_replay_playback_table_layer.add_child(felt)
+	var table_size: Vector2 = REPLAY_TABLE_VIEW_SIZE
+	var bg := TextureRect.new()
+	bg.name = "ReplayTableBackground"
+	bg.texture = REPLAY_TABLE_BACKGROUND
+	bg.position = Vector2.ZERO
+	bg.size = table_size
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_SCALE
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_replay_playback_table_layer.add_child(bg)
+
+	var felt_overlay := PanelContainer.new()
+	felt_overlay.name = "ReplayTableVisualOverlay"
+	felt_overlay.position = Vector2.ZERO
+	felt_overlay.custom_minimum_size = table_size
+	felt_overlay.size = table_size
+	felt_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	felt_overlay.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.004, 0.012, 0.22), Color(0.72, 0.30, 1.0, 0.30), 22, 1))
+	_replay_playback_table_layer.add_child(felt_overlay)
 
 	var center_panel := PanelContainer.new()
 	center_panel.name = "ReplayTableCenter"
-	center_panel.position = Vector2(210, 128)
-	center_panel.custom_minimum_size = Vector2(280, 132)
-	center_panel.size = Vector2(280, 132)
+	center_panel.position = Vector2(363, 182)
+	center_panel.custom_minimum_size = Vector2(234, 124)
+	center_panel.size = Vector2(234, 124)
 	center_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.008, 0.010, 0.026, 0.82), Color(0.22, 0.86, 1.0, 0.30), 10, 1))
 	_replay_playback_table_layer.add_child(center_panel)
 	var center_vbox := VBoxContainer.new()
@@ -3308,13 +3350,13 @@ func _render_replay_table_view(playback_state: Dictionary, players: Array) -> vo
 	center_vbox.add_theme_constant_override("separation", 8)
 	center_panel.add_child(center_vbox)
 
-	var board_label := Label.new()
-	board_label.name = "ReplayTableBoard"
-	board_label.text = "BOARD\n%s" % str(playback_state.get("board_text", "-"))
-	board_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	board_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	HomeTheme.make_font_settings(board_label, 15, Color(0.92, 0.96, 1.0, 0.96))
-	center_vbox.add_child(board_label)
+	var board_row := HBoxContainer.new()
+	board_row.name = "ReplayTableBoardCards"
+	board_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	board_row.add_theme_constant_override("separation", 6)
+	board_row.custom_minimum_size = Vector2(0, 62)
+	center_vbox.add_child(board_row)
+	_add_replay_board_cards(board_row, Array(playback_state.get("board_cards", [])))
 
 	var pot_label := Label.new()
 	pot_label.name = "ReplayTablePot"
@@ -3345,6 +3387,75 @@ func _render_replay_table_view(playback_state: Dictionary, players: Array) -> vo
 	for player_item in players:
 		var player: Dictionary = Dictionary(player_item)
 		_add_replay_table_seat_card(_replay_playback_table_layer, player, current_actor_seat, winner_seats)
+		_add_replay_table_bet_marker(_replay_playback_table_layer, player)
+
+
+func _add_replay_board_cards(parent: HBoxContainer, cards: Array) -> void:
+	if cards.is_empty():
+		var empty_label := Label.new()
+		empty_label.text = "No board cards recorded."
+		empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		HomeTheme.make_font_settings(empty_label, 12, HomeTheme.MUTED)
+		parent.add_child(empty_label)
+		return
+	_add_replay_card_views(parent, cards, Vector2(42, 58), 5)
+
+
+func _add_replay_card_views(parent: HBoxContainer, cards: Array, card_size: Vector2, max_cards: int) -> void:
+	var count: int = mini(cards.size(), max_cards)
+	if count <= 0:
+		var unknown := Label.new()
+		unknown.text = "Unknown"
+		HomeTheme.make_font_settings(unknown, 10, HomeTheme.MUTED)
+		parent.add_child(unknown)
+		return
+	for i in range(count):
+		var card_data: Dictionary = _replay_card_data(cards[i])
+		var card_view: Control = ReplayCardViewScene.instantiate() as Control
+		card_view.custom_minimum_size = card_size
+		card_view.size = card_size
+		card_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		parent.add_child(card_view)
+		card_view.call("set_card", card_data)
+
+
+func _replay_cards_from_text_or_record(player: Dictionary) -> Array:
+	var cards: Array = Array(player.get("hole_cards", []))
+	if not cards.is_empty():
+		return cards
+	var cards_text: String = str(player.get("cards_text", "")).strip_edges()
+	if cards_text == "" or cards_text == "Unknown":
+		return []
+	return cards_text.split(" ", false)
+
+
+func _replay_card_data(card_value: Variant) -> Dictionary:
+	if card_value is Dictionary:
+		var card: Dictionary = Dictionary(card_value).duplicate(true)
+		if card.has("rank") and card.has("suit"):
+			card["face_up"] = true
+			return card
+		return _replay_card_data(str(card.get("code", "")))
+	var code: String = str(card_value).strip_edges()
+	code = code.replace("♠", "S").replace("♥", "H").replace("♦", "D").replace("♣", "C")
+	code = code.replace("spades", "S").replace("hearts", "H").replace("diamonds", "D").replace("clubs", "C")
+	code = code.to_upper()
+	if code.length() < 2:
+		return {"rank": "", "suit": "", "face_up": false}
+	var suit_char: String = code.substr(code.length() - 1, 1)
+	var rank_text: String = code.substr(0, code.length() - 1)
+	if rank_text == "1":
+		rank_text = "A"
+	match suit_char:
+		"S":
+			return {"rank": rank_text, "suit": "spades", "face_up": true}
+		"H":
+			return {"rank": rank_text, "suit": "hearts", "face_up": true}
+		"D":
+			return {"rank": rank_text, "suit": "diamonds", "face_up": true}
+		"C":
+			return {"rank": rank_text, "suit": "clubs", "face_up": true}
+	return {"rank": rank_text, "suit": "", "face_up": true}
 
 
 func _add_replay_table_seat_card(parent: Control, player: Dictionary, current_actor_seat: int, winner_seats: Dictionary) -> void:
@@ -3352,8 +3463,8 @@ func _add_replay_table_seat_card(parent: Control, player: Dictionary, current_ac
 	var seat_card := PanelContainer.new()
 	seat_card.name = "ReplaySeat%d" % seat_index
 	seat_card.position = _replay_table_seat_position(seat_index)
-	seat_card.custom_minimum_size = Vector2(150, 82)
-	seat_card.size = Vector2(150, 82)
+	seat_card.custom_minimum_size = REPLAY_SEAT_CARD_SIZE
+	seat_card.size = REPLAY_SEAT_CARD_SIZE
 	var status_text: String = str(player.get("status", "active"))
 	var is_folded: bool = status_text.to_lower().find("fold") != -1
 	var is_active: bool = seat_index == current_actor_seat
@@ -3370,43 +3481,123 @@ func _add_replay_table_seat_card(parent: Control, player: Dictionary, current_ac
 		bg_color = Color(0.034, 0.036, 0.082, 0.90)
 		border_color = HomeTheme.CYAN
 	seat_card.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(bg_color, border_color, 8, 2 if is_active or is_winner else 1))
+	seat_card.modulate = Color(1, 1, 1, 0.55) if is_folded else Color.WHITE
 	parent.add_child(seat_card)
+
+	if is_active:
+		var glow := TextureRect.new()
+		glow.name = "ReplayActiveTurnGlow"
+		glow.texture = REPLAY_ACTIVE_TURN_GLOW
+		glow.position = Vector2(18, 60)
+		glow.size = Vector2(96, 20)
+		glow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		glow.stretch_mode = TextureRect.STRETCH_SCALE
+		glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		seat_card.add_child(glow)
+
+	var hbox := HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 5)
+	seat_card.add_child(hbox)
+	var avatar_box := Control.new()
+	avatar_box.custom_minimum_size = Vector2(34, 54)
+	hbox.add_child(avatar_box)
+	var avatar_ring := TextureRect.new()
+	avatar_ring.texture = REPLAY_AVATAR_RING
+	avatar_ring.position = Vector2(0, 6)
+	avatar_ring.size = Vector2(34, 34)
+	avatar_ring.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	avatar_ring.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	avatar_box.add_child(avatar_ring)
+	var avatar_dot := ColorRect.new()
+	avatar_dot.position = Vector2(9, 15)
+	avatar_dot.size = Vector2(16, 16)
+	avatar_dot.color = Color(0.18, 0.12, 0.30, 0.94)
+	avatar_box.add_child(avatar_dot)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 1)
-	seat_card.add_child(vbox)
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox.add_child(vbox)
 	var name_text: String = str(player.get("player_name", player.get("player_id", "Unknown")))
 	_add_replay_text(vbox, "Seat %d - %s" % [seat_index, name_text], Color(0.94, 0.96, 1.0, 0.96))
-	_add_replay_text(vbox, "Cards: %s" % str(player.get("cards_text", "Unknown")), Color(0.82, 0.86, 1.0, 0.92))
-	_add_replay_text(vbox, "Stack: %s  Bet: %s" % [
-		_replay_stack_text(player.get("stack", null)),
-		_format_number(int(player.get("current_bet", 0))),
-	], HomeTheme.GOLD)
+	var cards_row := HBoxContainer.new()
+	cards_row.name = "ReplaySeatHoleCards"
+	cards_row.add_theme_constant_override("separation", -8)
+	vbox.add_child(cards_row)
+	_add_replay_card_views(cards_row, _replay_cards_from_text_or_record(player), Vector2(28, 38), 2)
+	var stack_row := HBoxContainer.new()
+	stack_row.add_theme_constant_override("separation", 3)
+	vbox.add_child(stack_row)
+	var chip := TextureRect.new()
+	chip.texture = REPLAY_CHIP_STACK
+	chip.custom_minimum_size = Vector2(18, 16)
+	chip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	chip.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	stack_row.add_child(chip)
+	var stack_label := Label.new()
+	stack_label.text = _replay_stack_text(player.get("stack", null))
+	HomeTheme.make_font_settings(stack_label, 10, HomeTheme.GOLD)
+	stack_row.add_child(stack_label)
 	var state_label: String = "WINNER" if is_winner else status_text
 	_add_replay_text(vbox, "Status: %s" % _title_case_replay_status(state_label), HomeTheme.PINK if is_active else Color(0.78, 0.82, 0.95, 0.92))
 
 
 func _replay_table_seat_position(seat_index: int) -> Vector2:
-	match seat_index:
-		1:
-			return Vector2(34, 118)
-		2:
-			return Vector2(126, 28)
-		3:
-			return Vector2(424, 28)
-		4:
-			return Vector2(516, 118)
-		5:
-			return Vector2(274, 298)
-		6:
-			return Vector2(118, 270)
-		7:
-			return Vector2(34, 210)
-		8:
-			return Vector2(516, 210)
-		9:
-			return Vector2(432, 270)
-	return Vector2(274, 298)
+	var design_pos: Vector2 = REPLAY_SEAT_PANEL_ORIGINS_BY_SEAT.get(seat_index, REPLAY_SEAT_PANEL_ORIGINS_BY_SEAT[5])
+	return _replay_design_to_view(design_pos)
+
+
+func _add_replay_table_bet_marker(parent: Control, player: Dictionary) -> void:
+	var current_bet: int = int(player.get("current_bet", 0))
+	if current_bet <= 0:
+		return
+	var seat_index: int = int(player.get("seat_index", -1))
+	var marker := PanelContainer.new()
+	marker.name = "ReplayBetMarker%d" % seat_index
+	marker.position = _replay_bet_marker_position(seat_index)
+	marker.custom_minimum_size = REPLAY_BET_MARKER_SIZE
+	marker.size = REPLAY_BET_MARKER_SIZE
+	marker.add_theme_stylebox_override("panel", _replay_bet_marker_style())
+	parent.add_child(marker)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 3)
+	marker.add_child(row)
+	var chip := TextureRect.new()
+	chip.texture = REPLAY_CHIP_STACK
+	chip.custom_minimum_size = Vector2(20, 18)
+	chip.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	chip.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	row.add_child(chip)
+	var label := Label.new()
+	label.text = _format_number(current_bet)
+	HomeTheme.make_font_settings(label, 10, HomeTheme.GOLD)
+	row.add_child(label)
+
+
+func _replay_bet_marker_position(seat_index: int) -> Vector2:
+	var design_pos: Vector2 = REPLAY_BET_MARKER_ANCHORS_BY_SEAT.get(seat_index, REPLAY_BET_MARKER_ANCHORS_BY_SEAT[5])
+	return _replay_design_to_view(design_pos)
+
+
+func _replay_design_to_view(design_pos: Vector2) -> Vector2:
+	var scale := Vector2(
+		REPLAY_TABLE_VIEW_SIZE.x / REPLAY_TABLE_DESIGN_SIZE.x,
+		REPLAY_TABLE_VIEW_SIZE.y / REPLAY_TABLE_DESIGN_SIZE.y
+	)
+	return Vector2(design_pos.x * scale.x, design_pos.y * scale.y)
+
+
+func _replay_bet_marker_style() -> StyleBoxFlat:
+	var marker_style := StyleBoxFlat.new()
+	marker_style.anti_aliasing = true
+	marker_style.bg_color = Color(0.020, 0.012, 0.034, 0.72)
+	marker_style.border_color = Color(1.0, 0.76, 0.30, 0.36)
+	marker_style.set_border_width_all(1)
+	marker_style.set_corner_radius_all(9)
+	marker_style.shadow_color = Color(1.0, 0.54, 0.10, 0.13)
+	marker_style.shadow_size = 4
+	return marker_style
 
 
 func _replay_winner_seats(record: Dictionary) -> Dictionary:
