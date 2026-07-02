@@ -10,6 +10,7 @@ signal speed_toggle_requested
 signal timeline_toggle_requested
 
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
+const ReplayEquityTableScript := preload("res://scripts/replay/replay_equity_table.gd")
 
 const DESIGN_SIZE := Vector2(2560.0, 1000.0)
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
@@ -31,6 +32,9 @@ var _play_button: Button
 var _speed_button: Button
 var _replay_controls_panel: PanelContainer
 var _replay_info_action_label: Label
+var _equity_table_panel: PanelContainer
+var _equity_table_grid: GridContainer
+var _equity_table_empty_label: Label
 
 @onready var _table_surface_layer: Control = $TableSurfaceLayer
 @onready var _ui_layer: Control = $UIFloatingLayer
@@ -127,6 +131,7 @@ func _setup_replay_visual_shell() -> void:
 	_configure_replay_timeline_panel()
 	_setup_top_replay_controls()
 	_setup_bottom_replay_controls()
+	_setup_equity_table_panel()
 	set_timeline_visible(true)
 
 
@@ -165,7 +170,7 @@ func _hide_table_room_info_children(text_markers: Array[String]) -> void:
 
 func _configure_replay_timeline_panel() -> void:
 	var right_panel: Control = $UIFloatingLayer/RightPanel
-	right_panel.position = Vector2(2240, 142)
+	right_panel.position = Vector2(2240, 150)
 	right_panel.size = Vector2(320, 700)
 	right_panel.custom_minimum_size = right_panel.size
 	if _log_panel != null:
@@ -195,9 +200,9 @@ func _setup_top_replay_controls() -> void:
 	_top_right_action_bar.anchor_right = 1.0
 	_top_right_action_bar.anchor_bottom = 0.0
 	_top_right_action_bar.offset_left = -540.0
-	_top_right_action_bar.offset_top = 24.0
+	_top_right_action_bar.offset_top = 16.0
 	_top_right_action_bar.offset_right = -24.0
-	_top_right_action_bar.offset_bottom = 66.0
+	_top_right_action_bar.offset_bottom = 58.0
 	_top_right_action_bar.alignment = BoxContainer.ALIGNMENT_END
 	_top_right_action_bar.add_theme_constant_override("separation", 10)
 
@@ -272,6 +277,51 @@ func _setup_bottom_replay_controls() -> void:
 	_speed_button = _make_replay_button("SPEED 1x", Vector2(122, 42))
 	_speed_button.pressed.connect(func() -> void: speed_toggle_requested.emit())
 	row.add_child(_speed_button)
+
+
+func _setup_equity_table_panel() -> void:
+	var identity_zone: Control = _action_bar.get_node_or_null("IdentityZone") as Control
+	if identity_zone != null:
+		identity_zone.visible = false
+
+	_equity_table_panel = PanelContainer.new()
+	_equity_table_panel.name = "ReplayEquityTablePanel"
+	_equity_table_panel.position = Vector2(0, 0)
+	_equity_table_panel.size = Vector2(785, 368)
+	_equity_table_panel.custom_minimum_size = _equity_table_panel.size
+	_equity_table_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.018, 0.012, 0.044, 0.86), Color(0.82, 0.16, 1.0, 0.48), 14, 1))
+	_action_bar.add_child(_equity_table_panel)
+	_equity_table_panel.move_to_front()
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 22)
+	margin.add_theme_constant_override("margin_right", 22)
+	margin.add_theme_constant_override("margin_top", 18)
+	margin.add_theme_constant_override("margin_bottom", 18)
+	_equity_table_panel.add_child(margin)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	margin.add_child(vbox)
+
+	var title := Label.new()
+	title.name = "ReplayEquityTableTitle"
+	title.text = "EQUITY TABLE"
+	HomeTheme.make_font_settings(title, 15, Color(0.93, 0.88, 1.0, 0.96))
+	vbox.add_child(title)
+
+	_equity_table_empty_label = Label.new()
+	_equity_table_empty_label.name = "ReplayEquityTableEmpty"
+	_equity_table_empty_label.text = "No equity data."
+	HomeTheme.make_font_settings(_equity_table_empty_label, 12, Color(0.74, 0.78, 0.94, 0.82))
+	vbox.add_child(_equity_table_empty_label)
+
+	_equity_table_grid = GridContainer.new()
+	_equity_table_grid.name = "ReplayEquityTableGrid"
+	_equity_table_grid.columns = 7
+	_equity_table_grid.add_theme_constant_override("h_separation", 4)
+	_equity_table_grid.add_theme_constant_override("v_separation", 4)
+	vbox.add_child(_equity_table_grid)
 
 
 func _layout() -> void:
@@ -364,30 +414,11 @@ func _render_bottom_hud(players: Array, playback_state: Dictionary) -> void:
 	if primary.is_empty() and not players.is_empty():
 		primary = Dictionary(players[0])
 	var action_text: String = str(playback_state.get("action_text", "Initial state"))
-	if primary.is_empty():
-		_action_bar.set_local_player_info({
-			"player_name": "Replay",
-			"chips": 0,
-			"buy_in": 0,
-			"win_rate": "N/A",
-			"is_local": false,
-			"avatar_texture": AvatarLibraryScript.get_avatar_by_id(AvatarLibraryScript.default_avatar_id()),
-		}, "replay")
-	else:
-		var start_stack: int = int(primary.get("starting_stack", primary.get("stack", 0)))
-		var current_stack: int = int(primary.get("stack", primary.get("ending_stack", start_stack)))
-		var avatar_id: String = str(primary.get("avatar_id", ""))
-		if avatar_id == "":
-			avatar_id = AvatarLibraryScript.avatar_id_for_seat(int(primary.get("seat_index", 5)), false)
-		_action_bar.set_local_player_info({
-			"player_name": str(primary.get("player_name", "Replay Player")),
-			"chips": current_stack,
-			"buy_in": start_stack,
-			"win_rate": "REPLAY",
-			"is_local": false,
-			"avatar_texture": AvatarLibraryScript.get_avatar_by_id(avatar_id),
-		}, "replay")
+	if not primary.is_empty():
 		_set_bottom_hole_cards(_cards_to_card_data(_replay_cards_for_player(primary)))
+	else:
+		_set_bottom_hole_cards([])
+	_render_equity_table(_current_equity_phase())
 	_action_bar.set_turn_prompt("REPLAY CONTROLS")
 	if _replay_step_label != null:
 		_replay_step_label.text = "Step %d / %d\n%s" % [_current_step, _total_steps, action_text]
@@ -406,6 +437,106 @@ func _set_bottom_hole_cards(cards: Array) -> void:
 			card_view.set_card(Dictionary(cards[i]))
 		else:
 			card_view.visible = false
+
+
+func _render_equity_table(active_phase: String) -> void:
+	if _equity_table_grid == null:
+		return
+	var table: Dictionary = ReplayEquityTableScript.build_table(_record, active_phase)
+	var rows: Array = Array(table.get("rows", []))
+	var normalized_phase: String = str(table.get("active_phase", "preflop"))
+	_clear_children(_equity_table_grid)
+	if _equity_table_empty_label != null:
+		_equity_table_empty_label.visible = rows.is_empty()
+		_equity_table_empty_label.text = str(table.get("message", "No equity data."))
+	if rows.is_empty():
+		return
+
+	var columns: Array[Dictionary] = [
+		{"key": "seat", "label": "Seat", "width": 46},
+		{"key": "player", "label": "Player", "width": 130},
+		{"key": "preflop", "label": "Preflop", "width": 84},
+		{"key": "flop", "label": "Flop", "width": 72},
+		{"key": "turn", "label": "Turn", "width": 72},
+		{"key": "river", "label": "River", "width": 72},
+		{"key": "final", "label": "Final", "width": 82},
+	]
+	for column_item in columns:
+		var column: Dictionary = Dictionary(column_item)
+		_equity_table_grid.add_child(_make_equity_cell(str(column.get("label", "")), int(column.get("width", 70)), true, str(column.get("key", "")) == normalized_phase))
+	for row_item in rows:
+		var row: Dictionary = Dictionary(row_item)
+		for column_item in columns:
+			var column: Dictionary = Dictionary(column_item)
+			var key: String = str(column.get("key", ""))
+			var value: String = _equity_cell_text(row, key)
+			_equity_table_grid.add_child(_make_equity_cell(value, int(column.get("width", 70)), false, key == normalized_phase, key, value))
+
+
+func _make_equity_cell(text: String, width: int, is_header: bool, is_active_phase: bool, key: String = "", value: String = "") -> PanelContainer:
+	var cell := PanelContainer.new()
+	cell.name = "ReplayEquityCell_%s" % (key if key != "" else "header")
+	cell.custom_minimum_size = Vector2(width, 24)
+	var fill: Color = Color(0.035, 0.025, 0.080, 0.60)
+	var border: Color = Color(0.34, 0.20, 0.70, 0.28)
+	if is_header:
+		fill = Color(0.10, 0.055, 0.16, 0.78)
+		border = Color(0.85, 0.30, 1.0, 0.50)
+	if is_active_phase:
+		fill = Color(0.06, 0.16, 0.24, 0.84)
+		border = Color(0.25, 0.86, 1.0, 0.72)
+	cell.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(fill, border, 5, 1))
+
+	var label := Label.new()
+	label.text = text
+	label.clip_text = true
+	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER if key != "player" else HORIZONTAL_ALIGNMENT_LEFT
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var color: Color = Color(0.86, 0.90, 1.0, 0.94)
+	if is_header:
+		color = Color(0.93, 0.86, 1.0, 0.96)
+	elif value == "Win":
+		color = Color(0.22, 1.0, 0.68, 0.98)
+	elif value == "Split":
+		color = Color(1.0, 0.80, 0.26, 0.98)
+	elif value == "Folded":
+		color = Color(0.58, 0.61, 0.70, 0.90)
+	elif value == "Loss":
+		color = Color(0.70, 0.74, 0.84, 0.90)
+	HomeTheme.make_font_settings(label, 10 if not is_header else 11, color)
+	cell.add_child(label)
+	return cell
+
+
+func _equity_cell_text(row: Dictionary, key: String) -> String:
+	if key == "seat":
+		return str(int(row.get("seat", -1)))
+	if key == "player":
+		var name: String = str(row.get("player", "-"))
+		return name.substr(0, 14) if name.length() > 14 else name
+	return str(row.get(key, "-"))
+
+
+func _current_equity_phase() -> String:
+	if _current_step >= _total_steps and _total_steps > 0:
+		return "final"
+	if _current_step <= 0 or _steps.is_empty():
+		return "preflop"
+	var step_index: int = clampi(_current_step - 1, 0, _steps.size() - 1)
+	var step: Dictionary = Dictionary(_steps[step_index])
+	var street: String = str(step.get("street", "preflop")).to_lower()
+	if street in ["showdown", "hand_over", "result", "final"]:
+		return "final"
+	if street in ["preflop", "flop", "turn", "river"]:
+		return street
+	return "preflop"
+
+
+func _clear_children(parent: Node) -> void:
+	for child in parent.get_children():
+		parent.remove_child(child)
+		child.queue_free()
 
 
 func _render_timeline(current_step: int) -> void:
@@ -634,6 +765,6 @@ func _make_replay_button(text: String, min_size: Vector2) -> Button:
 func _hide_editor_guides(node: Node) -> void:
 	for child in node.get_children():
 		var canvas_item: CanvasItem = child as CanvasItem
-		if canvas_item != null and (child is ReferenceRect or String(child.name).begins_with("Guide")):
+		if canvas_item != null and (child is ReferenceRect or str(child.name).begins_with("Guide")):
 			canvas_item.visible = false
 		_hide_editor_guides(child)

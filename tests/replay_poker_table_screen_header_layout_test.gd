@@ -9,5 +9,5 @@ func run() -> void:
 	assert(source.find("BACK TO REPLAYS") != -1)
 	assert(source.find("HIDE TIMELINE") != -1)
 	assert(source.find("_top_right_action_bar.offset_left = -540.0") != -1)
-	assert(source.find("_top_right_action_bar.offset_top = 24.0") != -1)
+	assert(source.find("_top_right_action_bar.offset_top = 16.0") != -1)
 	assert(source.find("_top_right_action_bar.offset_right = -24.0") != -1)

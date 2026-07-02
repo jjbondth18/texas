@@ -280,6 +280,26 @@ ReplayPokerTableScreen is a read-only renderer. Its only data source is the repl
 
 The official table remains isolated. The live `PokerTableScreen` scene and script are not used for replay execution, and future replay changes should continue to happen in the replay screen/adapter unless a change is purely shared visual component work. Future phases may remove extra copied UI, add replay-specific animations, and add an equity timeline.
 
+## Replay Equity Table
+
+ReplayPokerTableScreen uses a compact equity table instead of an equity curve. The table is replay-only and lives in the bottom-left HUD slot, replacing the live player profile card while preserving the middle `YOUR HAND` panel and right-side `REPLAY CONTROLS`.
+
+The table columns are:
+
+- `Seat`
+- `Player`
+- `Preflop`
+- `Flop`
+- `Turn`
+- `River`
+- `Final`
+
+Rows include only players recorded in the replay, sorted by objective `seat_index` and capped at nine players. Missing streets display `-`; insufficient card data displays `N/A`; folded players remain listed and show `Folded` after they leave active equity calculation. `Final` displays `Win`, `Loss`, `Folded`, `Split`, or `-` depending on replay results.
+
+The active replay step highlights the matching phase column: preflop, flop, turn, river, or final for showdown/hand-over steps. Equity values are produced by a replay-only deterministic Monte Carlo helper using recorded hole cards, board cards, and final results where available. The fixed seed makes the same replay render consistently.
+
+This table does not connect to the server, does not mutate wallet or gems, does not change replay records, and does not touch live `PokerTableScreen` logic. Future phases may add richer charts or player-perspective equity views.
+
 ## Future Phases
 
 Later replay work can add:
