@@ -2821,8 +2821,9 @@ func _build_replay_panel() -> void:
 
 	for hand_item in replay_records:
 		var hand: Dictionary = Dictionary(hand_item)
+		var preview_record: Dictionary = _load_replay_record_preview(hand)
 		var item := PanelContainer.new()
-		item.custom_minimum_size = Vector2(0, 88)
+		item.custom_minimum_size = Vector2(0, 96)
 		item.mouse_filter = Control.MOUSE_FILTER_STOP
 		item.tooltip_text = "Open static hand review"
 		item.gui_input.connect(_on_replay_item_gui_input.bind(hand))
@@ -2845,24 +2846,30 @@ func _build_replay_panel() -> void:
 		item_hbox.add_child(desc_vbox)
 		
 		var item_title := Label.new()
-		item_title.text = "Hand %s (%s)" % [str(hand.get("replay_id", "")), str(hand.get("mode", "Table"))]
+		item_title.text = _replay_list_title(hand, preview_record)
 		HomeTheme.make_font_settings(item_title, 13, Color(0.9, 0.92, 0.98))
 		desc_vbox.add_child(item_title)
 		
 		var item_time := Label.new()
-		item_time.text = str(hand.get("played_at", ""))
+		item_time.text = _replay_list_stakes_line(hand, preview_record)
 		HomeTheme.make_font_settings(item_time, 11, HomeTheme.MUTED)
 		desc_vbox.add_child(item_time)
 
 		var item_summary := Label.new()
-		item_summary.text = str(hand.get("table_name", ""))
+		item_summary.text = _replay_list_result_line(hand, preview_record)
 		item_summary.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		HomeTheme.make_font_settings(item_summary, 11, Color(0.70, 0.74, 0.92, 0.88))
 		desc_vbox.add_child(item_summary)
+
+		var item_played_at := Label.new()
+		item_played_at.text = _replay_list_time_label(hand)
+		item_played_at.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		HomeTheme.make_font_settings(item_played_at, 10, HomeTheme.MUTED)
+		desc_vbox.add_child(item_played_at)
 		
 		var item_res := Label.new()
-		var net_chips: int = int(hand.get("net_chips", 0))
-		item_res.text = str(hand.get("result", ""))
+		var net_chips: int = _replay_profit_value(hand)
+		item_res.text = _replay_profit_label(hand, preview_record)
 		HomeTheme.make_font_settings(item_res, 13, Color(0.2, 0.8, 0.3) if net_chips >= 0 else HomeTheme.PINK)
 		item_hbox.add_child(item_res)
 		
@@ -2890,38 +2897,27 @@ func _build_replay_panel() -> void:
 	right_vbox.add_child(prev_box)
 	_render_replay_detail_empty(not replay_records.is_empty())
 	
-	# Equity Timeline Premium Lock Box
+	# Compact placeholder for later replay analysis.
 	var equity_box := PanelContainer.new()
-	equity_box.custom_minimum_size = Vector2(0, 200)
+	equity_box.custom_minimum_size = Vector2(0, 78)
 	equity_box.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.014, 0.008, 0.022, 0.85), Color(1.0, 0.0, 0.5, 0.35), 8, 1.5))
 	var eq_vbox := VBoxContainer.new()
 	eq_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	eq_vbox.add_theme_constant_override("separation", 10)
+	eq_vbox.add_theme_constant_override("separation", 4)
 	equity_box.add_child(eq_vbox)
 	
 	var eq_title := Label.new()
-	eq_title.text = "STREET-BY-STREET EQUITY TIMELINE"
+	eq_title.text = "Equity Timeline"
 	HomeTheme.make_font_settings(eq_title, 15, HomeTheme.PINK)
 	eq_vbox.add_child(eq_title)
 	
 	var eq_lock_desc := Label.new()
-	eq_lock_desc.text = "Equity graphs are planned for a later phase. This build only records hand data and does not charge gems."
+	eq_lock_desc.text = "Coming in a later update."
 	eq_lock_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	eq_lock_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	HomeTheme.make_font_settings(eq_lock_desc, 12, HomeTheme.MUTED)
 	eq_vbox.add_child(eq_lock_desc)
-	
-	var upgrade_btn := Button.new()
-	upgrade_btn.text = "REPLAY VIEWER COMING SOON"
-	upgrade_btn.disabled = true
-	upgrade_btn.custom_minimum_size = Vector2(240, 36)
-	upgrade_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	upgrade_btn.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.016, 0.018, 0.048, 0.56), Color(1.0, 0.0, 0.5, 0.80), 18))
-	upgrade_btn.add_theme_color_override("font_color", Color(1, 1, 1, 0.9))
-	upgrade_btn.add_theme_color_override("font_hover_color", Color(1, 1, 1, 1))
-	upgrade_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	eq_vbox.add_child(upgrade_btn)
-	
+
 	right_vbox.add_child(equity_box)
 
 
@@ -2990,14 +2986,15 @@ func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
 	_replay_detail_vbox.add_child(summary_panel)
 
 	var results: Dictionary = Dictionary(record.get("results", {}))
+	var players: Array = Array(record.get("players", []))
 	_add_replay_metric(summary_grid, "Mode", _mode_label_for_replay(str(record.get("mode", ""))))
 	_add_replay_metric(summary_grid, "Room", _replay_room_label(record))
-	_add_replay_metric(summary_grid, "Blinds", "%s / %s" % [_format_number(int(record.get("small_blind", 0))), _format_number(int(record.get("big_blind", 0)))])
-	_add_replay_metric(summary_grid, "Hand", str(record.get("hand_number", hand_id)))
-	_add_replay_metric(summary_grid, "Result", str(index_entry.get("result", index_entry.get("player_result", "-"))))
-	_add_replay_metric(summary_grid, "Profit", _format_replay_delta(int(index_entry.get("net_chips", 0))))
-	_add_replay_metric(summary_grid, "Final Pot", _format_number(int(results.get("final_pot", 0))))
-	_add_replay_metric(summary_grid, "Winner", _winner_summary(results))
+	_add_replay_metric(summary_grid, "Blinds", _replay_blinds_label(record))
+	_add_replay_metric(summary_grid, "Hand", _replay_hand_label(record, hand_id))
+	_add_replay_metric(summary_grid, "Result", _replay_result_label(record, index_entry))
+	_add_replay_metric(summary_grid, "Profit", _replay_profit_label(index_entry, record))
+	_add_replay_metric(summary_grid, "Final Pot", _replay_final_pot_label(results))
+	_add_replay_metric(summary_grid, "Winner", _winner_summary(results, players))
 
 	var body_hbox := HBoxContainer.new()
 	body_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -3007,7 +3004,7 @@ func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
 	var players_box := _make_replay_section("PLAYERS", Vector2(260, 0))
 	body_hbox.add_child(players_box)
 	var players_vbox: VBoxContainer = players_box.get_node("Content") as VBoxContainer
-	_add_replay_players(players_vbox, Array(record.get("players", [])))
+	_add_replay_players(players_vbox, players)
 
 	var board_box := _make_replay_section("BOARD & RESULT", Vector2(230, 0))
 	body_hbox.add_child(board_box)
@@ -3018,7 +3015,7 @@ func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
 	actions_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body_hbox.add_child(actions_box)
 	var actions_vbox: VBoxContainer = actions_box.get_node("Content") as VBoxContainer
-	_add_replay_actions(actions_vbox, Array(record.get("actions", [])))
+	_add_replay_actions(actions_vbox, Array(record.get("actions", [])), players)
 
 	var back_button := _make_replay_back_button()
 	_replay_detail_vbox.add_child(back_button)
@@ -3083,59 +3080,90 @@ func _add_replay_players(parent: VBoxContainer, players: Array) -> void:
 		var player: Dictionary = Dictionary(player_item)
 		var start_stack: int = int(player.get("starting_stack", 0))
 		var end_stack: int = int(player.get("ending_stack", 0))
-		var line := Label.new()
-		line.text = "Seat %d - %s\nCards: %s\nStack: %s -> %s (%s)\nStatus: %s" % [
+		var delta: int = end_stack - start_stack
+		var card_text: String = _card_list_text(Array(player.get("hole_cards", [])))
+		var status_text: String = str(player.get("final_status", "-"))
+		if status_text == "":
+			status_text = "-"
+		var player_box := VBoxContainer.new()
+		player_box.add_theme_constant_override("separation", 2)
+		parent.add_child(player_box)
+		var name_line := Label.new()
+		name_line.text = "Seat %d - %s" % [
 			int(player.get("seat_index", -1)),
 			str(player.get("player_name", player.get("player_id", "Unknown"))),
-			_card_list_text(Array(player.get("hole_cards", []))),
+		]
+		HomeTheme.make_font_settings(name_line, 12, Color(0.92, 0.95, 1.0, 0.96))
+		player_box.add_child(name_line)
+		_add_replay_text(player_box, "Cards: %s" % card_text, Color(0.82, 0.86, 1.0, 0.92))
+		var stack_line := Label.new()
+		stack_line.text = "Stack: %s -> %s (%s)" % [
 			_format_number(start_stack),
 			_format_number(end_stack),
-			_format_replay_delta(end_stack - start_stack),
-			str(player.get("final_status", "-")),
+			_format_replay_delta(delta),
 		]
-		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		HomeTheme.make_font_settings(line, 11, Color(0.84, 0.88, 1.0, 0.94))
-		parent.add_child(line)
+		stack_line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		HomeTheme.make_font_settings(stack_line, 11, _replay_delta_color(delta))
+		player_box.add_child(stack_line)
+		_add_replay_text(player_box, "Status: %s" % _title_case_replay_status(status_text), Color(0.78, 0.82, 0.95, 0.92))
 
 
 func _add_replay_board_and_results(parent: VBoxContainer, record: Dictionary) -> void:
 	var community: Dictionary = Dictionary(record.get("community_cards", {}))
+	var flop: Array = Array(community.get("flop", []))
+	var turn: Array = Array(community.get("turn", []))
+	var river: Array = Array(community.get("river", []))
 	_add_replay_text(parent, "Board:", HomeTheme.CYAN)
-	_add_replay_text(parent, "Flop: %s" % _card_list_text(Array(community.get("flop", []))), Color(0.86, 0.90, 1.0))
-	_add_replay_text(parent, "Turn: %s" % _card_list_text(Array(community.get("turn", []))), Color(0.86, 0.90, 1.0))
-	_add_replay_text(parent, "River: %s" % _card_list_text(Array(community.get("river", []))), Color(0.86, 0.90, 1.0))
+	if flop.is_empty() and turn.is_empty() and river.is_empty():
+		_add_replay_text(parent, "No board cards recorded.", HomeTheme.MUTED)
+	else:
+		_add_replay_text(parent, "Flop: %s" % _card_list_text(flop), Color(0.86, 0.90, 1.0))
+		_add_replay_text(parent, "Turn: %s" % _card_list_text(turn), Color(0.86, 0.90, 1.0))
+		_add_replay_text(parent, "River: %s" % _card_list_text(river), Color(0.86, 0.90, 1.0))
 	var results: Dictionary = Dictionary(record.get("results", {}))
+	var players: Array = Array(record.get("players", []))
 	_add_replay_text(parent, "Results:", HomeTheme.CYAN)
 	var winners: Array = Array(results.get("winners", []))
 	if winners.is_empty():
-		_add_replay_text(parent, "Winner: -", HomeTheme.MUTED)
+		_add_replay_text(parent, "No results recorded.", HomeTheme.MUTED)
 	else:
 		for winner_item in winners:
 			var winner: Dictionary = Dictionary(winner_item)
-			_add_replay_text(parent, "Seat %d wins %s (%s)" % [
-				int(winner.get("winner_seat", -1)),
+			var winner_seat: int = _winner_seat(winner)
+			var winner_name: String = _player_name_for_seat(players, winner_seat, str(winner.get("winner_player_id", "")))
+			_add_replay_text(parent, "Seat %d - %s wins %s" % [
+				winner_seat,
+				winner_name,
 				_format_number(int(winner.get("amount_won", 0))),
-				str(winner.get("hand_rank_text", "-")),
 			], Color(0.92, 0.84, 0.45, 0.96))
+			_add_replay_text(parent, "Hand: %s" % _winner_rank_text(winner, results), Color(0.82, 0.86, 1.0, 0.92))
 	var side_pots: Array = Array(results.get("side_pots", []))
 	if not side_pots.is_empty():
 		_add_replay_text(parent, "Side pots: %d" % side_pots.size(), HomeTheme.MUTED)
 
 
-func _add_replay_actions(parent: VBoxContainer, actions: Array) -> void:
+func _add_replay_actions(parent: VBoxContainer, actions: Array, players: Array) -> void:
 	var sorted_actions: Array = actions.duplicate(true)
 	sorted_actions.sort_custom(func(a, b): return int(Dictionary(a).get("seq", 0)) < int(Dictionary(b).get("seq", 0)))
-	if sorted_actions.is_empty():
-		_add_replay_text(parent, "No action timeline.", HomeTheme.MUTED)
-		return
-	var current_street := ""
+	var filtered_actions: Array = []
 	for action_item in sorted_actions:
+		var candidate_action: Dictionary = Dictionary(action_item)
+		if _is_replay_debug_action(candidate_action):
+			continue
+		filtered_actions.append(candidate_action)
+	if filtered_actions.is_empty():
+		_add_replay_text(parent, "No actions recorded.", HomeTheme.MUTED)
+		return
+	var current_street: String = ""
+	var viewer_order: int = 1
+	for action_item in filtered_actions:
 		var action: Dictionary = Dictionary(action_item)
 		var street: String = str(action.get("street", ""))
 		if street != current_street:
 			current_street = street
 			_add_replay_text(parent, _street_label(street), HomeTheme.PINK)
-		_add_replay_text(parent, "%d. %s" % [int(action.get("seq", 0)), _action_line(action)], Color(0.82, 0.86, 1.0, 0.92))
+		_add_replay_text(parent, "%d. %s" % [viewer_order, _action_line(action, players)], Color(0.82, 0.86, 1.0, 0.92))
+		viewer_order += 1
 
 
 func _add_replay_text(parent: VBoxContainer, text: String, color: Color) -> void:
@@ -3159,28 +3187,53 @@ func _card_list_text(cards: Array) -> String:
 	return " ".join(codes)
 
 
-func _action_line(action: Dictionary) -> String:
-	var message: String = str(action.get("message", ""))
-	if message != "":
-		return message
-	var actor: String = str(action.get("actor_player_id", ""))
-	if actor == "":
-		actor = "Seat %d" % int(action.get("actor_seat", -1))
+func _action_line(action: Dictionary, players: Array = []) -> String:
+	var actor: String = _action_actor_name(action, players)
 	var action_name: String = str(action.get("action", "-"))
 	var amount: int = int(action.get("amount", 0))
-	return "%s %s %s" % [actor, action_name, _format_number(amount) if amount > 0 else ""]
+	var bet_to: int = int(action.get("bet_to", 0))
+	match action_name:
+		"small_blind":
+			return "%s posts small blind %s" % [actor, _format_number(amount)]
+		"big_blind":
+			return "%s posts big blind %s" % [actor, _format_number(amount)]
+		"call":
+			return "%s calls %s" % [actor, _format_number(amount)]
+		"check":
+			return "%s checks" % actor
+		"fold":
+			return "%s folds" % actor
+		"bet":
+			return "%s bets %s" % [actor, _format_number(amount)]
+		"raise":
+			var raise_to: int = bet_to if bet_to > 0 else amount
+			return "%s raises to %s" % [actor, _format_number(raise_to)]
+		"all_in":
+			return "%s goes all-in %s" % [actor, _format_number(amount)]
+		"timeout_auto_check":
+			return "%s timed out. Auto-check." % actor
+		"timeout_auto_fold":
+			return "%s timed out. Auto-fold." % actor
+	var message: String = str(action.get("message", "")).strip_edges()
+	if message != "" and not _looks_like_replay_debug_text(message):
+		return message
+	var amount_suffix: String = ""
+	if amount > 0:
+		amount_suffix = " %s" % _format_number(amount)
+	return "%s %s%s" % [actor, action_name.replace("_", " "), amount_suffix]
 
 
-func _winner_summary(results: Dictionary) -> String:
+func _winner_summary(results: Dictionary, players: Array = []) -> String:
 	var winners: Array = Array(results.get("winners", []))
 	if winners.is_empty():
 		return "-"
 	var labels: Array[String] = []
 	for winner_item in winners:
 		var winner: Dictionary = Dictionary(winner_item)
-		var label: String = str(winner.get("winner_player_id", ""))
+		var winner_seat: int = _winner_seat(winner)
+		var label: String = _player_name_for_seat(players, winner_seat, str(winner.get("winner_player_id", "")))
 		if label == "":
-			label = "Seat %d" % int(winner.get("winner_seat", -1))
+			label = "Seat %d" % winner_seat
 		labels.append(label)
 	return ", ".join(labels)
 
@@ -3188,7 +3241,7 @@ func _winner_summary(results: Dictionary) -> String:
 func _replay_room_label(record: Dictionary) -> String:
 	var room_code: String = str(record.get("room_code", ""))
 	if room_code != "":
-		return room_code
+		return "Room Code %s" % room_code
 	var room_id: String = str(record.get("room_id", ""))
 	return room_id if room_id != "" else "-"
 
@@ -3196,31 +3249,31 @@ func _replay_room_label(record: Dictionary) -> String:
 func _mode_label_for_replay(mode: String) -> String:
 	match mode:
 		"public":
-			return "Public"
+			return "Public Table"
 		"private":
-			return "Private"
+			return "Private Room"
 		"training":
 			return "Training"
 		"local_warmup":
-			return "Warm-up"
+			return "Local Warm-up"
 	return "Unknown"
 
 
 func _street_label(street: String) -> String:
 	match street:
 		"preflop":
-			return "Preflop"
+			return "PREFLOP"
 		"flop":
-			return "Flop"
+			return "FLOP"
 		"turn":
-			return "Turn"
+			return "TURN"
 		"river":
-			return "River"
+			return "RIVER"
 		"showdown":
-			return "Showdown"
+			return "SHOWDOWN"
 		"hand_over":
-			return "Hand Over"
-	return "Other"
+			return "HAND OVER"
+	return "OTHER"
 
 
 func _format_replay_delta(value: int) -> String:
@@ -3229,6 +3282,198 @@ func _format_replay_delta(value: int) -> String:
 	if value < 0:
 		return "-%s" % _format_number(abs(value))
 	return _format_number(value)
+
+
+func _load_replay_record_preview(index_entry: Dictionary) -> Dictionary:
+	var file_path: String = str(index_entry.get("file_path", ""))
+	if file_path == "" or not FileAccess.file_exists(file_path):
+		return {}
+	return ReplayServiceScript.new().load_replay_record(file_path)
+
+
+func _replay_list_title(index_entry: Dictionary, record: Dictionary) -> String:
+	var hand_id: String = str(record.get("hand_id", index_entry.get("replay_id", "")))
+	if hand_id == "":
+		return "Hand #Unknown"
+	return "Hand #%s" % _compact_hand_number(hand_id)
+
+
+func _replay_list_stakes_line(index_entry: Dictionary, record: Dictionary) -> String:
+	var mode_label: String = _mode_label_for_replay(str(record.get("mode", "")))
+	if mode_label == "Unknown":
+		mode_label = str(index_entry.get("mode", "Table"))
+	var blinds: String = _replay_blinds_label(record)
+	var played_at: String = str(index_entry.get("played_at", ""))
+	if blinds != "-":
+		return "%s - NLH %s" % [mode_label, blinds]
+	if played_at != "":
+		return "%s - %s" % [mode_label, played_at]
+	return mode_label
+
+
+func _replay_list_result_line(index_entry: Dictionary, record: Dictionary) -> String:
+	var results: Dictionary = Dictionary(record.get("results", {}))
+	var players: Array = Array(record.get("players", []))
+	var winner_text: String = _winner_summary(results, players)
+	var pot_text: String = _replay_final_pot_label(results)
+	if winner_text == "-" and pot_text == "-":
+		return "Winner: - - Pot -"
+	return "Winner: %s - Pot %s" % [winner_text, pot_text]
+
+
+func _replay_list_time_label(index_entry: Dictionary) -> String:
+	var played_at: String = str(index_entry.get("played_at", ""))
+	return played_at if played_at != "" else "-"
+
+
+func _replay_blinds_label(record: Dictionary) -> String:
+	var small_blind: int = int(record.get("small_blind", 0))
+	var big_blind: int = int(record.get("big_blind", 0))
+	if small_blind <= 0 and big_blind <= 0:
+		return "-"
+	return "%s / %s" % [_format_number(small_blind), _format_number(big_blind)]
+
+
+func _replay_hand_label(record: Dictionary, hand_id: String) -> String:
+	var hand_number: int = int(record.get("hand_number", 0))
+	var max_hands: int = int(record.get("max_hands", 0))
+	if hand_number > 0 and max_hands > 0:
+		return "%d / %d" % [hand_number, max_hands]
+	if hand_number > 0 and max_hands == 0:
+		return "%d / Unlimited" % hand_number
+	return hand_id if hand_id != "" else "-"
+
+
+func _replay_result_label(record: Dictionary, index_entry: Dictionary) -> String:
+	var mode: String = str(record.get("mode", ""))
+	if mode in ["training", "local_warmup"]:
+		return "Practice"
+	var profit: int = _replay_profit_value(index_entry)
+	if profit > 0:
+		return "Win"
+	if profit < 0:
+		return "Loss"
+	var fallback: String = str(index_entry.get("result", index_entry.get("player_result", "")))
+	return fallback if fallback != "" else "-"
+
+
+func _replay_profit_label(index_entry: Dictionary, record: Dictionary = {}) -> String:
+	var mode: String = str(record.get("mode", ""))
+	if mode in ["training", "local_warmup"]:
+		return "Practice"
+	if not index_entry.has("net_chips") and not index_entry.has("profit"):
+		return "-"
+	return "%s Chips" % _format_replay_delta(_replay_profit_value(index_entry))
+
+
+func _replay_profit_value(index_entry: Dictionary) -> int:
+	if index_entry.has("net_chips"):
+		return int(index_entry.get("net_chips", 0))
+	return int(index_entry.get("profit", 0))
+
+
+func _replay_final_pot_label(results: Dictionary) -> String:
+	var final_pot: int = int(results.get("final_pot", 0))
+	if final_pot <= 0:
+		return "-"
+	return _format_number(final_pot)
+
+
+func _compact_hand_number(hand_id: String) -> String:
+	var compact: String = hand_id
+	if compact.begins_with("hand_"):
+		compact = compact.substr(5)
+	if compact == "":
+		return "Unknown"
+	return compact
+
+
+func _replay_delta_color(delta: int) -> Color:
+	if delta > 0:
+		return Color(0.28, 0.95, 0.58, 0.96)
+	if delta < 0:
+		return HomeTheme.PINK
+	return Color(0.78, 0.82, 0.95, 0.92)
+
+
+func _title_case_replay_status(status: String) -> String:
+	if status == "-" or status == "":
+		return "-"
+	var words: Array[String] = []
+	for word_item in status.replace("_", " ").split(" ", false):
+		var word: String = str(word_item)
+		words.append(word.substr(0, 1).to_upper() + word.substr(1).to_lower())
+	return " ".join(words)
+
+
+func _winner_seat(winner: Dictionary) -> int:
+	if winner.has("winner_seat"):
+		return int(winner.get("winner_seat", -1))
+	if winner.has("seat_id"):
+		return int(winner.get("seat_id", -1))
+	if winner.has("seat"):
+		return int(winner.get("seat", -1))
+	return int(winner.get("seat_index", -1))
+
+
+func _winner_rank_text(winner: Dictionary, results: Dictionary) -> String:
+	var rank: String = str(winner.get("hand_rank_text", ""))
+	if rank == "":
+		rank = str(results.get("hand_rank_text", ""))
+	return rank if rank != "" else "-"
+
+
+func _player_name_for_seat(players: Array, seat_index: int, fallback: String = "") -> String:
+	for player_item in players:
+		var player: Dictionary = Dictionary(player_item)
+		if int(player.get("seat_index", -1)) == seat_index:
+			var player_name: String = str(player.get("player_name", ""))
+			if player_name != "":
+				return player_name
+			var player_id: String = str(player.get("player_id", ""))
+			if player_id != "":
+				return player_id
+	return fallback
+
+
+func _player_name_for_id(players: Array, player_id: String, fallback: String = "") -> String:
+	if player_id == "":
+		return fallback
+	for player_item in players:
+		var player: Dictionary = Dictionary(player_item)
+		if str(player.get("player_id", "")) == player_id:
+			var player_name: String = str(player.get("player_name", ""))
+			if player_name != "":
+				return player_name
+			return player_id
+	return fallback
+
+
+func _action_actor_name(action: Dictionary, players: Array) -> String:
+	var actor_seat: int = int(action.get("actor_seat", action.get("seat_id", -1)))
+	var actor_player_id: String = str(action.get("actor_player_id", ""))
+	var fallback: String = _player_name_for_id(players, actor_player_id, actor_player_id)
+	var name: String = _player_name_for_seat(players, actor_seat, fallback)
+	if name != "":
+		return name
+	if actor_seat >= 0:
+		return "Seat %d" % actor_seat
+	return "Unknown"
+
+
+func _is_replay_debug_action(action: Dictionary) -> bool:
+	var message: String = str(action.get("message", ""))
+	var action_name: String = str(action.get("action", ""))
+	return _looks_like_replay_debug_text(message) or _looks_like_replay_debug_text(action_name)
+
+
+func _looks_like_replay_debug_text(text: String) -> bool:
+	var trimmed: String = text.strip_edges()
+	if trimmed == "":
+		return false
+	if trimmed.begins_with("----") or trimmed.ends_with("----"):
+		return true
+	return trimmed.to_lower().find("---- hand") != -1
 
 
 func _build_store_panel() -> void:

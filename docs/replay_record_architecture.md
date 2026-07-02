@@ -87,6 +87,45 @@ Missing fields are tolerated. Missing hole cards display `Unknown`, missing winn
 
 Viewer v1 does not do playback animation, equity charts, cloud loading, gem checks, gem spending, store integration, or paid unlocks.
 
+## Replay Viewer v1 Display Rules
+
+Replay list rows are formatted for reading, not debugging:
+
+- title: `Hand #000005`
+- stakes line: `Public Table - NLH 50 / 100`
+- result line: `Winner: Luna0581 - Pot 1,000`
+- timestamp line: the `ended_at` / index timestamp when available
+- right-side result: `+200 Chips`, `-100 Chips`, or `Practice`
+
+The detail top summary must show values beside every label:
+
+- `MODE`: `Public Table`, `Private Room`, `Training`, `Local Warm-up`, or `Unknown`
+- `ROOM`: `Room Code A7K9`, `room_2`, or `-`
+- `BLINDS`: `50 / 100` or `-`
+- `HAND`: `5 / 10`, `5 / Unlimited`, `hand_000005`, or `-`
+- `RESULT`: `Win`, `Loss`, `Practice`, or `-`
+- `PROFIT`: `+200 Chips`, `-100 Chips`, `Practice`, or `-`
+- `FINAL POT`: formatted chip amount or `-`
+- `WINNER`: player name resolved from `seat_index` when possible, otherwise seat/player id, or `-`
+
+Players are sorted by `seat_index` and displayed as individual blocks:
+
+- `Seat 5 - Luna0581`
+- `Cards: KH 7S` or `Cards: Unknown`
+- `Stack: 5,000 -> 5,500 (+500)`
+- `Status: Winner`, `Folded`, `Showdown`, `Lost`, or `-`
+
+Board and result display is grouped:
+
+- `Flop`, `Turn`, and `River` are shown separately.
+- If no board cards exist, show `No board cards recorded.`
+- Winners display as `Seat 5 - Luna0581 wins 1,000` plus `Hand: One Pair` where available.
+- If no result rows exist, show `No results recorded.`
+
+Action timeline display is grouped by street (`PREFLOP`, `FLOP`, `TURN`, `RIVER`, `SHOWDOWN`) and uses viewer-local numbering from 1. Debug separator messages such as `---- Hand 1 ----` are filtered out instead of rendered. Action names are converted to readable phrases such as `posts small blind`, `checks`, `calls 50`, `raises to 300`, and `goes all-in 1,000`.
+
+The equity timeline remains a compact placeholder: `Equity Timeline - Coming in a later update.` Viewer v1 must not show unlock prompts, charge gems, or imply premium replay access.
+
 ## Future Phases
 
 Later replay work can add:

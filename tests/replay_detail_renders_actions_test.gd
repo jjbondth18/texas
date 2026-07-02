@@ -5,5 +5,5 @@ func run() -> void:
 	assert(source.find("_add_replay_actions") != -1)
 	assert(source.find("_action_line") != -1)
 	assert(source.find("_street_label") != -1)
-	assert(source.find("Preflop") != -1)
-	assert(source.find("Showdown") != -1)
+	assert(source.find("PREFLOP") != -1)
+	assert(source.find("SHOWDOWN") != -1)
