@@ -71,7 +71,7 @@ var _replay_playback_timeline_vbox: VBoxContainer
 var _replay_playback_step_label: Label
 var _replay_playback_play_button: Button
 var _replay_playback_speed_button: Button
-var _replay_poker_table_screen: ReplayPokerTableScreen
+var _replay_poker_table_screen: Control
 var _store_panel: PanelContainer
 var _profile_panel: PanelContainer
 var _settings_panel: PanelContainer
@@ -3141,18 +3141,19 @@ func _render_replay_playback() -> void:
 	_set_replay_playback_layout(true)
 	_show_replay_fullscreen_overlay()
 	_replace_replay_children(_replay_fullscreen_overlay)
-	_replay_poker_table_screen = ReplayPokerTableScreenScene.instantiate() as ReplayPokerTableScreen
+	_replay_poker_table_screen = ReplayPokerTableScreenScene.instantiate() as Control
 	_replay_poker_table_screen.name = "ReplayPokerTableScreen"
 	_replay_poker_table_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_replay_poker_table_screen.back_to_detail_requested.connect(_return_to_replay_detail)
-	_replay_poker_table_screen.back_to_replays_requested.connect(_return_to_replay_list_from_playback)
-	_replay_poker_table_screen.previous_step_requested.connect(_replay_playback_prev)
-	_replay_poker_table_screen.next_step_requested.connect(_replay_playback_next)
-	_replay_poker_table_screen.playback_toggle_requested.connect(_toggle_replay_playback)
-	_replay_poker_table_screen.speed_toggle_requested.connect(_toggle_replay_playback_speed)
-	_replay_poker_table_screen.timeline_toggle_requested.connect(_toggle_replay_fullscreen_timeline)
+	_replay_poker_table_screen.connect("back_to_detail_requested", Callable(self, "_return_to_replay_detail"))
+	_replay_poker_table_screen.connect("back_to_replays_requested", Callable(self, "_return_to_replay_list_from_playback"))
+	_replay_poker_table_screen.connect("previous_step_requested", Callable(self, "_replay_playback_prev"))
+	_replay_poker_table_screen.connect("next_step_requested", Callable(self, "_replay_playback_next"))
+	_replay_poker_table_screen.connect("playback_toggle_requested", Callable(self, "_toggle_replay_playback"))
+	_replay_poker_table_screen.connect("speed_toggle_requested", Callable(self, "_toggle_replay_playback_speed"))
+	_replay_poker_table_screen.connect("timeline_toggle_requested", Callable(self, "_toggle_replay_fullscreen_timeline"))
 	_replay_fullscreen_overlay.add_child(_replay_poker_table_screen)
-	_replay_poker_table_screen.set_replay_context(_replay_playback_record, _replay_playback_index_entry, _steps_with_timeline_text(_replay_playback_steps))
+	if _replay_poker_table_screen.has_method("set_replay_context"):
+		_replay_poker_table_screen.call("set_replay_context", _replay_playback_record, _replay_playback_index_entry, _steps_with_timeline_text(_replay_playback_steps))
 	_refresh_replay_playback_view()
 
 
@@ -3205,8 +3206,8 @@ func _hide_replay_fullscreen_overlay() -> void:
 
 func _toggle_replay_fullscreen_timeline() -> void:
 	_replay_fullscreen_timeline_visible = not _replay_fullscreen_timeline_visible
-	if _replay_poker_table_screen != null:
-		_replay_poker_table_screen.set_timeline_visible(_replay_fullscreen_timeline_visible)
+	if _replay_poker_table_screen != null and _replay_poker_table_screen.has_method("set_timeline_visible"):
+		_replay_poker_table_screen.call("set_timeline_visible", _replay_fullscreen_timeline_visible)
 	_apply_replay_fullscreen_layout()
 	_refresh_replay_playback_view()
 
@@ -3332,8 +3333,9 @@ func _stop_replay_playback() -> void:
 func _refresh_replay_playback_view() -> void:
 	var playback_state: Dictionary = _replay_playback_state_for_step(_replay_playback_record, _replay_playback_step)
 	var players: Array = Array(playback_state.get("players", []))
-	if _replay_poker_table_screen != null:
-		_replay_poker_table_screen.render_replay_state(
+	if _replay_poker_table_screen != null and _replay_poker_table_screen.has_method("render_replay_state"):
+		_replay_poker_table_screen.call(
+			"render_replay_state",
 			playback_state,
 			_replay_playback_step,
 			_replay_playback_steps.size(),
