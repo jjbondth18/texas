@@ -66,6 +66,7 @@ const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
 const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
 const LocalMockBackendScript := preload("res://scripts/services/local_mock_backend.gd")
 const StoreMockServiceScript := preload("res://scripts/services/store_mock_service.gd")
+const ReplayServiceScript := preload("res://scripts/services/replay_service.gd")
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 const SettingsServiceScript := preload("res://scripts/services/settings_service.gd")
@@ -2717,15 +2718,21 @@ func _build_replay_panel() -> void:
 	list_vbox.add_theme_constant_override("separation", 10)
 	list_scroll.add_child(list_vbox)
 	
-	var mock_hands := [
-		{"id": "#1482", "mode": "Quick Play", "result": "+3,450 Chips", "win": true, "time": "2 mins ago"},
-		{"id": "#1481", "mode": "Cash Table", "result": "-1,250 Chips", "win": false, "time": "12 mins ago"},
-		{"id": "#1480", "mode": "Private Table", "result": "+800 Chips", "win": true, "time": "45 mins ago"},
-		{"id": "#1479", "mode": "Quick Play", "result": "+450 Chips", "win": true, "time": "1 hour ago"},
-		{"id": "#1478", "mode": "Training", "result": "+1,200 Chips", "win": true, "time": "2 hours ago"}
-	]
+	var replay_view: Dictionary = ReplayServiceScript.new().get_replay_view_model()
+	var replay_records: Array = Array(replay_view.get("records", []))
 	
-	for hand in mock_hands:
+	if replay_records.is_empty():
+		var empty_label := Label.new()
+		empty_label.text = "No hands recorded yet.\nPlay a table to generate replay records."
+		empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty_label.custom_minimum_size = Vector2(0, 160)
+		HomeTheme.make_font_settings(empty_label, 14, HomeTheme.MUTED)
+		list_vbox.add_child(empty_label)
+
+	for hand_item in replay_records:
+		var hand: Dictionary = Dictionary(hand_item)
 		var item := PanelContainer.new()
 		item.custom_minimum_size = Vector2(0, 72)
 		item.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -2745,18 +2752,19 @@ func _build_replay_panel() -> void:
 		item_hbox.add_child(desc_vbox)
 		
 		var item_title := Label.new()
-		item_title.text = "Hand " + hand["id"] + " (" + hand["mode"] + ")"
+		item_title.text = "Hand %s (%s)" % [str(hand.get("replay_id", "")), str(hand.get("mode", "Table"))]
 		HomeTheme.make_font_settings(item_title, 13, Color(0.9, 0.92, 0.98))
 		desc_vbox.add_child(item_title)
 		
 		var item_time := Label.new()
-		item_time.text = hand["time"]
+		item_time.text = str(hand.get("played_at", ""))
 		HomeTheme.make_font_settings(item_time, 11, HomeTheme.MUTED)
 		desc_vbox.add_child(item_time)
 		
 		var item_res := Label.new()
-		item_res.text = hand["result"]
-		HomeTheme.make_font_settings(item_res, 13, Color(0.2, 0.8, 0.3) if hand["win"] else HomeTheme.PINK)
+		var net_chips: int = int(hand.get("net_chips", 0))
+		item_res.text = str(hand.get("result", ""))
+		HomeTheme.make_font_settings(item_res, 13, Color(0.2, 0.8, 0.3) if net_chips >= 0 else HomeTheme.PINK)
 		item_hbox.add_child(item_res)
 		
 		list_vbox.add_child(item)
@@ -2777,7 +2785,7 @@ func _build_replay_panel() -> void:
 	prev_box.add_child(prev_vbox)
 	
 	var prev_title := Label.new()
-	prev_title.text = "HAND REVIEW — HAND #1482"
+	prev_title.text = "HAND RECORDS"
 	HomeTheme.make_font_settings(prev_title, 16, HomeTheme.CYAN)
 	prev_vbox.add_child(prev_title)
 	
@@ -2786,12 +2794,12 @@ func _build_replay_panel() -> void:
 	prev_vbox.add_child(cards_hbox)
 	
 	var cards_desc := Label.new()
-	cards_desc.text = "Hero Pocket: [A♠, K♥]  |  Board: [Q♦, J♥, 10♣, 7♠, 2♣]"
+	cards_desc.text = "Replay records are saved locally after each completed hand."
 	HomeTheme.make_font_settings(cards_desc, 13, Color(0.85, 0.90, 1.0))
 	cards_hbox.add_child(cards_desc)
 	
 	var showdown_desc := Label.new()
-	showdown_desc.text = "Showdown: Hero wins pot of 3,450 Chips with Straight (Ace High)."
+	showdown_desc.text = "Step-by-step playback and analysis will be added in a later replay phase."
 	HomeTheme.make_font_settings(showdown_desc, 13, Color(0.72, 0.76, 0.92))
 	prev_vbox.add_child(showdown_desc)
 	
@@ -2807,19 +2815,20 @@ func _build_replay_panel() -> void:
 	equity_box.add_child(eq_vbox)
 	
 	var eq_title := Label.new()
-	eq_title.text = "🔒 STREET-BY-STREET EQUITY TIMELINE"
+	eq_title.text = "STREET-BY-STREET EQUITY TIMELINE"
 	HomeTheme.make_font_settings(eq_title, 15, HomeTheme.PINK)
 	eq_vbox.add_child(eq_title)
 	
 	var eq_lock_desc := Label.new()
-	eq_lock_desc.text = "Unlock Replay Pro to view street-by-street win probability graphs, range charts, and premium GTO analysis."
+	eq_lock_desc.text = "Equity graphs are planned for a later phase. This build only records hand data and does not charge gems."
 	eq_lock_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	eq_lock_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	HomeTheme.make_font_settings(eq_lock_desc, 12, HomeTheme.MUTED)
 	eq_vbox.add_child(eq_lock_desc)
 	
 	var upgrade_btn := Button.new()
-	upgrade_btn.text = "UPGRADE TO REPLAY PRO"
+	upgrade_btn.text = "REPLAY VIEWER COMING SOON"
+	upgrade_btn.disabled = true
 	upgrade_btn.custom_minimum_size = Vector2(240, 36)
 	upgrade_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	upgrade_btn.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.016, 0.018, 0.048, 0.56), Color(1.0, 0.0, 0.5, 0.80), 18))

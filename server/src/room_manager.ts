@@ -13,6 +13,7 @@ import { ResultRepository } from "./db/result_repository.js";
 import { WalletRepository } from "./db/wallet_repository.js";
 import { AVATAR_CATALOG, findAvatarCatalogItem } from "./avatar_catalog.js";
 import { config } from "./config.js";
+import { buildHandReplayRecord } from "./replay.js";
 
 interface Client {
   id: string;
@@ -1116,6 +1117,14 @@ export class RoomManager {
 
   private broadcast(room: Room): void {
     const roomState = this.publicRoomState(room);
+    const replayRecord = room.table.phase === "hand_over"
+      ? buildHandReplayRecord(room.table, {
+          roomCode: room.roomCode,
+          mode: room.visibility === "private" ? "private" : "public",
+          tableType: room.tableType,
+          maxHands: room.handCount,
+        })
+      : undefined;
     const snapshot = {
       ...room.table.publicSnapshot(),
       buy_in: room.buyIn,
@@ -1141,6 +1150,7 @@ export class RoomManager {
       action_timeout_ms: this.actionTimeoutMs(room),
       action_deadline_at: room.actionDeadlineAt,
       dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
+      ...(replayRecord ? { replay_record: replayRecord } : {}),
       table_info: this.tableSnapshot(room),
     };
     for (const playerId of room.clients) {

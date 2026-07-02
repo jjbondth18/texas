@@ -15,18 +15,18 @@ var analysis_locked := true
 var favorite := false
 
 func _init(data: Dictionary = {}) -> void:
-	replay_id = String(data.get("replay_id", ""))
-	played_at = String(data.get("played_at", ""))
-	mode = String(data.get("mode", ""))
-	table_name = String(data.get("table_name", ""))
-	result = String(data.get("result", ""))
+	replay_id = str(data.get("replay_id", ""))
+	played_at = str(data.get("played_at", ""))
+	mode = str(data.get("mode", ""))
+	table_name = str(data.get("table_name", ""))
+	result = str(data.get("result", ""))
 	net_chips = int(data.get("net_chips", 0))
 	hero_cards = []
 	for card in Array(data.get("hero_cards", [])):
 		hero_cards.append(Dictionary(card))
 	final_board = []
 	for card_code in Array(data.get("final_board", [])):
-		final_board.append(String(card_code))
+		final_board.append(str(card_code))
 	biggest_pot = int(data.get("biggest_pot", 0))
 	analysis_available = bool(data.get("analysis_available", false))
 	analysis_locked = bool(data.get("analysis_locked", true))

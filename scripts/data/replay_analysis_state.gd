@@ -7,7 +7,7 @@ var equity_timeline: Array[Dictionary] = []
 var premium_required := true
 
 func _init(data: Dictionary = {}) -> void:
-	replay_id = String(data.get("replay_id", ""))
+	replay_id = str(data.get("replay_id", ""))
 	street_actions = []
 	for action in Array(data.get("street_actions", [])):
 		street_actions.append(Dictionary(action))

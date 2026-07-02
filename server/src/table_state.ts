@@ -69,6 +69,7 @@ export class TableState {
   lastHandResults: HandResultRecord[] = [];
   log: string[] = [];
   recentActions: ActionLogEntry[] = [];
+  handActions: ActionLogEntry[] = [];
   private nextActionLogId = 1;
   private handStartChips = new Map<number, number>();
 
@@ -102,8 +103,14 @@ export class TableState {
       created_at: new Date().toISOString(),
       ...entry,
     };
+    const actorSeat = actionEntry.seat_index ?? actionEntry.seat_id ?? -1;
+    const seat = actorSeat >= 0 ? this.getSeat(actorSeat) : undefined;
+    actionEntry.pot_after = this.totalPot();
+    actionEntry.player_stack_after = seat?.chips;
     this.recentActions.push(actionEntry);
     if (this.recentActions.length > 30) this.recentActions = this.recentActions.slice(-30);
+    this.handActions.push(actionEntry);
+    if (this.handActions.length > 300) this.handActions = this.handActions.slice(-300);
     this.addLog(actionEntry.message);
   }
 
@@ -182,6 +189,7 @@ export class TableState {
     this.handId += 1;
     this.phase = "preflop";
     this.communityCards = [];
+    this.handActions = [];
     this.deck = shuffleDeck(createDeck(), seed);
     this.currentBet = 0;
     this.minRaiseTo = this.bigBlind;
@@ -234,6 +242,7 @@ export class TableState {
     this.bigBlindSeat = -1;
     this.winners = [];
     this.lastHandResults = [];
+    this.handActions = [];
     this.handStartChips = new Map();
     for (const seat of this.seats) {
       seat.holeCards = [];

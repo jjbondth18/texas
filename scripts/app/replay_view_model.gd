@@ -21,11 +21,17 @@ var filters: Array[Dictionary] = [
 var records: Array = []
 var selected_replay
 
-func _init(replay_records: Array = [], replay_analysis = null) -> void:
+func _init(replay_records: Array = [], replay_analysis = null, use_mock_if_empty: bool = true) -> void:
 	records = replay_records.duplicate()
-	if records.is_empty():
+	if records.is_empty() and use_mock_if_empty:
 		records = [ReplayRecordScript.mock_default()]
-	selected_replay = replay_analysis if replay_analysis != null else ReplayAnalysisStateScript.mock_default()
+	summary["total_replays"] = records.size()
+	if replay_analysis != null:
+		selected_replay = replay_analysis
+	elif use_mock_if_empty:
+		selected_replay = ReplayAnalysisStateScript.mock_default()
+	else:
+		selected_replay = ReplayAnalysisStateScript.new({"premium_required": false})
 
 func to_dict() -> Dictionary:
 	var record_data: Array[Dictionary] = []

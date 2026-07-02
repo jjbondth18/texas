@@ -241,6 +241,8 @@ export interface ActionLogEntry {
   player_name?: string;
   action?: string;
   amount?: number;
+  pot_after?: number;
+  player_stack_after?: number;
   message: string;
 }
 
@@ -292,6 +294,7 @@ export interface TableSnapshot {
   log: string[];
   recent_actions: ActionLogEntry[];
   action_log: ActionLogEntry[];
+  replay_record?: Record<string, unknown>;
 }
 
 export interface PrivateSnapshot {

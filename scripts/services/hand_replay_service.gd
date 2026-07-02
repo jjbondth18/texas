@@ -21,9 +21,9 @@ static func reconstruct_to_event(initial_state: Dictionary, events: Array, event
 	return snapshot
 
 static func _apply_display_event(snapshot: Dictionary, event: Dictionary) -> void:
-	match String(event.get("type", "")):
+	match str(event.get("type", "")):
 		"street_started":
-			snapshot["phase"] = String(Dictionary(event.get("payload", {})).get("phase", snapshot.get("phase", "")))
+			snapshot["phase"] = str(Dictionary(event.get("payload", {})).get("phase", snapshot.get("phase", "")))
 		"community_cards_dealt":
 			snapshot["community_card_count"] = int(Dictionary(event.get("payload", {})).get("total", 0))
 		"turn_started":

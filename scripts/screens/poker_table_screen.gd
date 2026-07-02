@@ -28,6 +28,8 @@ const PokerWsClientScript := preload("res://scripts/network/poker_ws_client.gd")
 const PokerProtocolScript := preload("res://scripts/network/poker_protocol.gd")
 const NetworkConfigScript := preload("res://scripts/network/network_config.gd")
 const ServerTableSnapshotScript := preload("res://scripts/state/table_snapshot.gd")
+const HandReplayRecordScript := preload("res://scripts/replay/hand_replay_record.gd")
+const ReplayRepositoryScript := preload("res://scripts/replay/replay_repository.gd")
 
 const DESIGN_SIZE := Vector2(2560, 1000)
 const SERVER_DEFAULT_BUY_IN := 5000
@@ -146,6 +148,7 @@ var _public_waiting_title_label: Label
 var _public_waiting_body_label: Label
 var _public_waiting_button: Button
 var _recorded_session_hand_ids := {}
+var _recorded_replay_hand_keys := {}
 var _session_started := false
 var _profile_settlement_applied := false
 var _session_unlocked_avatar_ids: Array[String] = []
@@ -897,6 +900,7 @@ func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
 		return
 	_queue_server_action_events(server_snapshot, next_snapshot)
 	_server_latest_ui_snapshot = next_snapshot.duplicate(true)
+	_save_server_replay_record_if_present(server_snapshot, next_snapshot)
 	snapshot = _server_apply_playback_projection(_server_latest_ui_snapshot)
 	_apply_launch_context(snapshot)
 	_refresh()
@@ -2798,6 +2802,7 @@ func _record_session_hand_result_once() -> void:
 	var local_seat_id: int = int(snapshot.get("local_seat_index", 5))
 	var local_chips: int = _local_table_chips()
 	_table_session.record_hand_result(settlement, local_seat_id, local_chips)
+	_save_local_replay_record_once(hand_id)
 	var winner_names: Array[String] = []
 	for winner_name in Array(settlement.get("winner_names", [])):
 		winner_names.append(String(winner_name))
@@ -2810,6 +2815,51 @@ func _record_session_hand_result_once() -> void:
 		_append_session_log("AI warm-up practice chips only. Account chips, gems, and stats were not updated.")
 	if _table_session.is_session_over:
 		_append_session_log("Table session complete. Profit %+d." % _table_session.session_profit)
+
+
+func _save_server_replay_record_if_present(server_snapshot: Dictionary, ui_snapshot: Dictionary) -> void:
+	var phase: String = str(server_snapshot.get("phase", server_snapshot.get("hand_state", "")))
+	if phase != "hand_over":
+		return
+	var record: Dictionary = {}
+	if server_snapshot.has("replay_record"):
+		record = HandReplayRecordScript.from_server_payload(Dictionary(server_snapshot.get("replay_record", {})))
+	else:
+		record = HandReplayRecordScript.from_ui_snapshot(ui_snapshot, _server_private_snapshot)
+	_mark_replay_local_player(record, _server_local_player_id)
+	var key: String = "server:%s:%s" % [str(record.get("room_id", _server_room_id)), str(record.get("hand_id", server_snapshot.get("hand_id", "")))]
+	_save_replay_record_once(record, key)
+
+
+func _save_local_replay_record_once(hand_id: String) -> void:
+	if _table_flow == null or _table_session == null:
+		return
+	var flow_snapshot: Dictionary = _table_flow.to_snapshot()
+	var session_data: Dictionary = _table_session.to_dict()
+	var record: Dictionary = HandReplayRecordScript.from_local_flow(flow_snapshot, snapshot, session_data)
+	var key: String = "local:%s:%s" % [str(record.get("mode", "")), hand_id]
+	_save_replay_record_once(record, key)
+
+
+func _save_replay_record_once(record: Dictionary, key: String) -> void:
+	if record.is_empty() or key == "":
+		return
+	if _recorded_replay_hand_keys.has(key):
+		return
+	_recorded_replay_hand_keys[key] = true
+	if not ReplayRepositoryScript.save_hand_record(record):
+		push_warning("Hand replay record save failed for %s." % key)
+
+
+func _mark_replay_local_player(record: Dictionary, local_player_id: String) -> void:
+	if local_player_id == "":
+		return
+	var players: Array = Array(record.get("players", [])).duplicate(true)
+	for i in range(players.size()):
+		var player: Dictionary = Dictionary(players[i]).duplicate(true)
+		player["is_local"] = str(player.get("player_id", "")) == local_player_id
+		players[i] = player
+	record["players"] = players
 
 
 func _enter_session_over() -> void:
@@ -2884,6 +2934,7 @@ func _configure_table_session_from_launch_context() -> void:
 	_apply_dealer_cosmetic()
 	_session_log.clear()
 	_recorded_session_hand_ids.clear()
+	_recorded_replay_hand_keys.clear()
 	_session_unlocked_avatar_ids.clear()
 	_session_started = false
 	_profile_settlement_applied = false

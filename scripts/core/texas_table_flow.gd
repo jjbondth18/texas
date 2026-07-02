@@ -105,6 +105,7 @@ func start_new_hand(seed: int = 0) -> Dictionary:
 		var seat: Dictionary = Dictionary(seats[i]).duplicate(true)
 		seat["current_bet"] = 0
 		seat["hole_cards"] = []
+		seat["hand_starting_stack"] = int(seat.get("chips", 0))
 		seat["last_action"] = ""
 		seat["last_action_amount"] = 0
 		seat["last_action_seq"] = 0
