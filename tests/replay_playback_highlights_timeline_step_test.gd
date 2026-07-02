@@ -6,3 +6,5 @@ func run() -> void:
 	assert(source.find("i == _replay_playback_step - 1") != -1)
 	assert(source.find("HomeTheme.GOLD") != -1)
 	assert(source.find("Step %d / %d") != -1)
+	assert(source.find("PLAYER ACTIONS") != -1)
+	assert(source.find("HAND EVENTS") != -1)

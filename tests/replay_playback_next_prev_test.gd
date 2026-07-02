@@ -7,3 +7,4 @@ func run() -> void:
 	assert(source.find("_replay_playback_step += 1") != -1)
 	assert(source.find("_replay_playback_step = max(0, _replay_playback_step - 1)") != -1)
 	assert(source.find("_replay_playback_state_for_step") != -1)
+	assert(source.find("_replay_playback_steps") != -1)

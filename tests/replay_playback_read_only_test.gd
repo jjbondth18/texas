@@ -13,3 +13,4 @@ func run() -> void:
 	assert(playback_source.find("RAISE") == -1)
 	assert(playback_source.find("ADD CHIPS") == -1)
 	assert(playback_source.find("START AI WARM-UP") == -1)
+	assert(source.find("_set_replay_playback_layout(true)") != -1)

@@ -130,6 +130,8 @@ The equity timeline remains a compact placeholder: `Equity Timeline - Coming in 
 
 Replay Playback v2 adds a read-only step viewer launched from the Replay Detail panel with `PLAY REPLAY`. It stays inside the Replay Room UI and does not enter `PokerTableScreen`, connect to the authoritative server, send player actions, mutate wallet balances, spend gems, write table transactions, or affect stats.
 
+When playback opens, the Replay list collapses so the review area can use the full panel width. This is intentional: playback should feel like a hand review table, not a narrow lobby detail card.
+
 Playback initializes from the saved `HandReplayRecord`:
 
 - players are sorted by `seat_index`
@@ -151,6 +153,14 @@ The controls are read-only:
 Real table controls such as fold, check, call, bet, raise, add chips, ready, warm-up, store, dealer changes, and cash-out must never appear in playback mode.
 
 Playback applies recorded actions in `seq` order. `NEXT` applies one more action. `PREV` rebuilds state from the initial replay state up to the target step instead of trying to reverse individual poker operations. `PLAY` advances every `0.8` seconds at 1x speed and pauses automatically at the final step.
+
+The step list is not limited to raw player actions. Playback expands the record into:
+
+- player actions such as blinds, checks, calls, bets, raises, folds, all-ins, and timeout auto-actions
+- hand events such as hand start, flop/turn/river reveal, showdown, and hand settled
+- non-player system messages from the record, displayed separately from player actions
+
+The timeline visually separates `PLAYER ACTIONS` from `HAND EVENTS` so lines such as `Hand 10 started`, `settled`, or stack summaries do not read like betting decisions.
 
 Playback does not re-run poker rules. It prioritizes recorded state fields:
 
