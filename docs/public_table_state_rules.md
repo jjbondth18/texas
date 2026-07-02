@@ -30,6 +30,8 @@ AI warm-up is always local practice. Warm-up AI never enters public seats and ne
 
 When a host starts local AI warm-up, the server public room remains a public chip room and stays listed in Browser. The snapshot/list entry uses `host_in_local_warmup=true`, keeps `is_ai_warmup=false`, and remains joinable by Browser or Quick if the table config matches. A real join interrupts the host's local practice and returns every client to the real public room.
 
+Browser and Quick use the active server room registry as their authority. SQLite/database history can show old rooms for debugging, but it is not the joinable room source. If a public room is not present in the active `RoomManager` registry, Browser and Quick must not treat it as joinable.
+
 Ready does not replace `sit_down`: clients must wait for `sit_down_result` or a `table_snapshot` with their own occupied seat before showing Ready controls. If `local_player_seat_index == -1`, the table shows a joining / waiting-for-seat state instead of a valid ready table.
 
 With one seated real player, the table still shows local `START AI WARM-UP` for practice. This warm-up does not use server seats and does not change wallet, gems, formal stats, or public profit.
@@ -84,6 +86,8 @@ Table Browser only lists clean joinable public chip tables:
 - not a disconnected-only playing table
 
 If a table is already `hand_over` with `current_turn_seat = -1`, it is treated as unavailable and removed from local mock listing when possible.
+
+Table-list diagnostics include `visibility`, `table_type`, `room_state`, `table_state`, `host_in_local_warmup`, `is_ai_warmup`, `official_session_started`, `current_players`, `max_players`, stakes, hand count, `include`, and rejection `reason`.
 
 ## Player Counting
 

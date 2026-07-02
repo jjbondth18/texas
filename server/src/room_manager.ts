@@ -132,14 +132,14 @@ export class RoomManager {
       return;
     }
     if (message.type === "list_tables") {
-      this.send(client, { type: "table_list", request_id: message.request_id, tables: this.publicTables() });
+      this.send(client, { type: "table_list", request_id: message.request_id, tables: this.publicTables(client.id) });
       return;
     }
     if (message.type === "quick_join_table") {
       const room = this.quickJoinTable(client, message);
       const table = this.tableSnapshot(room);
       this.send(client, { type: "quick_table_matched", request_id: message.request_id, room_id: room.id, table });
-      this.send(client, { type: "table_list", tables: this.publicTables() });
+      this.send(client, { type: "table_list", tables: this.publicTables(client.id) });
       return;
     }
     if (message.type === "create_table") {
@@ -149,7 +149,7 @@ export class RoomManager {
       const table = this.tableSnapshot(room);
       this.recordLog(`${client.id} created public table ${room.id}`);
       this.send(client, { type: "table_created", request_id: message.request_id, room_id: room.id, table });
-      this.send(client, { type: "table_list", tables: this.publicTables() });
+      this.send(client, { type: "table_list", tables: this.publicTables(client.id) });
       return;
     }
     if (message.type === "create_private_table") {
@@ -495,16 +495,19 @@ export class RoomManager {
 
   private quickJoinTable(client: Client, message: ClientMessage): Room {
     const tableConfig = this.tableConfigFromMessage(message);
+    this.logQuickJoinDiagnostics(client.id, tableConfig);
     const matchedRoom = this.bestQuickJoinRoom(tableConfig);
     if (matchedRoom) {
       this.joinRoom(client, matchedRoom.id);
       this.recordLog(`${client.id} quick matched public table ${matchedRoom.id}`);
+      console.log(`[QuickMatch] chosen room_id=${matchedRoom.id}`);
       return matchedRoom;
     }
     const room = this.createRoom(tableConfig);
     room.hostPlayerId = client.id;
     this.joinRoom(client, room.id);
     this.recordLog(`${client.id} quick created public table ${room.id}`);
+    console.log("[QuickMatch] chosen room_id=create_new_room reason=no_matching_joinable_public_room");
     return room;
   }
 
@@ -521,24 +524,82 @@ export class RoomManager {
   }
 
   private isQuickJoinMatch(room: Room, tableConfig: Partial<Pick<Room, "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): boolean {
-    if (!room.isPublic || room.visibility !== "public" || room.tableType !== "public_chip" || room.sessionComplete) return false;
-    if (room.isAiWarmup && room.hostInLocalWarmup === "") return false;
+    const listDecision = this.publicRoomListDecision(room);
+    if (!listDecision.include) return false;
     if (room.buyIn !== tableConfig.buyIn || room.smallBlind !== tableConfig.smallBlind || room.bigBlind !== tableConfig.bigBlind || room.handCount !== tableConfig.handCount) return false;
-    if (this.occupiedSeatCount(room) >= room.maxPlayers) return false;
-    if (this.publicSeatedCount(room) <= 0 && this.occupiedSeatCount(room) > 0) return false;
-    return ["waiting_for_players", "waiting_ready", "ready_to_start"].includes(this.publicRoomState(room));
+    return true;
   }
 
-  private publicTables(): PublicTableSnapshot[] {
-    return [...this.rooms.values()].filter((room) => this.isListedPublicChipTable(room)).map((room) => this.tableSnapshot(room));
+  private quickJoinRejectReason(room: Room, tableConfig: Partial<Pick<Room, "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): string {
+    const listDecision = this.publicRoomListDecision(room);
+    if (!listDecision.include) return listDecision.reason;
+    if (room.buyIn !== tableConfig.buyIn) return "buy_in_mismatch";
+    if (room.smallBlind !== tableConfig.smallBlind || room.bigBlind !== tableConfig.bigBlind) return "blinds_mismatch";
+    if (room.handCount !== tableConfig.handCount) return "hand_count_mismatch";
+    return "candidate";
+  }
+
+  private logQuickJoinDiagnostics(clientId: string, tableConfig: Partial<Pick<Room, "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): void {
+    const header = `[QuickMatch] request from player=${clientId} selected buy_in=${tableConfig.buyIn} small_blind=${tableConfig.smallBlind} big_blind=${tableConfig.bigBlind} hand_count=${tableConfig.handCount}`;
+    console.log(header);
+    this.recordLog(header);
+    let candidateCount = 0;
+    for (const room of this.rooms.values()) {
+      const reason = this.quickJoinRejectReason(room, tableConfig);
+      if (reason === "candidate") candidateCount += 1;
+      const line = `[QuickMatch] room ${room.id}: browser_visible=${this.publicRoomListDecision(room).include} quick_candidate=${reason === "candidate"} reason=${reason}`;
+      console.log(line);
+      this.recordLog(line);
+    }
+    const summary = `[QuickMatch] candidate_rooms=${candidateCount}`;
+    console.log(summary);
+    this.recordLog(summary);
+  }
+
+  private publicTables(requestingPlayerId = ""): PublicTableSnapshot[] {
+    const entries = [...this.rooms.values()].map((room) => ({ room, decision: this.publicRoomListDecision(room) }));
+    if (requestingPlayerId !== "") this.logTableListDiagnostics(requestingPlayerId, entries);
+    return entries.filter((entry) => entry.decision.include).map((entry) => this.tableSnapshot(entry.room));
   }
 
   private isListedPublicChipTable(room: Room): boolean {
-    if (!room.isPublic || room.visibility !== "public" || room.tableType !== "public_chip") return false;
-    if (room.sessionComplete || this.publicRoomState(room) === "session_complete") return false;
-    if (this.occupiedSeatCount(room) >= room.maxPlayers) return false;
-    if (this.publicSeatedCount(room) <= 0 && this.occupiedSeatCount(room) > 0) return false;
-    return true;
+    return this.publicRoomListDecision(room).include;
+  }
+
+  private publicRoomListDecision(room: Room): { include: boolean; reason: string } {
+    const roomState = this.publicRoomState(room);
+    const currentPlayers = this.publicSeatedCount(room);
+    const occupiedSeats = this.occupiedSeatCount(room);
+    const hostWarming = room.hostInLocalWarmup !== "";
+    if (!room.isPublic || room.visibility !== "public") return { include: false, reason: "private_room" };
+    if (room.tableType !== "public_chip") return { include: false, reason: "not_public_chip" };
+    if (room.sessionComplete || roomState === "session_complete") return { include: false, reason: "session_complete" };
+    if (occupiedSeats >= room.maxPlayers) return { include: false, reason: "full" };
+    if (currentPlayers <= 0 && occupiedSeats > 0) return { include: false, reason: "disconnected_only" };
+    if (room.isAiWarmup && !hostWarming) return { include: false, reason: "local_warmup_shadow" };
+    if (hostWarming && !room.officialHandStarted) return { include: true, reason: "host_warmup_joinable" };
+    if (["waiting_for_players", "waiting_ready", "ready_to_start"].includes(roomState)) return { include: true, reason: "waiting_public_room" };
+    return { include: false, reason: roomState === "playing" ? "playing_not_quick_joinable" : "not_waiting_public_room" };
+  }
+
+  private logTableListDiagnostics(requestingPlayerId: string, entries: Array<{ room: Room; decision: { include: boolean; reason: string } }>): void {
+    const header = `[TableList] request from player=${requestingPlayerId}`;
+    const total = `[TableList] total_rooms=${entries.length}`;
+    console.log(header);
+    console.log(total);
+    this.recordLog(header);
+    this.recordLog(total);
+    for (const entry of entries) {
+      const room = entry.room;
+      const roomState = this.publicRoomState(room);
+      const line =
+        `[TableList] room ${room.id}: visibility=${room.visibility} listed=${room.isPublic} table_type=${room.tableType} currency=chips room_state=${roomState} table_state=${room.table.phase} ` +
+        `host_in_local_warmup=${room.hostInLocalWarmup !== ""} is_ai_warmup=${room.isAiWarmup} official_session_started=${room.officialHandStarted} ` +
+        `current_players=${this.publicSeatedCount(room)} max_players=${room.maxPlayers} buy_in=${room.buyIn} small_blind=${room.smallBlind} big_blind=${room.bigBlind} ` +
+        `hand_count=${room.handCount} include=${entry.decision.include} reason=${entry.decision.reason}`;
+      console.log(line);
+      this.recordLog(line);
+    }
   }
 
   private tableSnapshot(room: Room): PublicTableSnapshot {
@@ -597,8 +658,7 @@ export class RoomManager {
   }
 
   private isQuickJoinablePublicChipTable(room: Room): boolean {
-    if (!this.isListedPublicChipTable(room)) return false;
-    return ["waiting_for_players", "waiting_ready", "ready_to_start"].includes(this.publicRoomState(room));
+    return this.publicRoomListDecision(room).include;
   }
 
   private handleHello(client: Client, message: ClientMessage): Omit<ServerMessage, "type" | "request_id" | "player_id"> {

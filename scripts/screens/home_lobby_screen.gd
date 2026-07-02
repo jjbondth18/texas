@@ -1205,7 +1205,9 @@ func _start_quick_play_from_setup() -> void:
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
 		_hide_quick_play_setup()
 		_start_table_launch_transition("Finding server table...", func() -> void:
-			_profile_ws_client.quick_join_table(_quick_server_table_config())
+			var quick_config: Dictionary = _quick_server_table_config()
+			_log_quick_table_candidates(quick_config)
+			_profile_ws_client.quick_join_table(quick_config)
 		)
 		return
 	var setup_config := {
@@ -1412,6 +1414,7 @@ func _request_server_table_list() -> void:
 
 func _on_server_table_list_received(tables: Array) -> void:
 	_server_public_tables = tables.duplicate(true)
+	print("[ClientTableList] received count=%d" % _server_public_tables.size())
 	_refresh_room_browser_rows()
 
 func _on_server_table_created(room_id: String, table_info: Dictionary) -> void:
@@ -2340,6 +2343,7 @@ func _refresh_room_browser_rows() -> void:
 		_room_browser_list_vbox.remove_child(child)
 		child.queue_free()
 	var rooms := _server_public_tables if _profile_server_connected else _local_backend.list_public_tables()
+	var raw_count: int = rooms.size()
 	if rooms.is_empty():
 		var empty_label := Label.new()
 		empty_label.text = "No public tables yet. Create one to start a server-authoritative room." if _profile_server_connected else "Server unavailable. Showing local mock fallback when available."
@@ -2349,12 +2353,17 @@ func _refresh_room_browser_rows() -> void:
 		_room_browser_list_vbox.add_child(empty_label)
 		return
 	var visible_count := 0
+	var normalized_count := 0
 	for room_value in rooms:
 		var normalized_room: Dictionary = _normalized_room_browser_table(Dictionary(room_value))
-		if not _is_joinable_room_browser_table(normalized_room):
+		normalized_count += 1
+		var decision: Dictionary = _room_browser_filter_decision(normalized_room)
+		_log_client_table_list_room(normalized_room, decision)
+		if not bool(decision.get("include", false)):
 			continue
 		_add_room_browser_row(normalized_room)
 		visible_count += 1
+	print("[ClientTableList] raw server list count=%d after normalize count=%d after browser filter count=%d" % [raw_count, normalized_count, visible_count])
 	if visible_count == 0:
 		var filtered_empty_label := Label.new()
 		filtered_empty_label.text = "No clean public chip tables are available. Create a new table to start fresh."
@@ -2373,6 +2382,7 @@ func _normalized_room_browser_table(room: Dictionary) -> Dictionary:
 		"room_id": room_id,
 		"table_name": str(room.get("table_name", room_id if room_id != "" else "Public Table")),
 		"table_type": str(room.get("table_type", "public_chip")),
+		"visibility": str(room.get("visibility", "public" if bool(room.get("is_public", true)) else "private")),
 		"currency": str(room.get("currency", "chip")),
 		"small_blind": int(room.get("small_blind", 10)),
 		"big_blind": int(room.get("big_blind", 20)),
@@ -2381,8 +2391,11 @@ func _normalized_room_browser_table(room: Dictionary) -> Dictionary:
 		"max_players": max_players,
 		"hand_state": hand_state,
 		"status": "full" if seated_count >= max_players else status,
+		"session_complete": bool(room.get("session_complete", false)),
 		"is_ai_warmup": bool(room.get("is_ai_warmup", false)),
 		"host_in_local_warmup": bool(room.get("host_in_local_warmup", false)),
+		"official_session_started": bool(room.get("official_session_started", room.get("official_hand_started", false))),
+		"official_hand_started": bool(room.get("official_hand_started", room.get("official_session_started", false))),
 		"waiting_for_real_players": bool(room.get("waiting_for_real_players", false)),
 		"pending_real_joiners": Array(room.get("pending_real_joiners", [])).duplicate(true),
 		"warmup_ai_player_ids": Array(room.get("warmup_ai_player_ids", [])).duplicate(),
@@ -2395,30 +2408,100 @@ func _normalized_room_browser_table(room: Dictionary) -> Dictionary:
 	}
 
 func _is_joinable_room_browser_table(room: Dictionary) -> bool:
+	return bool(_room_browser_filter_decision(room).get("include", false))
+
+func _room_browser_filter_decision(room: Dictionary) -> Dictionary:
 	if str(room.get("table_type", "public_chip")) != "public_chip":
-		return false
-	if str(room.get("currency", "chip")) != "chip":
-		return false
+		return {"include": false, "reason": "not_public_chip"}
+	var visibility: String = str(room.get("visibility", "public"))
+	if visibility != "public":
+		return {"include": false, "reason": "private_room"}
+	var currency: String = str(room.get("currency", "chip"))
+	if currency not in ["chip", "chips"]:
+		return {"include": false, "reason": "wrong_currency"}
 	var status := str(room.get("status", ""))
 	var hand_state := str(room.get("hand_state", status))
 	var host_warming := bool(room.get("host_in_local_warmup", false))
+	var official_started := bool(room.get("official_session_started", room.get("official_hand_started", false)))
 	if bool(room.get("is_ai_warmup", false)) and not host_warming:
-		return false
+		return {"include": false, "reason": "local_warmup_shadow"}
 	if status in ["full", "closed", "dirty", "paused", "hand_over", "showdown_reveal", "showdown", "finished"]:
-		return false
+		return {"include": false, "reason": status}
 	if hand_state in ["closed", "dirty", "paused", "hand_over", "showdown_reveal", "finished"]:
-		return false
-	if not host_warming and status not in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown", "hand_result", "ready_to_start", "open", "playing", "ai_warmup"]:
-		return false
-	if not host_warming and hand_state not in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown", "hand_result", "ready_to_start", "open", "playing", "preflop", "flop", "turn", "river", "showdown", "ai_warmup", "idle", "pre_hand"]:
-		return false
-	if not host_warming and int(room.get("current_turn_seat", -1)) == -1 and hand_state not in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown", "hand_result", "ready_to_start", "open", "playing", "preflop", "flop", "turn", "river", "showdown", "ai_warmup", "idle", "pre_hand"]:
-		return false
+		return {"include": false, "reason": hand_state}
+	if bool(room.get("session_complete", false)):
+		return {"include": false, "reason": "session_complete"}
 	if int(room.get("seated_count", 0)) >= int(room.get("max_players", 6)):
-		return false
+		return {"include": false, "reason": "full"}
 	if int(room.get("seated_count", 0)) <= 0 and (not Array(room.get("players", [])).is_empty() or not Array(room.get("seats", [])).is_empty()) and _connected_room_player_count(room) > 0:
-		return false
-	return true
+		return {"include": false, "reason": "disconnected_only"}
+	if host_warming and not official_started:
+		return {"include": true, "reason": "host_warmup_joinable"}
+	if status in ["waiting", "waiting_for_players", "waiting_ready", "ready_to_start", "open"]:
+		return {"include": true, "reason": "waiting_public_room"}
+	return {"include": false, "reason": "playing_not_quick_joinable" if status == "playing" or hand_state in ["preflop", "flop", "turn", "river"] else "not_waiting_public_room"}
+
+func _quick_table_filter_decision(room: Dictionary, config: Dictionary) -> Dictionary:
+	var browser_decision: Dictionary = _room_browser_filter_decision(room)
+	if not bool(browser_decision.get("include", false)):
+		return {"include": false, "reason": str(browser_decision.get("reason", "browser_filtered"))}
+	if int(room.get("buy_in", 0)) != int(config.get("buy_in", 0)):
+		return {"include": false, "reason": "buy_in_mismatch"}
+	if int(room.get("small_blind", 0)) != int(config.get("small_blind", 0)) or int(room.get("big_blind", 0)) != int(config.get("big_blind", 0)):
+		return {"include": false, "reason": "blinds_mismatch"}
+	var room_hands: int = _normalized_hand_count_for_context(int(room.get("hand_count", room.get("max_hands", 10))))
+	var selected_hands: int = _normalized_hand_count_for_context(int(config.get("hand_count", config.get("max_hands", 10))))
+	if room_hands != selected_hands:
+		return {"include": false, "reason": "hand_count_mismatch"}
+	if not bool(room.get("allow_quick_join", true)):
+		return {"include": false, "reason": "quick_join_disabled"}
+	return {"include": true, "reason": "candidate"}
+
+func _log_client_table_list_room(room: Dictionary, browser_decision: Dictionary) -> void:
+	var quick_decision: Dictionary = _quick_table_filter_decision(room, _quick_server_table_config())
+	print("[ClientTableList] room %s: state=%s status=%s host_in_local_warmup=%s current_players=%d buy_in=%d blinds=%d/%d hand_count=%d browser_include=%s quick_candidate=%s reason=%s" % [
+		str(room.get("room_id", room.get("table_id", ""))),
+		str(room.get("hand_state", "")),
+		str(room.get("status", "")),
+		str(bool(room.get("host_in_local_warmup", false))),
+		int(room.get("seated_count", room.get("current_players", 0))),
+		int(room.get("buy_in", 0)),
+		int(room.get("small_blind", 0)),
+		int(room.get("big_blind", 0)),
+		int(room.get("hand_count", room.get("max_hands", 0))),
+		str(bool(browser_decision.get("include", false))),
+		str(bool(quick_decision.get("include", false))),
+		str(browser_decision.get("reason", "unknown")),
+	])
+
+func _log_quick_table_candidates(config: Dictionary) -> void:
+	print("[ClientQuick] selected buy_in=%d blinds=%d/%d hand_count=%d" % [
+		int(config.get("buy_in", 0)),
+		int(config.get("small_blind", 0)),
+		int(config.get("big_blind", 0)),
+		int(config.get("hand_count", config.get("max_hands", 0))),
+	])
+	var candidate_count := 0
+	var chosen_room_id := ""
+	for room_value in _server_public_tables:
+		var room: Dictionary = _normalized_room_browser_table(Dictionary(room_value))
+		var decision: Dictionary = _quick_table_filter_decision(room, config)
+		var include: bool = bool(decision.get("include", false))
+		if include:
+			candidate_count += 1
+			if chosen_room_id == "":
+				chosen_room_id = str(room.get("room_id", ""))
+		print("[ClientQuick] room %s quick_candidate=%s reason=%s browser_visible=%s" % [
+			str(room.get("room_id", "")),
+			str(include),
+			str(decision.get("reason", "unknown")),
+			str(bool(_room_browser_filter_decision(room).get("include", false))),
+		])
+	print("[ClientQuick] candidate rooms count=%d chosen room_id=%s create_new_room=%s" % [
+		candidate_count,
+		chosen_room_id,
+		str(chosen_room_id == ""),
+	])
 
 func _connected_room_player_count(room: Dictionary) -> int:
 	var real_player_ids: Array = Array(room.get("real_player_ids", []))

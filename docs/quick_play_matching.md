@@ -2,6 +2,8 @@
 
 Quick Play is not a separate poker mode. It is an automatic matching layer over the same public chip table list used by the Browser.
 
+Browser and Quick use the current server active public room registry. Historical SQLite rows are useful for persistence/debugging, but they are not considered joinable unless the room is currently active in the server `RoomManager`.
+
 ## Flow
 
 When the player presses `FIND TABLE` in Quick Chip:
@@ -45,6 +47,8 @@ If a host has started local AI warm-up, the real server public room still remain
 
 Quick does not join `playing`, `hand_result`, `session_complete`, `closed`, or `paused` tables in this first version. Browser can later expose an explicit Join Next Hand flow for playing tables.
 
+Quick diagnostics must start from the same Browser-visible public room list, then apply exact config matching. A room visible in Browser with matching buy-in, blinds, and hand count must be a Quick candidate.
+
 ## Priority
 
 When more than one table matches:
@@ -54,6 +58,13 @@ When more than one table matches:
 3. If still tied, sort by `room_id` / `table_id`.
 
 The choice is deterministic and never random.
+
+Diagnostics print:
+
+- selected buy-in, blinds, and hand count
+- candidate room count
+- per-room rejection reason
+- chosen room id or `create_new_room`
 
 ## No Match
 

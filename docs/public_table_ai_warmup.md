@@ -19,6 +19,7 @@ Public Chip tables are real-player public tables. When fewer than two real playe
 - The compatibility `start_ai_warmup` command only marks `host_in_local_warmup=true`; it does not start a server hand.
 - Public table snapshots/list entries keep `is_ai_warmup=false`; `host_in_local_warmup=true` is the signal that the host is practicing locally while the real room waits.
 - Quick may match this public room when stakes and hand count match. It must not treat host local warm-up as a playing table or a local-only AI table.
+- Browser and Quick use the server active room registry, not historical database room rows. A database row by itself does not make a room joinable; the room must exist in the current `RoomManager` registry.
 - AI never enters server public seats, never occupies public room capacity, and never appears in public table snapshots.
 - Local warm-up uses practice chips only.
 - Local warm-up does not change account chips, gems, ranked stats, public profit, leaderboard progress, or formal public hand results.
@@ -33,6 +34,12 @@ Quick Chip first tries to join a clean waiting/open public chip table. If none e
 Real players join the real server public room, not the host's local warm-up table. When another real player sits in the public room through Browser or Quick, the host client must interrupt local warm-up immediately, clear local AI timers/seats/cards/pot, apply the latest server room snapshot, and return to the public table ready/waiting state.
 
 The returned public room shows only real players. With the Ready system, each seated real player must press `READY`; when enough real players are ready, the server countdown starts the formal public hand.
+
+Diagnostics:
+
+- Server table-list logs use `[TableList]` and print `include` plus `reason` for every active room.
+- Client table-list logs use `[ClientTableList]` and print Browser include and Quick candidate decisions.
+- Quick logs use `[QuickMatch]` on the server and `[ClientQuick]` on the client.
 
 ## Formal Public Hand Start
 
