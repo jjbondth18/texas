@@ -25,7 +25,6 @@ var _timeline_visible := true
 var _winner_seats: Dictionary = {}
 
 var _seats: Dictionary = {}
-var _replay_title_label: Label
 var _replay_step_label: Label
 var _timeline_toggle_button: Button
 var _play_button: Button
@@ -195,23 +194,12 @@ func _setup_top_replay_controls() -> void:
 	_top_right_action_bar.anchor_top = 0.0
 	_top_right_action_bar.anchor_right = 1.0
 	_top_right_action_bar.anchor_bottom = 0.0
-	_top_right_action_bar.offset_left = -640.0
-	_top_right_action_bar.offset_top = 8.0
-	_top_right_action_bar.offset_right = -28.0
-	_top_right_action_bar.offset_bottom = 58.0
+	_top_right_action_bar.offset_left = -540.0
+	_top_right_action_bar.offset_top = 24.0
+	_top_right_action_bar.offset_right = -24.0
+	_top_right_action_bar.offset_bottom = 66.0
 	_top_right_action_bar.alignment = BoxContainer.ALIGNMENT_END
 	_top_right_action_bar.add_theme_constant_override("separation", 10)
-
-	_replay_title_label = Label.new()
-	_replay_title_label.name = "ReplayPokerTableHeader"
-	_replay_title_label.anchor_left = 0.02
-	_replay_title_label.anchor_top = 0.015
-	_replay_title_label.anchor_right = 0.58
-	_replay_title_label.anchor_bottom = 0.09
-	_replay_title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_replay_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	HomeTheme.make_font_settings(_replay_title_label, 15, Color(0.92, 0.96, 1.0, 0.98))
-	_ui_layer.add_child(_replay_title_label)
 
 	var back_detail: Button = _make_replay_button("BACK TO DETAIL", Vector2(146, 42))
 	back_detail.pressed.connect(func() -> void: back_to_detail_requested.emit())
@@ -456,20 +444,8 @@ func _update_room_info(playback_state: Dictionary) -> void:
 	_hide_table_room_info_children(["Seat", "ACTION TIMER"])
 
 
-func _update_replay_title(action_text: String = "") -> void:
-	if _replay_title_label == null:
-		return
-	var hand_id: String = str(_record.get("hand_id", _index_entry.get("hand_id", "Unknown")))
-	var mode_text: String = _mode_label(str(_record.get("mode", "")))
-	var blinds: String = "%d/%d" % [int(_record.get("small_blind", 0)), int(_record.get("big_blind", 0))]
-	_replay_title_label.text = "REPLAY MODE  |  Hand #%s  |  %s  |  NLH %s  |  Step %d / %d\n%s" % [
-		_compact_hand_number(hand_id),
-		mode_text,
-		blinds,
-		_current_step,
-		_total_steps,
-		action_text,
-	]
+func _update_replay_title(_action_text: String = "") -> void:
+	pass
 
 
 func _update_control_text() -> void:
