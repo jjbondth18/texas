@@ -44,6 +44,24 @@ var _room_browser_panel: PanelContainer
 var _friends_room_panel: PanelContainer
 var _replay_panel: PanelContainer
 var _replay_detail_vbox: VBoxContainer
+var _replay_current_record: Dictionary = {}
+var _replay_current_index_entry: Dictionary = {}
+var _replay_playback_timer: Timer
+var _replay_playback_record: Dictionary = {}
+var _replay_playback_index_entry: Dictionary = {}
+var _replay_playback_actions: Array = []
+var _replay_playback_step := 0
+var _replay_playback_speed := 1.0
+var _replay_playback_is_playing := false
+var _replay_playback_players_vbox: VBoxContainer
+var _replay_playback_board_label: Label
+var _replay_playback_pot_label: Label
+var _replay_playback_action_label: Label
+var _replay_playback_result_vbox: VBoxContainer
+var _replay_playback_timeline_vbox: VBoxContainer
+var _replay_playback_step_label: Label
+var _replay_playback_play_button: Button
+var _replay_playback_speed_button: Button
 var _store_panel: PanelContainer
 var _profile_panel: PanelContainer
 var _settings_panel: PanelContainer
@@ -2929,6 +2947,7 @@ func _on_replay_item_gui_input(event: InputEvent, hand: Dictionary) -> void:
 
 
 func _open_replay_detail(hand: Dictionary) -> void:
+	_stop_replay_playback()
 	var file_path: String = str(hand.get("file_path", ""))
 	if file_path == "" or not FileAccess.file_exists(file_path):
 		_render_replay_detail_error("Replay file missing.")
@@ -2937,10 +2956,15 @@ func _open_replay_detail(hand: Dictionary) -> void:
 	if record.is_empty():
 		_render_replay_detail_error("Replay file missing.")
 		return
+	_replay_current_record = record.duplicate(true)
+	_replay_current_index_entry = hand.duplicate(true)
 	_render_replay_detail(record, hand)
 
 
 func _render_replay_detail_empty(has_records: bool) -> void:
+	_stop_replay_playback()
+	_replay_current_record = {}
+	_replay_current_index_entry = {}
 	_clear_replay_detail()
 	var title := Label.new()
 	title.text = "HAND RECORDS"
@@ -2954,6 +2978,7 @@ func _render_replay_detail_empty(has_records: bool) -> void:
 
 
 func _render_replay_detail_error(message: String) -> void:
+	_stop_replay_playback()
 	_clear_replay_detail()
 	var title := Label.new()
 	title.text = "HAND REVIEW"
@@ -3017,8 +3042,20 @@ func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
 	var actions_vbox: VBoxContainer = actions_box.get_node("Content") as VBoxContainer
 	_add_replay_actions(actions_vbox, Array(record.get("actions", [])), players)
 
+	var controls := HBoxContainer.new()
+	controls.add_theme_constant_override("separation", 12)
+	_replay_detail_vbox.add_child(controls)
+	var play_button := Button.new()
+	play_button.text = "PLAY REPLAY"
+	play_button.custom_minimum_size = Vector2(180, 36)
+	play_button.focus_mode = Control.FOCUS_NONE
+	play_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	play_button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.032, 0.056, 0.74), Color(0.22, 0.86, 1.0, 0.48), 18))
+	play_button.add_theme_color_override("font_color", Color(0.92, 0.98, 1.0, 0.96))
+	play_button.pressed.connect(_open_replay_playback.bind(record, index_entry))
+	controls.add_child(play_button)
 	var back_button := _make_replay_back_button()
-	_replay_detail_vbox.add_child(back_button)
+	controls.add_child(back_button)
 
 
 func _clear_replay_detail() -> void:
@@ -3039,6 +3076,379 @@ func _make_replay_back_button() -> Button:
 	back_button.add_theme_color_override("font_color", Color(0.90, 0.94, 1.0, 0.94))
 	back_button.pressed.connect(_render_replay_detail_empty.bind(true))
 	return back_button
+
+
+func _open_replay_playback(record: Dictionary, index_entry: Dictionary) -> void:
+	_stop_replay_playback()
+	_replay_playback_record = record.duplicate(true)
+	_replay_playback_index_entry = index_entry.duplicate(true)
+	_replay_playback_actions = _sorted_replay_actions(Array(record.get("actions", [])))
+	_replay_playback_step = 0
+	_replay_playback_speed = 1.0
+	_render_replay_playback()
+
+
+func _render_replay_playback() -> void:
+	_clear_replay_detail()
+	var title := Label.new()
+	title.text = "REPLAY MODE"
+	HomeTheme.make_font_settings(title, 18, HomeTheme.CYAN)
+	_replay_detail_vbox.add_child(title)
+
+	var subtitle := Label.new()
+	subtitle.text = "Read-only hand playback. Recorded actions are applied without server, wallet, or gem changes."
+	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(subtitle, 12, HomeTheme.MUTED)
+	_replay_detail_vbox.add_child(subtitle)
+
+	_replay_playback_step_label = Label.new()
+	HomeTheme.make_font_settings(_replay_playback_step_label, 13, Color(0.92, 0.96, 1.0, 0.96))
+	_replay_detail_vbox.add_child(_replay_playback_step_label)
+
+	var body_hbox := HBoxContainer.new()
+	body_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body_hbox.add_theme_constant_override("separation", 16)
+	_replay_detail_vbox.add_child(body_hbox)
+
+	var players_box := _make_replay_section("PLAYERS", Vector2(280, 0))
+	body_hbox.add_child(players_box)
+	_replay_playback_players_vbox = players_box.get_node("Content") as VBoxContainer
+
+	var table_box := _make_replay_section("BOARD / POT / RESULT", Vector2(280, 0))
+	body_hbox.add_child(table_box)
+	var table_vbox: VBoxContainer = table_box.get_node("Content") as VBoxContainer
+	_replay_playback_board_label = _make_replay_value_label("Board: -", Color(0.86, 0.90, 1.0))
+	table_vbox.add_child(_replay_playback_board_label)
+	_replay_playback_pot_label = _make_replay_value_label("Pot: 0", HomeTheme.GOLD)
+	table_vbox.add_child(_replay_playback_pot_label)
+	_replay_playback_action_label = _make_replay_value_label("Action: Initial state", Color(0.90, 0.94, 1.0, 0.96))
+	table_vbox.add_child(_replay_playback_action_label)
+	_replay_playback_result_vbox = VBoxContainer.new()
+	_replay_playback_result_vbox.add_theme_constant_override("separation", 4)
+	table_vbox.add_child(_replay_playback_result_vbox)
+
+	var timeline_box := _make_replay_section("ACTION TIMELINE", Vector2(360, 0))
+	timeline_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body_hbox.add_child(timeline_box)
+	_replay_playback_timeline_vbox = timeline_box.get_node("Content") as VBoxContainer
+
+	var controls := HBoxContainer.new()
+	controls.add_theme_constant_override("separation", 10)
+	_replay_detail_vbox.add_child(controls)
+	var back_detail := _make_replay_control_button("BACK TO DETAIL")
+	back_detail.pressed.connect(_return_to_replay_detail)
+	controls.add_child(back_detail)
+	var prev_button := _make_replay_control_button("PREV")
+	prev_button.pressed.connect(_replay_playback_prev)
+	controls.add_child(prev_button)
+	var next_button := _make_replay_control_button("NEXT")
+	next_button.pressed.connect(_replay_playback_next)
+	controls.add_child(next_button)
+	_replay_playback_play_button = _make_replay_control_button("PLAY")
+	_replay_playback_play_button.pressed.connect(_toggle_replay_playback)
+	controls.add_child(_replay_playback_play_button)
+	_replay_playback_speed_button = _make_replay_control_button("SPEED 1x")
+	_replay_playback_speed_button.pressed.connect(_toggle_replay_playback_speed)
+	controls.add_child(_replay_playback_speed_button)
+	var back_replays := _make_replay_back_button()
+	controls.add_child(back_replays)
+
+	_refresh_replay_playback_view()
+
+
+func _make_replay_value_label(text: String, color: Color) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(label, 12, color)
+	return label
+
+
+func _make_replay_control_button(text: String) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.custom_minimum_size = Vector2(126, 34)
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.66), Color(0.52, 0.78, 1.0, 0.34), 18))
+	button.add_theme_color_override("font_color", Color(0.90, 0.94, 1.0, 0.94))
+	return button
+
+
+func _return_to_replay_detail() -> void:
+	_stop_replay_playback()
+	if _replay_current_record.is_empty():
+		_render_replay_detail_empty(true)
+		return
+	_render_replay_detail(_replay_current_record, _replay_current_index_entry)
+
+
+func _replay_playback_prev() -> void:
+	_stop_replay_playback()
+	_replay_playback_step = max(0, _replay_playback_step - 1)
+	_refresh_replay_playback_view()
+
+
+func _replay_playback_next() -> void:
+	if _replay_playback_step >= _replay_playback_actions.size():
+		_stop_replay_playback()
+		return
+	_replay_playback_step += 1
+	_refresh_replay_playback_view()
+	if _replay_playback_step >= _replay_playback_actions.size():
+		_stop_replay_playback()
+
+
+func _toggle_replay_playback() -> void:
+	if _replay_playback_is_playing:
+		_stop_replay_playback()
+		return
+	if _replay_playback_step >= _replay_playback_actions.size():
+		_replay_playback_step = 0
+		_refresh_replay_playback_view()
+	_ensure_replay_playback_timer()
+	_replay_playback_is_playing = true
+	if _replay_playback_play_button != null:
+		_replay_playback_play_button.text = "PAUSE"
+	_replay_playback_timer.wait_time = 0.8 / _replay_playback_speed
+	_replay_playback_timer.start()
+
+
+func _toggle_replay_playback_speed() -> void:
+	_replay_playback_speed = 2.0 if _replay_playback_speed == 1.0 else 1.0
+	if _replay_playback_speed_button != null:
+		_replay_playback_speed_button.text = "SPEED %sx" % int(_replay_playback_speed)
+	if _replay_playback_is_playing and _replay_playback_timer != null:
+		_replay_playback_timer.wait_time = 0.8 / _replay_playback_speed
+		_replay_playback_timer.start()
+
+
+func _ensure_replay_playback_timer() -> void:
+	if _replay_playback_timer != null:
+		return
+	_replay_playback_timer = Timer.new()
+	_replay_playback_timer.one_shot = false
+	_replay_playback_timer.timeout.connect(_on_replay_playback_timer_timeout)
+	add_child(_replay_playback_timer)
+
+
+func _on_replay_playback_timer_timeout() -> void:
+	_replay_playback_next()
+
+
+func _stop_replay_playback() -> void:
+	_replay_playback_is_playing = false
+	if _replay_playback_timer != null:
+		_replay_playback_timer.stop()
+	if _replay_playback_play_button != null:
+		_replay_playback_play_button.text = "PLAY"
+
+
+func _refresh_replay_playback_view() -> void:
+	var playback_state: Dictionary = _replay_playback_state_for_step(_replay_playback_record, _replay_playback_step)
+	var players: Array = Array(playback_state.get("players", []))
+	_replace_replay_children(_replay_playback_players_vbox)
+	if players.is_empty():
+		_add_replay_text(_replay_playback_players_vbox, "No players recorded.", HomeTheme.MUTED)
+	else:
+		for player_item in players:
+			var player: Dictionary = Dictionary(player_item)
+			_add_replay_playback_player(_replay_playback_players_vbox, player)
+
+	if _replay_playback_step_label != null:
+		_replay_playback_step_label.text = "Step %d / %d" % [_replay_playback_step, _replay_playback_actions.size()]
+	if _replay_playback_board_label != null:
+		_replay_playback_board_label.text = "Board: %s" % str(playback_state.get("board_text", "-"))
+	if _replay_playback_pot_label != null:
+		_replay_playback_pot_label.text = "Pot: %s" % _format_number(int(playback_state.get("pot", 0)))
+	if _replay_playback_action_label != null:
+		_replay_playback_action_label.text = str(playback_state.get("action_text", "Action: Initial state"))
+
+	_replace_replay_children(_replay_playback_result_vbox)
+	if _replay_playback_step >= _replay_playback_actions.size():
+		_add_replay_board_and_results(_replay_playback_result_vbox, _replay_playback_record)
+	else:
+		_add_replay_text(_replay_playback_result_vbox, "Result appears at showdown / final step.", HomeTheme.MUTED)
+
+	_render_replay_playback_timeline()
+
+
+func _add_replay_playback_player(parent: VBoxContainer, player: Dictionary) -> void:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	parent.add_child(box)
+	var seat_index: int = int(player.get("seat_index", -1))
+	var name_text: String = str(player.get("player_name", player.get("player_id", "Unknown")))
+	_add_replay_text(box, "Seat %d - %s" % [seat_index, name_text], Color(0.92, 0.95, 1.0, 0.96))
+	_add_replay_text(box, "Cards: %s" % str(player.get("cards_text", "Unknown")), Color(0.82, 0.86, 1.0, 0.92))
+	_add_replay_text(box, "Stack: %s / Start %s" % [
+		_replay_stack_text(player.get("stack", null)),
+		_replay_stack_text(player.get("starting_stack", null)),
+	], Color(0.82, 0.86, 1.0, 0.92))
+	_add_replay_text(box, "Bet: %s" % _format_number(int(player.get("current_bet", 0))), HomeTheme.GOLD)
+	_add_replay_text(box, "Status: %s" % str(player.get("status", "unknown")), Color(0.78, 0.82, 0.95, 0.92))
+
+
+func _render_replay_playback_timeline() -> void:
+	_replace_replay_children(_replay_playback_timeline_vbox)
+	if _replay_playback_actions.is_empty():
+		_add_replay_text(_replay_playback_timeline_vbox, "No actions recorded.", HomeTheme.MUTED)
+		return
+	var players: Array = Array(_replay_playback_record.get("players", []))
+	for i in range(_replay_playback_actions.size()):
+		var action: Dictionary = Dictionary(_replay_playback_actions[i])
+		var prefix: String = "> " if i == _replay_playback_step - 1 else "  "
+		var color: Color = HomeTheme.GOLD if i == _replay_playback_step - 1 else Color(0.82, 0.86, 1.0, 0.86)
+		var line: String = "%s%d. %s - %s" % [
+			prefix,
+			i + 1,
+			_street_label(str(action.get("street", ""))),
+			_action_line(action, players),
+		]
+		_add_replay_text(_replay_playback_timeline_vbox, line, color)
+
+
+func _replace_replay_children(parent: Node) -> void:
+	if parent == null:
+		return
+	for child in parent.get_children():
+		parent.remove_child(child)
+		child.queue_free()
+
+
+func _sorted_replay_actions(actions: Array) -> Array:
+	var sorted_actions: Array = actions.duplicate(true)
+	sorted_actions.sort_custom(func(a, b): return int(Dictionary(a).get("seq", 0)) < int(Dictionary(b).get("seq", 0)))
+	var filtered_actions: Array = []
+	for action_item in sorted_actions:
+		var action: Dictionary = Dictionary(action_item)
+		if _is_replay_debug_action(action):
+			continue
+		filtered_actions.append(action)
+	return filtered_actions
+
+
+func _replay_playback_state_for_step(record: Dictionary, target_step: int) -> Dictionary:
+	var player_states: Array = _initial_replay_player_states(Array(record.get("players", [])))
+	var pot: int = 0
+	var current_street: String = "preflop"
+	var action_text: String = "Action: Initial state"
+	var steps_to_apply: int = clampi(target_step, 0, _replay_playback_actions.size())
+	for i in range(steps_to_apply):
+		var action: Dictionary = Dictionary(_replay_playback_actions[i])
+		if action.is_empty():
+			continue
+		var street: String = str(action.get("street", ""))
+		if street != "":
+			current_street = street
+		pot = _apply_replay_action_to_state(player_states, pot, action)
+		action_text = "%s - %s" % [_street_label(current_street), _action_line(action, Array(record.get("players", [])))]
+	var board_cards: Array = _replay_board_for_street(Dictionary(record.get("community_cards", {})), current_street, steps_to_apply >= _replay_playback_actions.size())
+	return {
+		"players": player_states,
+		"pot": pot,
+		"board_text": _card_list_text(board_cards) if not board_cards.is_empty() else "-",
+		"action_text": action_text,
+	}
+
+
+func _initial_replay_player_states(players: Array) -> Array:
+	var player_states: Array = []
+	for player_item in players:
+		var player: Dictionary = Dictionary(player_item)
+		var has_start_stack: bool = player.has("starting_stack")
+		var start_stack: int = int(player.get("starting_stack", 0))
+		var player_state: Dictionary = player.duplicate(true)
+		player_state["starting_stack"] = start_stack if has_start_stack else null
+		player_state["stack"] = start_stack if has_start_stack else null
+		player_state["current_bet"] = 0
+		player_state["status"] = "active"
+		player_state["cards_text"] = _card_list_text(Array(player.get("hole_cards", [])))
+		player_states.append(player_state)
+	player_states.sort_custom(func(a, b): return int(Dictionary(a).get("seat_index", 99)) < int(Dictionary(b).get("seat_index", 99)))
+	return player_states
+
+
+func _apply_replay_action_to_state(player_states: Array, pot: int, action: Dictionary) -> int:
+	var actor_index: int = _replay_actor_state_index(player_states, action)
+	var actor_state: Dictionary = {}
+	if actor_index >= 0:
+		actor_state = Dictionary(player_states[actor_index])
+	var action_name: String = str(action.get("action", ""))
+	var amount: int = int(action.get("amount", 0))
+	var bet_to: int = int(action.get("bet_to", -1))
+	var pot_after: int = int(action.get("pot_after", -1))
+	var stack_after: int = int(action.get("player_stack_after", -1))
+	if not actor_state.is_empty():
+		match action_name:
+			"small_blind":
+				actor_state["current_bet"] = int(actor_state.get("current_bet", 0)) + amount
+				actor_state["status"] = "small blind"
+			"big_blind":
+				actor_state["current_bet"] = int(actor_state.get("current_bet", 0)) + amount
+				actor_state["status"] = "big blind"
+			"check":
+				actor_state["status"] = "checked"
+			"call":
+				actor_state["current_bet"] = bet_to if bet_to >= 0 else int(actor_state.get("current_bet", 0)) + amount
+				actor_state["status"] = "called"
+			"bet":
+				actor_state["current_bet"] = bet_to if bet_to >= 0 else amount
+				actor_state["status"] = "bet"
+			"raise":
+				actor_state["current_bet"] = bet_to if bet_to >= 0 else amount
+				actor_state["status"] = "raised"
+			"all_in":
+				actor_state["current_bet"] = bet_to if bet_to >= 0 else int(actor_state.get("current_bet", 0)) + amount
+				actor_state["status"] = "all-in"
+			"fold":
+				actor_state["status"] = "folded"
+			"timeout_auto_check":
+				actor_state["status"] = "timeout check"
+			"timeout_auto_fold":
+				actor_state["status"] = "folded"
+		if stack_after >= 0:
+			actor_state["stack"] = stack_after
+		elif amount > 0 and action_name in ["small_blind", "big_blind", "call", "bet", "raise", "all_in"]:
+			var current_stack_value: Variant = actor_state.get("stack", null)
+			if current_stack_value != null:
+				actor_state["stack"] = max(0, int(current_stack_value) - amount)
+		player_states[actor_index] = actor_state
+	if pot_after >= 0:
+		return pot_after
+	if amount > 0 and action_name in ["small_blind", "big_blind", "call", "bet", "raise", "all_in"]:
+		return pot + amount
+	return pot
+
+
+func _replay_actor_state_index(player_states: Array, action: Dictionary) -> int:
+	var actor_seat: int = int(action.get("actor_seat", action.get("seat_id", -1)))
+	var actor_player_id: String = str(action.get("actor_player_id", ""))
+	for i in range(player_states.size()):
+		var player: Dictionary = Dictionary(player_states[i])
+		if actor_seat >= 0 and int(player.get("seat_index", -1)) == actor_seat:
+			return i
+		if actor_player_id != "" and str(player.get("player_id", "")) == actor_player_id:
+			return i
+	return -1
+
+
+func _replay_board_for_street(community: Dictionary, street: String, force_full_board: bool) -> Array:
+	var board: Array = []
+	var street_key: String = street.to_lower()
+	if street_key in ["flop", "turn", "river", "showdown", "hand_over"] or force_full_board:
+		board.append_array(Array(community.get("flop", [])))
+	if street_key in ["turn", "river", "showdown", "hand_over"] or force_full_board:
+		board.append_array(Array(community.get("turn", [])))
+	if street_key in ["river", "showdown", "hand_over"] or force_full_board:
+		board.append_array(Array(community.get("river", [])))
+	return board
+
+
+func _replay_stack_text(value: Variant) -> String:
+	if value == null:
+		return "-"
+	return _format_number(int(value))
 
 
 func _make_replay_section(title_text: String, min_size: Vector2) -> PanelContainer:

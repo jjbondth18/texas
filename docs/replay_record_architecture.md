@@ -126,6 +126,58 @@ Action timeline display is grouped by street (`PREFLOP`, `FLOP`, `TURN`, `RIVER`
 
 The equity timeline remains a compact placeholder: `Equity Timeline - Coming in a later update.` Viewer v1 must not show unlock prompts, charge gems, or imply premium replay access.
 
+## Replay Playback v2
+
+Replay Playback v2 adds a read-only step viewer launched from the Replay Detail panel with `PLAY REPLAY`. It stays inside the Replay Room UI and does not enter `PokerTableScreen`, connect to the authoritative server, send player actions, mutate wallet balances, spend gems, write table transactions, or affect stats.
+
+Playback initializes from the saved `HandReplayRecord`:
+
+- players are sorted by `seat_index`
+- every player starts at `starting_stack`
+- all recorded hole cards are visible because this is an objective hand review
+- pot starts at `0`
+- board starts empty
+- current step starts at `0`
+
+The controls are read-only:
+
+- `BACK TO DETAIL`
+- `BACK TO REPLAYS`
+- `PREV`
+- `NEXT`
+- `PLAY` / `PAUSE`
+- optional `SPEED 1x` / `SPEED 2x`
+
+Real table controls such as fold, check, call, bet, raise, add chips, ready, warm-up, store, dealer changes, and cash-out must never appear in playback mode.
+
+Playback applies recorded actions in `seq` order. `NEXT` applies one more action. `PREV` rebuilds state from the initial replay state up to the target step instead of trying to reverse individual poker operations. `PLAY` advances every `0.8` seconds at 1x speed and pauses automatically at the final step.
+
+Playback does not re-run poker rules. It prioritizes recorded state fields:
+
+- `pot_after` updates pot when present
+- `player_stack_after` updates the acting player's stack when present
+- `bet_to` updates the acting player's current bet when present
+
+When those fields are missing, playback uses simple display-only fallback updates so the review remains readable. It does not recalculate side pots or re-settle the hand.
+
+Board reveal is based on the current action street:
+
+- `preflop`: no board cards
+- `flop`: flop cards
+- `turn`: flop + turn
+- `river`, `showdown`, `hand_over`, or final step: full board
+
+Malformed or incomplete records must degrade gracefully:
+
+- missing players: `No players recorded.`
+- missing actions: `No actions recorded.`
+- missing board: `No board cards recorded.`
+- missing results: `No results recorded.`
+- missing hole cards: `Unknown`
+- missing stacks: `-`
+
+Future phases may add a 20-gem unlock, animated table replay, and objective or player-view equity graphs. Those are intentionally out of scope for v2.
+
 ## Future Phases
 
 Later replay work can add:
