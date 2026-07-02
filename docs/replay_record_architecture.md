@@ -244,6 +244,24 @@ Replay Table View v4 is still isolated from:
 
 Future replay phases may add replay-specific card movement, chip movement, street transition animations, equity charts, and an explicitly designed gem unlock. Those remain out of scope for v4.
 
+## Replay Table View v5 Fullscreen Layout
+
+Replay Table View v5 moves playback out of the Replay Room detail panel and into a full-screen read-only overlay. Clicking `PLAY REPLAY` hides the Replay Room panel, list, detail content, large lobby branding, and prompt text while the overlay is active.
+
+The fullscreen overlay uses:
+
+- full-window `table_neon_v1.png` table background
+- a compact top replay header with hand id, mode, blinds, step count, and current action
+- objective replay seats scaled from the poker table visual contract
+- board, pot, player cards, stacks, statuses, current actor highlight, folded dimming, and winner highlight from recorded playback state
+- a narrow right-side timeline panel that can be hidden with `HIDE TIMELINE` / `SHOW TIMELINE`
+- bottom-centered read-only playback controls: `PREV`, `PLAY` / `PAUSE`, `NEXT`, and `SPEED`
+- top-right navigation: `BACK TO DETAIL` and `BACK TO REPLAYS`
+
+`BACK TO DETAIL` hides the overlay and restores the selected replay detail. `BACK TO REPLAYS` hides the overlay and returns to the replay list empty/detail prompt.
+
+The fullscreen table view still only renders saved replay state. It does not connect to the server, send player actions, run live poker rules, mutate wallet or gems, cash out, enter store flows, or touch live `PokerTableScreen` session logic.
+
 ## Future Phases
 
 Later replay work can add:

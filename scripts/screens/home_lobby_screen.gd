@@ -43,6 +43,10 @@ var _play_panel: PanelContainer
 var _room_browser_panel: PanelContainer
 var _friends_room_panel: PanelContainer
 var _replay_panel: PanelContainer
+var _replay_fullscreen_overlay: Control
+var _replay_fullscreen_timeline_panel: PanelContainer
+var _replay_fullscreen_timeline_visible := true
+var _replay_timeline_toggle_button: Button
 var _replay_content_hbox: HBoxContainer
 var _replay_list_panel: PanelContainer
 var _replay_equity_box: PanelContainer
@@ -2999,6 +3003,7 @@ func _open_replay_detail(hand: Dictionary) -> void:
 
 func _render_replay_detail_empty(has_records: bool) -> void:
 	_stop_replay_playback()
+	_hide_replay_fullscreen_overlay()
 	_set_replay_playback_layout(false)
 	_replay_current_record = {}
 	_replay_current_index_entry = {}
@@ -3016,6 +3021,7 @@ func _render_replay_detail_empty(has_records: bool) -> void:
 
 func _render_replay_detail_error(message: String) -> void:
 	_stop_replay_playback()
+	_hide_replay_fullscreen_overlay()
 	_set_replay_playback_layout(false)
 	_clear_replay_detail()
 	var title := Label.new()
@@ -3032,6 +3038,7 @@ func _render_replay_detail_error(message: String) -> void:
 
 
 func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
+	_hide_replay_fullscreen_overlay()
 	_set_replay_playback_layout(false)
 	_clear_replay_detail()
 	var hand_id: String = str(record.get("hand_id", index_entry.get("replay_id", "Unknown")))
@@ -3130,37 +3137,61 @@ func _open_replay_playback(record: Dictionary, index_entry: Dictionary) -> void:
 
 func _render_replay_playback() -> void:
 	_set_replay_playback_layout(true)
-	_clear_replay_detail()
-	var title := Label.new()
-	title.text = "REPLAY MODE"
-	HomeTheme.make_font_settings(title, 18, HomeTheme.CYAN)
-	_replay_detail_vbox.add_child(title)
+	_show_replay_fullscreen_overlay()
+	_replace_replay_children(_replay_fullscreen_overlay)
 
-	var subtitle := Label.new()
-	subtitle.text = "Read-only hand playback. Replay Table View renders the recorded hand without server, wallet, or gem changes."
-	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	HomeTheme.make_font_settings(subtitle, 12, HomeTheme.MUTED)
-	_replay_detail_vbox.add_child(subtitle)
+	var bg := TextureRect.new()
+	bg.name = "ReplayFullscreenTableBackground"
+	bg.texture = REPLAY_TABLE_BACKGROUND
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_SCALE
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_replay_fullscreen_overlay.add_child(bg)
+
+	var shade := ColorRect.new()
+	shade.name = "ReplayFullscreenShade"
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.0, 0.0, 0.0, 0.28)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_replay_fullscreen_overlay.add_child(shade)
 
 	_replay_playback_step_label = Label.new()
-	HomeTheme.make_font_settings(_replay_playback_step_label, 13, Color(0.92, 0.96, 1.0, 0.96))
-	_replay_detail_vbox.add_child(_replay_playback_step_label)
+	_replay_playback_step_label.name = "ReplayFullscreenHeader"
+	_replay_playback_step_label.anchor_left = 0.02
+	_replay_playback_step_label.anchor_top = 0.02
+	_replay_playback_step_label.anchor_right = 0.72
+	_replay_playback_step_label.anchor_bottom = 0.16
+	_replay_playback_step_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(_replay_playback_step_label, 16, Color(0.92, 0.96, 1.0, 0.98))
+	_replay_fullscreen_overlay.add_child(_replay_playback_step_label)
 
-	var body_hbox := HBoxContainer.new()
-	body_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	body_hbox.add_theme_constant_override("separation", 18)
-	_replay_detail_vbox.add_child(body_hbox)
+	var top_controls := HBoxContainer.new()
+	top_controls.name = "ReplayFullscreenTopControls"
+	top_controls.anchor_left = 0.70
+	top_controls.anchor_top = 0.03
+	top_controls.anchor_right = 0.985
+	top_controls.anchor_bottom = 0.11
+	top_controls.alignment = BoxContainer.ALIGNMENT_END
+	top_controls.add_theme_constant_override("separation", 8)
+	_replay_fullscreen_overlay.add_child(top_controls)
+	var back_detail := _make_replay_control_button("BACK TO DETAIL")
+	back_detail.pressed.connect(_return_to_replay_detail)
+	top_controls.add_child(back_detail)
+	var back_replays := _make_replay_control_button("BACK TO REPLAYS")
+	back_replays.pressed.connect(_return_to_replay_list_from_playback)
+	top_controls.add_child(back_replays)
+	_replay_timeline_toggle_button = _make_replay_control_button("HIDE TIMELINE")
+	_replay_timeline_toggle_button.pressed.connect(_toggle_replay_fullscreen_timeline)
+	top_controls.add_child(_replay_timeline_toggle_button)
 
-	var table_box := _make_replay_section("REPLAY TABLE VIEW", Vector2(980, 520))
-	table_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	body_hbox.add_child(table_box)
-	var table_vbox: VBoxContainer = table_box.get_node("Content") as VBoxContainer
 	_replay_playback_table_layer = Control.new()
 	_replay_playback_table_layer.name = "ReplayTableLayer"
-	_replay_playback_table_layer.custom_minimum_size = REPLAY_TABLE_VIEW_SIZE
-	_replay_playback_table_layer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_replay_playback_table_layer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	table_vbox.add_child(_replay_playback_table_layer)
+	_replay_playback_table_layer.anchor_left = 0.0
+	_replay_playback_table_layer.anchor_top = 0.12
+	_replay_playback_table_layer.anchor_right = 1.0
+	_replay_playback_table_layer.anchor_bottom = 0.88
+	_replay_fullscreen_overlay.add_child(_replay_playback_table_layer)
 	_replay_playback_players_vbox = VBoxContainer.new()
 	_replay_playback_players_vbox.visible = false
 	_replay_playback_board_label = Label.new()
@@ -3168,16 +3199,34 @@ func _render_replay_playback() -> void:
 	_replay_playback_action_label = Label.new()
 	_replay_playback_result_vbox = VBoxContainer.new()
 
-	var timeline_box := _make_replay_section("PLAYER ACTIONS / HAND EVENTS", Vector2(390, 0))
-	body_hbox.add_child(timeline_box)
-	_replay_playback_timeline_vbox = timeline_box.get_node("Content") as VBoxContainer
+	_replay_fullscreen_timeline_panel = PanelContainer.new()
+	_replay_fullscreen_timeline_panel.name = "ReplayFullscreenTimelinePanel"
+	_replay_fullscreen_timeline_panel.anchor_left = 1.0
+	_replay_fullscreen_timeline_panel.anchor_top = 0.14
+	_replay_fullscreen_timeline_panel.anchor_right = 1.0
+	_replay_fullscreen_timeline_panel.anchor_bottom = 0.84
+	_replay_fullscreen_timeline_panel.offset_left = -350
+	_replay_fullscreen_timeline_panel.offset_right = -18
+	_replay_fullscreen_timeline_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.018, 0.70), Color(0.26, 0.30, 0.52, 0.32), 8, 1))
+	_replay_fullscreen_overlay.add_child(_replay_fullscreen_timeline_panel)
+	var timeline_scroll := ScrollContainer.new()
+	timeline_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	timeline_scroll.mouse_filter = Control.MOUSE_FILTER_PASS
+	_replay_fullscreen_timeline_panel.add_child(timeline_scroll)
+	_replay_playback_timeline_vbox = VBoxContainer.new()
+	_replay_playback_timeline_vbox.name = "ReplayFullscreenTimelineContent"
+	_replay_playback_timeline_vbox.add_theme_constant_override("separation", 7)
+	timeline_scroll.add_child(_replay_playback_timeline_vbox)
 
 	var controls := HBoxContainer.new()
+	controls.name = "ReplayFullscreenControls"
+	controls.anchor_left = 0.0
+	controls.anchor_top = 0.90
+	controls.anchor_right = 1.0
+	controls.anchor_bottom = 0.985
+	controls.alignment = BoxContainer.ALIGNMENT_CENTER
 	controls.add_theme_constant_override("separation", 10)
-	_replay_detail_vbox.add_child(controls)
-	var back_detail := _make_replay_control_button("BACK TO DETAIL")
-	back_detail.pressed.connect(_return_to_replay_detail)
-	controls.add_child(back_detail)
+	_replay_fullscreen_overlay.add_child(controls)
 	var prev_button := _make_replay_control_button("PREV")
 	prev_button.pressed.connect(_replay_playback_prev)
 	controls.add_child(prev_button)
@@ -3190,9 +3239,8 @@ func _render_replay_playback() -> void:
 	_replay_playback_speed_button = _make_replay_control_button("SPEED 1x")
 	_replay_playback_speed_button.pressed.connect(_toggle_replay_playback_speed)
 	controls.add_child(_replay_playback_speed_button)
-	var back_replays := _make_replay_back_button()
-	controls.add_child(back_replays)
 
+	_apply_replay_fullscreen_layout()
 	_refresh_replay_playback_view()
 
 
@@ -3203,6 +3251,66 @@ func _set_replay_playback_layout(enabled: bool) -> void:
 		_replay_equity_box.visible = not enabled
 	if _replay_content_hbox != null:
 		_replay_content_hbox.add_theme_constant_override("separation", 0 if enabled else 24)
+
+
+func _ensure_replay_fullscreen_overlay() -> void:
+	if _replay_fullscreen_overlay != null:
+		return
+	_replay_fullscreen_overlay = Control.new()
+	_replay_fullscreen_overlay.name = "ReplayFullscreenOverlay"
+	_replay_fullscreen_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_replay_fullscreen_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	_replay_fullscreen_overlay.visible = false
+	_replay_fullscreen_overlay.z_index = 500
+	add_child(_replay_fullscreen_overlay)
+
+
+func _show_replay_fullscreen_overlay() -> void:
+	_ensure_replay_fullscreen_overlay()
+	_replay_fullscreen_overlay.visible = true
+	_replay_fullscreen_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_replay_fullscreen_overlay.move_to_front()
+	if _replay_panel != null:
+		_replay_panel.visible = false
+	if _center_brand != null:
+		_center_brand.visible = false
+	if _prompt != null:
+		_prompt.visible = false
+	if _cta_button != null:
+		_cta_button.visible = false
+
+
+func _hide_replay_fullscreen_overlay() -> void:
+	if _replay_fullscreen_overlay != null:
+		_replay_fullscreen_overlay.visible = false
+		_replace_replay_children(_replay_fullscreen_overlay)
+	if current_state == LobbyState.REPLAY and _replay_panel != null:
+		_replay_panel.visible = true
+	if _center_brand != null and current_state != LobbyState.COLLAPSED:
+		_center_brand.visible = true
+
+
+func _toggle_replay_fullscreen_timeline() -> void:
+	_replay_fullscreen_timeline_visible = not _replay_fullscreen_timeline_visible
+	_apply_replay_fullscreen_layout()
+	_refresh_replay_playback_view()
+
+
+func _apply_replay_fullscreen_layout() -> void:
+	var timeline_width := 350.0 if _replay_fullscreen_timeline_visible else 0.0
+	if _replay_fullscreen_timeline_panel != null:
+		_replay_fullscreen_timeline_panel.visible = _replay_fullscreen_timeline_visible
+	if _replay_timeline_toggle_button != null:
+		_replay_timeline_toggle_button.text = "HIDE TIMELINE" if _replay_fullscreen_timeline_visible else "SHOW TIMELINE"
+	if _replay_playback_table_layer != null:
+		_replay_playback_table_layer.anchor_left = 0.0
+		_replay_playback_table_layer.anchor_top = 0.12
+		_replay_playback_table_layer.anchor_right = 1.0
+		_replay_playback_table_layer.anchor_bottom = 0.88
+		_replay_playback_table_layer.offset_left = 0
+		_replay_playback_table_layer.offset_top = 0
+		_replay_playback_table_layer.offset_right = -timeline_width
+		_replay_playback_table_layer.offset_bottom = 0
 
 
 func _make_replay_value_label(text: String, color: Color) -> Label:
@@ -3226,10 +3334,17 @@ func _make_replay_control_button(text: String) -> Button:
 
 func _return_to_replay_detail() -> void:
 	_stop_replay_playback()
+	_hide_replay_fullscreen_overlay()
 	if _replay_current_record.is_empty():
 		_render_replay_detail_empty(true)
 		return
 	_render_replay_detail(_replay_current_record, _replay_current_index_entry)
+
+
+func _return_to_replay_list_from_playback() -> void:
+	_stop_replay_playback()
+	_hide_replay_fullscreen_overlay()
+	_render_replay_detail_empty(true)
 
 
 func _replay_playback_prev() -> void:
@@ -3318,7 +3433,7 @@ func _render_replay_table_view(playback_state: Dictionary, players: Array) -> vo
 	if _replay_playback_table_layer == null:
 		return
 	_replace_replay_children(_replay_playback_table_layer)
-	var table_size: Vector2 = REPLAY_TABLE_VIEW_SIZE
+	var table_size: Vector2 = _replay_table_view_size()
 	var bg := TextureRect.new()
 	bg.name = "ReplayTableBackground"
 	bg.texture = REPLAY_TABLE_BACKGROUND
@@ -3340,9 +3455,9 @@ func _render_replay_table_view(playback_state: Dictionary, players: Array) -> vo
 
 	var center_panel := PanelContainer.new()
 	center_panel.name = "ReplayTableCenter"
-	center_panel.position = Vector2(363, 182)
 	center_panel.custom_minimum_size = Vector2(234, 124)
 	center_panel.size = Vector2(234, 124)
+	center_panel.position = _replay_design_to_view(Vector2(1280.0, 405.0)) - center_panel.size * 0.5
 	center_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.008, 0.010, 0.026, 0.82), Color(0.22, 0.86, 1.0, 0.30), 10, 1))
 	_replay_playback_table_layer.add_child(center_panel)
 	var center_vbox := VBoxContainer.new()
@@ -3581,11 +3696,17 @@ func _replay_bet_marker_position(seat_index: int) -> Vector2:
 
 
 func _replay_design_to_view(design_pos: Vector2) -> Vector2:
-	var scale := Vector2(
-		REPLAY_TABLE_VIEW_SIZE.x / REPLAY_TABLE_DESIGN_SIZE.x,
-		REPLAY_TABLE_VIEW_SIZE.y / REPLAY_TABLE_DESIGN_SIZE.y
-	)
+	var table_size: Vector2 = _replay_table_view_size()
+	var scale := Vector2(table_size.x / REPLAY_TABLE_DESIGN_SIZE.x, table_size.y / REPLAY_TABLE_DESIGN_SIZE.y)
 	return Vector2(design_pos.x * scale.x, design_pos.y * scale.y)
+
+
+func _replay_table_view_size() -> Vector2:
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var timeline_width := 350.0 if _replay_fullscreen_timeline_visible else 0.0
+	if _replay_fullscreen_overlay != null and _replay_fullscreen_overlay.visible:
+		return Vector2(maxf(720.0, viewport_size.x - timeline_width), maxf(420.0, viewport_size.y * 0.76))
+	return REPLAY_TABLE_VIEW_SIZE
 
 
 func _replay_bet_marker_style() -> StyleBoxFlat:
