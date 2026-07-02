@@ -31,6 +31,7 @@ var _timeline_toggle_button: Button
 var _play_button: Button
 var _speed_button: Button
 var _replay_controls_panel: PanelContainer
+var _replay_info_action_label: Label
 
 @onready var _table_surface_layer: Control = $TableSurfaceLayer
 @onready var _ui_layer: Control = $UIFloatingLayer
@@ -123,9 +124,55 @@ func _setup_replay_visual_shell() -> void:
 	if _exit_button != null:
 		_exit_button.visible = false
 
+	_configure_replay_info_panel()
+	_configure_replay_timeline_panel()
 	_setup_top_replay_controls()
 	_setup_bottom_replay_controls()
 	set_timeline_visible(true)
+
+
+func _configure_replay_info_panel() -> void:
+	if _room_info_panel == null:
+		return
+	_room_info_panel.custom_minimum_size = Vector2(320, 184)
+	_room_info_panel.size = Vector2(320, 184)
+	_hide_table_room_info_children(["Seat", "ACTION TIMER"])
+	_replay_info_action_label = Label.new()
+	_replay_info_action_label.name = "ReplayCurrentActionLabel"
+	_replay_info_action_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_replay_info_action_label.custom_minimum_size = Vector2(0, 38)
+	HomeTheme.make_font_settings(_replay_info_action_label, 12, Color(0.94, 0.90, 1.0, 0.94))
+	_room_info_panel.add_child(_replay_info_action_label)
+
+
+func _hide_table_room_info_children(text_markers: Array[String]) -> void:
+	if _room_info_panel == null:
+		return
+	for child in _room_info_panel.find_children("*", "Label", true, false):
+		var label: Label = child as Label
+		if label == null:
+			continue
+		if label == _replay_info_action_label or label.name == "ReplayCurrentActionLabel":
+			continue
+		for marker_value in text_markers:
+			var marker: String = str(marker_value).to_upper()
+			if label.text.to_upper().find(marker) != -1:
+				label.visible = false
+	for child in _room_info_panel.find_children("*", "ProgressBar", true, false):
+		var bar: ProgressBar = child as ProgressBar
+		if bar != null:
+			bar.visible = false
+
+
+func _configure_replay_timeline_panel() -> void:
+	var right_panel: Control = $UIFloatingLayer/RightPanel
+	right_panel.position = Vector2(2240, 142)
+	right_panel.size = Vector2(320, 700)
+	right_panel.custom_minimum_size = right_panel.size
+	if _log_panel != null:
+		_log_panel.position = Vector2(-16, -28)
+		_log_panel.size = Vector2(336, 640)
+		_log_panel.custom_minimum_size = _log_panel.size
 
 
 func _setup_top_replay_controls() -> void:
@@ -148,10 +195,10 @@ func _setup_top_replay_controls() -> void:
 	_top_right_action_bar.anchor_top = 0.0
 	_top_right_action_bar.anchor_right = 1.0
 	_top_right_action_bar.anchor_bottom = 0.0
-	_top_right_action_bar.offset_left = -620.0
-	_top_right_action_bar.offset_top = 14.0
-	_top_right_action_bar.offset_right = -32.0
-	_top_right_action_bar.offset_bottom = 66.0
+	_top_right_action_bar.offset_left = -640.0
+	_top_right_action_bar.offset_top = 8.0
+	_top_right_action_bar.offset_right = -28.0
+	_top_right_action_bar.offset_bottom = 58.0
 	_top_right_action_bar.alignment = BoxContainer.ALIGNMENT_END
 	_top_right_action_bar.add_theme_constant_override("separation", 10)
 
@@ -159,22 +206,22 @@ func _setup_top_replay_controls() -> void:
 	_replay_title_label.name = "ReplayPokerTableHeader"
 	_replay_title_label.anchor_left = 0.02
 	_replay_title_label.anchor_top = 0.015
-	_replay_title_label.anchor_right = 0.66
+	_replay_title_label.anchor_right = 0.58
 	_replay_title_label.anchor_bottom = 0.09
 	_replay_title_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_replay_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	HomeTheme.make_font_settings(_replay_title_label, 15, Color(0.92, 0.96, 1.0, 0.98))
 	_ui_layer.add_child(_replay_title_label)
 
-	var back_detail: Button = _make_replay_button("BACK TO DETAIL", Vector2(150, 44))
+	var back_detail: Button = _make_replay_button("BACK TO DETAIL", Vector2(146, 42))
 	back_detail.pressed.connect(func() -> void: back_to_detail_requested.emit())
 	_top_right_action_bar.add_child(back_detail)
 
-	var back_replays: Button = _make_replay_button("BACK TO REPLAYS", Vector2(154, 44))
+	var back_replays: Button = _make_replay_button("BACK TO REPLAYS", Vector2(150, 42))
 	back_replays.pressed.connect(func() -> void: back_to_replays_requested.emit())
 	_top_right_action_bar.add_child(back_replays)
 
-	_timeline_toggle_button = _make_replay_button("HIDE TIMELINE", Vector2(154, 44))
+	_timeline_toggle_button = _make_replay_button("HIDE TIMELINE", Vector2(146, 42))
 	_timeline_toggle_button.pressed.connect(func() -> void: timeline_toggle_requested.emit())
 	_top_right_action_bar.add_child(_timeline_toggle_button)
 
@@ -196,8 +243,8 @@ func _setup_bottom_replay_controls() -> void:
 		return
 	_replay_controls_panel = PanelContainer.new()
 	_replay_controls_panel.name = "ReplayPokerControls"
-	_replay_controls_panel.position = Vector2(40, 82)
-	_replay_controls_panel.size = Vector2(574, 188)
+	_replay_controls_panel.position = Vector2(52, 100)
+	_replay_controls_panel.size = Vector2(552, 150)
 	_replay_controls_panel.custom_minimum_size = _replay_controls_panel.size
 	_replay_controls_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.010, 0.024, 0.72), Color(0.20, 0.80, 1.0, 0.34), 14, 1))
 	control_zone.add_child(_replay_controls_panel)
@@ -205,8 +252,8 @@ func _setup_bottom_replay_controls() -> void:
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 22)
 	margin.add_theme_constant_override("margin_right", 22)
-	margin.add_theme_constant_override("margin_top", 18)
-	margin.add_theme_constant_override("margin_bottom", 18)
+	margin.add_theme_constant_override("margin_top", 14)
+	margin.add_theme_constant_override("margin_bottom", 14)
 	_replay_controls_panel.add_child(margin)
 	var vbox := VBoxContainer.new()
 	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -217,24 +264,24 @@ func _setup_bottom_replay_controls() -> void:
 	_replay_step_label.name = "ReplayStepSummary"
 	_replay_step_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_replay_step_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_replay_step_label.custom_minimum_size = Vector2(500, 52)
-	HomeTheme.make_font_settings(_replay_step_label, 14, Color(0.86, 0.92, 1.0, 0.94))
+	_replay_step_label.custom_minimum_size = Vector2(500, 38)
+	HomeTheme.make_font_settings(_replay_step_label, 13, Color(0.86, 0.92, 1.0, 0.94))
 	vbox.add_child(_replay_step_label)
 
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 10)
 	vbox.add_child(row)
-	var prev_button: Button = _make_replay_button("PREV", Vector2(110, 48))
+	var prev_button: Button = _make_replay_button("PREV", Vector2(104, 42))
 	prev_button.pressed.connect(func() -> void: previous_step_requested.emit())
 	row.add_child(prev_button)
-	_play_button = _make_replay_button("PLAY", Vector2(120, 48))
+	_play_button = _make_replay_button("PLAY", Vector2(112, 42))
 	_play_button.pressed.connect(func() -> void: playback_toggle_requested.emit())
 	row.add_child(_play_button)
-	var next_button: Button = _make_replay_button("NEXT", Vector2(110, 48))
+	var next_button: Button = _make_replay_button("NEXT", Vector2(104, 42))
 	next_button.pressed.connect(func() -> void: next_step_requested.emit())
 	row.add_child(next_button)
-	_speed_button = _make_replay_button("SPEED 1x", Vector2(130, 48))
+	_speed_button = _make_replay_button("SPEED 1x", Vector2(122, 42))
 	_speed_button.pressed.connect(func() -> void: speed_toggle_requested.emit())
 	row.add_child(_speed_button)
 
@@ -289,7 +336,7 @@ func _seat_data_from_player(player: Dictionary, current_actor_seat: int) -> Dict
 	var status_text: String = str(player.get("status", "active"))
 	var final_status: String = str(player.get("final_status", ""))
 	var is_winner: bool = _winner_seats.has(seat_index) and _current_step >= _total_steps
-	var display_status: String = "winner" if is_winner else status_text
+	var display_status: String = _replay_display_status(status_text, final_status, is_winner)
 	var avatar_id: String = str(player.get("avatar_id", ""))
 	if avatar_id == "":
 		avatar_id = AvatarLibraryScript.avatar_id_for_seat(seat_index, false)
@@ -312,11 +359,12 @@ func _seat_data_from_player(player: Dictionary, current_actor_seat: int) -> Dict
 		"current_bet": int(player.get("current_bet", 0)),
 		"cards": cards,
 		"status": display_status,
-		"raw_status": display_status if final_status == "" else final_status,
+		"raw_status": display_status,
 		"last_action": _status_to_action_label(display_status),
 		"last_action_amount": int(player.get("current_bet", 0)),
 		"is_turn": seat_index == current_actor_seat,
 		"is_local": seat_index == _primary_player_seat(Array(_record.get("players", []))),
+		"ready": false,
 		"occupied": true,
 		"is_ai": bool(player.get("is_ai", false)),
 		"warmup_ai": bool(player.get("is_local_warmup_ai", false)),
@@ -335,6 +383,7 @@ func _render_bottom_hud(players: Array, playback_state: Dictionary) -> void:
 			"buy_in": 0,
 			"win_rate": "N/A",
 			"is_local": false,
+			"avatar_texture": AvatarLibraryScript.get_avatar_by_id(AvatarLibraryScript.default_avatar_id()),
 		}, "replay")
 	else:
 		var start_stack: int = int(primary.get("starting_stack", primary.get("stack", 0)))
@@ -401,8 +450,10 @@ func _update_room_info(playback_state: Dictionary) -> void:
 	var max_hands: int = int(_record.get("max_hands", _record.get("hand_count", 0)))
 	var hand_number: int = int(_record.get("hand_number", 0))
 	var progress: String = "Hand %d / %d" % [hand_number, max_hands] if max_hands > 0 else "Hand %d" % hand_number
-	_room_info_panel.set_table_context("REPLAY MODE", hand_id, int(playback_state.get("current_actor_seat", -1)), blinds, "%s %s" % [mode_text, room_text], progress)
-	_room_info_panel.set_action_timer(0, 1, false)
+	_room_info_panel.set_table_context("REPLAY MODE", hand_id, -1, blinds, "%s %s" % [mode_text, room_text], progress)
+	if _replay_info_action_label != null:
+		_replay_info_action_label.text = str(playback_state.get("action_text", "Initial state"))
+	_hide_table_room_info_children(["Seat", "ACTION TIMER"])
 
 
 func _update_replay_title(action_text: String = "") -> void:
@@ -411,7 +462,7 @@ func _update_replay_title(action_text: String = "") -> void:
 	var hand_id: String = str(_record.get("hand_id", _index_entry.get("hand_id", "Unknown")))
 	var mode_text: String = _mode_label(str(_record.get("mode", "")))
 	var blinds: String = "%d/%d" % [int(_record.get("small_blind", 0)), int(_record.get("big_blind", 0))]
-	_replay_title_label.text = "REPLAY MODE\nHand #%s - %s - NLH %s - Step %d / %d\n%s" % [
+	_replay_title_label.text = "REPLAY MODE  |  Hand #%s  |  %s  |  NLH %s  |  Step %d / %d\n%s" % [
 		_compact_hand_number(hand_id),
 		mode_text,
 		blinds,
@@ -437,6 +488,32 @@ func _primary_player_from_state(players: Array) -> Dictionary:
 		if int(player.get("seat_index", -1)) == primary_seat:
 			return player
 	return {}
+
+
+func _replay_display_status(status_text: String, final_status: String, is_winner: bool) -> String:
+	if is_winner:
+		return "winner"
+	var source: String = final_status if final_status.strip_edges() != "" else status_text
+	var normalized: String = source.to_lower()
+	if normalized.find("fold") != -1:
+		return "folded"
+	if normalized.find("all") != -1:
+		return "all_in"
+	if normalized.find("showdown") != -1:
+		return "showdown"
+	if normalized.find("lost") != -1 or normalized.find("lose") != -1:
+		return "lost"
+	if normalized.find("blind") != -1:
+		return source
+	if normalized.find("check") != -1:
+		return "checked"
+	if normalized.find("call") != -1:
+		return "called"
+	if normalized.find("raise") != -1:
+		return "raised"
+	if normalized.find("bet") != -1:
+		return "bet"
+	return "active"
 
 
 func _primary_player_seat(players: Array) -> int:
