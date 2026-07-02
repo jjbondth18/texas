@@ -262,6 +262,24 @@ The fullscreen overlay uses:
 
 The fullscreen table view still only renders saved replay state. It does not connect to the server, send player actions, run live poker rules, mutate wallet or gems, cash out, enter store flows, or touch live `PokerTableScreen` session logic.
 
+## ReplayPokerTableScreen Copy-From-Table Approach
+
+ReplayPokerTableScreen replaces the hand-built fullscreen replay table surface with a replay-only copy of the official poker table visual structure. `PLAY REPLAY` now opens `scenes/screens/replay_poker_table_screen.tscn`, which is copied from the official table scene for visual parity but uses `scripts/screens/replay_poker_table_screen.gd` instead of the live `PokerTableScreen` script.
+
+The replay screen intentionally reuses official visual components:
+
+- `table_neon_v1.png` full table background
+- official `PokerSeat` / `SeatPlayerCard` instances and seat anchors
+- official `CommunityBoard` for board cards
+- official `PotDisplay` for total pot
+- official `TableStatusPanel` for left-side player status
+- official `TableInfoPanel` log area repurposed as replay timeline
+- official `ActionBar` bottom HUD styling, with its real action controls hidden and replaced by replay controls
+
+ReplayPokerTableScreen is a read-only renderer. Its only data source is the replay playback state built by the existing replay state functions in `HomeLobbyScreen`: players, hole cards, board cards, pot, current bets, current actor, folded status, winners, and timeline steps. It does not connect to the server, does not send `player_action`, does not mutate wallet or gems, does not cash out, does not run ready or warm-up flows, and does not execute live betting/dealing/settlement logic.
+
+The official table remains isolated. The live `PokerTableScreen` scene and script are not used for replay execution, and future replay changes should continue to happen in the replay screen/adapter unless a change is purely shared visual component work. Future phases may remove extra copied UI, add replay-specific animations, and add an equity timeline.
+
 ## Future Phases
 
 Later replay work can add:

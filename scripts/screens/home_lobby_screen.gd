@@ -71,6 +71,7 @@ var _replay_playback_timeline_vbox: VBoxContainer
 var _replay_playback_step_label: Label
 var _replay_playback_play_button: Button
 var _replay_playback_speed_button: Button
+var _replay_poker_table_screen: ReplayPokerTableScreen
 var _store_panel: PanelContainer
 var _profile_panel: PanelContainer
 var _settings_panel: PanelContainer
@@ -101,6 +102,7 @@ const SettingsServiceScript := preload("res://scripts/services/settings_service.
 const PokerWsClientScript := preload("res://scripts/network/poker_ws_client.gd")
 const NetworkConfigScript := preload("res://scripts/network/network_config.gd")
 const ReplayCardViewScene := preload("res://scenes/components/card_view.tscn")
+const ReplayPokerTableScreenScene := preload("res://scenes/screens/replay_poker_table_screen.tscn")
 const REPLAY_TABLE_BACKGROUND := preload("res://assets/poker_table/backgrounds/table_neon_v1.png")
 const REPLAY_CHIP_STACK := preload("res://assets/ui/neon_poker_ui_clean/chip_stack.png")
 const REPLAY_AVATAR_RING := preload("res://assets/ui/neon_poker_ui_clean/avatar_ring.png")
@@ -3139,108 +3141,18 @@ func _render_replay_playback() -> void:
 	_set_replay_playback_layout(true)
 	_show_replay_fullscreen_overlay()
 	_replace_replay_children(_replay_fullscreen_overlay)
-
-	var bg := TextureRect.new()
-	bg.name = "ReplayFullscreenTableBackground"
-	bg.texture = REPLAY_TABLE_BACKGROUND
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	bg.stretch_mode = TextureRect.STRETCH_SCALE
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_replay_fullscreen_overlay.add_child(bg)
-
-	var shade := ColorRect.new()
-	shade.name = "ReplayFullscreenShade"
-	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	shade.color = Color(0.0, 0.0, 0.0, 0.28)
-	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_replay_fullscreen_overlay.add_child(shade)
-
-	_replay_playback_step_label = Label.new()
-	_replay_playback_step_label.name = "ReplayFullscreenHeader"
-	_replay_playback_step_label.anchor_left = 0.02
-	_replay_playback_step_label.anchor_top = 0.02
-	_replay_playback_step_label.anchor_right = 0.72
-	_replay_playback_step_label.anchor_bottom = 0.16
-	_replay_playback_step_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	HomeTheme.make_font_settings(_replay_playback_step_label, 16, Color(0.92, 0.96, 1.0, 0.98))
-	_replay_fullscreen_overlay.add_child(_replay_playback_step_label)
-
-	var top_controls := HBoxContainer.new()
-	top_controls.name = "ReplayFullscreenTopControls"
-	top_controls.anchor_left = 0.70
-	top_controls.anchor_top = 0.03
-	top_controls.anchor_right = 0.985
-	top_controls.anchor_bottom = 0.11
-	top_controls.alignment = BoxContainer.ALIGNMENT_END
-	top_controls.add_theme_constant_override("separation", 8)
-	_replay_fullscreen_overlay.add_child(top_controls)
-	var back_detail := _make_replay_control_button("BACK TO DETAIL")
-	back_detail.pressed.connect(_return_to_replay_detail)
-	top_controls.add_child(back_detail)
-	var back_replays := _make_replay_control_button("BACK TO REPLAYS")
-	back_replays.pressed.connect(_return_to_replay_list_from_playback)
-	top_controls.add_child(back_replays)
-	_replay_timeline_toggle_button = _make_replay_control_button("HIDE TIMELINE")
-	_replay_timeline_toggle_button.pressed.connect(_toggle_replay_fullscreen_timeline)
-	top_controls.add_child(_replay_timeline_toggle_button)
-
-	_replay_playback_table_layer = Control.new()
-	_replay_playback_table_layer.name = "ReplayTableLayer"
-	_replay_playback_table_layer.anchor_left = 0.0
-	_replay_playback_table_layer.anchor_top = 0.12
-	_replay_playback_table_layer.anchor_right = 1.0
-	_replay_playback_table_layer.anchor_bottom = 0.88
-	_replay_fullscreen_overlay.add_child(_replay_playback_table_layer)
-	_replay_playback_players_vbox = VBoxContainer.new()
-	_replay_playback_players_vbox.visible = false
-	_replay_playback_board_label = Label.new()
-	_replay_playback_pot_label = Label.new()
-	_replay_playback_action_label = Label.new()
-	_replay_playback_result_vbox = VBoxContainer.new()
-
-	_replay_fullscreen_timeline_panel = PanelContainer.new()
-	_replay_fullscreen_timeline_panel.name = "ReplayFullscreenTimelinePanel"
-	_replay_fullscreen_timeline_panel.anchor_left = 1.0
-	_replay_fullscreen_timeline_panel.anchor_top = 0.14
-	_replay_fullscreen_timeline_panel.anchor_right = 1.0
-	_replay_fullscreen_timeline_panel.anchor_bottom = 0.84
-	_replay_fullscreen_timeline_panel.offset_left = -350
-	_replay_fullscreen_timeline_panel.offset_right = -18
-	_replay_fullscreen_timeline_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.018, 0.70), Color(0.26, 0.30, 0.52, 0.32), 8, 1))
-	_replay_fullscreen_overlay.add_child(_replay_fullscreen_timeline_panel)
-	var timeline_scroll := ScrollContainer.new()
-	timeline_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	timeline_scroll.mouse_filter = Control.MOUSE_FILTER_PASS
-	_replay_fullscreen_timeline_panel.add_child(timeline_scroll)
-	_replay_playback_timeline_vbox = VBoxContainer.new()
-	_replay_playback_timeline_vbox.name = "ReplayFullscreenTimelineContent"
-	_replay_playback_timeline_vbox.add_theme_constant_override("separation", 7)
-	timeline_scroll.add_child(_replay_playback_timeline_vbox)
-
-	var controls := HBoxContainer.new()
-	controls.name = "ReplayFullscreenControls"
-	controls.anchor_left = 0.0
-	controls.anchor_top = 0.90
-	controls.anchor_right = 1.0
-	controls.anchor_bottom = 0.985
-	controls.alignment = BoxContainer.ALIGNMENT_CENTER
-	controls.add_theme_constant_override("separation", 10)
-	_replay_fullscreen_overlay.add_child(controls)
-	var prev_button := _make_replay_control_button("PREV")
-	prev_button.pressed.connect(_replay_playback_prev)
-	controls.add_child(prev_button)
-	var next_button := _make_replay_control_button("NEXT")
-	next_button.pressed.connect(_replay_playback_next)
-	controls.add_child(next_button)
-	_replay_playback_play_button = _make_replay_control_button("PLAY")
-	_replay_playback_play_button.pressed.connect(_toggle_replay_playback)
-	controls.add_child(_replay_playback_play_button)
-	_replay_playback_speed_button = _make_replay_control_button("SPEED 1x")
-	_replay_playback_speed_button.pressed.connect(_toggle_replay_playback_speed)
-	controls.add_child(_replay_playback_speed_button)
-
-	_apply_replay_fullscreen_layout()
+	_replay_poker_table_screen = ReplayPokerTableScreenScene.instantiate() as ReplayPokerTableScreen
+	_replay_poker_table_screen.name = "ReplayPokerTableScreen"
+	_replay_poker_table_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_replay_poker_table_screen.back_to_detail_requested.connect(_return_to_replay_detail)
+	_replay_poker_table_screen.back_to_replays_requested.connect(_return_to_replay_list_from_playback)
+	_replay_poker_table_screen.previous_step_requested.connect(_replay_playback_prev)
+	_replay_poker_table_screen.next_step_requested.connect(_replay_playback_next)
+	_replay_poker_table_screen.playback_toggle_requested.connect(_toggle_replay_playback)
+	_replay_poker_table_screen.speed_toggle_requested.connect(_toggle_replay_playback_speed)
+	_replay_poker_table_screen.timeline_toggle_requested.connect(_toggle_replay_fullscreen_timeline)
+	_replay_fullscreen_overlay.add_child(_replay_poker_table_screen)
+	_replay_poker_table_screen.set_replay_context(_replay_playback_record, _replay_playback_index_entry, _steps_with_timeline_text(_replay_playback_steps))
 	_refresh_replay_playback_view()
 
 
@@ -3284,6 +3196,7 @@ func _hide_replay_fullscreen_overlay() -> void:
 	if _replay_fullscreen_overlay != null:
 		_replay_fullscreen_overlay.visible = false
 		_replace_replay_children(_replay_fullscreen_overlay)
+	_replay_poker_table_screen = null
 	if current_state == LobbyState.REPLAY and _replay_panel != null:
 		_replay_panel.visible = true
 	if _center_brand != null and current_state != LobbyState.COLLAPSED:
@@ -3292,6 +3205,8 @@ func _hide_replay_fullscreen_overlay() -> void:
 
 func _toggle_replay_fullscreen_timeline() -> void:
 	_replay_fullscreen_timeline_visible = not _replay_fullscreen_timeline_visible
+	if _replay_poker_table_screen != null:
+		_replay_poker_table_screen.set_timeline_visible(_replay_fullscreen_timeline_visible)
 	_apply_replay_fullscreen_layout()
 	_refresh_replay_playback_view()
 
@@ -3376,6 +3291,8 @@ func _toggle_replay_playback() -> void:
 		_replay_playback_play_button.text = "PAUSE"
 	_replay_playback_timer.wait_time = 0.8 / _replay_playback_speed
 	_replay_playback_timer.start()
+	if _replay_poker_table_screen != null:
+		_refresh_replay_playback_view()
 
 
 func _toggle_replay_playback_speed() -> void:
@@ -3385,6 +3302,8 @@ func _toggle_replay_playback_speed() -> void:
 	if _replay_playback_is_playing and _replay_playback_timer != null:
 		_replay_playback_timer.wait_time = 0.8 / _replay_playback_speed
 		_replay_playback_timer.start()
+	if _replay_poker_table_screen != null:
+		_refresh_replay_playback_view()
 
 
 func _ensure_replay_playback_timer() -> void:
@@ -3406,11 +3325,22 @@ func _stop_replay_playback() -> void:
 		_replay_playback_timer.stop()
 	if _replay_playback_play_button != null:
 		_replay_playback_play_button.text = "PLAY"
+	if _replay_poker_table_screen != null:
+		_refresh_replay_playback_view()
 
 
 func _refresh_replay_playback_view() -> void:
 	var playback_state: Dictionary = _replay_playback_state_for_step(_replay_playback_record, _replay_playback_step)
 	var players: Array = Array(playback_state.get("players", []))
+	if _replay_poker_table_screen != null:
+		_replay_poker_table_screen.render_replay_state(
+			playback_state,
+			_replay_playback_step,
+			_replay_playback_steps.size(),
+			_replay_playback_is_playing,
+			_replay_playback_speed
+		)
+		return
 	if _replay_playback_step_label != null:
 		_replay_playback_step_label.text = "%s\nStep %d / %d\n%s" % [
 			_replay_playback_header_line(_replay_playback_record),
@@ -3873,6 +3803,16 @@ func _build_replay_playback_steps(record: Dictionary) -> Array:
 			],
 		})
 	return steps
+
+
+func _steps_with_timeline_text(source_steps: Array) -> Array:
+	var result: Array = []
+	var players: Array = Array(_replay_playback_record.get("players", []))
+	for step_item in source_steps:
+		var step: Dictionary = Dictionary(step_item).duplicate(true)
+		step["timeline_text"] = _replay_playback_step_label_text(step, players)
+		result.append(step)
+	return result
 
 
 func _is_replay_player_action(action: Dictionary) -> bool:

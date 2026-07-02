@@ -1,0 +1,740 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/screens/replay_poker_table_screen.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/components/poker_seat.tscn" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/components/pot_display.tscn" id="3"]
+[ext_resource type="PackedScene" path="res://scenes/components/community_board.tscn" id="4"]
+[ext_resource type="Script" uid="uid://deiiq0rdhqtjc" path="res://scripts/components/table_room_info_panel.gd" id="5"]
+[ext_resource type="PackedScene" path="res://scenes/components/table_info_panel.tscn" id="6"]
+[ext_resource type="PackedScene" path="res://scenes/components/table_status_panel.tscn" id="7"]
+[ext_resource type="Script" uid="uid://dlm32b1indj1u" path="res://scripts/components/action_bar.gd" id="8"]
+[ext_resource type="PackedScene" path="res://scenes/components/card_view.tscn" id="9"]
+[ext_resource type="Texture2D" uid="uid://bp15e1xk2543m" path="res://assets/poker_table/backgrounds/table_neon_v1.png" id="10"]
+
+[node name="ReplayPokerTableScreen" type="Control" unique_id=1737485670]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="BackgroundLayer" type="Control" parent="." unique_id=1288845143]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TableBackground" type="TextureRect" parent="BackgroundLayer" unique_id=1884993574]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("10")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="TableSurfaceLayer" type="Control" parent="." unique_id=1097151739]
+layout_mode = 1
+anchors_preset = 0
+offset_right = 2560.0
+offset_bottom = 1000.0
+mouse_filter = 2
+
+[node name="TableLayer" type="Control" parent="TableSurfaceLayer" unique_id=1760287321]
+anchors_preset = 0
+offset_top = -51.0
+offset_right = 2142.0
+offset_bottom = 949.0
+mouse_filter = 2
+
+[node name="GuideTableLayerBorder" type="ReferenceRect" parent="TableSurfaceLayer/TableLayer" unique_id=1310312038]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(0.2, 0.6, 1, 0.4)
+
+[node name="GuideTableLayerLabel" type="Label" parent="TableSurfaceLayer/TableLayer" unique_id=1763086352]
+layout_mode = 0
+offset_left = 340.0
+offset_top = 4.0
+offset_right = 490.0
+offset_bottom = 27.0
+theme_override_colors/font_color = Color(0.2, 0.6, 1, 0.5)
+theme_override_font_sizes/font_size = 12
+text = "TABLE LAYER"
+
+[node name="DealerIndicator" type="Label" parent="TableSurfaceLayer/TableLayer" unique_id=1053546174]
+layout_mode = 0
+offset_left = 1200.0
+offset_top = 164.0
+offset_right = 1360.0
+offset_bottom = 214.0
+text = "DEALER"
+horizontal_alignment = 1
+
+[node name="GuideDealerBorder" type="ReferenceRect" parent="TableSurfaceLayer/TableLayer/DealerIndicator" unique_id=552717819]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(1, 1, 1, 0.4)
+
+[node name="PotDisplay" parent="TableSurfaceLayer/TableLayer" unique_id=229075035 instance=ExtResource("3")]
+layout_mode = 0
+anchors_preset = 0
+offset_left = 1100.0
+offset_top = 360.0
+offset_right = 1460.0
+offset_bottom = 450.0
+
+[node name="GuidePotBorder" type="ReferenceRect" parent="TableSurfaceLayer/TableLayer/PotDisplay" unique_id=342953964]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(1, 0.84, 0, 0.7)
+border_width = 1.5
+
+[node name="GuidePotLabel" type="Label" parent="TableSurfaceLayer/TableLayer/PotDisplay" unique_id=647149216]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 100.0
+offset_bottom = 27.0
+theme_override_colors/font_color = Color(1, 0.84, 0, 0.8)
+theme_override_font_sizes/font_size = 10
+text = "POT DISPLAY"
+
+[node name="CommunityBoard" parent="TableSurfaceLayer/TableLayer" unique_id=1018662104 instance=ExtResource("4")]
+layout_mode = 0
+anchors_preset = 0
+offset_left = 930.0
+offset_top = 455.0
+offset_right = 1630.0
+offset_bottom = 585.0
+
+[node name="GuideBoardBorder" type="ReferenceRect" parent="TableSurfaceLayer/TableLayer/CommunityBoard" unique_id=95811191]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(0, 0.5, 0.5, 0.7)
+border_width = 1.5
+
+[node name="GuideBoardLabel" type="Label" parent="TableSurfaceLayer/TableLayer/CommunityBoard" unique_id=481382335]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 160.0
+offset_bottom = 27.0
+theme_override_colors/font_color = Color(0, 0.5, 0.5, 0.8)
+theme_override_font_sizes/font_size = 10
+text = "COMMUNITY BOARD"
+
+[node name="SeatLayer" type="Control" parent="TableSurfaceLayer/TableLayer" unique_id=1821866375]
+anchors_preset = 0
+offset_right = 2560.0
+offset_bottom = 1000.0
+mouse_filter = 2
+
+[node name="GuideSeatLayerBorder" type="ReferenceRect" parent="TableSurfaceLayer/TableLayer/SeatLayer" unique_id=1145754535]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(0, 1, 1, 0.5)
+border_width = 1.5
+
+[node name="GuideSeatLayerLabel" type="Label" parent="TableSurfaceLayer/TableLayer/SeatLayer" unique_id=1699774022]
+layout_mode = 0
+offset_left = 340.0
+offset_top = 24.0
+offset_right = 490.0
+offset_bottom = 47.0
+theme_override_colors/font_color = Color(0, 1, 1, 0.6)
+theme_override_font_sizes/font_size = 12
+text = "SEAT LAYER"
+
+[node name="Seat1Panel" parent="TableSurfaceLayer/TableLayer/SeatLayer" unique_id=937033445 instance=ExtResource("2")]
+layout_mode = 0
+anchors_preset = 0
+offset_left = 1580.0
+offset_top = 190.0
+offset_right = 1760.0
+offset_bottom = 300.0
+
+[node name="GuideSeat1Label" type="Label" parent="TableSurfaceLayer/TableLayer/SeatLayer/Seat1Panel" unique_id=1281878202]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 180.0
+offset_bottom = 3.0
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
+text = "Seat 1"
+horizontal_alignment = 1
+
+[node name="Seat2Panel" parent="TableSurfaceLayer/TableLayer/SeatLayer" unique_id=404548608 instance=ExtResource("2")]
+layout_mode = 0
+anchors_preset = 0
+offset_left = 1880.0
+offset_top = 300.0
+offset_right = 2060.0
+offset_bottom = 410.0
+
+[node name="GuideSeat2Label" type="Label" parent="TableSurfaceLayer/TableLayer/SeatLayer/Seat2Panel" unique_id=1755470729]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 180.0
+offset_bottom = 3.0
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
+text = "Seat 2"
+horizontal_alignment = 1
+
+[node name="Seat3Panel" parent="TableSurfaceLayer/TableLayer/SeatLayer" unique_id=1725290937 instance=ExtResource("2")]
+layout_mode = 0
+anchors_preset = 0
+offset_left = 2030.0
+offset_top = 520.0
+offset_right = 2210.0
+offset_bottom = 610.0
+
+[node name="GuideSeat3Label" type="Label" parent="TableSurfaceLayer/TableLayer/SeatLayer/Seat3Panel" unique_id=1266645528]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 180.0
+offset_bottom = 3.0
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
+text = "Seat 3"
+horizontal_alignment = 1
+
+[node name="Seat4Panel" parent="TableSurfaceLayer/TableLayer/SeatLayer" unique_id=329512087 instance=ExtResource("2")]
+layout_mode = 0
+anchors_preset = 0
+offset_left = 1760.0
+offset_top = 700.0
+offset_right = 1940.0
+offset_bottom = 790.0
+
+[node name="GuideSeat4Label" type="Label" parent="TableSurfaceLayer/TableLayer/SeatLayer/Seat4Panel" unique_id=2055747973]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 180.0
+offset_bottom = 3.0
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
+text = "Seat 4"
+horizontal_alignment = 1
+
+[node name="Seat5Panel" parent="TableSurfaceLayer/TableLayer/SeatLayer" unique_id=343214685 instance=ExtResource("2")]
+layout_mode = 0
+anchors_preset = 0
+offset_left = 1180.0
+offset_top = 710.0
+offset_right = 1400.0
+offset_bottom = 810.0
+
+[node name="GuideSeat5Label" type="Label" parent="TableSurfaceLayer/TableLayer/SeatLayer/Seat5Panel" unique_id=2010720262]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 220.0
+offset_bottom = 3.0
+theme_override_colors/font_color = Color(0, 0.75, 1, 0.8)
+theme_override_font_sizes/font_size = 11
+text = "Seat 5 (Local)"
+horizontal_alignment = 1
+
+[node name="Seat6Panel" parent="TableSurfaceLayer/TableLayer/SeatLayer" unique_id=1836690056 instance=ExtResource("2")]
+layout_mode = 0
+anchors_preset = 0
+offset_left = 720.0
+offset_top = 700.0
+offset_right = 900.0
+offset_bottom = 790.0
+
+[node name="GuideSeat6Label" type="Label" parent="TableSurfaceLayer/TableLayer/SeatLayer/Seat6Panel" unique_id=1464928175]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 180.0
+offset_bottom = 3.0
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
+text = "Seat 6"
+horizontal_alignment = 1
+
+[node name="Seat7Panel" parent="TableSurfaceLayer/TableLayer/SeatLayer" unique_id=1528235844 instance=ExtResource("2")]
+layout_mode = 0
+anchors_preset = 0
+offset_left = 410.0
+offset_top = 520.0
+offset_right = 590.0
+offset_bottom = 610.0
+
+[node name="GuideSeat7Label" type="Label" parent="TableSurfaceLayer/TableLayer/SeatLayer/Seat7Panel" unique_id=1083637906]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 180.0
+offset_bottom = 3.0
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
+text = "Seat 7"
+horizontal_alignment = 1
+
+[node name="Seat8Panel" parent="TableSurfaceLayer/TableLayer/SeatLayer" unique_id=1801974937 instance=ExtResource("2")]
+layout_mode = 0
+anchors_preset = 0
+offset_left = 560.0
+offset_top = 300.0
+offset_right = 740.0
+offset_bottom = 410.0
+
+[node name="GuideSeat8Label" type="Label" parent="TableSurfaceLayer/TableLayer/SeatLayer/Seat8Panel" unique_id=1379967179]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 180.0
+offset_bottom = 3.0
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
+text = "Seat 8"
+horizontal_alignment = 1
+
+[node name="Seat9Panel" parent="TableSurfaceLayer/TableLayer/SeatLayer" unique_id=833711741 instance=ExtResource("2")]
+layout_mode = 0
+anchors_preset = 0
+offset_left = 900.0
+offset_top = 190.0
+offset_right = 1080.0
+offset_bottom = 300.0
+
+[node name="GuideSeat9Label" type="Label" parent="TableSurfaceLayer/TableLayer/SeatLayer/Seat9Panel" unique_id=1241273461]
+layout_mode = 0
+offset_top = -20.0
+offset_right = 180.0
+offset_bottom = 3.0
+theme_override_colors/font_color = Color(0, 1, 1, 0.7)
+theme_override_font_sizes/font_size = 11
+text = "Seat 9"
+horizontal_alignment = 1
+
+[node name="UIFloatingLayer" type="Control" parent="." unique_id=932982637]
+layout_mode = 1
+anchors_preset = 0
+offset_right = 2560.0
+offset_bottom = 1000.0
+mouse_filter = 2
+
+[node name="TopRoot" type="Control" parent="UIFloatingLayer" unique_id=1290755552]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = -2.0
+offset_top = -210.0
+offset_right = -2.0
+offset_bottom = -128.0
+grow_horizontal = 2
+mouse_filter = 2
+
+[node name="TopRightActionBar" type="HBoxContainer" parent="UIFloatingLayer/TopRoot" unique_id=1282548241]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -591.0
+offset_top = 10.0
+offset_right = -33.0
+offset_bottom = 66.0
+grow_horizontal = 0
+alignment = 2
+
+[node name="PopoverLayer" type="Control" parent="UIFloatingLayer" unique_id=581478999]
+z_index = 10
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="LeftPanel" type="Control" parent="UIFloatingLayer" unique_id=226385035]
+anchors_preset = 0
+offset_left = 1.0
+offset_top = -43.0
+offset_right = 321.0
+offset_bottom = 996.0
+
+[node name="GuideLeftPanelBorder" type="ReferenceRect" parent="UIFloatingLayer/LeftPanel" unique_id=1552014369]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(0, 0.5, 1, 0.7)
+border_width = 2.0
+
+[node name="GuideLeftPanelLabel" type="Label" parent="UIFloatingLayer/LeftPanel" unique_id=60400358]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 150.0
+offset_bottom = 27.0
+theme_override_colors/font_color = Color(0, 0.5, 1, 0.8)
+theme_override_font_sizes/font_size = 12
+text = "LEFT PANEL"
+
+[node name="TableInfoPanel" type="PanelContainer" parent="UIFloatingLayer/LeftPanel" unique_id=1634546192]
+layout_mode = 0
+offset_left = 24.0
+offset_top = -177.0
+offset_right = 344.0
+offset_bottom = 43.0
+script = ExtResource("5")
+
+[node name="PlayerStatusList" parent="UIFloatingLayer/LeftPanel" unique_id=960550783 instance=ExtResource("7")]
+custom_minimum_size = Vector2(320, 760)
+layout_mode = 0
+offset_left = -31.0
+offset_top = 201.0
+offset_right = 289.0
+offset_bottom = 1246.0
+
+[node name="RightPanel" type="Control" parent="UIFloatingLayer" unique_id=1364788650]
+anchors_preset = 0
+offset_left = 2240.0
+offset_top = 160.0
+offset_right = 2560.0
+offset_bottom = 920.0
+
+[node name="GuideRightPanelBorder" type="ReferenceRect" parent="UIFloatingLayer/RightPanel" unique_id=443095309]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(1, 0, 1, 0.7)
+border_width = 2.0
+
+[node name="GuideRightPanelLabel" type="Label" parent="UIFloatingLayer/RightPanel" unique_id=203099103]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 150.0
+offset_bottom = 27.0
+theme_override_colors/font_color = Color(1, 0, 1, 0.8)
+theme_override_font_sizes/font_size = 12
+text = "RIGHT PANEL"
+
+[node name="ChatPanel" parent="UIFloatingLayer/RightPanel" unique_id=786283437 instance=ExtResource("6")]
+layout_mode = 0
+offset_left = -3.0
+offset_top = 590.0
+offset_right = 320.0
+offset_bottom = 1047.0
+
+[node name="LogPanel" parent="UIFloatingLayer/RightPanel" unique_id=1286579126 instance=ExtResource("6")]
+layout_mode = 0
+offset_top = -124.0
+offset_right = 320.0
+offset_bottom = 581.0
+panel_mode = "Log"
+
+[node name="ExitTableButton" type="Button" parent="UIFloatingLayer/RightPanel" unique_id=550252906]
+layout_mode = 0
+offset_left = -50.0
+offset_top = -279.0
+offset_right = 270.0
+offset_bottom = -210.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+text = "EXIT TABLE"
+
+[node name="BottomHud" type="Control" parent="UIFloatingLayer" unique_id=2017715597]
+anchors_preset = 0
+offset_left = 328.0
+offset_top = 847.0
+offset_right = 2208.0
+offset_bottom = 1229.0
+script = ExtResource("8")
+
+[node name="GuideBottomHudBorder" type="ReferenceRect" parent="UIFloatingLayer/BottomHud" unique_id=290974413]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = -75.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(1, 0.4, 0.7, 0.7)
+border_width = 2.0
+
+[node name="GuideBottomHudLabel" type="Label" parent="UIFloatingLayer/BottomHud" unique_id=473641292]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 200.0
+offset_bottom = 27.0
+theme_override_colors/font_color = Color(1, 0.4, 0.7, 0.8)
+theme_override_font_sizes/font_size = 12
+text = "BOTTOM HUD"
+
+[node name="IdentityZone" type="Panel" parent="UIFloatingLayer/BottomHud" unique_id=979009395]
+layout_mode = 0
+offset_right = 785.0
+offset_bottom = 368.0
+
+[node name="GuideIdentityZoneBorder" type="ReferenceRect" parent="UIFloatingLayer/BottomHud/IdentityZone" unique_id=837453721]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(0.2, 0.8, 0.2, 0.6)
+border_width = 1.5
+
+[node name="GuideIdentityZoneLabel" type="Label" parent="UIFloatingLayer/BottomHud/IdentityZone" unique_id=1393016697]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 150.0
+offset_bottom = 27.0
+theme_override_colors/font_color = Color(0.2, 0.8, 0.2, 0.7)
+theme_override_font_sizes/font_size = 10
+text = "IDENTITY ZONE"
+
+[node name="AvatarPanel" type="Panel" parent="UIFloatingLayer/BottomHud/IdentityZone" unique_id=1297318980]
+clip_children = 2
+layout_mode = 0
+offset_left = 16.0
+offset_top = 59.0
+offset_right = 88.0
+offset_bottom = 131.0
+
+[node name="AvatarRect" type="TextureRect" parent="UIFloatingLayer/BottomHud/IdentityZone/AvatarPanel" unique_id=699100798]
+layout_mode = 0
+offset_right = 72.0
+offset_bottom = 72.0
+expand_mode = 1
+stretch_mode = 6
+
+[node name="ChipsLabel" type="Label" parent="UIFloatingLayer/BottomHud/IdentityZone" unique_id=716796371]
+layout_mode = 0
+offset_left = 104.0
+offset_top = 50.0
+offset_right = 430.0
+offset_bottom = 76.0
+
+[node name="ProfitLabel" type="Label" parent="UIFloatingLayer/BottomHud/IdentityZone" unique_id=1070788763]
+layout_mode = 0
+offset_left = 104.0
+offset_top = 82.0
+offset_right = 430.0
+offset_bottom = 108.0
+
+[node name="WinRateLabel" type="Label" parent="UIFloatingLayer/BottomHud/IdentityZone" unique_id=828422497]
+layout_mode = 0
+offset_left = 104.0
+offset_top = 114.0
+offset_right = 430.0
+offset_bottom = 140.0
+
+[node name="FocusZone" type="Panel" parent="UIFloatingLayer/BottomHud" unique_id=1683503449]
+layout_mode = 0
+offset_left = 801.0
+offset_right = 1133.0
+offset_bottom = 368.0
+
+[node name="GuideFocusZoneBorder" type="ReferenceRect" parent="UIFloatingLayer/BottomHud/FocusZone" unique_id=1137683465]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(1, 0.5, 0, 0.6)
+border_width = 1.5
+
+[node name="GuideFocusZoneLabel" type="Label" parent="UIFloatingLayer/BottomHud/FocusZone" unique_id=206140736]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 150.0
+offset_bottom = 27.0
+theme_override_colors/font_color = Color(1, 0.5, 0, 0.7)
+theme_override_font_sizes/font_size = 10
+text = "FOCUS ZONE"
+
+[node name="TurnTimer" type="Label" parent="UIFloatingLayer/BottomHud/FocusZone" unique_id=2101126532]
+layout_mode = 0
+offset_top = 15.0
+offset_right = 500.0
+offset_bottom = 35.0
+horizontal_alignment = 1
+
+[node name="LocalHoleCards" type="Control" parent="UIFloatingLayer/BottomHud/FocusZone" unique_id=517896966]
+anchors_preset = 0
+offset_left = 33.0
+offset_top = 45.0
+offset_right = 309.0
+offset_bottom = 313.0
+
+[node name="CardView1" parent="UIFloatingLayer/BottomHud/FocusZone/LocalHoleCards" unique_id=1741979311 instance=ExtResource("9")]
+layout_mode = 0
+anchors_preset = 0
+offset_right = 88.0
+offset_bottom = 120.0
+
+[node name="CardView2" parent="UIFloatingLayer/BottomHud/FocusZone/LocalHoleCards" unique_id=1283450383 instance=ExtResource("9")]
+layout_mode = 0
+anchors_preset = 0
+offset_left = 98.0
+offset_right = 186.0
+offset_bottom = 120.0
+
+[node name="ControlZone" type="Panel" parent="UIFloatingLayer/BottomHud" unique_id=1615088134]
+layout_mode = 0
+offset_left = 1139.0
+offset_right = 1795.0
+offset_bottom = 368.0
+
+[node name="GuideControlZoneBorder" type="ReferenceRect" parent="UIFloatingLayer/BottomHud/ControlZone" unique_id=282737501]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+border_color = Color(1, 0, 0.5, 0.6)
+border_width = 1.5
+
+[node name="GuideControlZoneLabel" type="Label" parent="UIFloatingLayer/BottomHud/ControlZone" unique_id=2061233474]
+layout_mode = 0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 150.0
+offset_bottom = 27.0
+theme_override_colors/font_color = Color(1, 0, 0.5, 0.7)
+theme_override_font_sizes/font_size = 10
+text = "CONTROL ZONE"
+
+[node name="MainButtons" type="Control" parent="UIFloatingLayer/BottomHud/ControlZone" unique_id=1822443527]
+anchors_preset = 0
+offset_left = 15.0
+offset_right = 395.0
+offset_bottom = 190.0
+
+[node name="FoldButton" type="Button" parent="UIFloatingLayer/BottomHud/ControlZone/MainButtons" unique_id=420419422]
+layout_mode = 0
+offset_left = 19.0
+offset_top = 254.0
+offset_right = 139.0
+offset_bottom = 318.0
+focus_mode = 0
+text = "FOLD"
+
+[node name="CheckCallButton" type="Button" parent="UIFloatingLayer/BottomHud/ControlZone/MainButtons" unique_id=368305405]
+layout_mode = 0
+offset_left = 161.0
+offset_top = 264.0
+offset_right = 281.0
+offset_bottom = 328.0
+focus_mode = 0
+text = "CHECK"
+
+[node name="BetRaiseButton" type="Button" parent="UIFloatingLayer/BottomHud/ControlZone/MainButtons" unique_id=2111298782]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 32.0
+offset_right = 236.0
+offset_bottom = 146.0
+focus_mode = 0
+text = "RAISE"
+
+[node name="RaiseControlPanel" type="Control" parent="UIFloatingLayer/BottomHud/ControlZone" unique_id=999136130]
+anchors_preset = 0
+offset_left = 277.0
+offset_right = 718.0
+offset_bottom = 190.0
+
+[node name="MinusButton" type="Button" parent="UIFloatingLayer/BottomHud/ControlZone/RaiseControlPanel" unique_id=1091996700]
+layout_mode = 0
+offset_top = 79.0
+offset_right = 32.0
+offset_bottom = 111.0
+focus_mode = 0
+text = "-"
+
+[node name="RaiseSlider" type="HSlider" parent="UIFloatingLayer/BottomHud/ControlZone/RaiseControlPanel" unique_id=1378070641]
+layout_mode = 0
+offset_left = 42.0
+offset_top = 79.0
+offset_right = 212.0
+offset_bottom = 111.0
+focus_mode = 0
+
+[node name="RaiseValueLabel" type="Label" parent="UIFloatingLayer/BottomHud/ControlZone/RaiseControlPanel" unique_id=829482187]
+layout_mode = 0
+offset_left = 204.0
+offset_top = -80.0
+offset_right = 374.0
+offset_bottom = 40.0
+text = "100"
+horizontal_alignment = 1
+
+[node name="PlusButton" type="Button" parent="UIFloatingLayer/BottomHud/ControlZone/RaiseControlPanel" unique_id=440684364]
+layout_mode = 0
+offset_left = 222.0
+offset_top = 79.0
+offset_right = 254.0
+offset_bottom = 111.0
+focus_mode = 0
+text = "+"
+
+[node name="PotMultiplierButton" type="Button" parent="UIFloatingLayer/BottomHud/ControlZone/RaiseControlPanel" unique_id=1675977045]
+layout_mode = 0
+offset_left = 264.0
+offset_top = 63.0
+offset_right = 344.0
+offset_bottom = 91.0
+focus_mode = 0
+text = "2.5x POT"
+
+[node name="MaxButton" type="Button" parent="UIFloatingLayer/BottomHud/ControlZone/RaiseControlPanel" unique_id=1578922217]
+layout_mode = 0
+offset_left = 264.0
+offset_top = 99.0
+offset_right = 344.0
+offset_bottom = 127.0
+focus_mode = 0
+text = "MAX"
+
+[node name="FXLayer" type="Control" parent="." unique_id=1898241361]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
