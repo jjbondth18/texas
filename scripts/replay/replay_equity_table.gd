@@ -17,11 +17,13 @@ static func build_table(record: Dictionary, active_phase: String, mode: String =
 	if players.is_empty():
 		return {"active_phase": _normalized_phase(active_phase), "mode": normalized_mode, "hero_seat": -1, "hero_name": "-", "rows": rows, "message": "No equity data."}
 
-	var resolved_hero_seat: int = _resolve_hero_seat(players, hero_seat)
-	var hero_name: String = _player_name_for_seat(players, resolved_hero_seat)
+	var resolved_hero_seat: int = -1
+	var hero_name: String = "-"
 	if normalized_mode == MODE_PERCEIVED:
-		rows = _perceived_rows(record, players, resolved_hero_seat)
+		rows = _perceived_rows(record, players)
 	else:
+		resolved_hero_seat = _resolve_hero_seat(players, hero_seat)
+		hero_name = _player_name_for_seat(players, resolved_hero_seat)
 		rows = _objective_rows(record, players)
 
 	return {
@@ -56,35 +58,26 @@ static func _objective_rows(record: Dictionary, players: Array) -> Array:
 	return rows
 
 
-static func _perceived_rows(record: Dictionary, players: Array, hero_seat: int) -> Array:
-	var hero: Dictionary = _player_for_seat(players, hero_seat)
-	if hero.is_empty():
-		return []
+static func _perceived_rows(record: Dictionary, players: Array) -> Array:
 	var community: Dictionary = Dictionary(record.get("community_cards", {}))
 	var results: Dictionary = Dictionary(record.get("results", {}))
 	var winner_seats: Array[int] = _winner_seats(results)
 	var fold_phase_by_seat: Dictionary = _fold_phase_by_seat(Array(record.get("actions", [])))
-	var hero_name: String = str(hero.get("player_name", hero.get("player_id", "Seat %d" % hero_seat)))
+	var rows: Array = []
 
-	var hero_row: Dictionary = {
-		"seat": hero_seat,
-		"player": hero_name,
-		"preflop": _perceived_hero_equity_label(record, players, community, fold_phase_by_seat, "preflop", hero_seat),
-		"flop": _perceived_hero_equity_label(record, players, community, fold_phase_by_seat, "flop", hero_seat),
-		"turn": _perceived_hero_equity_label(record, players, community, fold_phase_by_seat, "turn", hero_seat),
-		"river": _perceived_hero_equity_label(record, players, community, fold_phase_by_seat, "river", hero_seat),
-		"final": _perceived_final_label(hero_seat, winner_seats, fold_phase_by_seat, true),
-	}
-	var opponent_row: Dictionary = {
-		"seat": "-",
-		"player": "Opponents combined",
-		"preflop": _opponent_range_label(hero_row.get("preflop", "N/A")),
-		"flop": _opponent_range_label(hero_row.get("flop", "N/A")),
-		"turn": _opponent_range_label(hero_row.get("turn", "N/A")),
-		"river": _opponent_range_label(hero_row.get("river", "N/A")),
-		"final": _perceived_final_label(hero_seat, winner_seats, fold_phase_by_seat, false),
-	}
-	return [hero_row, opponent_row]
+	for player_item in players:
+		var player: Dictionary = Dictionary(player_item)
+		var seat_index: int = int(player.get("seat_index", -1))
+		rows.append({
+			"seat": seat_index,
+			"player": str(player.get("player_name", player.get("player_id", "Seat %d" % seat_index))),
+			"preflop": _perceived_player_equity_label(record, players, community, fold_phase_by_seat, "preflop", seat_index),
+			"flop": _perceived_player_equity_label(record, players, community, fold_phase_by_seat, "flop", seat_index),
+			"turn": _perceived_player_equity_label(record, players, community, fold_phase_by_seat, "turn", seat_index),
+			"river": _perceived_player_equity_label(record, players, community, fold_phase_by_seat, "river", seat_index),
+			"final": _final_label(player, winner_seats, fold_phase_by_seat),
+		})
+	return rows
 
 
 static func _objective_equity_label(record: Dictionary, players: Array, community: Dictionary, fold_phase_by_seat: Dictionary, phase: String, target_seat: int) -> String:
@@ -110,25 +103,25 @@ static func _objective_equity_label(record: Dictionary, players: Array, communit
 	return "%.1f%%" % (equity * 100.0)
 
 
-static func _perceived_hero_equity_label(record: Dictionary, players: Array, community: Dictionary, fold_phase_by_seat: Dictionary, phase: String, hero_seat: int) -> String:
+static func _perceived_player_equity_label(record: Dictionary, players: Array, community: Dictionary, fold_phase_by_seat: Dictionary, phase: String, target_seat: int) -> String:
 	if _phase_missing(community, phase):
 		return "-"
-	if _folded_before_phase(fold_phase_by_seat, hero_seat, phase):
+	if _folded_before_phase(fold_phase_by_seat, target_seat, phase):
 		return "Folded"
-	var hero: Dictionary = _player_for_seat(players, hero_seat)
-	var hero_hole: Array[String] = _hole_cards(hero)
-	if hero_hole.size() != 2:
+	var target_player: Dictionary = _player_for_seat(players, target_seat)
+	var target_hole: Array[String] = _hole_cards(target_player)
+	if target_hole.size() != 2:
 		return "N/A"
 	var known_board: Array[String] = _board_for_phase(community, phase)
 	var opponent_count: int = 0
 	for player_item in players:
 		var player: Dictionary = Dictionary(player_item)
 		var seat_index: int = int(player.get("seat_index", -1))
-		if seat_index != hero_seat and not _folded_before_phase(fold_phase_by_seat, seat_index, phase):
+		if seat_index != target_seat and not _folded_before_phase(fold_phase_by_seat, seat_index, phase):
 			opponent_count += 1
 	if opponent_count <= 0:
 		return "N/A"
-	var equity: float = _perceived_monte_carlo(record, hero_hole, known_board, opponent_count, phase)
+	var equity: float = _perceived_monte_carlo(record, target_hole, known_board, opponent_count, phase, target_seat)
 	if equity < 0.0:
 		return "N/A"
 	return "%.1f%%" % (equity * 100.0)
@@ -170,7 +163,7 @@ static func _deterministic_monte_carlo(record: Dictionary, active_players: Array
 	return wins / float(max(trial_count, 1))
 
 
-static func _perceived_monte_carlo(record: Dictionary, hero_hole: Array[String], known_board: Array[String], opponent_count: int, phase: String) -> float:
+static func _perceived_monte_carlo(record: Dictionary, hero_hole: Array[String], known_board: Array[String], opponent_count: int, phase: String, target_seat: int) -> float:
 	var used: Dictionary = {}
 	for card in known_board:
 		used[card] = true
@@ -183,7 +176,7 @@ static func _perceived_monte_carlo(record: Dictionary, hero_hole: Array[String],
 		return -1.0
 
 	var wins: float = 0.0
-	var seed_text: String = "%s:%s:perceived:%s" % [str(record.get("hand_id", "")), phase, ",".join(hero_hole)]
+	var seed_text: String = "%s:%s:perceived:%d:%s" % [str(record.get("hand_id", "")), phase, target_seat, ",".join(hero_hole)]
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(abs(seed_text.hash()))
 
@@ -323,30 +316,6 @@ static func _final_label(player: Dictionary, winner_seats: Array[int], fold_phas
 	if not winner_seats.is_empty():
 		return "Loss"
 	return "-"
-
-
-static func _perceived_final_label(hero_seat: int, winner_seats: Array[int], fold_phase_by_seat: Dictionary, is_hero: bool) -> String:
-	if is_hero:
-		if fold_phase_by_seat.has(hero_seat):
-			return "Folded"
-		if winner_seats.has(hero_seat):
-			return "Split" if winner_seats.size() > 1 else "Win"
-		return "Loss" if not winner_seats.is_empty() else "-"
-	if winner_seats.is_empty():
-		return "-"
-	if winner_seats.has(hero_seat) and winner_seats.size() == 1:
-		return "Loss"
-	if winner_seats.has(hero_seat):
-		return "Split"
-	return "Win"
-
-
-static func _opponent_range_label(hero_value: Variant) -> String:
-	var text: String = str(hero_value)
-	if not text.ends_with("%"):
-		return text
-	var hero_equity: float = float(text.trim_suffix("%"))
-	return "%.1f%%" % max(0.0, 100.0 - hero_equity)
 
 
 static func _winner_seats(results: Dictionary) -> Array[int]:

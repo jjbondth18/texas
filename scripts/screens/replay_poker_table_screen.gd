@@ -505,13 +505,13 @@ func _render_equity_table(active_phase: String) -> void:
 		return
 
 	var columns: Array[Dictionary] = [
-		{"key": "seat", "label": "Seat", "width": 46},
-		{"key": "player", "label": "Player", "width": 130},
-		{"key": "preflop", "label": "Preflop", "width": 84},
-		{"key": "flop", "label": "Flop", "width": 72},
-		{"key": "turn", "label": "Turn", "width": 72},
-		{"key": "river", "label": "River", "width": 72},
-		{"key": "final", "label": "Final", "width": 82},
+		{"key": "seat", "label": "Seat", "width": 52},
+		{"key": "player", "label": "Player", "width": 168},
+		{"key": "preflop", "label": "Preflop", "width": 94},
+		{"key": "flop", "label": "Flop", "width": 84},
+		{"key": "turn", "label": "Turn", "width": 84},
+		{"key": "river", "label": "River", "width": 84},
+		{"key": "final", "label": "Final", "width": 94},
 	]
 	for column_item in columns:
 		var column: Dictionary = Dictionary(column_item)
@@ -531,10 +531,9 @@ func _render_equity_table(active_phase: String) -> void:
 
 func _update_equity_mode_header(table: Dictionary) -> void:
 	var mode: String = str(table.get("mode", ReplayEquityTableScript.MODE_OBJECTIVE))
-	var hero_name: String = str(table.get("hero_name", "-"))
 	if _equity_mode_label != null:
 		if mode == ReplayEquityTableScript.MODE_PERCEIVED:
-			_equity_mode_label.text = "Perceived - player-view estimate for %s." % hero_name
+			_equity_mode_label.text = "Perceived - each player knows only their own cards."
 		else:
 			_equity_mode_label.text = "Objective - all hole cards known."
 	_style_equity_mode_button(_equity_objective_button, mode == ReplayEquityTableScript.MODE_OBJECTIVE)
@@ -557,7 +556,7 @@ func _style_equity_mode_button(button: Button, active: bool) -> void:
 func _make_equity_cell(text: String, width: int, is_header: bool, is_active_phase: bool, key: String = "", value: String = "") -> PanelContainer:
 	var cell := PanelContainer.new()
 	cell.name = "ReplayEquityCell_%s" % (key if key != "" else "header")
-	cell.custom_minimum_size = Vector2(width, 21 if not is_header else 23)
+	cell.custom_minimum_size = Vector2(width, 25 if not is_header else 27)
 	var fill: Color = Color(0.035, 0.025, 0.080, 0.60)
 	var border: Color = Color(0.34, 0.20, 0.70, 0.28)
 	if is_header:
@@ -585,7 +584,7 @@ func _make_equity_cell(text: String, width: int, is_header: bool, is_active_phas
 		color = Color(0.58, 0.61, 0.70, 0.90)
 	elif value == "Loss":
 		color = Color(0.70, 0.74, 0.84, 0.90)
-	HomeTheme.make_font_settings(label, 9 if not is_header else 10, color)
+	HomeTheme.make_font_settings(label, 11 if not is_header else 12, color)
 	cell.add_child(label)
 	return cell
 

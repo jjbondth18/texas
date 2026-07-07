@@ -301,11 +301,11 @@ The active replay step highlights the matching phase column: preflop, flop, turn
 The table supports two display modes:
 
 - `Objective`: an all-seeing replay view that knows every recorded player's hole cards. Active player equities share the pot probability and folded players leave active calculations after their fold street.
-- `Perceived`: a player-view estimate for the replay hero. The default hero is the recorded local player, then seat 5, then the first real player, then the first recorded player. Perceived mode shows the hero row and an `Opponents combined` range row rather than pretending every player has the same information set.
+- `Perceived`: each recorded player gets a separate player-view estimate. Each row knows only that player's own hole cards and the board cards visible on that street; all other active players are treated as unknown ranges. Perceived rows are independent information sets, so values in the same street column do not need to add up to 100%. There is no `Opponents combined` row.
 
-Both modes currently use deterministic Monte Carlo rather than exact enumeration. Objective mode samples remaining board cards from the known deck after recorded hole cards and current board cards are removed. Perceived mode samples unknown opponent hole cards and remaining board cards from the hero's information set. The fixed seed prevents UI jitter between renders of the same replay.
+Both modes currently use deterministic Monte Carlo rather than exact enumeration. Objective mode samples remaining board cards from the known deck after recorded hole cards and current board cards are removed. Perceived mode samples unknown opponent hole cards and remaining board cards independently for each player's information set. The fixed seed prevents UI jitter between renders of the same replay.
 
-This table does not connect to the server, does not mutate wallet or gems, does not change replay records, and does not touch live `PokerTableScreen` logic. Future phases may add richer charts or player-perspective equity views.
+This table does not connect to the server, does not mutate wallet or gems, does not change replay records, and does not touch live `PokerTableScreen` logic. Future phases may add richer charts, exact enumeration options, or click-to-focus player perspective controls.
 
 ## Future Phases
 
