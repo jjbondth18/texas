@@ -14,6 +14,7 @@ func get_replay_view_model() -> Dictionary:
 			"file_path": str(entry.get("file_path", "")),
 			"played_at": str(entry.get("ended_at", "")),
 			"mode": _mode_label(str(entry.get("mode", ""))),
+			"dealer_id": str(entry.get("dealer_id", "")),
 			"table_name": str(entry.get("summary", "")),
 			"result": str(entry.get("player_result", "")),
 			"net_chips": int(entry.get("profit", 0)),

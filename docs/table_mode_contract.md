@@ -6,6 +6,8 @@ This document freezes the current table-mode behavior before Replay work. It des
 
 All modes render through the same poker table shell and bottom HUD. Mode-specific logic may change data, labels, network authority, or practice isolation, but must not fork the table layout, SeatCard contract, BetMarker anchors, PlayerStatus ordering, or ActionBar layout.
 
+Official public/private room creation assigns a stable `dealer_id` for the room. Local public, private, training, and warm-up contexts also carry a dealer id for presentation and replay thumbnails. Dealer selection is visual metadata only; it must not affect dealing, betting, showdown, wallet, gems, or mode entry rules.
+
 ## Quick
 
 Quick is not an independent poker rules mode. It is an automatic matcher over public chip tables.

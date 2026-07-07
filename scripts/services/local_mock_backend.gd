@@ -4,6 +4,7 @@ class_name LocalMockBackend
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const TableSeatScript := preload("res://scripts/data/table_seat.gd")
+const DealerLibraryScript := preload("res://scripts/data/dealer_library.gd")
 const PublicTableRegistryScript := preload("res://scripts/services/public_table_registry.gd")
 
 const TABLE_SEAT_JOIN_ORDER_9P := [5, 8, 2, 6, 4, 9, 1, 7, 3]
@@ -91,6 +92,7 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 	var big_blind: int = int(setup_config.get("big_blind", 50))
 	var max_hands: int = 999 if training else int(setup_config.get("max_hands", 10))
 	var buy_in_deducted: bool = bool(setup_config.get("buy_in_deducted_from_wallet", false))
+	var dealer_id: String = DealerLibraryScript.normalize_dealer_id(str(setup_config.get("dealer_id", setup_config.get("selected_dealer_id", DealerLibraryScript.get_random_dealer_id("%s:%s" % [mode, table_id])))))
 	return {
 		"mode": mode,
 		"backend_type": "local_mock",
@@ -114,6 +116,7 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 		"allow_debug_tools": debug_tools,
 		"ai_player_count": ai_count,
 		"max_hands": max_hands,
+		"dealer_id": dealer_id,
 		"table_session": {
 			"mode": mode,
 			"table_type": "training_ai" if training else mode,
@@ -141,7 +144,7 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 			"is_session_over": false,
 			"min_active_players": 2,
 			"status": "playing",
-			"selected_dealer_id": "dealer_01_dog",
+			"selected_dealer_id": dealer_id,
 		},
 	}
 
@@ -151,6 +154,7 @@ func _build_public_table_context(table: Dictionary, profile: Dictionary) -> Dict
 		"small_blind": int(table.get("small_blind", 25)),
 		"big_blind": int(table.get("big_blind", 50)),
 		"max_hands": int(table.get("hand_count", 10)),
+		"dealer_id": str(table.get("dealer_id", "")),
 	}
 	var is_ai_warmup: bool = bool(table.get("is_ai_warmup", false))
 	var warmup_ai_ids: Array = Array(table.get("warmup_ai_player_ids", []))
@@ -180,6 +184,8 @@ func _build_public_table_context(table: Dictionary, profile: Dictionary) -> Dict
 	context["table_session"]["host_in_local_warmup"] = context["host_in_local_warmup"]
 	context["table_session"]["pending_real_joiners"] = context["pending_real_joiners"]
 	context["table_session"]["warmup_ai_player_ids"] = context["warmup_ai_player_ids"]
+	context["table_session"]["selected_dealer_id"] = DealerLibraryScript.normalize_dealer_id(str(table.get("dealer_id", context.get("dealer_id", DealerLibraryScript.DEFAULT_DEALER_ID))))
+	context["dealer_id"] = context["table_session"]["selected_dealer_id"]
 	return context
 
 func _public_table_config_from_setup(setup_config: Dictionary, player: Dictionary) -> Dictionary:

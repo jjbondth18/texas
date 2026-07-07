@@ -40,6 +40,30 @@ static func dealer_ids() -> Array:
 	return ids
 
 
+static func get_all_dealer_ids() -> Array:
+	return dealer_ids()
+
+
+static func get_default_dealer_id() -> String:
+	return DEFAULT_DEALER_ID
+
+
+static func get_dealer_texture_path(dealer_id: String) -> String:
+	return texture_path(dealer_id)
+
+
+static func get_random_dealer_id(seed: Variant = null) -> String:
+	var ids: Array = dealer_ids()
+	if ids.is_empty():
+		return DEFAULT_DEALER_ID
+	var rng := RandomNumberGenerator.new()
+	if seed == null:
+		rng.randomize()
+	else:
+		rng.seed = hash(str(seed))
+	return str(ids[rng.randi_range(0, ids.size() - 1)])
+
+
 static func normalize_dealer_id(dealer_id: String) -> String:
 	var normalized: String = dealer_id.strip_edges()
 	if normalized == "" or normalized == LEGACY_DEFAULT_ID:

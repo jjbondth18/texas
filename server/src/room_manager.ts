@@ -32,6 +32,7 @@ interface Room {
   visibility: "public" | "private";
   roomCode: string;
   tableName: string;
+  dealerId: string;
   smallBlind: number;
   bigBlind: number;
   buyIn: number;
@@ -76,6 +77,20 @@ const TABLE_SEAT_JOIN_ORDER_9P = [5, 8, 2, 6, 4, 9, 1, 7, 3];
 const PUBLIC_SEAT_JOIN_ORDER = TABLE_SEAT_JOIN_ORDER_9P;
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const DEV_SIMULATED_START_BLOCK_REASON = "Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot.";
+const DEALER_IDS = [
+  "dealer_01_dog",
+  "dealer_02_bear",
+  "dealer_03_cat",
+  "dealer_04_red_panda",
+  "dealer_05_armor",
+  "dealer_06_sloth",
+  "dealer_07_statue",
+  "dealer_08_horse",
+  "dealer_09_owl",
+  "dealer_10_frog",
+  "dealer_11_walrus",
+];
+const DEFAULT_DEALER_ID = "dealer_01_dog";
 export class RoomManager {
   private clients = new Map<string, Client>();
   private rooms = new Map<string, Room>();
@@ -307,7 +322,7 @@ export class RoomManager {
     this.broadcast(room);
   }
 
-  createRoom(options: Partial<Pick<Room, "tableName" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "actionTimeSeconds" | "maxPlayers" | "isPublic" | "tableType" | "visibility" | "roomCode">> = {}): Room {
+  createRoom(options: Partial<Pick<Room, "tableName" | "dealerId" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "actionTimeSeconds" | "maxPlayers" | "isPublic" | "tableType" | "visibility" | "roomCode">> = {}): Room {
     const id = `room_${this.nextRoomId++}`;
     const table = new TableState(id);
     table.smallBlind = options.smallBlind ?? DEFAULT_SMALL_BLIND;
@@ -321,6 +336,7 @@ export class RoomManager {
       visibility: options.visibility ?? (isPublic ? "public" : "private"),
       roomCode: options.roomCode ?? "",
       tableName: options.tableName || `${isPublic ? "Public Table" : "Private Room"} ${this.nextRoomId - 1}`,
+      dealerId: normalizeDealerId(options.dealerId || randomDealerId()),
       smallBlind: table.smallBlind,
       bigBlind: table.bigBlind,
       buyIn: options.buyIn ?? DEFAULT_TABLE_BUY_IN,
@@ -387,6 +403,7 @@ export class RoomManager {
           table_type: room.tableType,
           visibility: room.visibility,
           table_name: room.tableName,
+          dealer_id: room.dealerId,
           small_blind: room.smallBlind,
           big_blind: room.bigBlind,
           buy_in: room.buyIn,
@@ -612,6 +629,7 @@ export class RoomManager {
       room_code: room.roomCode || undefined,
       visibility: room.visibility,
       table_name: room.tableName,
+      dealer_id: room.dealerId,
       small_blind: room.smallBlind,
       big_blind: room.bigBlind,
       buy_in: room.buyIn,
@@ -1196,11 +1214,13 @@ export class RoomManager {
           roomCode: room.roomCode,
           mode: room.visibility === "private" ? "private" : "public",
           tableType: room.tableType,
+          dealerId: room.dealerId,
           maxHands: room.handCount,
         })
       : undefined;
     const snapshot = {
       ...room.table.publicSnapshot(),
+      dealer_id: room.dealerId,
       buy_in: room.buyIn,
       hand_count: room.handCount,
       action_time_seconds: room.actionTimeSeconds,
@@ -1410,6 +1430,15 @@ function normalizeIdentityProvider(value: string): string {
 
 function normalizeExternalId(value: string): string {
   return String(value || "").trim().slice(0, 128);
+}
+
+function normalizeDealerId(value: string): string {
+  const dealerId = String(value || "").trim();
+  return DEALER_IDS.includes(dealerId) ? dealerId : DEFAULT_DEALER_ID;
+}
+
+function randomDealerId(): string {
+  return DEALER_IDS[Math.floor(Math.random() * DEALER_IDS.length)] ?? DEFAULT_DEALER_ID;
 }
 
 function normalizeRoomCode(value: string): string {

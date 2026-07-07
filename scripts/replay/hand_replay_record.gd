@@ -11,6 +11,7 @@ static func from_server_payload(payload: Dictionary) -> Dictionary:
 	record["actions"] = Array(record.get("actions", [])).duplicate(true)
 	record["results"] = Dictionary(record.get("results", {})).duplicate(true)
 	record["community_cards"] = Dictionary(record.get("community_cards", {})).duplicate(true)
+	record["dealer_id"] = str(record.get("dealer_id", ""))
 	return record
 
 
@@ -30,6 +31,7 @@ static func from_local_flow(flow_snapshot: Dictionary, ui_snapshot: Dictionary, 
 		"room_code": str(ui_snapshot.get("room_code", ui_snapshot.get("room_label", ""))),
 		"mode": mode,
 		"table_type": str(session_data.get("table_type", ui_snapshot.get("table_type", mode))),
+		"dealer_id": str(session_data.get("dealer_id", session_data.get("selected_dealer_id", ui_snapshot.get("dealer_id", "")))),
 		"started_at": ended_at,
 		"ended_at": ended_at,
 		"small_blind": int(session_data.get("small_blind", 0)),
@@ -84,6 +86,7 @@ static func from_ui_snapshot(ui_snapshot: Dictionary, private_snapshot: Dictiona
 		"room_code": str(ui_snapshot.get("room_code", ui_snapshot.get("room_label", ""))),
 		"mode": _mode_from_table_type(str(ui_snapshot.get("table_type", table_info.get("table_type", "")))),
 		"table_type": str(ui_snapshot.get("table_type", table_info.get("table_type", ""))),
+		"dealer_id": str(ui_snapshot.get("dealer_id", table_info.get("dealer_id", ""))),
 		"started_at": Time.get_datetime_string_from_system(true),
 		"ended_at": Time.get_datetime_string_from_system(true),
 		"small_blind": int(table_info.get("small_blind", 0)),

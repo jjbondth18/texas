@@ -2,6 +2,7 @@ extends RefCounted
 class_name TableLaunchContext
 
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
+const DealerLibraryScript := preload("res://scripts/data/dealer_library.gd")
 
 const DEFAULT_ACTION_TIME_SECONDS := 60
 
@@ -28,6 +29,7 @@ static var action_time_seconds := DEFAULT_ACTION_TIME_SECONDS
 static var buy_in := PlayerProfileScript.DEFAULT_TABLE_BUY_IN
 static var small_blind := 25
 static var big_blind := 50
+static var dealer_id := DealerLibraryScript.DEFAULT_DEALER_ID
 static var seats: Array[Dictionary] = []
 static var table_session: Dictionary = {}
 static var player_profile: Dictionary = PlayerProfileScript.default_profile()
@@ -61,6 +63,7 @@ static func configure(mode: String = "quick_play", id: String = "mock_table_001"
 	action_time_seconds = DEFAULT_ACTION_TIME_SECONDS
 	small_blind = int(setup_config.get("small_blind", 25))
 	big_blind = int(setup_config.get("big_blind", 50))
+	dealer_id = DealerLibraryScript.normalize_dealer_id(str(setup_config.get("dealer_id", setup_config.get("selected_dealer_id", DealerLibraryScript.get_random_dealer_id("%s:%s" % [mode, id])))))
 	seats.clear()
 	table_session = _default_table_session()
 
@@ -124,6 +127,7 @@ static func configure_from_context(context: Dictionary) -> void:
 	buy_in = int(context.get("buy_in", PlayerProfileScript.DEFAULT_TABLE_BUY_IN))
 	small_blind = int(context.get("small_blind", 25))
 	big_blind = int(context.get("big_blind", 50))
+	dealer_id = DealerLibraryScript.normalize_dealer_id(str(context.get("dealer_id", Dictionary(context.get("table_session", {})).get("selected_dealer_id", DealerLibraryScript.DEFAULT_DEALER_ID))))
 	set_seats(Array(context.get("seats", [])))
 	set_player_profile(Dictionary(context.get("local_player_profile", PlayerProfileScript.default_profile())))
 	table_session = Dictionary(context.get("table_session", _default_table_session())).duplicate(true)
@@ -140,6 +144,7 @@ static func get_current_table_context() -> Dictionary:
 		"buy_in": buy_in,
 		"small_blind": small_blind,
 		"big_blind": big_blind,
+		"dealer_id": dealer_id,
 		"is_training": is_training,
 		"table_type": table_type,
 		"uses_practice_chips": uses_practice_chips,
@@ -188,5 +193,5 @@ static func _default_table_session() -> Dictionary:
 		"biggest_pot": 0,
 		"best_hand_desc": "-",
 		"is_session_over": false,
-		"selected_dealer_id": "dealer_01_dog",
+		"selected_dealer_id": dealer_id,
 	}

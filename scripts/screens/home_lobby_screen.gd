@@ -98,6 +98,7 @@ const LocalMockBackendScript := preload("res://scripts/services/local_mock_backe
 const StoreMockServiceScript := preload("res://scripts/services/store_mock_service.gd")
 const ReplayServiceScript := preload("res://scripts/services/replay_service.gd")
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
+const DealerLibraryScript := preload("res://scripts/data/dealer_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 const SettingsServiceScript := preload("res://scripts/services/settings_service.gd")
 const PokerWsClientScript := preload("res://scripts/network/poker_ws_client.gd")
@@ -2898,11 +2899,7 @@ func _build_replay_panel() -> void:
 		item_hbox.add_theme_constant_override("separation", 10)
 		item.add_child(item_hbox)
 		
-		var icon_rect := ColorRect.new()
-		icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		icon_rect.custom_minimum_size = Vector2(40, 40)
-		icon_rect.color = Color(0.18, 0.22, 0.38, 0.45)
-		item_hbox.add_child(icon_rect)
+		item_hbox.add_child(_make_replay_dealer_thumbnail(hand, preview_record))
 		
 		var desc_vbox := VBoxContainer.new()
 		desc_vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -4276,6 +4273,43 @@ func _load_replay_record_preview(index_entry: Dictionary) -> Dictionary:
 	if file_path == "" or not FileAccess.file_exists(file_path):
 		return {}
 	return ReplayServiceScript.new().load_replay_record(file_path)
+
+
+func _make_replay_dealer_thumbnail(index_entry: Dictionary, record: Dictionary) -> Control:
+	var texture: Texture2D = _replay_dealer_thumbnail_texture(index_entry, record)
+	if texture == null:
+		var placeholder := ColorRect.new()
+		placeholder.name = "ReplayDealerThumbnailPlaceholder"
+		placeholder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		placeholder.custom_minimum_size = Vector2(40, 48)
+		placeholder.color = Color(0.18, 0.22, 0.38, 0.45)
+		return placeholder
+	var thumb := TextureRect.new()
+	thumb.name = "ReplayDealerThumbnail"
+	thumb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	thumb.custom_minimum_size = Vector2(40, 48)
+	thumb.texture = texture
+	thumb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	thumb.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	thumb.tooltip_text = "Dealer: %s" % DealerLibraryScript.display_name(_replay_dealer_id(index_entry, record))
+	return thumb
+
+
+func _replay_dealer_thumbnail_texture(index_entry: Dictionary, record: Dictionary) -> Texture2D:
+	var texture_path: String = DealerLibraryScript.get_dealer_texture_path(_replay_dealer_id(index_entry, record))
+	var texture := load(texture_path) as Texture2D
+	if texture != null:
+		return texture
+	var fallback_path: String = DealerLibraryScript.get_dealer_texture_path(DealerLibraryScript.get_default_dealer_id())
+	return load(fallback_path) as Texture2D
+
+
+func _replay_dealer_id(index_entry: Dictionary, record: Dictionary) -> String:
+	var dealer_id: String = str(index_entry.get("dealer_id", ""))
+	if dealer_id == "":
+		dealer_id = str(record.get("dealer_id", ""))
+	return DealerLibraryScript.normalize_dealer_id(dealer_id)
 
 
 func _replay_list_title(index_entry: Dictionary, record: Dictionary) -> String:

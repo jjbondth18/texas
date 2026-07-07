@@ -1,6 +1,8 @@
 extends RefCounted
 class_name PublicTableRegistry
 
+const DealerLibraryScript := preload("res://scripts/data/dealer_library.gd")
+
 const TABLE_TYPE_PUBLIC_CHIP := "public_chip"
 const STATUS_WAITING := "waiting"
 const STATUS_WAITING_FOR_PLAYERS := "waiting_for_players"
@@ -53,6 +55,7 @@ static func create_public_table(config: Dictionary = {}) -> Dictionary:
 	var buy_in: int = int(normalized_config.get("buy_in", 20000))
 	var max_players: int = int(normalized_config.get("max_players", 9))
 	var action_time_seconds: int = int(normalized_config.get("action_time_seconds", DEFAULT_ACTION_TIME_SECONDS))
+	var dealer_id: String = DealerLibraryScript.normalize_dealer_id(str(normalized_config.get("dealer_id", DealerLibraryScript.get_random_dealer_id(table_id))))
 	var player_ids: Array[String] = []
 	for player_id in Array(normalized_config.get("player_ids", [])):
 		player_ids.append(str(player_id))
@@ -78,6 +81,7 @@ static func create_public_table(config: Dictionary = {}) -> Dictionary:
 		"buy_in_max": buy_in,
 		"hand_count": int(normalized_config.get("hand_count", normalized_config.get("max_hands", 10))),
 		"action_time_seconds": action_time_seconds,
+		"dealer_id": dealer_id,
 		"max_players": max_players,
 		"current_players": min(max(real_player_ids.size(), int(normalized_config.get("current_players", player_ids.size()))), max_players),
 		"created_by": str(normalized_config.get("created_by", "local_mock")),
@@ -282,6 +286,7 @@ static func _normalized_public_table_config(config: Dictionary) -> Dictionary:
 	result["action_time_seconds"] = DEFAULT_ACTION_TIME_SECONDS
 	result["max_players"] = int(result.get("max_players", 9))
 	result["allow_quick_join"] = bool(result.get("allow_quick_join", true))
+	result["dealer_id"] = str(result.get("dealer_id", ""))
 	return result
 
 static func _normalized_public_table(table: Dictionary) -> Dictionary:
@@ -291,6 +296,7 @@ static func _normalized_public_table(table: Dictionary) -> Dictionary:
 	normalized["table_name"] = str(table.get("table_name", table.get("name", normalized.get("table_id", "Public Table"))))
 	normalized["table_type"] = str(table.get("table_type", normalized.get("table_type", "")))
 	normalized["currency"] = str(table.get("currency", normalized.get("currency", "chip")))
+	normalized["dealer_id"] = DealerLibraryScript.normalize_dealer_id(str(table.get("dealer_id", normalized.get("dealer_id", DealerLibraryScript.DEFAULT_DEALER_ID))))
 	normalized["status"] = str(table.get("status", table.get("hand_state", STATUS_WAITING)))
 	normalized["hand_state"] = str(table.get("hand_state", table.get("phase", normalized.get("status", STATUS_WAITING))))
 	normalized["betting_round"] = str(table.get("betting_round", table.get("round", normalized.get("hand_state", STATUS_WAITING))))

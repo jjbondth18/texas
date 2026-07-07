@@ -80,6 +80,7 @@ static func _index_entry(record: Dictionary, file_path: String) -> Dictionary:
 		"room_id": str(record.get("room_id", "")),
 		"room_code": str(record.get("room_code", "")),
 		"mode": mode,
+		"dealer_id": str(record.get("dealer_id", "")),
 		"ended_at": str(record.get("ended_at", "")),
 		"player_result": result_text,
 		"profit": profit,

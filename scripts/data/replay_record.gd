@@ -5,6 +5,7 @@ var replay_id := ""
 var file_path := ""
 var played_at := ""
 var mode := ""
+var dealer_id := ""
 var table_name := ""
 var result := ""
 var net_chips := 0
@@ -20,6 +21,7 @@ func _init(data: Dictionary = {}) -> void:
 	file_path = str(data.get("file_path", ""))
 	played_at = str(data.get("played_at", ""))
 	mode = str(data.get("mode", ""))
+	dealer_id = str(data.get("dealer_id", ""))
 	table_name = str(data.get("table_name", ""))
 	result = str(data.get("result", ""))
 	net_chips = int(data.get("net_chips", 0))
@@ -40,6 +42,7 @@ func to_dict() -> Dictionary:
 		"file_path": file_path,
 		"played_at": played_at,
 		"mode": mode,
+		"dealer_id": dealer_id,
 		"table_name": table_name,
 		"result": result,
 		"net_chips": net_chips,

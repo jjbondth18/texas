@@ -807,12 +807,14 @@ func _apply_server_table_info(room_id: String, table_info: Dictionary) -> void:
 	var small_blind := int(table_info.get("small_blind", TableLaunchContext.small_blind))
 	var big_blind := int(table_info.get("big_blind", TableLaunchContext.big_blind))
 	var max_hands := int(table_info.get("hand_count", TableLaunchContext.max_hands))
+	var dealer_id := DealerLibraryScript.normalize_dealer_id(str(table_info.get("dealer_id", TableLaunchContext.dealer_id)))
 	if max_hands <= 0:
 		max_hands = 999
 	TableLaunchContext.buy_in = buy_in
 	TableLaunchContext.small_blind = small_blind
 	TableLaunchContext.big_blind = big_blind
 	TableLaunchContext.max_hands = max_hands
+	TableLaunchContext.dealer_id = dealer_id
 	if server_table_type in ["private_chip", "private_room", "private_casual"]:
 		TableLaunchContext.table_type = TableSessionScript.TABLE_TYPE_PRIVATE_ROOM
 		TableLaunchContext.mode = TableSessionScript.MODE_FRIENDS_ROOM
@@ -832,6 +834,8 @@ func _apply_server_table_info(room_id: String, table_info: Dictionary) -> void:
 		_table_session.small_blind = small_blind
 		_table_session.big_blind = big_blind
 		_table_session.max_hands = max_hands
+		_table_session.selected_dealer_id = dealer_id
+		_apply_dealer_cosmetic()
 	_append_session_log("Server table config: buy-in %s, blinds %s / %s, hands %s." % [
 		_format_chips(buy_in),
 		str(small_blind),
@@ -1070,6 +1074,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	var server_current_hand_number: int = int(server_snapshot.get("current_hand_number", table_info.get("current_hand_number", server_hand_id)))
 	var server_session_complete: bool = bool(server_snapshot.get("session_complete", table_info.get("session_complete", server_room_state == "session_complete")))
 	var configured_action_seconds: int = int(server_snapshot.get("action_time_seconds", table_info.get("action_time_seconds", DEFAULT_ACTION_TIME_SECONDS)))
+	var server_dealer_id: String = DealerLibraryScript.normalize_dealer_id(str(server_snapshot.get("dealer_id", table_info.get("dealer_id", TableLaunchContext.dealer_id))))
 	var action_timeout_ms: int = int(server_snapshot.get("action_timeout_ms", table_info.get("action_timeout_ms", configured_action_seconds * 1000)))
 	var action_timeout_seconds: int = max(1, int(ceil(float(action_timeout_ms) / 1000.0)))
 	var private_hand_id := int(private_snapshot.get("hand_id", -1))
@@ -1163,6 +1168,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"table_type": TableSessionScript.TABLE_TYPE_PRIVATE_ROOM if server_table_type in ["private_chip", "private_room", "private_casual"] else TableSessionScript.TABLE_TYPE_PUBLIC_CHIP,
 		"table_name": "Private Room" if server_table_type in ["private_chip", "private_room", "private_casual"] else "Authoritative Local Table",
 		"buy_in": server_buy_in,
+		"dealer_id": server_dealer_id,
 		"table_info": table_info,
 		"hand_id": "hand_%s" % str(server_hand_id),
 		"blinds_text": "%d / %d" % [server_small_blind, server_big_blind],
@@ -4306,10 +4312,12 @@ func _sync_authoritative_waiting_context(target_snapshot: Dictionary) -> void:
 	TableLaunchContext.is_ai_warmup = is_server_ai_warmup
 	TableLaunchContext.warmup_ai_player_ids = _warmup_ai_ids_from_snapshot(seats)
 	TableLaunchContext.set_seats(seats)
+	TableLaunchContext.dealer_id = DealerLibraryScript.normalize_dealer_id(str(target_snapshot.get("dealer_id", TableLaunchContext.dealer_id)))
 	if _table_session != null:
 		_table_session.waiting_for_real_players = waiting_for_real_players
 		_table_session.is_ai_warmup = is_server_ai_warmup
 		_table_session.warmup_ai_player_ids = TableLaunchContext.warmup_ai_player_ids.duplicate()
+		_table_session.selected_dealer_id = TableLaunchContext.dealer_id
 		_table_session.status = TableSessionScript.TABLE_CLOSED if room_state == "session_complete" else (TableSessionScript.TABLE_AI_WARMUP if is_server_ai_warmup else (TableSessionScript.TABLE_WAITING_FOR_PLAYERS if waiting_for_real_players else (TableSessionScript.TABLE_READY_TO_START if room_state in ["waiting_ready", "starting_countdown"] else TableSessionScript.TABLE_PLAYING)))
 		_table_session.current_table_chips = _local_table_chips_from_snapshot(seats)
 		_update_launch_context_session()

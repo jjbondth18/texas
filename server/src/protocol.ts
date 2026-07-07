@@ -167,6 +167,7 @@ export interface PublicTableSnapshot {
   room_code?: string;
   visibility?: string;
   table_name: string;
+  dealer_id?: string;
   small_blind: number;
   big_blind: number;
   buy_in: number;
@@ -249,6 +250,7 @@ export interface ActionLogEntry {
 export interface TableSnapshot {
   room_id: string;
   table_info?: PublicTableSnapshot;
+  dealer_id?: string;
   buy_in?: number;
   hand_count?: number;
   action_time_seconds?: number;

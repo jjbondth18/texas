@@ -31,6 +31,7 @@ Each `HandReplayRecord` contains:
 - `room_code`
 - `mode`: `public`, `private`, `training`, or `local_warmup`
 - `table_type`
+- `dealer_id`
 - `started_at`
 - `ended_at`
 - `small_blind`
@@ -51,6 +52,8 @@ Action records include `seq`, `street`, `actor_seat`, `actor_player_id`, `action
 
 Result records include winners, winner seat/player identifiers, amount won, hand rank text where available, pot type, final pot, side pots, and server hand result rows where available.
 
+`dealer_id` is presentation metadata only. It identifies the dealer/croupier art used by the original table and is not part of poker rules, settlement, wallet changes, or replay unlock state.
+
 ## Mode Coverage
 
 Authoritative public and private hands can carry a `replay_record` payload in the `table_snapshot` when the hand reaches `hand_over`. This server-built payload includes all seat hole cards at hand end and the full current-hand action log.
@@ -62,6 +65,8 @@ Training and local warm-up are recorded from the local `TexasTableFlow` snapshot
 The Replay Room currently reads only `replay_index.json`. If no records exist, it shows:
 
 `No hands recorded yet. Play a table to generate replay records.`
+
+Replay index entries include `dealer_id` so the Replay Room can render dealer thumbnails without loading every full replay file. Old records or missing dealers fall back to the default dealer id, then to a neutral placeholder if the texture cannot load.
 
 ## Replay Viewer v1
 
@@ -96,6 +101,7 @@ Replay list rows are formatted for reading, not debugging:
 - result line: `Winner: Luna0581 - Pot 1,000`
 - timestamp line: the `ended_at` / index timestamp when available
 - right-side result: `+200 Chips`, `-100 Chips`, or `Practice`
+- left thumbnail: dealer/croupier art from `dealer_id`
 
 The detail page does not keep an empty top summary grid. The static review focuses on `PLAYERS`, `BOARD & RESULT`, and `ACTION TIMELINE`, with unlock/play actions beside the hand title.
 
