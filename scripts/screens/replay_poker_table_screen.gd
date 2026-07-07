@@ -223,7 +223,7 @@ func _setup_top_replay_controls() -> void:
 	_top_right_action_bar.anchor_top = 0.0
 	_top_right_action_bar.anchor_right = 1.0
 	_top_right_action_bar.anchor_bottom = 0.0
-	_top_right_action_bar.offset_left = -540.0
+	_top_right_action_bar.offset_left = -312.0
 	_top_right_action_bar.offset_top = 10.0
 	_top_right_action_bar.offset_right = -20.0
 	_top_right_action_bar.offset_bottom = 52.0
@@ -233,10 +233,6 @@ func _setup_top_replay_controls() -> void:
 	var back_detail: Button = _make_replay_button("BACK TO DETAIL", Vector2(146, 42))
 	back_detail.pressed.connect(func() -> void: back_to_detail_requested.emit())
 	_top_right_action_bar.add_child(back_detail)
-
-	var back_replays: Button = _make_replay_button("BACK TO REPLAYS", Vector2(150, 42))
-	back_replays.pressed.connect(func() -> void: back_to_replays_requested.emit())
-	_top_right_action_bar.add_child(back_replays)
 
 	_timeline_toggle_button = _make_replay_button("HIDE TIMELINE", Vector2(146, 42))
 	_timeline_toggle_button.pressed.connect(func() -> void: timeline_toggle_requested.emit())
