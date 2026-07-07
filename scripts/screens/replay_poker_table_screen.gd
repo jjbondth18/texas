@@ -33,6 +33,9 @@ var _timeline_toggle_button: Button
 var _play_button: Button
 var _speed_button: Button
 var _replay_controls_panel: PanelContainer
+var _replay_street_label: Label
+var _replay_pot_label: Label
+var _replay_current_action_label: Label
 var _replay_info_action_label: Label
 var _equity_table_panel: PanelContainer
 var _equity_header_grid: GridContainer
@@ -221,9 +224,9 @@ func _setup_top_replay_controls() -> void:
 	_top_right_action_bar.anchor_right = 1.0
 	_top_right_action_bar.anchor_bottom = 0.0
 	_top_right_action_bar.offset_left = -540.0
-	_top_right_action_bar.offset_top = 16.0
-	_top_right_action_bar.offset_right = -24.0
-	_top_right_action_bar.offset_bottom = 58.0
+	_top_right_action_bar.offset_top = 10.0
+	_top_right_action_bar.offset_right = -20.0
+	_top_right_action_bar.offset_bottom = 52.0
 	_top_right_action_bar.alignment = BoxContainer.ALIGNMENT_END
 	_top_right_action_bar.add_theme_constant_override("separation", 10)
 
@@ -264,38 +267,71 @@ func _setup_bottom_replay_controls() -> void:
 	control_zone.add_child(_replay_controls_panel)
 
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 22)
-	margin.add_theme_constant_override("margin_right", 22)
-	margin.add_theme_constant_override("margin_top", 14)
-	margin.add_theme_constant_override("margin_bottom", 14)
+	margin.add_theme_constant_override("margin_left", 18)
+	margin.add_theme_constant_override("margin_right", 18)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_bottom", 10)
 	_replay_controls_panel.add_child(margin)
 	var vbox := VBoxContainer.new()
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 12)
+	vbox.alignment = BoxContainer.ALIGNMENT_BEGIN
+	vbox.add_theme_constant_override("separation", 5)
 	margin.add_child(vbox)
+
+	var title := Label.new()
+	title.name = "ReplayControlsTitle"
+	title.text = "REPLAY CONTROLS"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.custom_minimum_size = Vector2(516, 18)
+	HomeTheme.make_font_settings(title, 12, Color(0.88, 0.94, 1.0, 0.92))
+	vbox.add_child(title)
+
+	var meta_row := HBoxContainer.new()
+	meta_row.name = "ReplayControlsMetaRow"
+	meta_row.add_theme_constant_override("separation", 8)
+	vbox.add_child(meta_row)
 
 	_replay_step_label = Label.new()
 	_replay_step_label.name = "ReplayStepSummary"
-	_replay_step_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_replay_step_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_replay_step_label.custom_minimum_size = Vector2(500, 38)
-	HomeTheme.make_font_settings(_replay_step_label, 13, Color(0.86, 0.92, 1.0, 0.94))
-	vbox.add_child(_replay_step_label)
+	_replay_step_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_replay_step_label.custom_minimum_size = Vector2(146, 22)
+	HomeTheme.make_font_settings(_replay_step_label, 12, Color(0.86, 0.92, 1.0, 0.94))
+	meta_row.add_child(_replay_step_label)
+
+	_replay_street_label = Label.new()
+	_replay_street_label.name = "ReplayStreetSummary"
+	_replay_street_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_replay_street_label.custom_minimum_size = Vector2(150, 22)
+	HomeTheme.make_font_settings(_replay_street_label, 12, Color(0.86, 0.92, 1.0, 0.94))
+	meta_row.add_child(_replay_street_label)
+
+	_replay_pot_label = Label.new()
+	_replay_pot_label.name = "ReplayPotSummary"
+	_replay_pot_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_replay_pot_label.custom_minimum_size = Vector2(142, 22)
+	HomeTheme.make_font_settings(_replay_pot_label, 12, Color(0.86, 0.92, 1.0, 0.94))
+	meta_row.add_child(_replay_pot_label)
+
+	_replay_current_action_label = Label.new()
+	_replay_current_action_label.name = "ReplayCurrentActionSummary"
+	_replay_current_action_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_replay_current_action_label.custom_minimum_size = Vector2(516, 34)
+	HomeTheme.make_font_settings(_replay_current_action_label, 12, Color(0.92, 0.96, 1.0, 0.94))
+	vbox.add_child(_replay_current_action_label)
 
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 10)
+	row.add_theme_constant_override("separation", 8)
 	vbox.add_child(row)
-	var prev_button: Button = _make_replay_button("PREV", Vector2(104, 42))
+	var prev_button: Button = _make_replay_button("PREV", Vector2(104, 38))
 	prev_button.pressed.connect(func() -> void: previous_step_requested.emit())
 	row.add_child(prev_button)
-	_play_button = _make_replay_button("PLAY", Vector2(112, 42))
+	_play_button = _make_replay_button("PLAY", Vector2(112, 38))
 	_play_button.pressed.connect(func() -> void: playback_toggle_requested.emit())
 	row.add_child(_play_button)
-	var next_button: Button = _make_replay_button("NEXT", Vector2(104, 42))
+	var next_button: Button = _make_replay_button("NEXT", Vector2(104, 38))
 	next_button.pressed.connect(func() -> void: next_step_requested.emit())
 	row.add_child(next_button)
-	_speed_button = _make_replay_button("SPEED 1x", Vector2(122, 42))
+	_speed_button = _make_replay_button("SPEED 1x", Vector2(122, 38))
 	_speed_button.pressed.connect(func() -> void: speed_toggle_requested.emit())
 	row.add_child(_speed_button)
 
@@ -315,8 +351,8 @@ func _setup_equity_table_panel() -> void:
 	_equity_table_panel.move_to_front()
 
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 22)
-	margin.add_theme_constant_override("margin_right", 22)
+	margin.add_theme_constant_override("margin_left", 18)
+	margin.add_theme_constant_override("margin_right", 18)
 	margin.add_theme_constant_override("margin_top", 18)
 	margin.add_theme_constant_override("margin_bottom", 18)
 	_equity_table_panel.add_child(margin)
@@ -343,7 +379,7 @@ func _setup_equity_table_panel() -> void:
 
 	_equity_mode_label = Label.new()
 	_equity_mode_label.name = "ReplayEquityModeDescription"
-	_equity_mode_label.custom_minimum_size = Vector2(696, 20)
+	_equity_mode_label.custom_minimum_size = Vector2(704, 20)
 	_equity_mode_label.clip_text = true
 	_equity_mode_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	HomeTheme.make_font_settings(_equity_mode_label, 11, Color(0.72, 0.78, 0.94, 0.86))
@@ -364,7 +400,7 @@ func _setup_equity_table_panel() -> void:
 
 	var scroll := ScrollContainer.new()
 	scroll.name = "ReplayEquityTableScroll"
-	scroll.custom_minimum_size = Vector2(696, 132)
+	scroll.custom_minimum_size = Vector2(704, 136)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	vbox.add_child(scroll)
@@ -378,7 +414,7 @@ func _setup_equity_table_panel() -> void:
 
 
 func _make_equity_mode_button(text: String, mode: String) -> Button:
-	var button := _make_replay_button(text, Vector2(104, 26))
+	var button := _make_replay_button(text, Vector2(112, 28))
 	button.name = "ReplayEquityMode%sButton" % text.capitalize()
 	button.pressed.connect(func() -> void: _on_equity_mode_pressed(mode))
 	return button
@@ -486,7 +522,13 @@ func _render_bottom_hud(players: Array, playback_state: Dictionary) -> void:
 	_update_equity_highlight(_current_equity_phase())
 	_action_bar.set_turn_prompt("REPLAY CONTROLS")
 	if _replay_step_label != null:
-		_replay_step_label.text = "Step %d / %d\n%s" % [_current_step, _total_steps, action_text]
+		_replay_step_label.text = "Step %d / %d" % [_current_step, _total_steps]
+	if _replay_street_label != null:
+		_replay_street_label.text = "Street: %s" % _current_equity_phase().to_upper()
+	if _replay_pot_label != null:
+		_replay_pot_label.text = "Pot: %s" % _format_replay_number(int(playback_state.get("pot", 0)))
+	if _replay_current_action_label != null:
+		_replay_current_action_label.text = "Current Action:\n%s" % action_text
 
 
 func _build_equity_cache() -> void:
@@ -560,12 +602,12 @@ func _render_equity_table(active_phase: String) -> void:
 
 	var columns: Array[Dictionary] = [
 		{"key": "seat", "label": "Seat", "width": 48},
-		{"key": "player", "label": "Player", "width": 126},
-		{"key": "preflop", "label": "Preflop", "width": 84},
-		{"key": "flop", "label": "Flop", "width": 78},
-		{"key": "turn", "label": "Turn", "width": 78},
-		{"key": "river", "label": "River", "width": 78},
-		{"key": "final", "label": "Final", "width": 82},
+		{"key": "player", "label": "Player", "width": 140},
+		{"key": "preflop", "label": "Preflop", "width": 90},
+		{"key": "flop", "label": "Flop", "width": 84},
+		{"key": "turn", "label": "Turn", "width": 84},
+		{"key": "river", "label": "River", "width": 84},
+		{"key": "final", "label": "Final", "width": 88},
 	]
 	for column_item in columns:
 		var column: Dictionary = Dictionary(column_item)
@@ -611,7 +653,7 @@ func _style_equity_mode_button(button: Button, active: bool) -> void:
 func _make_equity_cell(text: String, width: int, is_header: bool, is_active_phase: bool, key: String = "", value: String = "") -> PanelContainer:
 	var cell := PanelContainer.new()
 	cell.name = "ReplayEquityCell_%s" % (key if key != "" else "header")
-	cell.custom_minimum_size = Vector2(width, 28 if not is_header else 30)
+	cell.custom_minimum_size = Vector2(width, 30 if not is_header else 32)
 	cell.set_meta("equity_key", key)
 	cell.set_meta("equity_is_header", is_header)
 	cell.set_meta("equity_value", value)
@@ -653,7 +695,7 @@ func _style_equity_label(label: Label, is_header: bool, value: String) -> void:
 		color = Color(0.58, 0.61, 0.70, 0.90)
 	elif value == "Loss":
 		color = Color(0.70, 0.74, 0.84, 0.90)
-	HomeTheme.make_font_settings(label, 12 if not is_header else 13, color)
+	HomeTheme.make_font_settings(label, 13 if not is_header else 14, color)
 
 
 func _update_equity_highlight(active_phase: String) -> void:
@@ -916,6 +958,18 @@ func _compact_hand_number(hand_id: String) -> String:
 	if digits == "":
 		return hand_id
 	return digits
+
+
+func _format_replay_number(value: int) -> String:
+	var text: String = str(value)
+	var result: String = ""
+	var count := 0
+	for i in range(text.length() - 1, -1, -1):
+		if count > 0 and count % 3 == 0:
+			result = "," + result
+		result = text.substr(i, 1) + result
+		count += 1
+	return result
 
 
 func _make_replay_button(text: String, min_size: Vector2) -> Button:

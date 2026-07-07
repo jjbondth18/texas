@@ -1,0 +1,16 @@
+extends RefCounted
+
+func run() -> void:
+	var source: String = FileAccess.get_file_as_string("res://scripts/screens/replay_poker_table_screen.gd")
+	assert(source.find("ReplayControlsTitle") != -1)
+	assert(source.find("ReplayControlsMetaRow") != -1)
+	assert(source.find("ReplayStepSummary") != -1)
+	assert(source.find("ReplayStreetSummary") != -1)
+	assert(source.find("ReplayPotSummary") != -1)
+	assert(source.find("ReplayCurrentActionSummary") != -1)
+	assert(source.find("_replay_step_label.text = \"Step %d / %d\"") != -1)
+	assert(source.find("_replay_street_label.text = \"Street: %s\"") != -1)
+	assert(source.find("_replay_pot_label.text = \"Pot: %s\"") != -1)
+	assert(source.find("_replay_current_action_label.text = \"Current Action:\\n%s\"") != -1)
+	assert(source.find("PREV") < source.find("PLAY"))
+	assert(source.find("PLAY") < source.find("NEXT"))
