@@ -307,6 +307,14 @@ Both modes currently use deterministic Monte Carlo rather than exact enumeration
 
 This table does not connect to the server, does not mutate wallet or gems, does not change replay records, and does not touch live `PokerTableScreen` logic. Future phases may add richer charts, exact enumeration options, or click-to-focus player perspective controls.
 
+## Replay Playback Performance Rules
+
+Replay playback must keep the live table background and UI animation smooth while steps advance. Equity data is cached when the replay context is opened: Objective and Perceived tables are built once and reused for preflop, flop, turn, river, and final highlights. Step playback must not rerun Monte Carlo equity calculation.
+
+Replay UI nodes should be built once and updated in place. Seat cards, bottom cards, table controls, timeline content, and equity table cells are reused during playback; step updates should only change text, visibility, card values, pot values, and highlight style. Timeline content is cached and sent to the log panel once, while current-step context is shown in the replay header and controls.
+
+Replay panels should remain translucent. The Equity Table panel keeps its neon border but uses a semi-transparent dark fill so the table background remains visible behind it; individual cells also use translucent fills with a slightly brighter active-street highlight.
+
 ## Future Phases
 
 Later replay work can add:

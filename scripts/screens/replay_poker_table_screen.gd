@@ -14,6 +14,8 @@ const ReplayEquityTableScript := preload("res://scripts/replay/replay_equity_tab
 
 const DESIGN_SIZE := Vector2(2560.0, 1000.0)
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
+const REPLAY_PERF_DEBUG := false
+const EQUITY_PHASES := ["preflop", "flop", "turn", "river", "final"]
 
 var _record: Dictionary = {}
 var _index_entry: Dictionary = {}
@@ -41,6 +43,13 @@ var _equity_objective_button: Button
 var _equity_perceived_button: Button
 var _equity_mode: String = ReplayEquityTableScript.MODE_OBJECTIVE
 var _equity_hero_seat: int = -1
+var _equity_cache: Dictionary = {}
+var _equity_rendered_mode: String = ""
+var _equity_cells: Array = []
+var _equity_last_phase: String = ""
+var _timeline_action_lines: Array = []
+var _timeline_event_lines: Array = []
+var _timeline_built := false
 
 @onready var _table_surface_layer: Control = $TableSurfaceLayer
 @onready var _ui_layer: Control = $UIFloatingLayer
@@ -76,6 +85,12 @@ func set_replay_context(record: Dictionary, index_entry: Dictionary, steps: Arra
 	_steps = steps.duplicate(true)
 	_total_steps = _steps.size()
 	_winner_seats = _build_winner_seat_map(_record)
+	_equity_cache.clear()
+	_equity_rendered_mode = ""
+	_equity_last_phase = ""
+	_timeline_built = false
+	_build_equity_cache()
+	_build_timeline_cache()
 	_update_replay_title()
 
 
@@ -95,7 +110,7 @@ func render_replay_state(playback_state: Dictionary, current_step: int, total_st
 	_community_board.set_cards(_cards_to_card_data(Array(playback_state.get("board_cards", []))))
 	_render_seats(players, current_actor_seat)
 	_render_bottom_hud(players, playback_state)
-	_render_timeline(current_step)
+	_update_timeline_highlight(current_step)
 	_update_control_text()
 
 
@@ -295,7 +310,7 @@ func _setup_equity_table_panel() -> void:
 	_equity_table_panel.position = Vector2(0, 0)
 	_equity_table_panel.size = Vector2(785, 368)
 	_equity_table_panel.custom_minimum_size = _equity_table_panel.size
-	_equity_table_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.018, 0.012, 0.044, 0.86), Color(0.82, 0.16, 1.0, 0.48), 14, 1))
+	_equity_table_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.018, 0.012, 0.044, 0.56), Color(0.82, 0.16, 1.0, 0.48), 14, 1))
 	_action_bar.add_child(_equity_table_panel)
 	_equity_table_panel.move_to_front()
 
@@ -366,8 +381,8 @@ func _make_equity_mode_button(text: String, mode: String) -> Button:
 	var button := _make_replay_button(text, Vector2(104, 26))
 	button.name = "ReplayEquityMode%sButton" % text.capitalize()
 	button.pressed.connect(func() -> void:
-		_equity_mode = mode
-		_render_equity_table(_current_equity_phase())
+	_equity_mode = mode
+	_render_equity_table(_current_equity_phase())
 	)
 	return button
 
@@ -466,10 +481,40 @@ func _render_bottom_hud(players: Array, playback_state: Dictionary) -> void:
 		_set_bottom_hole_cards(_cards_to_card_data(_replay_cards_for_player(primary)))
 	else:
 		_set_bottom_hole_cards([])
-	_render_equity_table(_current_equity_phase())
+	_update_equity_highlight(_current_equity_phase())
 	_action_bar.set_turn_prompt("REPLAY CONTROLS")
 	if _replay_step_label != null:
 		_replay_step_label.text = "Step %d / %d\n%s" % [_current_step, _total_steps, action_text]
+
+
+func _build_equity_cache() -> void:
+	_equity_cache.clear()
+	for mode in [ReplayEquityTableScript.MODE_OBJECTIVE, ReplayEquityTableScript.MODE_PERCEIVED]:
+		var base_table: Dictionary = ReplayEquityTableScript.build_table(_record, "preflop", mode, _equity_hero_seat)
+		var phase_tables: Dictionary = {}
+		for phase in EQUITY_PHASES:
+			var table: Dictionary = base_table.duplicate(true)
+			table["active_phase"] = phase
+			phase_tables[phase] = table
+		_equity_cache[mode] = phase_tables
+	_log_replay_perf("build equity cache objective/perceived once")
+
+
+func _equity_table_for(mode: String, active_phase: String) -> Dictionary:
+	if _equity_cache.is_empty():
+		_build_equity_cache()
+	var normalized_mode: String = ReplayEquityTableScript.MODE_PERCEIVED if mode == ReplayEquityTableScript.MODE_PERCEIVED else ReplayEquityTableScript.MODE_OBJECTIVE
+	var phase: String = active_phase if active_phase in EQUITY_PHASES else "preflop"
+	var mode_cache: Dictionary = Dictionary(_equity_cache.get(normalized_mode, {}))
+	if mode_cache.is_empty():
+		var base_table: Dictionary = ReplayEquityTableScript.build_table(_record, "preflop", normalized_mode, _equity_hero_seat)
+		for phase_name in EQUITY_PHASES:
+			var table: Dictionary = base_table.duplicate(true)
+			table["active_phase"] = phase_name
+			mode_cache[phase_name] = table
+		_equity_cache[normalized_mode] = mode_cache
+		_log_replay_perf("build missing equity cache mode=%s" % normalized_mode)
+	return Dictionary(mode_cache.get(phase, {}))
 
 
 func _set_bottom_hole_cards(cards: Array) -> void:
@@ -490,19 +535,26 @@ func _set_bottom_hole_cards(cards: Array) -> void:
 func _render_equity_table(active_phase: String) -> void:
 	if _equity_table_grid == null:
 		return
-	var table: Dictionary = ReplayEquityTableScript.build_table(_record, active_phase, _equity_mode, _equity_hero_seat)
+	var table: Dictionary = _equity_table_for(_equity_mode, active_phase)
 	var rows: Array = Array(table.get("rows", []))
 	var normalized_phase: String = str(table.get("active_phase", "preflop"))
 	_equity_hero_seat = int(table.get("hero_seat", _equity_hero_seat))
 	_update_equity_mode_header(table)
+	if _equity_rendered_mode == _equity_mode and not _equity_cells.is_empty():
+		_update_equity_highlight(normalized_phase)
+		return
 	if _equity_header_grid != null:
 		_clear_children(_equity_header_grid)
 	_clear_children(_equity_table_grid)
+	_equity_cells.clear()
+	_equity_rendered_mode = _equity_mode
 	if _equity_table_empty_label != null:
 		_equity_table_empty_label.visible = rows.is_empty()
 		_equity_table_empty_label.text = str(table.get("message", "No equity data."))
 	if rows.is_empty():
 		return
+	if _equity_table_empty_label != null:
+		_equity_table_empty_label.visible = false
 
 	var columns: Array[Dictionary] = [
 		{"key": "seat", "label": "Seat", "width": 56},
@@ -527,6 +579,7 @@ func _render_equity_table(active_phase: String) -> void:
 			var key: String = str(column.get("key", ""))
 			var value: String = _equity_cell_text(row, key)
 			_equity_table_grid.add_child(_make_equity_cell(value, int(column.get("width", 70)), false, key == normalized_phase, key, value))
+	_update_equity_highlight(normalized_phase)
 
 
 func _update_equity_mode_header(table: Dictionary) -> void:
@@ -557,15 +610,11 @@ func _make_equity_cell(text: String, width: int, is_header: bool, is_active_phas
 	var cell := PanelContainer.new()
 	cell.name = "ReplayEquityCell_%s" % (key if key != "" else "header")
 	cell.custom_minimum_size = Vector2(width, 25 if not is_header else 27)
-	var fill: Color = Color(0.035, 0.025, 0.080, 0.60)
-	var border: Color = Color(0.34, 0.20, 0.70, 0.28)
-	if is_header:
-		fill = Color(0.10, 0.055, 0.16, 0.78)
-		border = Color(0.85, 0.30, 1.0, 0.50)
-	if is_active_phase:
-		fill = Color(0.06, 0.16, 0.24, 0.84)
-		border = Color(0.25, 0.86, 1.0, 0.72)
-	cell.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(fill, border, 5, 1))
+	cell.set_meta("equity_key", key)
+	cell.set_meta("equity_is_header", is_header)
+	cell.set_meta("equity_value", value)
+	_equity_cells.append(cell)
+	_style_equity_cell(cell, is_header, is_active_phase)
 
 	var label := Label.new()
 	label.text = text
@@ -573,6 +622,24 @@ func _make_equity_cell(text: String, width: int, is_header: bool, is_active_phas
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER if key != "player" else HORIZONTAL_ALIGNMENT_LEFT
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_style_equity_label(label, is_header, value)
+	cell.add_child(label)
+	return cell
+
+
+func _style_equity_cell(cell: PanelContainer, is_header: bool, is_active_phase: bool) -> void:
+	var fill: Color = Color(0.035, 0.025, 0.080, 0.42)
+	var border: Color = Color(0.34, 0.20, 0.70, 0.28)
+	if is_header:
+		fill = Color(0.10, 0.055, 0.16, 0.50)
+		border = Color(0.85, 0.30, 1.0, 0.50)
+	if is_active_phase:
+		fill = Color(0.06, 0.16, 0.24, 0.62)
+		border = Color(0.25, 0.86, 1.0, 0.72)
+	cell.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(fill, border, 5, 1))
+
+
+func _style_equity_label(label: Label, is_header: bool, value: String) -> void:
 	var color: Color = Color(0.86, 0.90, 1.0, 0.94)
 	if is_header:
 		color = Color(0.93, 0.86, 1.0, 0.96)
@@ -585,8 +652,24 @@ func _make_equity_cell(text: String, width: int, is_header: bool, is_active_phas
 	elif value == "Loss":
 		color = Color(0.70, 0.74, 0.84, 0.90)
 	HomeTheme.make_font_settings(label, 11 if not is_header else 12, color)
-	cell.add_child(label)
-	return cell
+
+
+func _update_equity_highlight(active_phase: String) -> void:
+	var normalized_phase: String = active_phase if active_phase in EQUITY_PHASES else "preflop"
+	if _equity_rendered_mode != _equity_mode or _equity_cells.is_empty():
+		_render_equity_table(normalized_phase)
+		return
+	if _equity_last_phase == normalized_phase:
+		return
+	_equity_last_phase = normalized_phase
+	for cell_item in _equity_cells:
+		var cell: PanelContainer = cell_item as PanelContainer
+		if cell == null:
+			continue
+		var key: String = str(cell.get_meta("equity_key", ""))
+		var is_header: bool = bool(cell.get_meta("equity_is_header", false))
+		_style_equity_cell(cell, is_header, key == normalized_phase)
+	_log_replay_perf("step update index=%d phase=%s recreate_nodes=false equity_recomputed=false" % [_current_step, normalized_phase])
 
 
 func _equity_cell_text(row: Dictionary, key: String) -> String:
@@ -619,24 +702,29 @@ func _clear_children(parent: Node) -> void:
 		child.queue_free()
 
 
-func _render_timeline(current_step: int) -> void:
-	if _log_panel == null:
-		return
-	var action_lines: Array = []
-	var event_lines: Array = []
+func _build_timeline_cache() -> void:
+	_timeline_action_lines = []
+	_timeline_event_lines = []
 	var action_count := 0
 	for i in range(_steps.size()):
 		var step: Dictionary = Dictionary(_steps[i])
 		var line: String = str(step.get("timeline_text", step.get("label", "")))
 		if line == "":
 			line = _fallback_step_text(step)
-		var prefix: String = "> " if i == current_step - 1 else "  "
 		if str(step.get("kind", "event")) == "action":
 			action_count += 1
-			action_lines.append("%s%d. %s" % [prefix, action_count, line])
+			_timeline_action_lines.append("%d. %s" % [action_count, line])
 		else:
-			event_lines.append("%s%s" % [prefix, line])
-	_log_panel.set_info(action_lines, event_lines)
+			_timeline_event_lines.append(line)
+	_timeline_built = false
+
+
+func _update_timeline_highlight(_current_step_index: int) -> void:
+	if _log_panel == null:
+		return
+	if not _timeline_built:
+		_log_panel.set_info(_timeline_action_lines, _timeline_event_lines)
+		_timeline_built = true
 
 
 func _update_room_info(playback_state: Dictionary) -> void:
@@ -840,6 +928,11 @@ func _make_replay_button(text: String, min_size: Vector2) -> Button:
 	button.add_theme_color_override("font_color", Color(0.92, 0.96, 1.0, 0.96))
 	button.add_theme_font_size_override("font_size", 13)
 	return button
+
+
+func _log_replay_perf(message: String) -> void:
+	if REPLAY_PERF_DEBUG:
+		print("[ReplayPerf] %s" % message)
 
 
 func _hide_editor_guides(node: Node) -> void:
