@@ -300,8 +300,8 @@ func _setup_equity_table_panel() -> void:
 	_equity_table_panel.move_to_front()
 
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 22)
-	margin.add_theme_constant_override("margin_right", 22)
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
 	margin.add_theme_constant_override("margin_top", 18)
 	margin.add_theme_constant_override("margin_bottom", 18)
 	_equity_table_panel.add_child(margin)
@@ -328,7 +328,7 @@ func _setup_equity_table_panel() -> void:
 
 	_equity_mode_label = Label.new()
 	_equity_mode_label.name = "ReplayEquityModeDescription"
-	_equity_mode_label.custom_minimum_size = Vector2(720, 20)
+	_equity_mode_label.custom_minimum_size = Vector2(736, 20)
 	_equity_mode_label.clip_text = true
 	_equity_mode_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	HomeTheme.make_font_settings(_equity_mode_label, 11, Color(0.72, 0.78, 0.94, 0.86))
@@ -349,7 +349,7 @@ func _setup_equity_table_panel() -> void:
 
 	var scroll := ScrollContainer.new()
 	scroll.name = "ReplayEquityTableScroll"
-	scroll.custom_minimum_size = Vector2(730, 132)
+	scroll.custom_minimum_size = Vector2(736, 132)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	vbox.add_child(scroll)
@@ -505,13 +505,13 @@ func _render_equity_table(active_phase: String) -> void:
 		return
 
 	var columns: Array[Dictionary] = [
-		{"key": "seat", "label": "Seat", "width": 52},
-		{"key": "player", "label": "Player", "width": 168},
-		{"key": "preflop", "label": "Preflop", "width": 94},
-		{"key": "flop", "label": "Flop", "width": 84},
-		{"key": "turn", "label": "Turn", "width": 84},
-		{"key": "river", "label": "River", "width": 84},
-		{"key": "final", "label": "Final", "width": 94},
+		{"key": "seat", "label": "Seat", "width": 56},
+		{"key": "player", "label": "Player", "width": 184},
+		{"key": "preflop", "label": "Preflop", "width": 98},
+		{"key": "flop", "label": "Flop", "width": 92},
+		{"key": "turn", "label": "Turn", "width": 92},
+		{"key": "river", "label": "River", "width": 92},
+		{"key": "final", "label": "Final", "width": 96},
 	]
 	for column_item in columns:
 		var column: Dictionary = Dictionary(column_item)
