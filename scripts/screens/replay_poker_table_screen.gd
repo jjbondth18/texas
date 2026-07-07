@@ -380,11 +380,13 @@ func _setup_equity_table_panel() -> void:
 func _make_equity_mode_button(text: String, mode: String) -> Button:
 	var button := _make_replay_button(text, Vector2(104, 26))
 	button.name = "ReplayEquityMode%sButton" % text.capitalize()
-	button.pressed.connect(func() -> void:
+	button.pressed.connect(func() -> void: _on_equity_mode_pressed(mode))
+	return button
+
+
+func _on_equity_mode_pressed(mode: String) -> void:
 	_equity_mode = mode
 	_render_equity_table(_current_equity_phase())
-	)
-	return button
 
 
 func _layout() -> void:
