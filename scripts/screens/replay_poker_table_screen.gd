@@ -308,15 +308,15 @@ func _setup_equity_table_panel() -> void:
 	_equity_table_panel = PanelContainer.new()
 	_equity_table_panel.name = "ReplayEquityTablePanel"
 	_equity_table_panel.position = Vector2(0, 0)
-	_equity_table_panel.size = Vector2(785, 368)
+	_equity_table_panel.size = Vector2(740, 368)
 	_equity_table_panel.custom_minimum_size = _equity_table_panel.size
 	_equity_table_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.018, 0.012, 0.044, 0.56), Color(0.82, 0.16, 1.0, 0.48), 14, 1))
 	_action_bar.add_child(_equity_table_panel)
 	_equity_table_panel.move_to_front()
 
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 24)
-	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_left", 22)
+	margin.add_theme_constant_override("margin_right", 22)
 	margin.add_theme_constant_override("margin_top", 18)
 	margin.add_theme_constant_override("margin_bottom", 18)
 	_equity_table_panel.add_child(margin)
@@ -343,7 +343,7 @@ func _setup_equity_table_panel() -> void:
 
 	_equity_mode_label = Label.new()
 	_equity_mode_label.name = "ReplayEquityModeDescription"
-	_equity_mode_label.custom_minimum_size = Vector2(736, 20)
+	_equity_mode_label.custom_minimum_size = Vector2(696, 20)
 	_equity_mode_label.clip_text = true
 	_equity_mode_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	HomeTheme.make_font_settings(_equity_mode_label, 11, Color(0.72, 0.78, 0.94, 0.86))
@@ -364,7 +364,7 @@ func _setup_equity_table_panel() -> void:
 
 	var scroll := ScrollContainer.new()
 	scroll.name = "ReplayEquityTableScroll"
-	scroll.custom_minimum_size = Vector2(736, 132)
+	scroll.custom_minimum_size = Vector2(696, 132)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	vbox.add_child(scroll)
@@ -559,13 +559,13 @@ func _render_equity_table(active_phase: String) -> void:
 		_equity_table_empty_label.visible = false
 
 	var columns: Array[Dictionary] = [
-		{"key": "seat", "label": "Seat", "width": 56},
-		{"key": "player", "label": "Player", "width": 184},
-		{"key": "preflop", "label": "Preflop", "width": 98},
-		{"key": "flop", "label": "Flop", "width": 92},
-		{"key": "turn", "label": "Turn", "width": 92},
-		{"key": "river", "label": "River", "width": 92},
-		{"key": "final", "label": "Final", "width": 96},
+		{"key": "seat", "label": "Seat", "width": 48},
+		{"key": "player", "label": "Player", "width": 126},
+		{"key": "preflop", "label": "Preflop", "width": 84},
+		{"key": "flop", "label": "Flop", "width": 78},
+		{"key": "turn", "label": "Turn", "width": 78},
+		{"key": "river", "label": "River", "width": 78},
+		{"key": "final", "label": "Final", "width": 82},
 	]
 	for column_item in columns:
 		var column: Dictionary = Dictionary(column_item)
@@ -611,7 +611,7 @@ func _style_equity_mode_button(button: Button, active: bool) -> void:
 func _make_equity_cell(text: String, width: int, is_header: bool, is_active_phase: bool, key: String = "", value: String = "") -> PanelContainer:
 	var cell := PanelContainer.new()
 	cell.name = "ReplayEquityCell_%s" % (key if key != "" else "header")
-	cell.custom_minimum_size = Vector2(width, 25 if not is_header else 27)
+	cell.custom_minimum_size = Vector2(width, 28 if not is_header else 30)
 	cell.set_meta("equity_key", key)
 	cell.set_meta("equity_is_header", is_header)
 	cell.set_meta("equity_value", value)
@@ -653,7 +653,7 @@ func _style_equity_label(label: Label, is_header: bool, value: String) -> void:
 		color = Color(0.58, 0.61, 0.70, 0.90)
 	elif value == "Loss":
 		color = Color(0.70, 0.74, 0.84, 0.90)
-	HomeTheme.make_font_settings(label, 11 if not is_header else 12, color)
+	HomeTheme.make_font_settings(label, 12 if not is_header else 13, color)
 
 
 func _update_equity_highlight(active_phase: String) -> void:
@@ -679,7 +679,7 @@ func _equity_cell_text(row: Dictionary, key: String) -> String:
 		return str(int(row.get("seat", -1)))
 	if key == "player":
 		var name: String = str(row.get("player", "-"))
-		return name.substr(0, 14) if name.length() > 14 else name
+		return name.substr(0, 10) + "..." if name.length() > 13 else name
 	return str(row.get(key, "-"))
 
 
