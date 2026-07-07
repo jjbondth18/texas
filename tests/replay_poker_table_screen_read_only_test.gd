@@ -9,6 +9,6 @@ func run() -> void:
 	assert(source.find("start_ai_warmup") == -1)
 	assert(source.find("Add Chips") == -1)
 	assert(source.find("BACK TO DETAIL") != -1)
-	assert(source.find("BACK TO REPLAYS") != -1)
+	assert(source.find("\"BACK TO REPLAYS\"") == -1)
 	assert(source.find("PREV") != -1)
 	assert(source.find("NEXT") != -1)

@@ -206,6 +206,30 @@ func mock_purchase_gems(amount: int) -> Dictionary:
 	save_current_profile(profile)
 	return get_current_profile()
 
+func is_replay_unlocked(replay_id: String) -> bool:
+	var clean_id := replay_id.strip_edges()
+	if clean_id == "":
+		return false
+	var profile := get_current_profile()
+	return Array(profile.get("unlocked_replay_ids", [])).has(clean_id)
+
+func unlock_replay(replay_id: String, cost_gems: int = PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS) -> Dictionary:
+	var clean_id := replay_id.strip_edges()
+	var profile := get_current_profile()
+	if clean_id == "":
+		return {"success": false, "reason": "missing_replay_id", "profile": profile}
+	var unlocked: Array = Array(profile.get("unlocked_replay_ids", [])).duplicate()
+	if unlocked.has(clean_id):
+		return {"success": true, "reason": "already_unlocked", "profile": profile}
+	var available_gems: int = PlayerProfileScript.get_total_gems(profile)
+	if available_gems < cost_gems:
+		return {"success": false, "reason": "not_enough_gems", "profile": profile}
+	profile["gems"] = available_gems - cost_gems
+	unlocked.append(clean_id)
+	profile["unlocked_replay_ids"] = unlocked
+	save_current_profile(profile)
+	return {"success": true, "reason": "unlocked", "profile": get_current_profile()}
+
 func claim_daily_login_bonus(today: String = "") -> Dictionary:
 	var profile := get_current_profile()
 	if _server_profile_synced:

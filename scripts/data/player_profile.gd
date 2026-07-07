@@ -15,7 +15,7 @@ const DEFAULT_GEMS := 0
 const DEFAULT_TABLE_BUY_IN := 20000
 const SCHEMA_VERSION := 3
 const DAILY_LOGIN_CHIPS := 1000
-const REPLAY_UNLOCK_COST_GEMS := 5
+const REPLAY_UNLOCK_COST_GEMS := 20
 
 var player_id := DEFAULT_PLAYER_ID
 var name := ""
@@ -37,6 +37,7 @@ var best_session_profit := 0
 var last_daily_reward_date := ""
 var daily_reward_claimed_today := false
 var replay_unlock_cost_gems := REPLAY_UNLOCK_COST_GEMS
+var unlocked_replay_ids: Array[String] = []
 
 func _init(
 	player_name: String = "",
@@ -83,6 +84,11 @@ func _init(
 	last_daily_reward_date = String(profile_stats.get("last_daily_reward_date", ""))
 	daily_reward_claimed_today = bool(profile_stats.get("daily_reward_claimed_today", false))
 	replay_unlock_cost_gems = int(profile_stats.get("replay_unlock_cost_gems", REPLAY_UNLOCK_COST_GEMS))
+	unlocked_replay_ids.clear()
+	for id in Array(profile_stats.get("unlocked_replay_ids", [])):
+		var replay_id := str(id).strip_edges()
+		if replay_id != "" and not unlocked_replay_ids.has(replay_id):
+			unlocked_replay_ids.append(replay_id)
 
 func xp_text() -> String:
 	return "%d / %d XP" % [xp_current, xp_max]
@@ -112,6 +118,7 @@ func to_lobby_dict() -> Dictionary:
 		"last_daily_reward_date": last_daily_reward_date,
 		"daily_reward_claimed_today": daily_reward_claimed_today,
 		"replay_unlock_cost_gems": replay_unlock_cost_gems,
+		"unlocked_replay_ids": unlocked_replay_ids.duplicate(),
 	}
 
 func to_dict() -> Dictionary:

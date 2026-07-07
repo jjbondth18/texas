@@ -1,6 +1,6 @@
 # Replay Record Architecture
 
-Replay phase 1 records completed hands and saves local JSON files. Replay Viewer v1 adds a static local hand review for those files. This replay stack still does not include animation playback, gem unlocks, payment, equity graphs, or cloud replay storage.
+Replay phase 1 records completed hands and saves local JSON files. Replay Viewer v1 adds a static local hand review for those files. Replay playback is gated by a local gem unlock, but replay records are still always saved and never affect hand settlement.
 
 ## Storage
 
@@ -85,7 +85,7 @@ The static detail panel shows:
 
 Missing fields are tolerated. Missing hole cards display `Unknown`, missing winner/rank fields display `-`, and a missing JSON file displays `Replay file missing.` without crashing.
 
-Viewer v1 does not do playback animation, equity charts, cloud loading, gem checks, gem spending, store integration, or paid unlocks.
+Viewer v1 does not do playback animation, equity charts, cloud loading, store integration, or real-money payment. Full replay playback is unlocked per replay through the local gem flow described below.
 
 ## Replay Viewer v1 Display Rules
 
@@ -97,16 +97,7 @@ Replay list rows are formatted for reading, not debugging:
 - timestamp line: the `ended_at` / index timestamp when available
 - right-side result: `+200 Chips`, `-100 Chips`, or `Practice`
 
-The detail top summary must show values beside every label:
-
-- `MODE`: `Public Table`, `Private Room`, `Training`, `Local Warm-up`, or `Unknown`
-- `ROOM`: `Room Code A7K9`, `room_2`, or `-`
-- `BLINDS`: `50 / 100` or `-`
-- `HAND`: `5 / 10`, `5 / Unlimited`, `hand_000005`, or `-`
-- `RESULT`: `Win`, `Loss`, `Practice`, or `-`
-- `PROFIT`: `+200 Chips`, `-100 Chips`, `Practice`, or `-`
-- `FINAL POT`: formatted chip amount or `-`
-- `WINNER`: player name resolved from `seat_index` when possible, otherwise seat/player id, or `-`
+The detail page does not keep an empty top summary grid. The static review focuses on `PLAYERS`, `BOARD & RESULT`, and `ACTION TIMELINE`, with unlock/play actions beside the hand title.
 
 Players are sorted by `seat_index` and displayed as individual blocks:
 
@@ -124,11 +115,26 @@ Board and result display is grouped:
 
 Action timeline display is grouped by street (`PREFLOP`, `FLOP`, `TURN`, `RIVER`, `SHOWDOWN`) and uses viewer-local numbering from 1. Debug separator messages such as `---- Hand 1 ----` are filtered out instead of rendered. Action names are converted to readable phrases such as `posts small blind`, `checks`, `calls 50`, `raises to 300`, and `goes all-in 1,000`.
 
-The equity timeline remains a compact placeholder: `Equity Timeline - Coming in a later update.` Viewer v1 must not show unlock prompts, charge gems, or imply premium replay access.
+Replay Detail does not show an empty equity placeholder. The real equity table lives inside ReplayPokerTableScreen after playback opens.
+
+## Replay Unlock & Gems
+
+Replay records are always saved locally, regardless of unlock state. Unlocking controls playback access only; it never changes the replay JSON file or the original hand result.
+
+Current local-dev rules:
+
+- unlock cost: `20` gems per replay
+- unlock key: `hand_id:room_id` when both are available, otherwise the stable hand id or file path fallback
+- unlock state is stored in the local player profile as `unlocked_replay_ids`
+- replay unlocks are permanent for that local save profile
+- repeated playback of an unlocked replay does not charge gems again
+- if the player has fewer than 20 gems, the UI shows `Not enough gems. Visit Store to get more gems.`
+
+Gem spending happens only in the Replay Detail unlock step through the profile/save service. `ReplayPokerTableScreen` never charges gems, never writes wallet data, never connects to the server, and never mutates replay records. Future cloud/server replay validation can replace the local unlock state later.
 
 ## Replay Playback v2
 
-Replay Playback v2 adds a read-only step viewer launched from the Replay Detail panel with `PLAY REPLAY`. It stays inside the Replay Room UI and does not enter `PokerTableScreen`, connect to the authoritative server, send player actions, mutate wallet balances, spend gems, write table transactions, or affect stats.
+Replay Playback v2 adds a read-only step viewer launched from the Replay Detail panel with `PLAY REPLAY` after the selected replay has been unlocked. It stays inside the Replay Room UI and does not enter `PokerTableScreen`, connect to the authoritative server, send player actions, mutate wallet balances, write table transactions, or affect stats.
 
 When playback opens, the Replay list collapses so the review area can use the full panel width. This is intentional: playback should feel like a hand review table, not a narrow lobby detail card.
 
@@ -144,7 +150,6 @@ Playback initializes from the saved `HandReplayRecord`:
 The controls are read-only:
 
 - `BACK TO DETAIL`
-- `BACK TO REPLAYS`
 - `PREV`
 - `NEXT`
 - `PLAY` / `PAUSE`
@@ -186,7 +191,7 @@ Malformed or incomplete records must degrade gracefully:
 - missing hole cards: `Unknown`
 - missing stacks: `-`
 
-Future phases may add a 20-gem unlock, animated table replay, and objective or player-view equity graphs. Those are intentionally out of scope for v2.
+Future phases may add animated table replay and richer objective or player-view equity graphs. The local 20-gem unlock is now handled before playback opens.
 
 ## Replay Table View v3
 
@@ -211,11 +216,10 @@ The controls remain read-only:
 - `NEXT`
 - `PLAY` / `PAUSE`
 - `SPEED 1x` / `SPEED 2x`
-- `BACK TO REPLAYS`
 
 Real table controls such as fold, check, call, raise, bet, add chips, ready, warm-up, cash-out, dealer changes, server connection, and player actions must not appear or run in Replay Table View. The renderer reuses the v2 playback state builder and does not re-run poker rules.
 
-Replay Table View v3 intentionally does not include animated dealing, chip movement, equity graphs, gem unlocks, cloud loading, or paid replay access. Future phases may add replay-specific animations, an equity timeline, and a separately designed 20-gem unlock.
+Replay Table View v3 intentionally does not include animated dealing, chip movement, equity graphs, cloud loading, or real-money access. The local 20-gem unlock is handled before playback opens, not inside the table view.
 
 ## Replay Table View v4 Display Contract
 
@@ -256,9 +260,9 @@ The fullscreen overlay uses:
 - board, pot, player cards, stacks, statuses, current actor highlight, folded dimming, and winner highlight from recorded playback state
 - a narrow right-side timeline panel that can be hidden with `HIDE TIMELINE` / `SHOW TIMELINE`
 - bottom-centered read-only playback controls: `PREV`, `PLAY` / `PAUSE`, `NEXT`, and `SPEED`
-- top-right navigation: `BACK TO DETAIL` and `BACK TO REPLAYS`
+- top-right navigation: `BACK TO DETAIL`
 
-`BACK TO DETAIL` hides the overlay and restores the selected replay detail. `BACK TO REPLAYS` hides the overlay and returns to the replay list empty/detail prompt.
+`BACK TO DETAIL` hides the overlay and restores the selected replay detail. The replay list remains visible in the detail view, so fullscreen playback does not need a separate `BACK TO REPLAYS` button.
 
 The fullscreen table view still only renders saved replay state. It does not connect to the server, send player actions, run live poker rules, mutate wallet or gems, cash out, enter store flows, or touch live `PokerTableScreen` session logic.
 

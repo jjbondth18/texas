@@ -51,6 +51,7 @@ var _replay_content_hbox: HBoxContainer
 var _replay_list_panel: PanelContainer
 var _replay_equity_box: PanelContainer
 var _replay_detail_vbox: VBoxContainer
+var _replay_list_lock_labels: Dictionary = {}
 var _replay_current_record: Dictionary = {}
 var _replay_current_index_entry: Dictionary = {}
 var _replay_playback_timer: Timer
@@ -2868,6 +2869,7 @@ func _build_replay_panel() -> void:
 	
 	var replay_view: Dictionary = ReplayServiceScript.new().get_replay_view_model()
 	var replay_records: Array = Array(replay_view.get("records", []))
+	_replay_list_lock_labels.clear()
 	
 	if replay_records.is_empty():
 		var empty_label := Label.new()
@@ -2882,6 +2884,8 @@ func _build_replay_panel() -> void:
 	for hand_item in replay_records:
 		var hand: Dictionary = Dictionary(hand_item)
 		var preview_record: Dictionary = _load_replay_record_preview(hand)
+		var replay_id: String = _replay_id_for_record(preview_record, hand)
+		var unlocked: bool = _is_replay_unlocked(preview_record, hand)
 		var item := PanelContainer.new()
 		item.custom_minimum_size = Vector2(0, 96)
 		item.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -2926,6 +2930,13 @@ func _build_replay_panel() -> void:
 		item_played_at.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		HomeTheme.make_font_settings(item_played_at, 10, HomeTheme.MUTED)
 		desc_vbox.add_child(item_played_at)
+
+		var lock_label := Label.new()
+		lock_label.text = "UNLOCKED" if unlocked else "LOCKED"
+		HomeTheme.make_font_settings(lock_label, 10, HomeTheme.CYAN if unlocked else HomeTheme.GOLD)
+		desc_vbox.add_child(lock_label)
+		if replay_id != "":
+			_replay_list_lock_labels[replay_id] = lock_label
 		
 		var item_res := Label.new()
 		var net_chips: int = _replay_profit_value(hand)
@@ -2957,28 +2968,7 @@ func _build_replay_panel() -> void:
 	right_vbox.add_child(prev_box)
 	_render_replay_detail_empty(not replay_records.is_empty())
 	
-	# Compact placeholder for later replay analysis.
-	_replay_equity_box = PanelContainer.new()
-	_replay_equity_box.custom_minimum_size = Vector2(0, 78)
-	_replay_equity_box.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.014, 0.008, 0.022, 0.85), Color(1.0, 0.0, 0.5, 0.35), 8, 1.5))
-	var eq_vbox := VBoxContainer.new()
-	eq_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	eq_vbox.add_theme_constant_override("separation", 4)
-	_replay_equity_box.add_child(eq_vbox)
-	
-	var eq_title := Label.new()
-	eq_title.text = "Equity Timeline"
-	HomeTheme.make_font_settings(eq_title, 15, HomeTheme.PINK)
-	eq_vbox.add_child(eq_title)
-	
-	var eq_lock_desc := Label.new()
-	eq_lock_desc.text = "Coming in a later update."
-	eq_lock_desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	eq_lock_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	HomeTheme.make_font_settings(eq_lock_desc, 12, HomeTheme.MUTED)
-	eq_vbox.add_child(eq_lock_desc)
-
-	right_vbox.add_child(_replay_equity_box)
+	_replay_equity_box = null
 
 
 func _on_replay_item_gui_input(event: InputEvent, hand: Dictionary) -> void:
@@ -3035,8 +3025,6 @@ func _render_replay_detail_error(message: String) -> void:
 	error_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	HomeTheme.make_font_settings(error_label, 14, HomeTheme.PINK)
 	_replay_detail_vbox.add_child(error_label)
-	var back_button := _make_replay_back_button()
-	_replay_detail_vbox.add_child(back_button)
 
 
 func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
@@ -3044,30 +3032,33 @@ func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
 	_set_replay_playback_layout(false)
 	_clear_replay_detail()
 	var hand_id: String = str(record.get("hand_id", index_entry.get("replay_id", "Unknown")))
-	var title := Label.new()
-	title.text = "HAND REVIEW - HAND %s" % hand_id
-	HomeTheme.make_font_settings(title, 16, HomeTheme.CYAN)
-	_replay_detail_vbox.add_child(title)
-
-	var summary_panel := PanelContainer.new()
-	summary_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.012, 0.016, 0.035, 0.62), Color(0.4, 0.48, 0.82, 0.22), 6, 1))
-	var summary_grid := GridContainer.new()
-	summary_grid.columns = 4
-	summary_grid.add_theme_constant_override("h_separation", 18)
-	summary_grid.add_theme_constant_override("v_separation", 8)
-	summary_panel.add_child(summary_grid)
-	_replay_detail_vbox.add_child(summary_panel)
-
+	var replay_id: String = _replay_id_for_record(record, index_entry)
+	var replay_unlocked: bool = _is_replay_unlocked(record, index_entry)
 	var results: Dictionary = Dictionary(record.get("results", {}))
 	var players: Array = Array(record.get("players", []))
-	_add_replay_metric(summary_grid, "Mode", _mode_label_for_replay(str(record.get("mode", ""))))
-	_add_replay_metric(summary_grid, "Room", _replay_room_label(record))
-	_add_replay_metric(summary_grid, "Blinds", _replay_blinds_label(record))
-	_add_replay_metric(summary_grid, "Hand", _replay_hand_label(record, hand_id))
-	_add_replay_metric(summary_grid, "Result", _replay_result_label(record, index_entry))
-	_add_replay_metric(summary_grid, "Profit", _replay_profit_label(index_entry, record))
-	_add_replay_metric(summary_grid, "Final Pot", _replay_final_pot_label(results))
-	_add_replay_metric(summary_grid, "Winner", _winner_summary(results, players))
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 16)
+	_replay_detail_vbox.add_child(header)
+	var title := Label.new()
+	title.text = "HAND REVIEW - HAND %s" % hand_id
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	HomeTheme.make_font_settings(title, 16, HomeTheme.CYAN)
+	header.add_child(title)
+
+	if replay_unlocked:
+		var play_button := _make_replay_primary_button("PLAY REPLAY", HomeTheme.CYAN)
+		play_button.pressed.connect(_open_replay_playback.bind(record, index_entry))
+		header.add_child(play_button)
+	else:
+		var unlock_button := _make_replay_primary_button("UNLOCK REPLAY - %d GEMS" % PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS, HomeTheme.GOLD)
+		unlock_button.pressed.connect(_unlock_replay_from_detail.bind(record, index_entry))
+		header.add_child(unlock_button)
+
+	var unlock_hint := Label.new()
+	unlock_hint.text = "Replay unlocked. Playback is available." if replay_unlocked else "Spend %d gems to unlock full replay playback." % PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS
+	unlock_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(unlock_hint, 12, HomeTheme.MUTED)
+	_replay_detail_vbox.add_child(unlock_hint)
 
 	var body_hbox := HBoxContainer.new()
 	body_hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -3090,21 +3081,6 @@ func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
 	var actions_vbox: VBoxContainer = actions_box.get_node("Content") as VBoxContainer
 	_add_replay_actions(actions_vbox, Array(record.get("actions", [])), players)
 
-	var controls := HBoxContainer.new()
-	controls.add_theme_constant_override("separation", 12)
-	_replay_detail_vbox.add_child(controls)
-	var play_button := Button.new()
-	play_button.text = "PLAY REPLAY"
-	play_button.custom_minimum_size = Vector2(180, 36)
-	play_button.focus_mode = Control.FOCUS_NONE
-	play_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	play_button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.032, 0.056, 0.74), Color(0.22, 0.86, 1.0, 0.48), 18))
-	play_button.add_theme_color_override("font_color", Color(0.92, 0.98, 1.0, 0.96))
-	play_button.pressed.connect(_open_replay_playback.bind(record, index_entry))
-	controls.add_child(play_button)
-	var back_button := _make_replay_back_button()
-	controls.add_child(back_button)
-
 
 func _clear_replay_detail() -> void:
 	if _replay_detail_vbox == null:
@@ -3114,19 +3090,61 @@ func _clear_replay_detail() -> void:
 		child.queue_free()
 
 
-func _make_replay_back_button() -> Button:
-	var back_button := Button.new()
-	back_button.text = "BACK TO REPLAYS"
-	back_button.custom_minimum_size = Vector2(180, 36)
-	back_button.focus_mode = Control.FOCUS_NONE
-	back_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	back_button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.66), Color(0.52, 0.78, 1.0, 0.34), 18))
-	back_button.add_theme_color_override("font_color", Color(0.90, 0.94, 1.0, 0.94))
-	back_button.pressed.connect(_render_replay_detail_empty.bind(true))
-	return back_button
+func _make_replay_primary_button(text: String, accent: Color) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.custom_minimum_size = Vector2(210, 36)
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.032, 0.056, 0.74), accent.darkened(0.20), 18))
+	button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.035, 0.045, 0.088, 0.88), accent, 18))
+	button.add_theme_color_override("font_color", Color(0.92, 0.98, 1.0, 0.96))
+	return button
+
+func _replay_id_for_record(record: Dictionary, index_entry: Dictionary = {}) -> String:
+	var hand_id := str(record.get("hand_id", index_entry.get("hand_id", index_entry.get("replay_id", "")))).strip_edges()
+	var room_id := str(record.get("room_id", index_entry.get("room_id", ""))).strip_edges()
+	if hand_id != "" and room_id != "":
+		return "%s:%s" % [hand_id, room_id]
+	if hand_id != "":
+		return hand_id
+	return str(index_entry.get("file_path", "")).strip_edges()
+
+func _is_replay_unlocked(record: Dictionary, index_entry: Dictionary = {}) -> bool:
+	var replay_id := _replay_id_for_record(record, index_entry)
+	return ProfileServiceScript.new().is_replay_unlocked(replay_id)
+
+func _unlock_replay_from_detail(record: Dictionary, index_entry: Dictionary) -> void:
+	var replay_id := _replay_id_for_record(record, index_entry)
+	var result: Dictionary = ProfileServiceScript.new().unlock_replay(replay_id, PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS)
+	if not bool(result.get("success", false)):
+		if str(result.get("reason", "")) == "not_enough_gems":
+			_show_toast("Not enough gems.\nVisit Store to get more gems.", [], 3.0)
+		else:
+			_show_toast("Replay unlock failed.", [], 2.4)
+		return
+	_player_profile = Dictionary(result.get("profile", ProfileServiceScript.new().get_current_profile()))
+	if _top_bar != null:
+		_top_bar.configure(_player_profile)
+	_refresh_profile_panel()
+	_update_replay_list_lock_label(replay_id, true)
+	_show_toast("Replay unlocked.\n%s gems spent.", [_format_number(PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS)], 2.6)
+	_render_replay_detail(record, index_entry)
+
+func _update_replay_list_lock_label(replay_id: String, unlocked: bool) -> void:
+	if replay_id == "" or not _replay_list_lock_labels.has(replay_id):
+		return
+	var label: Label = _replay_list_lock_labels.get(replay_id, null) as Label
+	if label == null:
+		return
+	label.text = "UNLOCKED" if unlocked else "LOCKED"
+	HomeTheme.make_font_settings(label, 10, HomeTheme.CYAN if unlocked else HomeTheme.GOLD)
 
 
 func _open_replay_playback(record: Dictionary, index_entry: Dictionary) -> void:
+	if not _is_replay_unlocked(record, index_entry):
+		_show_toast("Unlock this replay first.", [], 2.4)
+		return
 	_stop_replay_playback()
 	_replay_playback_record = record.duplicate(true)
 	_replay_playback_index_entry = index_entry.duplicate(true)

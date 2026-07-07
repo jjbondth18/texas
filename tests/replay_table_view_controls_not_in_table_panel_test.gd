@@ -8,4 +8,4 @@ func run() -> void:
 	assert(replay_source.find("ControlZone/MainButtons") != -1)
 	assert(replay_source.find("ControlZone/RaiseControlPanel") != -1)
 	assert(source.find("BACK TO DETAIL") != -1)
-	assert(source.find("BACK TO REPLAYS") != -1)
+	assert(replay_source.find("\"BACK TO REPLAYS\"") == -1)
