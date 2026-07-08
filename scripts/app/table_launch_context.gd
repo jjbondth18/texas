@@ -14,6 +14,7 @@ static var room_id := ""
 static var room_code := ""
 static var is_training := false
 static var table_type := "quick_play"
+static var currency := "chips"
 static var uses_practice_chips := false
 static var affects_account_balance := true
 static var buy_in_deducted_from_wallet := false
@@ -41,6 +42,7 @@ static func configure(mode: String = "quick_play", id: String = "mock_table_001"
 	table_id = id
 	is_training = mode == "training"
 	table_type = "training_ai" if is_training else mode
+	currency = str(setup_config.get("currency", "chips"))
 	uses_practice_chips = is_training
 	affects_account_balance = not is_training
 	buy_in_deducted_from_wallet = bool(setup_config.get("buy_in_deducted_from_wallet", false))
@@ -108,6 +110,7 @@ static func configure_from_context(context: Dictionary) -> void:
 	room_code = String(context.get("room_code", ""))
 	is_training = bool(context.get("is_training", mode == "training"))
 	table_type = String(context.get("table_type", "training_ai" if is_training else mode))
+	currency = String(context.get("currency", "gems" if table_type in ["public_gem", "private_gem"] else "chips"))
 	uses_practice_chips = bool(context.get("uses_practice_chips", is_training))
 	affects_account_balance = bool(context.get("affects_account_balance", not is_training))
 	buy_in_deducted_from_wallet = bool(context.get("buy_in_deducted_from_wallet", false))
@@ -147,6 +150,7 @@ static func get_current_table_context() -> Dictionary:
 		"dealer_id": dealer_id,
 		"is_training": is_training,
 		"table_type": table_type,
+		"currency": currency,
 		"uses_practice_chips": uses_practice_chips,
 		"affects_account_balance": affects_account_balance,
 		"buy_in_deducted_from_wallet": buy_in_deducted_from_wallet,
@@ -170,6 +174,7 @@ static func _default_table_session() -> Dictionary:
 	return {
 		"mode": mode,
 		"table_type": table_type,
+		"currency": currency,
 		"uses_practice_chips": uses_practice_chips,
 		"affects_account_balance": affects_account_balance,
 		"buy_in_deducted_from_wallet": buy_in_deducted_from_wallet,

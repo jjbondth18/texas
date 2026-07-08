@@ -27,19 +27,21 @@ Public chip tables are the shared local/mock table directory for account-chip po
 
 - Quick Chip = automatically joins a public chip table through `quick_join_public_table`.
 - Table Browser = manually browses, creates, and joins public chip tables from the same registry.
-- Friends Room = private room code flow; it uses `table_type = "private_room"` and is not listed.
+- Friends Room = private room code flow; it uses `table_type = "private_chip"` or `table_type = "private_gem"` and is not listed.
 - Training = AI practice mode; it uses `table_type = "training_ai"` and is not listed.
-- Gem Match = reserved server-required mode; it remains Coming Soon and is not listed.
+- Quick Gem = automatically joins or creates server-backed public gem tables. It is not shown in the manual Browser list.
 
 The current registry is local/mock only. A future server implementation can replace the registry while preserving the same table concepts:
 
 - `table_type = "public_chip"`
 - `currency = "chip"`
+- `table_type = "public_gem"`
+- `currency = "gems"`
 - joinable `status` / `hand_state = "waiting" | "open" | "idle" | "pre_hand"`
 - `allow_quick_join = true`
 - `buy_in`, `small_blind`, `big_blind`, `hand_count`, `max_players`, and `current_players`
 
-Quick join uses a simple mock rule: prefer clean waiting/open, quick-joinable, non-full public chip tables matching the selected config; otherwise create a new clean public chip table. Hand-over, closed, dirty, private, training, and disconnected-only tables are not joinable.
+Quick join uses a simple mock/server rule: prefer clean waiting/open, quick-joinable, non-full public tables matching the selected config, table type, and currency; otherwise create a new clean public table of the selected currency. Hand-over, closed, dirty, private, training, opposite-currency, and disconnected-only tables are not joinable.
 
 ## Table Launch Flow
 
@@ -53,24 +55,29 @@ All real table launches from the Home/Lobby UI pass through the same lightweight
 
 The transition is presentation only. It does not change public table registry selection, practice-chip isolation, account chip/gem balances, session settlement, or table context data.
 
-Gem Match remains a reserved server-required mode and does not enter the launch flow.
+Quick Gem uses the same launch flow as Quick Chip, but it checks the server/local Gem wallet and creates or matches `public_gem` tables only.
 
 ## Mode Entry Labels
 
 - Quick Chip: auto-joins an available public chip table with account chips.
+- Quick Gem: auto-joins an available public gem table with account gems.
 - Table Browser: manual public chip table list for browsing, creating, and joining public tables.
-- Friends Room: private room code flow for invited friends; private rooms are not public tables.
+- Friends Room: private room code flow for invited friends; private rooms are not public tables and may be chip or gem rooms.
 - Training: AI practice mode using practice chips; results do not affect account balance or ranked stats.
-- Gem Match: future secure server mode; currently reserved and unavailable.
+- Gem Match: Quick/Friends gem mode using mock/dev gems. It is not real payment.
 
 ## Server Table Exit Settlement
 
 Server-authoritative public tables use a wallet -> table stack -> wallet loop.
 
-- A successful server `sit_down` deducts the table buy-in from wallet with reason `table_buy_in`.
-- Leaving before the first official public hand starts refunds the current table stack with reason `left_before_official_hand`.
-- Leaving after official play has started cashes out the current uncommitted table stack with reason `table_cash_out`.
-- Leaving at session complete cashes out the final table stack with reason `session_complete_cash_out`.
+- A successful server chip-table `sit_down` deducts the table buy-in from wallet with reason `table_buy_in`.
+- A successful server gem-table `sit_down` deducts the table buy-in from wallet with reason `gem_table_buy_in`.
+- Leaving a chip table before the first official hand starts refunds the current table stack with reason `left_before_official_hand`.
+- Leaving a gem table before the first official hand starts refunds the current table stack with reason `gem_left_before_official_hand`.
+- Leaving a chip table after official play has started cashes out the current uncommitted table stack with reason `table_cash_out`.
+- Leaving a gem table after official play has started cashes out the current uncommitted table stack with reason `gem_table_cash_out`.
+- Leaving a chip table at session complete cashes out the final table stack with reason `session_complete_cash_out`.
+- Leaving a gem table at session complete cashes out the final table stack with reason `gem_session_complete_cash_out`.
 - Leaving during an active hand auto-folds the seat. Chips already committed to the pot remain in the pot; only the remaining table stack is returned.
 - Training and local AI warm-up are practice-only and never write wallet transactions for their wins or losses.
 
@@ -81,18 +88,19 @@ See `docs/table_exit_settlement_policy.md` for the full policy.
 Quick Play is the fast path. It keeps lightweight stake selection while avoiding explicit manual room creation flow.
 
 - Chip Table: treats the selected Buy-in, Blinds, and Hand Count as quick join preferences.
-- Gem Match: reserved and unavailable until secure server matchmaking exists.
+- Gem Match: uses gems and server/local public gem table matching.
 
 Quick Play exposes Buy-in, Blinds, and Hand Count in the setup panel. These are not manual room creation controls. They are preferences for `quick_join_public_table(config)`:
 
-- First, quick join looks for a non-full, quick-joinable `public_chip` table exactly matching the selected buy-in, blinds, and hand count.
+- First, quick join looks for a non-full, quick-joinable `public_chip` or `public_gem` table exactly matching the selected buy-in, blinds, hand count, and currency.
 - If a matching public table exists, Quick joins that table.
-- If no matching table exists, Quick automatically creates a public chip table using the selected config and joins it.
-- The config passed to the registry/server uses `buy_in`, `small_blind`, `big_blind`, `hand_count`, `max_players`, `table_type = public_chip`, and `currency = chips` on the server. The local mock registry also accepts its legacy `chip` value.
+- If no matching table exists, Quick automatically creates a public table using the selected config and joins it.
+- Quick Chip config uses `table_type = public_chip`, `currency = chips`, buy-ins `5000/10000/20000/50000`, and blinds `25/50`, `50/100`, or `100/200`.
+- Quick Gem config uses `table_type = public_gem`, `currency = gems`, buy-ins `20/50/100/200`, and blinds `1/2`, `2/5`, or `5/10`.
 - Quick prefers the matching waiting table with the most real connected seated players; ties use earliest creation time, then stable table id.
-- Quick never joins `playing`, `hand_result`, `session_complete`, `hand_over`, closed, dirty, private, training, local warm-up, or disconnected-only tables.
+- Quick never joins `playing`, `hand_result`, `session_complete`, `hand_over`, closed, dirty, private, training, local warm-up, disconnected-only, or opposite-currency tables.
 
-If the wallet cannot cover the selected public chip table buy-in, Quick Play shows "Not enough wallet chips" and does not enter a table.
+If the wallet cannot cover the selected public chip/gem table buy-in, Quick Play shows the appropriate "Not enough chips" or "Not enough gems. Visit Store to get more gems." message and does not enter a table.
 
 Table Browser is the manual public chip table flow.
 
@@ -102,8 +110,8 @@ Table Browser is the manual public chip table flow.
 - Creating a public table opens a `CREATE PUBLIC TABLE` setup panel first.
 - Public table setup uses the same visual setup panel language as Quick Play and supports Buy-in, Blinds, and Hand Count.
 - Created tables use `table_type = "public_chip"`.
-- Public Gem tables are visible as a reserved option but disabled/Coming Soon because they require secure server matchmaking.
-- Public chip tables do not support Gem buy-in in the current mock.
+- Public Gem tables are entered through Quick Gem matchmaking rather than the manual Browser create flow.
+- Public chip tables and public gem tables do not cross-match.
 - Quick Chip auto-join can seat players into the same public chip table registry.
 - Disconnected players or bots are not counted in Browser player totals.
 
@@ -130,7 +138,8 @@ Friends Room is the private casual room flow.
 - Local mock private rooms may still use `table_type = "private_room"` as a fallback context label.
 - Private rooms are not listed in the public table registry and are not selected by Quick Chip.
 - Private rooms reuse the public chip table seat, Ready, hand, result, session-complete, exit, and cash-out mechanics.
-- Private Gem is shown as a future private match option, but it is disabled / Coming Soon. The current flow does not deduct Gems, create Gem rooms, or perform real Gem settlement.
+- Private Gem rooms are enabled through the Friends Room setup. They use `table_type = "private_gem"` and `currency = "gems"`, generate a room code, do not appear in Browser, and are never matched by Quick.
+- Private Gem buy-in, exit refund, active-hand cash out, and session-complete cash out use the gem transaction reasons listed above.
 
 ## Leave / Timeout / Sit Out Rules
 
@@ -150,4 +159,4 @@ These rules describe the local/mock table behavior and the target contract for t
 - In the P2P/mock prototype, host leave closes the table safely and reports: "Host left. Table closed safely. Account balances were not changed."
 - The host client is not trusted to finalize account settlement. In the future server version, the server maintains table state and the host has no special settlement authority.
 
-Gem Match remains reserved and does not enter these table lifecycle rules because it does not create a table.
+Gem tables use the same lifecycle rules as chip tables, but their table stack maps to account Gems instead of account Chips.

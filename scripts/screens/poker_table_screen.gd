@@ -802,6 +802,7 @@ func _apply_server_table_info(room_id: String, table_info: Dictionary) -> void:
 		_server_room_id = room_id
 		_append_session_log("Authoritative room_id: %s" % _server_room_id)
 	var server_table_type := String(table_info.get("table_type", TableLaunchContext.table_type))
+	var server_currency := String(table_info.get("currency", "gems" if server_table_type in ["public_gem", "private_gem"] else TableLaunchContext.currency))
 	var room_code := String(table_info.get("room_code", TableLaunchContext.room_code))
 	var buy_in := int(table_info.get("buy_in", TableLaunchContext.buy_in))
 	var small_blind := int(table_info.get("small_blind", TableLaunchContext.small_blind))
@@ -815,15 +816,17 @@ func _apply_server_table_info(room_id: String, table_info: Dictionary) -> void:
 	TableLaunchContext.big_blind = big_blind
 	TableLaunchContext.max_hands = max_hands
 	TableLaunchContext.dealer_id = dealer_id
-	if server_table_type in ["private_chip", "private_room", "private_casual"]:
+	TableLaunchContext.currency = server_currency
+	if server_table_type in ["private_chip", "private_gem", "private_room", "private_casual"]:
 		TableLaunchContext.table_type = TableSessionScript.TABLE_TYPE_PRIVATE_ROOM
 		TableLaunchContext.mode = TableSessionScript.MODE_FRIENDS_ROOM
 		TableLaunchContext.launch_mode = TableSessionScript.MODE_FRIENDS_ROOM
 	else:
-		TableLaunchContext.table_type = TableSessionScript.TABLE_TYPE_PUBLIC_CHIP
+		TableLaunchContext.table_type = server_table_type
 	TableLaunchContext.room_code = room_code
 	if _table_session != null:
 		_table_session.table_type = TableLaunchContext.table_type
+		_table_session.currency = server_currency
 		_table_session.mode = TableLaunchContext.mode
 		_table_session.buy_in = buy_in
 		_table_session.starting_chips = buy_in
@@ -836,8 +839,9 @@ func _apply_server_table_info(room_id: String, table_info: Dictionary) -> void:
 		_table_session.max_hands = max_hands
 		_table_session.selected_dealer_id = dealer_id
 		_apply_dealer_cosmetic()
-	_append_session_log("Server table config: buy-in %s, blinds %s / %s, hands %s." % [
+	_append_session_log("Server table config: buy-in %s %s, blinds %s / %s, hands %s." % [
 		_format_chips(buy_in),
+		"Gems" if server_currency in ["gem", "gems"] else "Chips",
 		str(small_blind),
 		str(big_blind),
 		"Unlimited" if max_hands >= 999 else str(max_hands),
@@ -880,6 +884,10 @@ func _on_server_start_ai_warmup_result(ok: bool, room_id: String, reason: String
 	_on_server_error("START AI WARM-UP failed: %s" % failure_reason)
 
 func _server_sit_down_failure_message(reason: String, wallet_chips: int = -1, required_chips: int = -1) -> String:
+	if reason == "insufficient_gems":
+		if wallet_chips >= 0 and required_chips >= 0:
+			return "Not enough gems for this buy-in. Required: %s. Wallet: %s." % [_format_chips(required_chips), _format_chips(wallet_chips)]
+		return "Not enough gems for this buy-in."
 	if reason == "insufficient_chips":
 		if wallet_chips >= 0 and required_chips >= 0:
 			return "Not enough chips for this buy-in. Required: %s. Wallet: %s." % [_format_chips(required_chips), _format_chips(wallet_chips)]
@@ -1059,6 +1067,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 	var room_id: String = String(server_snapshot.get("room_id", _server_room_id))
 	var table_info: Dictionary = Dictionary(server_snapshot.get("table_info", {}))
 	var server_table_type := String(server_snapshot.get("table_type", table_info.get("table_type", TableLaunchContext.table_type)))
+	var server_currency := String(server_snapshot.get("currency", table_info.get("currency", "gems" if server_table_type in ["public_gem", "private_gem"] else TableLaunchContext.currency)))
 	var room_code := String(server_snapshot.get("room_code", table_info.get("room_code", TableLaunchContext.room_code)))
 	var is_server_ai_warmup := bool(server_snapshot.get("is_ai_warmup", table_info.get("is_ai_warmup", false)))
 	var server_table_state := String(server_snapshot.get("table_state", table_info.get("table_state", phase)))
@@ -1165,8 +1174,9 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"table_id": room_id if room_id != "" else "authoritative_local",
 		"room_label": room_code if room_code != "" else (room_id if room_id != "" else "authoritative_local"),
 		"room_code": room_code,
-		"table_type": TableSessionScript.TABLE_TYPE_PRIVATE_ROOM if server_table_type in ["private_chip", "private_room", "private_casual"] else TableSessionScript.TABLE_TYPE_PUBLIC_CHIP,
-		"table_name": "Private Room" if server_table_type in ["private_chip", "private_room", "private_casual"] else "Authoritative Local Table",
+		"table_type": TableSessionScript.TABLE_TYPE_PRIVATE_ROOM if server_table_type in ["private_chip", "private_gem", "private_room", "private_casual"] else server_table_type,
+		"currency": server_currency,
+		"table_name": "Private Room" if server_table_type in ["private_chip", "private_gem", "private_room", "private_casual"] else "Authoritative Local Table",
 		"buy_in": server_buy_in,
 		"dealer_id": server_dealer_id,
 		"table_info": table_info,
@@ -3000,7 +3010,7 @@ func _is_training_launch() -> bool:
 	return TableLaunchContext.is_training or TableLaunchContext.launch_mode == TableSessionScript.MODE_TRAINING or TableLaunchContext.mode == TableSessionScript.MODE_TRAINING
 
 func _is_public_chip_table() -> bool:
-	return TableLaunchContext.table_type == TableSessionScript.TABLE_TYPE_PUBLIC_CHIP or (_table_session != null and _table_session.table_type == TableSessionScript.TABLE_TYPE_PUBLIC_CHIP)
+	return TableLaunchContext.table_type in [TableSessionScript.TABLE_TYPE_PUBLIC_CHIP, "public_gem"] or (_table_session != null and _table_session.table_type in [TableSessionScript.TABLE_TYPE_PUBLIC_CHIP, "public_gem"])
 
 func _is_private_room_table() -> bool:
 	return TableLaunchContext.table_type == TableSessionScript.TABLE_TYPE_PRIVATE_ROOM or TableLaunchContext.mode == TableSessionScript.MODE_FRIENDS_ROOM or (_table_session != null and (_table_session.table_type == TableSessionScript.TABLE_TYPE_PRIVATE_ROOM or _table_session.mode == TableSessionScript.MODE_FRIENDS_ROOM))
@@ -3028,6 +3038,9 @@ func _refresh_public_waiting_controls() -> void:
 	if _dev_simulate_real_join_button != null:
 		_dev_simulate_real_join_button.visible = false
 		_dev_simulate_real_join_button.disabled = true
+	if _add_chips_button != null:
+		_add_chips_button.visible = not _is_gem_table()
+		_add_chips_button.disabled = _is_gem_table()
 	if _public_waiting_panel != null:
 		_public_waiting_panel.visible = should_show or (_server_seat_confirmed and _server_local_seat_index >= 0 and _is_public_ready_to_start_state())
 	if _public_waiting_button != null:
@@ -3067,6 +3080,11 @@ func _is_public_ready_to_start_state() -> bool:
 	if not _is_server_ready_managed_table():
 		return false
 	return String(_server_latest_ui_snapshot.get("room_state", _server_latest_ui_snapshot.get("table_state", ""))) in ["waiting", "waiting_for_players", "waiting_ready", "starting_countdown"]
+
+func _is_gem_table() -> bool:
+	if _table_session != null and _table_session.currency in ["gem", "gems"]:
+		return true
+	return TableLaunchContext.currency in ["gem", "gems"] or TableLaunchContext.table_type in ["public_gem", "private_gem"]
 
 func _is_public_starting_countdown_state() -> bool:
 	return String(_server_latest_ui_snapshot.get("room_state", _server_latest_ui_snapshot.get("table_state", ""))) == "starting_countdown"
@@ -3655,9 +3673,9 @@ func _restart_session() -> void:
 		return
 	if _table_session != null and not (_table_session.mode == TableSessionScript.MODE_TRAINING or _table_session.uses_practice_chips):
 		var service := ProfileServiceScript.new()
-		var buy_in_profile: Dictionary = service.deduct_table_buy_in(_table_session.buy_in)
+		var buy_in_profile: Dictionary = service.deduct_table_buy_in_currency(_table_session.buy_in, _table_session.currency)
 		if buy_in_profile.is_empty():
-			_append_session_log("Play Again blocked: not enough chips for buy-in %d." % _table_session.buy_in)
+			_append_session_log("Play Again blocked: not enough %s for buy-in %d." % ["gems" if _table_session.currency in ["gem", "gems"] else "chips", _table_session.buy_in])
 			return
 		TableLaunchContext.set_player_profile(buy_in_profile)
 	_reset_launch_context_session_for_play_again()
@@ -3705,6 +3723,7 @@ func _reset_launch_context_session_for_play_again() -> void:
 	TableLaunchContext.table_session = {
 		"mode": _table_session.mode,
 		"table_type": _table_session.table_type,
+		"currency": _table_session.currency,
 		"uses_practice_chips": _table_session.uses_practice_chips,
 		"affects_account_balance": _table_session.affects_account_balance,
 		"buy_in_deducted_from_wallet": _table_session.buy_in_deducted_from_wallet,
@@ -3738,6 +3757,8 @@ func _can_play_again() -> bool:
 	if _table_session.mode == TableSessionScript.MODE_TRAINING or _table_session.uses_practice_chips:
 		return true
 	var profile := ProfileServiceScript.new().get_current_profile()
+	if _table_session.currency in ["gem", "gems"]:
+		return PlayerProfileScript.get_total_gems(profile) >= _table_session.buy_in
 	return PlayerProfileScript.get_total_chips(profile) >= _table_session.buy_in
 
 
@@ -4167,7 +4188,7 @@ func _cash_out_remaining_table_chips_to_wallet() -> void:
 			var warmup_refund: int = max(_table_session.session_start_chips, 0)
 			if warmup_refund > 0:
 				var warmup_service := ProfileServiceScript.new()
-				var warmup_profile: Dictionary = warmup_service.refund_table_chips(warmup_refund)
+				var warmup_profile: Dictionary = warmup_service.refund_table_currency(warmup_refund, _table_session.currency)
 				TableLaunchContext.set_player_profile(warmup_profile)
 			_profile_settlement_applied = true
 			_append_session_log("AI warm-up ended. Warm-up wins/losses were ignored and original table stack was returned.")
@@ -4182,7 +4203,7 @@ func _cash_out_remaining_table_chips_to_wallet() -> void:
 		_append_session_log("%s left table. No table chips returned to wallet." % PlayerProfileScript.get_player_name(ProfileServiceScript.new().get_current_profile()))
 		return
 	var service := ProfileServiceScript.new()
-	var profile: Dictionary = service.refund_table_chips(refund_amount)
+	var profile: Dictionary = service.refund_table_currency(refund_amount, _table_session.currency)
 	TableLaunchContext.set_player_profile(profile)
 	_zero_local_table_chips()
 	if _table_session != null:
@@ -4191,10 +4212,11 @@ func _cash_out_remaining_table_chips_to_wallet() -> void:
 		_table_session.session_profit = -_table_session.session_start_chips
 		_update_launch_context_session()
 	var player_name: String = PlayerProfileScript.get_player_name(profile)
+	var unit_label := "gems" if _table_session.currency in ["gem", "gems"] else "chips"
 	if _table_flow.table_state == TexasTableFlowScript.WAITING or _table_flow.table_state == TexasTableFlowScript.HAND_OVER:
-		_append_session_log("%s left table. Returned %s chips to wallet." % [player_name, _format_chips(refund_amount)])
+		_append_session_log("%s left table. Returned %s %s to wallet." % [player_name, _format_chips(refund_amount), unit_label])
 	else:
-		_append_session_log("%s left during hand. Returned remaining stack %s to wallet. Committed chips stay in pot." % [player_name, _format_chips(refund_amount)])
+		_append_session_log("%s left during hand. Returned remaining stack %s %s to wallet. Committed table units stay in pot." % [player_name, _format_chips(refund_amount), unit_label])
 
 
 func _zero_local_table_chips() -> void:

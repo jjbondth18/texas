@@ -160,6 +160,29 @@ const quickCreatedTable = (manager.adminSnapshot(false).table_list as Array<Reco
 if (!quickCreatedTable) throw new Error("quick_join_table should create and list a public table when no match exists");
 if (Number(quickCreatedTable.buy_in) !== 50000 || Number(quickCreatedTable.hand_count) !== 5) throw new Error("quick-created table should preserve selected config");
 
+const gemQuickMessages: unknown[] = [];
+const gemQuickWs = { OPEN: 1, readyState: 1, send: (data: string) => gemQuickMessages.push(JSON.parse(data)) };
+const gemQuick = manager.connect(gemQuickWs as any);
+manager.handle(gemQuick.id, { type: "hello", player_id: "gem_quick_player", name: "Gem Quick" });
+manager.handle("gem_quick_player", { type: "mock_purchase", currency: "gems", amount: 200, source: "store_mock" });
+const gemWalletBeforeBuyIn = Number(manager.adminSnapshot(false).total_wallet_gems);
+manager.handle("gem_quick_player", { type: "quick_join_table", table_type: "public_gem", currency: "gems", buy_in: 50, small_blind: 2, big_blind: 5, hand_count: 10, max_players: 6 });
+const gemQuickRoomId = manager.getClient("gem_quick_player")?.roomId || "";
+const gemQuickRoom = manager.getRoom(gemQuickRoomId);
+if (!gemQuickRoom || gemQuickRoom.tableType !== "public_gem") throw new Error("quick_join_table should create public_gem rooms for Gem Quick");
+manager.handle("gem_quick_player", { type: "sit_down", room_id: gemQuickRoomId, seat_index: -1 });
+if (Number(manager.adminSnapshot(false).total_wallet_gems) !== gemWalletBeforeBuyIn - 50) throw new Error("Gem Quick sit_down should deduct gem buy-in from server wallet");
+if (gemQuickRoom.table.getSeatByPlayer("gem_quick_player")?.chips !== 50) throw new Error("Gem Quick seat stack should equal gem buy-in");
+const gemQuickAdminTable = (manager.adminSnapshot(false).table_list as Array<Record<string, unknown>>).find((table) => table.room_id === gemQuickRoomId);
+if (!gemQuickAdminTable || gemQuickAdminTable.table_type !== "public_gem" || gemQuickAdminTable.currency !== "gems") throw new Error("admin/list table snapshot should expose public_gem currency");
+manager.handle("gem_quick_player", { type: "cash_out", room_id: gemQuickRoomId });
+if (Number(manager.adminSnapshot(false).total_wallet_gems) !== gemWalletBeforeBuyIn) throw new Error("Gem Quick cash_out should refund remaining Gems");
+if (countRows("wallet_transactions", "reason = 'gem_table_buy_in' AND currency = 'gems' AND amount = -50") !== 1) throw new Error("Gem Quick buy-in should write gem_table_buy_in transaction");
+if (countRows("wallet_transactions", "reason = 'gem_left_before_official_hand' AND currency = 'gems' AND amount = 50") !== 1) throw new Error("Gem Quick pre-hand cash out should write gem_left_before_official_hand transaction");
+const noGemQuick = manager.connect();
+manager.handle(noGemQuick.id, { type: "hello", player_id: "no_gem_quick", name: "No Gem Quick" });
+expectThrows("insufficient_gems", () => manager.handle("no_gem_quick", { type: "quick_join_table", table_type: "public_gem", currency: "gems", buy_in: 50, small_blind: 2, big_blind: 5, hand_count: 10, max_players: 6 }));
+
 const privateCreatorMessages: unknown[] = [];
 const privateCreatorWs = { OPEN: 1, readyState: 1, send: (data: string) => privateCreatorMessages.push(JSON.parse(data)) };
 const privateCreator = manager.connect(privateCreatorWs as any);
@@ -202,6 +225,34 @@ manager.handle("private_joiner", { type: "ready", room_id: privateCreated.room_i
 manager.handle("private_creator", { type: "start_hand", room_id: privateCreated.room_id });
 if (privateRoom.table.phase === "waiting") throw new Error("private room should reuse ready/start hand flow");
 expectThrows("room_not_found", () => manager.handle("private_joiner", { type: "join_private_table", room_code: "ZZZZ" }));
+
+const privateGemCreatorMessages: unknown[] = [];
+const privateGemCreatorWs = { OPEN: 1, readyState: 1, send: (data: string) => privateGemCreatorMessages.push(JSON.parse(data)) };
+const privateGemCreator = manager.connect(privateGemCreatorWs as any);
+manager.handle(privateGemCreator.id, { type: "hello", player_id: "private_gem_creator", name: "Private Gem Creator" });
+manager.handle("private_gem_creator", { type: "mock_purchase", currency: "gems", amount: 100, source: "store_mock" });
+privateGemCreatorMessages.length = 0;
+manager.handle("private_gem_creator", { type: "create_private_table", table_type: "private_gem", currency: "gems", buy_in: 50, small_blind: 2, big_blind: 5, hand_count: 5, max_players: 6 });
+const privateGemCreated = privateGemCreatorMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "private_table_created") as
+  | { type: string; room_id?: string; table?: { room_code?: string; table_type?: string; currency?: string; is_public?: boolean } }
+  | undefined;
+if (!privateGemCreated?.room_id || privateGemCreated.table?.table_type !== "private_gem" || privateGemCreated.table.currency !== "gems" || privateGemCreated.table.is_public !== false) throw new Error("create_private_table should support private_gem rooms with room codes");
+if ((manager.adminSnapshot(false).table_list as Array<Record<string, unknown>>).some((table) => table.room_id === privateGemCreated.room_id)) throw new Error("private_gem room should not be listed in public table list");
+const privateGemRoom = manager.getRoom(privateGemCreated.room_id);
+if (!privateGemRoom) throw new Error("private_gem room should exist");
+manager.handle("private_gem_creator", { type: "sit_down", room_id: privateGemCreated.room_id, seat_index: -1 });
+if (privateGemRoom.table.getSeatByPlayer("private_gem_creator")?.chips !== 50) throw new Error("private_gem creator should sit with gem buy-in stack");
+const privateGemPoor = manager.connect();
+manager.handle(privateGemPoor.id, { type: "hello", player_id: "private_gem_poor", name: "Private Gem Poor" });
+expectThrows("insufficient_gems", () => manager.handle("private_gem_poor", { type: "join_private_table", room_code: privateGemCreated.table?.room_code || "" }));
+const privateGemJoiner = manager.connect();
+manager.handle(privateGemJoiner.id, { type: "hello", player_id: "private_gem_joiner", name: "Private Gem Joiner" });
+manager.handle("private_gem_joiner", { type: "mock_purchase", currency: "gems", amount: 100, source: "store_mock" });
+manager.handle("private_gem_joiner", { type: "join_private_table", room_code: privateGemCreated.table?.room_code || "" });
+manager.handle("private_gem_joiner", { type: "sit_down", room_id: privateGemCreated.room_id, seat_index: -1 });
+if (privateGemRoom.table.getSeatByPlayer("private_gem_joiner")?.seatIndex !== 8) throw new Error("private_gem room joiner should sit at objective seat 8");
+manager.handle("private_gem_creator", { type: "cash_out", room_id: privateGemCreated.room_id });
+if (countRows("wallet_transactions", "reason = 'gem_left_before_official_hand' AND related_room_id = '" + privateGemCreated.room_id + "'") !== 1) throw new Error("private_gem pre-hand exit should refund Gems with gem reason");
 
 const quickPrivateMatcher = manager.connect();
 manager.handle(quickPrivateMatcher.id, { type: "hello", player_id: "quick_private_matcher", name: "Quick Private Matcher" });

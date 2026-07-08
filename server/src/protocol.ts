@@ -98,6 +98,7 @@ export interface ClientMessage {
   action?: PlayerActionType;
   amount?: number;
   table_name?: string;
+  table_type?: string;
   currency?: "chips" | "gems";
   source?: string;
   room_code?: string;

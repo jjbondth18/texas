@@ -29,6 +29,10 @@ const DEFAULT_QUICK_PUBLIC_TABLE_CONFIG := {
 	"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 	"max_players": 9,
 }
+const CHIP_BUY_IN_OPTIONS := [5000, 10000, 20000, 50000]
+const CHIP_BLIND_OPTIONS := [[25, 50], [50, 100], [100, 200]]
+const GEM_BUY_IN_OPTIONS := [20, 50, 100, 200]
+const GEM_BLIND_OPTIONS := [[1, 2], [2, 5], [5, 10]]
 
 var current_state: LobbyState = LobbyState.COLLAPSED
 var _background_root: Control
@@ -181,6 +185,9 @@ var _quick_start_button: Button
 var _quick_buy_in_buttons: Dictionary = {}
 var _quick_blinds_buttons: Dictionary = {}
 var _quick_hand_count_buttons: Dictionary = {}
+var _quick_gem_buy_in_buttons: Dictionary = {}
+var _quick_gem_blinds_buttons: Dictionary = {}
+var _quick_gem_hand_count_buttons: Dictionary = {}
 var _quick_play_mode := "chip"
 var _selected_quick_buy_in := 20000
 var _selected_quick_small_blind := 25
@@ -609,11 +616,11 @@ func _build_quick_play_setup_panel() -> void:
 	chip_mode_note.custom_minimum_size = Vector2(520, 0)
 	HomeTheme.make_font_settings(chip_mode_note, 13, HomeTheme.MUTED)
 	_quick_chip_settings_container.add_child(chip_mode_note)
-	_build_quick_setup_section(_quick_chip_settings_container, "BUY-IN", _quick_buy_in_buttons, [5000, 10000, 20000, 50000], _select_quick_buy_in)
-	_build_quick_blinds_section(_quick_chip_settings_container)
+	_build_quick_setup_section(_quick_chip_settings_container, "BUY-IN", _quick_buy_in_buttons, CHIP_BUY_IN_OPTIONS, _select_quick_buy_in)
+	_build_quick_blinds_section(_quick_chip_settings_container, CHIP_BLIND_OPTIONS, _quick_blinds_buttons)
 	_build_quick_setup_section(_quick_chip_settings_container, "HAND COUNT", _quick_hand_count_buttons, [5, 10, 20, 999], _select_quick_hand_count)
 
-	_build_quick_gem_placeholder(column)
+	_build_quick_gem_settings(column)
 
 	var button_row := HBoxContainer.new()
 	button_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -666,33 +673,22 @@ func _add_quick_mode_button(parent: HBoxContainer, mode: String, label: String) 
 	parent.add_child(button)
 
 
-func _build_quick_gem_placeholder(parent: VBoxContainer) -> void:
+func _build_quick_gem_settings(parent: VBoxContainer) -> void:
 	_quick_gem_placeholder_container = VBoxContainer.new()
 	_quick_gem_placeholder_container.visible = false
-	_quick_gem_placeholder_container.custom_minimum_size = Vector2(1, 204)
-	_quick_gem_placeholder_container.alignment = BoxContainer.ALIGNMENT_CENTER
-	_quick_gem_placeholder_container.add_theme_constant_override("separation", 10)
+	_quick_gem_placeholder_container.add_theme_constant_override("separation", 12)
 	parent.add_child(_quick_gem_placeholder_container)
 
-	var mode_label := Label.new()
-	mode_label.text = "GEM MATCH"
-	mode_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	HomeTheme.make_font_settings(mode_label, 20, Color(1.0, 0.78, 0.98))
-	_quick_gem_placeholder_container.add_child(mode_label)
-
-	var coming_soon_label := Label.new()
-	coming_soon_label.text = "Coming Soon"
-	coming_soon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	HomeTheme.make_font_settings(coming_soon_label, 16, HomeTheme.GOLD)
-	_quick_gem_placeholder_container.add_child(coming_soon_label)
-
 	var detail_label := Label.new()
-	detail_label.text = "Gem matches require secure server matchmaking. They will be available in a future update."
+	detail_label.text = "Quickly join the best available public gem table with your selected stakes.\nIf no matching table is available, a new public gem table will be created."
 	detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	detail_label.custom_minimum_size = Vector2(520, 0)
-	HomeTheme.make_font_settings(detail_label, 14, HomeTheme.MUTED)
+	HomeTheme.make_font_settings(detail_label, 13, HomeTheme.MUTED)
 	_quick_gem_placeholder_container.add_child(detail_label)
+	_build_quick_setup_section(_quick_gem_placeholder_container, "BUY-IN", _quick_gem_buy_in_buttons, GEM_BUY_IN_OPTIONS, _select_quick_buy_in)
+	_build_quick_blinds_section(_quick_gem_placeholder_container, GEM_BLIND_OPTIONS, _quick_gem_blinds_buttons)
+	_build_quick_setup_section(_quick_gem_placeholder_container, "HAND COUNT", _quick_gem_hand_count_buttons, [5, 10, 20, 999], _select_quick_hand_count)
 
 
 func _build_table_creation_setup_panels() -> void:
@@ -775,25 +771,26 @@ func _render_table_creation_setup_panel(panel: PanelContainer, public_table: boo
 	HomeTheme.make_font_settings(title, 28, HomeTheme.TEXT)
 	column.add_child(title)
 
+	var selected_currency := "gems" if gem_selected else "chips"
 	_add_table_setup_mode_switch(column, public_table, selected_mode)
-	_add_table_setup_profile_row(column)
+	_add_table_setup_profile_row(column, selected_currency)
 
 	var mode_note := Label.new()
 	var buy_in := int(values.get("buy_in", 10000))
-	var wallet_chips := _wallet_chips_for_public_chip_setup()
-	var can_afford_chip_buy_in := gem_selected or _can_afford_public_buy_in(buy_in)
+	var wallet_amount := _wallet_amount_for_currency(selected_currency)
+	var can_afford_buy_in := (not (public_table and gem_selected)) and _can_afford_buy_in_for_currency(buy_in, selected_currency)
 	if public_table:
 		if gem_selected:
-			mode_note.text = "Gem public tables require secure server matchmaking."
-		elif not can_afford_chip_buy_in:
-			mode_note.text = "Not enough server wallet chips. Required: %s. Wallet: %s." % [_format_number(buy_in), _format_number(wallet_chips)]
+			mode_note.text = "Use Quick Gem to automatically match public gem tables."
+		elif not can_afford_buy_in:
+			mode_note.text = "Not enough server wallet chips. Required: %s. Wallet: %s." % [_format_number(buy_in), _format_number(wallet_amount)]
 		else:
 			mode_note.text = "Create a public chip table with your selected stakes."
 	else:
 		if gem_selected:
-			mode_note.text = "Gem private rooms are reserved for future private match support."
-		elif not can_afford_chip_buy_in:
-			mode_note.text = "Not enough server wallet chips. Required: %s. Wallet: %s." % [_format_number(buy_in), _format_number(wallet_chips)]
+			mode_note.text = "Private gem room. Share the room code with friends."
+		elif not can_afford_buy_in:
+			mode_note.text = "Not enough server wallet chips. Required: %s. Wallet: %s." % [_format_number(buy_in), _format_number(wallet_amount)]
 		else:
 			mode_note.text = "Private chip table. Share the room code with friends."
 	mode_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -802,8 +799,8 @@ func _render_table_creation_setup_panel(panel: PanelContainer, public_table: boo
 	HomeTheme.make_font_settings(mode_note, 13, HomeTheme.MUTED)
 	column.add_child(mode_note)
 
-	_add_table_setup_option_row(column, values, "buy_in", "BUY-IN" if public_table else "STARTING STACK / BUY-IN", [5000, 10000, 20000, 50000], public_table)
-	_add_blinds_setup_option_row(column, values, public_table)
+	_add_table_setup_option_row(column, values, "buy_in", "BUY-IN" if public_table else "STARTING STACK / BUY-IN", GEM_BUY_IN_OPTIONS if gem_selected else CHIP_BUY_IN_OPTIONS, public_table)
+	_add_blinds_setup_option_row(column, values, public_table, GEM_BLIND_OPTIONS if gem_selected else CHIP_BLIND_OPTIONS)
 	_add_table_setup_option_row(column, values, "max_hands", "HAND COUNT", [5, 10, 20, 999], public_table)
 
 	var buttons := HBoxContainer.new()
@@ -812,10 +809,10 @@ func _render_table_creation_setup_panel(panel: PanelContainer, public_table: boo
 	column.add_child(buttons)
 
 	var confirm := Button.new()
-	confirm.text = "COMING SOON" if gem_selected else ("CREATE TABLE" if public_table else "CREATE ROOM")
+	confirm.text = "COMING SOON" if public_table and gem_selected else ("CREATE TABLE" if public_table else "CREATE ROOM")
 	confirm.custom_minimum_size = Vector2(180, 48)
 	confirm.focus_mode = Control.FOCUS_NONE
-	confirm.disabled = gem_selected or not can_afford_chip_buy_in
+	confirm.disabled = (public_table and gem_selected) or not can_afford_buy_in
 	confirm.mouse_default_cursor_shape = Control.CURSOR_ARROW if confirm.disabled else Control.CURSOR_POINTING_HAND
 	confirm.add_theme_font_size_override("font_size", 15)
 	confirm.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.22, 0.08, 0.18, 0.68), Color(1.0, 0.0, 0.5, 0.85), 22))
@@ -846,25 +843,43 @@ func _add_table_setup_mode_switch(parent: VBoxContainer, public_table: bool, sel
 	chip_button.pressed.connect(func() -> void:
 		if public_table:
 			_public_table_setup_mode = "chip"
+			_apply_table_setup_mode_defaults(_public_table_setup_values, "chip")
 		else:
 			_private_room_setup_mode = "chip"
+			_apply_table_setup_mode_defaults(_private_room_setup_values, "chip")
 		_render_table_creation_setup_panel(_public_table_setup_panel if public_table else _private_room_setup_panel, public_table)
 	)
 	switch_row.add_child(chip_button)
 
-	var gem_disabled := true
-	var gem_button: Button = _table_setup_mode_button("GEM MATCH", selected_mode == "gem", gem_disabled)
-	gem_button.tooltip_text = "Gem public tables require secure server matchmaking." if public_table else "Gem private rooms are reserved for future private match support."
+	var gem_disabled := public_table
+	var gem_button: Button = _table_setup_mode_button("GEM MATCH" if public_table else "GEM ROOM", selected_mode == "gem", gem_disabled)
+	gem_button.tooltip_text = "Use Quick Gem for public gem matchmaking." if public_table else "Create a private gem room."
 	gem_button.pressed.connect(func() -> void:
 		if public_table:
-			_show_toast("Gem public tables require secure server matchmaking.")
+			_show_toast("Use Quick Gem for public gem matchmaking.")
 			return
-		_show_toast("Gem private rooms are reserved for future private match support.")
+		_private_room_setup_mode = "gem"
+		_apply_table_setup_mode_defaults(_private_room_setup_values, "gem")
+		_render_table_creation_setup_panel(_private_room_setup_panel, false)
 	)
 	switch_row.add_child(gem_button)
 
+func _apply_table_setup_mode_defaults(values: Dictionary, mode: String) -> void:
+	var buy_options: Array = GEM_BUY_IN_OPTIONS if mode == "gem" else CHIP_BUY_IN_OPTIONS
+	if not buy_options.has(int(values.get("buy_in", 0))):
+		values["buy_in"] = 50 if mode == "gem" else 10000
+	var blind_options: Array = GEM_BLIND_OPTIONS if mode == "gem" else CHIP_BLIND_OPTIONS
+	var valid_blind := false
+	for blind_item in blind_options:
+		var pair: Array = Array(blind_item)
+		if int(pair[0]) == int(values.get("small_blind", 0)) and int(pair[1]) == int(values.get("big_blind", 0)):
+			valid_blind = true
+	if not valid_blind:
+		values["small_blind"] = 2 if mode == "gem" else 50
+		values["big_blind"] = 5 if mode == "gem" else 100
 
-func _add_table_setup_profile_row(parent: VBoxContainer) -> void:
+
+func _add_table_setup_profile_row(parent: VBoxContainer, currency: String = "chips") -> void:
 	var profile_row := HBoxContainer.new()
 	profile_row.add_theme_constant_override("separation", 14)
 	profile_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -900,7 +915,10 @@ func _add_table_setup_profile_row(parent: VBoxContainer) -> void:
 	profile_text.add_child(name_label)
 
 	var chips_label := Label.new()
-	chips_label.text = "%s: %s" % [_wallet_label_for_public_chip_setup(), _format_number(_wallet_chips_for_public_chip_setup())]
+	chips_label.text = "%s: %s" % [
+		("Server Wallet %s" if server_authoritative_profile and _profile_server_connected else "Wallet %s") % _currency_label(currency),
+		_format_number(_wallet_amount_for_currency(currency)),
+	]
 	HomeTheme.make_font_settings(chips_label, 14, HomeTheme.GOLD)
 	profile_text.add_child(chips_label)
 
@@ -927,6 +945,8 @@ func _table_setup_mode_button(label_text: String, selected: bool, disabled: bool
 
 
 func _add_table_setup_option_row(parent: VBoxContainer, values: Dictionary, key: String, label_text: String, options: Array, public_table: bool) -> void:
+	var selected_mode: String = _public_table_setup_mode if public_table else _private_room_setup_mode
+	var currency := "gems" if selected_mode == "gem" else "chips"
 	var label := Label.new()
 	label.text = label_text
 	HomeTheme.make_font_settings(label, 12, HomeTheme.MUTED)
@@ -937,16 +957,16 @@ func _add_table_setup_option_row(parent: VBoxContainer, values: Dictionary, key:
 	for option_item in options:
 		var option_value: int = int(option_item)
 		var button: Button = _table_setup_option_button(_table_setup_option_label(key, option_value), int(values.get(key, 0)) == option_value)
-		var disabled := key == "buy_in" and not _can_afford_public_buy_in(option_value)
+		var disabled := key == "buy_in" and ((public_table and selected_mode == "gem") or not _can_afford_buy_in_for_currency(option_value, currency))
 		button.disabled = disabled
 		button.mouse_default_cursor_shape = Control.CURSOR_ARROW if disabled else Control.CURSOR_POINTING_HAND
 		if disabled:
-			button.tooltip_text = "Not enough server wallet chips."
+			button.tooltip_text = "Not enough %s." % _currency_label(currency).to_lower()
 			button.add_theme_stylebox_override("disabled", HomeTheme.make_button_style(Color(0.012, 0.014, 0.028, 0.46), Color(0.34, 0.32, 0.48, 0.28), 18))
 			button.add_theme_color_override("font_disabled_color", Color(0.55, 0.55, 0.68, 0.72))
 		button.pressed.connect(func() -> void:
 			if disabled:
-				_show_toast("Not enough chips for this buy-in.")
+				_show_toast("Not enough gems. Visit Store to get more gems." if currency == "gems" else "Not enough chips for this buy-in.")
 				return
 			values[key] = option_value
 			_render_table_creation_setup_panel(_public_table_setup_panel if public_table else _private_room_setup_panel, public_table)
@@ -954,7 +974,7 @@ func _add_table_setup_option_row(parent: VBoxContainer, values: Dictionary, key:
 		row.add_child(button)
 
 
-func _add_blinds_setup_option_row(parent: VBoxContainer, values: Dictionary, public_table: bool) -> void:
+func _add_blinds_setup_option_row(parent: VBoxContainer, values: Dictionary, public_table: bool, blind_pairs: Array = []) -> void:
 	var label := Label.new()
 	label.text = "BLINDS"
 	HomeTheme.make_font_settings(label, 12, HomeTheme.MUTED)
@@ -962,7 +982,8 @@ func _add_blinds_setup_option_row(parent: VBoxContainer, values: Dictionary, pub
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	parent.add_child(row)
-	for blind_pair in [[25, 50], [50, 100], [100, 200]]:
+	var options := blind_pairs if not blind_pairs.is_empty() else CHIP_BLIND_OPTIONS
+	for blind_pair in options:
 		var small: int = int(blind_pair[0])
 		var big: int = int(blind_pair[1])
 		var selected: bool = int(values.get("small_blind", 0)) == small and int(values.get("big_blind", 0)) == big
@@ -1023,7 +1044,7 @@ func _build_quick_setup_section(parent: VBoxContainer, title_text: String, butto
 		row.add_child(button)
 
 
-func _build_quick_blinds_section(parent: VBoxContainer) -> void:
+func _build_quick_blinds_section(parent: VBoxContainer, blind_pairs: Array, buttons: Dictionary) -> void:
 	var title := Label.new()
 	title.text = "BLINDS"
 	HomeTheme.make_font_settings(title, 12, HomeTheme.MUTED)
@@ -1031,7 +1052,6 @@ func _build_quick_blinds_section(parent: VBoxContainer) -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	parent.add_child(row)
-	var blind_pairs := [[25, 50], [50, 100], [100, 200]]
 	for pair_item in blind_pairs:
 		var pair: Array = Array(pair_item)
 		var small_blind: int = int(pair[0])
@@ -1044,7 +1064,7 @@ func _build_quick_blinds_section(parent: VBoxContainer) -> void:
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		button.add_theme_font_size_override("font_size", 13)
 		button.pressed.connect(func() -> void: _select_quick_blinds(small_blind, big_blind))
-		_quick_blinds_buttons[key] = button
+		buttons[key] = button
 		row.add_child(button)
 
 
@@ -1258,11 +1278,10 @@ func _hide_quick_play_setup() -> void:
 
 
 func _start_quick_play_from_setup() -> void:
-	if _quick_play_mode != "chip":
-		return
-	if not _can_afford_public_buy_in(_selected_quick_buy_in):
+	var currency := _quick_currency()
+	if not _can_afford_buy_in_for_currency(_selected_quick_buy_in, currency):
 		_refresh_quick_play_setup_options()
-		_show_toast("Not enough chips for this buy-in.")
+		_show_toast("Not enough gems. Visit Store to get more gems." if currency == "gems" else "Not enough chips for this buy-in.")
 		return
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
 		_hide_quick_play_setup()
@@ -1272,9 +1291,10 @@ func _start_quick_play_from_setup() -> void:
 			_profile_ws_client.quick_join_table(quick_config)
 		)
 		return
+	var table_type := "public_gem" if currency == "gems" else "public_chip"
 	var setup_config := {
-		"table_type": "public_chip",
-		"currency": "chip",
+		"table_type": table_type,
+		"currency": currency,
 		"buy_in": _selected_quick_buy_in,
 		"small_blind": _selected_quick_small_blind,
 		"big_blind": _selected_quick_big_blind,
@@ -1286,7 +1306,7 @@ func _start_quick_play_from_setup() -> void:
 		"buy_in_deducted_from_wallet": true,
 	}
 	_hide_quick_play_setup()
-	_start_table_launch_transition("Finding a public chip table...", func() -> void:
+	_start_table_launch_transition("Finding a public %s table..." % ("gem" if currency == "gems" else "chip"), func() -> void:
 		var context: Dictionary = _local_backend.quick_join_public_table(_player_profile, setup_config)
 		if context.is_empty():
 			_finish_table_launch_transition()
@@ -1294,10 +1314,10 @@ func _start_quick_play_from_setup() -> void:
 			return
 		if not bool(context.get("is_ai_warmup", false)):
 			var service := ProfileServiceScript.new()
-			var buy_in_profile: Dictionary = service.deduct_table_buy_in(_selected_quick_buy_in)
+			var buy_in_profile: Dictionary = service.deduct_table_buy_in_currency(_selected_quick_buy_in, currency)
 			if buy_in_profile.is_empty():
 				_finish_table_launch_transition()
-				_show_toast("Not enough wallet chips.")
+				_show_toast("Not enough wallet %s." % _currency_label(currency).to_lower())
 				return
 			_player_profile = buy_in_profile
 			if _top_bar != null:
@@ -1315,9 +1335,11 @@ func _quick_server_table_config() -> Dictionary:
 	var hand_count: int = _selected_quick_max_hands
 	if hand_count >= 999:
 		hand_count = 0
+	var currency := _quick_currency()
+	var table_type := "public_gem" if currency == "gems" else "public_chip"
 	return {
-		"table_type": "public_chip",
-		"currency": "chip",
+		"table_type": table_type,
+		"currency": currency,
 		"buy_in": _selected_quick_buy_in,
 		"small_blind": _selected_quick_small_blind,
 		"big_blind": _selected_quick_big_blind,
@@ -1331,9 +1353,13 @@ func _quick_server_table_config() -> Dictionary:
 
 func _update_quick_play_setup_profile() -> void:
 	var player_name := PlayerProfileScript.get_player_name(_player_profile)
-	var total_chips := _wallet_chips_for_public_chip_setup()
+	var currency := _quick_currency()
+	var wallet_amount := _wallet_amount_for_currency(currency)
 	_quick_play_setup_name_label.text = player_name
-	_quick_play_setup_chips_label.text = "%s: %s" % [_wallet_label_for_public_chip_setup(), _format_number(total_chips)]
+	_quick_play_setup_chips_label.text = "%s: %s" % [
+		("Server Wallet %s" if server_authoritative_profile and _profile_server_connected else "Wallet %s") % _currency_label(currency),
+		_format_number(wallet_amount),
+	]
 	var texture: Texture2D = AvatarLibraryScript.get_avatar_by_id(PlayerProfileScript.get_avatar_id(_player_profile))
 	if texture == null:
 		var avatar_path := str(_player_profile.get("avatar", ""))
@@ -1362,6 +1388,24 @@ func _can_afford_public_buy_in(buy_in: int) -> bool:
 	if server_authoritative_profile and _profile_server_connected and not _profile_server_wallet_synced:
 		return false
 	return _wallet_chips_for_public_chip_setup() >= buy_in
+
+func _quick_currency() -> String:
+	return "gems" if _quick_play_mode == "gem" else "chips"
+
+func _wallet_amount_for_currency(currency: String) -> int:
+	if currency in ["gem", "gems"]:
+		if server_authoritative_profile and _profile_server_connected and not _profile_server_wallet_synced:
+			return 0
+		return PlayerProfileScript.get_total_gems(ProfileServiceScript.new().get_current_profile() if server_authoritative_profile and _profile_server_connected else _player_profile)
+	return _wallet_chips_for_public_chip_setup()
+
+func _can_afford_buy_in_for_currency(buy_in: int, currency: String) -> bool:
+	if server_authoritative_profile and _profile_server_connected and not _profile_server_wallet_synced:
+		return false
+	return _wallet_amount_for_currency(currency) >= buy_in
+
+func _currency_label(currency: String) -> String:
+	return "Gems" if currency in ["gem", "gems"] else "Chips"
 
 func _claim_daily_login_bonus() -> void:
 	var service := ProfileServiceScript.new()
@@ -1447,6 +1491,8 @@ func _server_lobby_error_text(message: String) -> String:
 			return "Room is no longer available."
 		"insufficient_chips":
 			return "Not enough chips for this buy-in."
+		"insufficient_gems":
+			return "Not enough gems. Visit Store to get more gems."
 		_:
 			return message
 
@@ -1499,9 +1545,10 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 	var max_hands := int(table_info.get("hand_count", table_info.get("max_hands", 10)))
 	var action_time_seconds := int(table_info.get("action_time_seconds", DEFAULT_ACTION_TIME_SECONDS))
 	var server_table_type := str(table_info.get("table_type", "public_chip"))
-	var is_private_room := server_table_type in ["private_chip", "private_room", "private_casual"]
+	var currency := str(table_info.get("currency", "gems" if server_table_type in ["public_gem", "private_gem"] else "chips"))
+	var is_private_room := server_table_type in ["private_chip", "private_gem", "private_room", "private_casual"]
 	var launch_mode := "friends_room" if is_private_room else "quick_play"
-	var launch_table_type := "private_room" if is_private_room else "public_chip"
+	var launch_table_type := server_table_type
 	var room_code := str(table_info.get("room_code", ""))
 	if max_hands <= 0:
 		max_hands = 999
@@ -1519,6 +1566,7 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 		"action_time_seconds": action_time_seconds,
 		"is_training": false,
 		"table_type": launch_table_type,
+		"currency": currency,
 		"uses_practice_chips": false,
 		"affects_account_balance": true,
 		"buy_in_deducted_from_wallet": false,
@@ -1532,6 +1580,7 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 		"table_session": {
 			"mode": launch_mode,
 			"table_type": launch_table_type,
+			"currency": currency,
 			"uses_practice_chips": false,
 			"affects_account_balance": true,
 			"buy_in_deducted_from_wallet": false,
@@ -1565,7 +1614,7 @@ func _select_default_quick_buy_in() -> void:
 
 
 func _select_quick_buy_in(value: int) -> void:
-	if not _can_afford_public_buy_in(value):
+	if not _can_afford_buy_in_for_currency(value, _quick_currency()):
 		return
 	_selected_quick_buy_in = value
 	_refresh_quick_play_setup_options()
@@ -1586,29 +1635,52 @@ func _select_quick_play_mode(mode: String) -> void:
 	if mode != "chip" and mode != "gem":
 		return
 	_quick_play_mode = mode
+	_apply_quick_mode_defaults()
 	_refresh_quick_play_setup_options()
+
+func _apply_quick_mode_defaults() -> void:
+	if _quick_play_mode == "gem":
+		if not GEM_BUY_IN_OPTIONS.has(_selected_quick_buy_in):
+			_selected_quick_buy_in = 50
+		var valid_blind := false
+		for pair_item in GEM_BLIND_OPTIONS:
+			var pair: Array = Array(pair_item)
+			if int(pair[0]) == _selected_quick_small_blind and int(pair[1]) == _selected_quick_big_blind:
+				valid_blind = true
+		if not valid_blind:
+			_selected_quick_small_blind = 2
+			_selected_quick_big_blind = 5
+		return
+	if not CHIP_BUY_IN_OPTIONS.has(_selected_quick_buy_in):
+		_select_default_quick_buy_in()
+	var chip_blind_valid := false
+	for pair_item in CHIP_BLIND_OPTIONS:
+		var pair: Array = Array(pair_item)
+		if int(pair[0]) == _selected_quick_small_blind and int(pair[1]) == _selected_quick_big_blind:
+			chip_blind_valid = true
+	if not chip_blind_valid:
+		_selected_quick_small_blind = 25
+		_selected_quick_big_blind = 50
 
 
 func _refresh_quick_play_setup_options() -> void:
 	var is_chip_mode := _quick_play_mode == "chip"
-	var total_chips := _wallet_chips_for_public_chip_setup()
+	var wallet_amount := _wallet_amount_for_currency(_quick_currency())
 	if _quick_chip_settings_container != null:
 		_quick_chip_settings_container.visible = is_chip_mode
 	if _quick_gem_placeholder_container != null:
 		_quick_gem_placeholder_container.visible = not is_chip_mode
 	if _quick_start_button != null:
-		_quick_start_button.disabled = not is_chip_mode or _selected_quick_buy_in > total_chips
-		_quick_start_button.text = "FIND TABLE" if is_chip_mode else "COMING SOON"
-		_quick_start_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if is_chip_mode else Control.CURSOR_ARROW
+		_quick_start_button.disabled = _selected_quick_buy_in > wallet_amount
+		_quick_start_button.text = "FIND TABLE"
+		_quick_start_button.mouse_default_cursor_shape = Control.CURSOR_ARROW if _quick_start_button.disabled else Control.CURSOR_POINTING_HAND
 		_quick_start_button.add_theme_stylebox_override("disabled", HomeTheme.make_button_style(Color(0.08, 0.06, 0.10, 0.62), Color(0.76, 0.52, 0.9, 0.28), 22))
 		_quick_start_button.add_theme_color_override("font_disabled_color", Color(0.78, 0.72, 0.86, 0.72))
 	if _quick_play_setup_hint_label != null:
-		if not is_chip_mode:
-			_quick_play_setup_hint_label.text = "Gem matches require secure server matchmaking and will be available in a future update."
-		elif _selected_quick_buy_in > total_chips:
-			_quick_play_setup_hint_label.text = "Not enough server wallet chips."
+		if _selected_quick_buy_in > wallet_amount:
+			_quick_play_setup_hint_label.text = "Not enough gems. Visit Store to get more gems." if not is_chip_mode else "Not enough server wallet chips."
 		else:
-			_quick_play_setup_hint_label.text = "Quickly join the best available public chip table with your selected stakes.\nIf no matching table is available, a new public table will be created."
+			_quick_play_setup_hint_label.text = "Quickly join the best available public %s table with your selected stakes.\nIf no matching table is available, a new public table will be created." % ("chip" if is_chip_mode else "gem")
 	for key_item in _quick_mode_buttons.keys():
 		var mode := str(key_item)
 		var button: Button = _quick_mode_buttons[key_item] as Button
@@ -1618,7 +1690,14 @@ func _refresh_quick_play_setup_options() -> void:
 		var button: Button = _quick_buy_in_buttons[key_item] as Button
 		if button == null:
 			continue
-		var disabled: bool = value > total_chips
+		var disabled: bool = is_chip_mode and value > wallet_amount
+		_apply_quick_option_style(button, value == _selected_quick_buy_in, disabled)
+	for key_item in _quick_gem_buy_in_buttons.keys():
+		var value: int = int(key_item)
+		var button: Button = _quick_gem_buy_in_buttons[key_item] as Button
+		if button == null:
+			continue
+		var disabled: bool = (not is_chip_mode) and value > wallet_amount
 		_apply_quick_option_style(button, value == _selected_quick_buy_in, disabled)
 	for key_item in _quick_blinds_buttons.keys():
 		var key: String = str(key_item)
@@ -1626,9 +1705,21 @@ func _refresh_quick_play_setup_options() -> void:
 		if button == null:
 			continue
 		_apply_quick_option_style(button, key == "%d/%d" % [_selected_quick_small_blind, _selected_quick_big_blind], false)
+	for key_item in _quick_gem_blinds_buttons.keys():
+		var key: String = str(key_item)
+		var button: Button = _quick_gem_blinds_buttons[key_item] as Button
+		if button == null:
+			continue
+		_apply_quick_option_style(button, key == "%d/%d" % [_selected_quick_small_blind, _selected_quick_big_blind], false)
 	for key_item in _quick_hand_count_buttons.keys():
 		var value: int = int(key_item)
 		var button: Button = _quick_hand_count_buttons[key_item] as Button
+		if button == null:
+			continue
+		_apply_quick_option_style(button, value == _selected_quick_max_hands, false)
+	for key_item in _quick_gem_hand_count_buttons.keys():
+		var value: int = int(key_item)
+		var button: Button = _quick_gem_hand_count_buttons[key_item] as Button
 		if button == null:
 			continue
 		_apply_quick_option_style(button, value == _selected_quick_max_hands, false)
@@ -1797,12 +1888,10 @@ func _confirm_public_table_setup() -> void:
 
 
 func _confirm_private_room_setup() -> void:
-	if _private_room_setup_mode == "gem":
-		_show_toast("Gem private rooms are reserved for future private match support.")
-		return
 	var buy_in: int = int(_private_room_setup_values.get("buy_in", 20000))
-	if not _can_afford_public_buy_in(buy_in):
-		_show_toast("Not enough chips for this buy-in.")
+	var currency := "gems" if _private_room_setup_mode == "gem" else "chips"
+	if not _can_afford_buy_in_for_currency(buy_in, currency):
+		_show_toast("Not enough gems. Visit Store to get more gems." if currency == "gems" else "Not enough chips for this buy-in.")
 		_render_table_creation_setup_panel(_private_room_setup_panel, false)
 		return
 	_hide_table_creation_setup_panels()
@@ -1813,10 +1902,10 @@ func _confirm_private_room_setup() -> void:
 		return
 	_start_table_launch_transition("Creating private room...", func() -> void:
 		var service := ProfileServiceScript.new()
-		var buy_in_profile: Dictionary = service.deduct_table_buy_in(buy_in)
+		var buy_in_profile: Dictionary = service.deduct_table_buy_in_currency(buy_in, currency)
 		if buy_in_profile.is_empty():
 			_finish_table_launch_transition()
-			_show_toast("Not enough wallet chips.")
+			_show_toast("Not enough wallet %s." % _currency_label(currency).to_lower())
 			return
 		_player_profile = buy_in_profile
 		if _top_bar != null:
@@ -1849,9 +1938,10 @@ func _public_table_config_from_values(values: Dictionary) -> Dictionary:
 
 
 func _private_room_config_from_values() -> Dictionary:
+	var currency := "gems" if _private_room_setup_mode == "gem" else "chips"
 	return {
-		"table_type": "private_room",
-		"currency": "chip",
+		"table_type": "private_gem" if currency == "gems" else "private_room",
+		"currency": currency,
 		"buy_in": int(_private_room_setup_values.get("buy_in", 20000)),
 		"small_blind": int(_private_room_setup_values.get("small_blind", 50)),
 		"big_blind": int(_private_room_setup_values.get("big_blind", 100)),
@@ -1862,8 +1952,7 @@ func _private_room_config_from_values() -> Dictionary:
 
 func _private_room_server_config_from_values() -> Dictionary:
 	var config := _private_room_config_from_values()
-	config["table_type"] = "private_chip"
-	config["currency"] = "chips"
+	config["table_type"] = "private_gem" if str(config.get("currency", "chips")) == "gems" else "private_chip"
 	config["hand_count"] = _normalized_hand_count_for_context(int(_private_room_setup_values.get("max_hands", 10)))
 	config["is_public"] = false
 	config["allow_quick_join"] = false
@@ -2504,9 +2593,24 @@ func _room_browser_filter_decision(room: Dictionary) -> Dictionary:
 	return {"include": false, "reason": "playing_not_quick_joinable" if status == "playing" or hand_state in ["preflop", "flop", "turn", "river"] else "not_waiting_public_room"}
 
 func _quick_table_filter_decision(room: Dictionary, config: Dictionary) -> Dictionary:
-	var browser_decision: Dictionary = _room_browser_filter_decision(room)
-	if not bool(browser_decision.get("include", false)):
-		return {"include": false, "reason": str(browser_decision.get("reason", "browser_filtered"))}
+	var expected_type: String = str(config.get("table_type", "public_chip"))
+	var expected_currency: String = str(config.get("currency", "chips"))
+	if str(room.get("table_type", "public_chip")) != expected_type:
+		return {"include": false, "reason": "table_type_mismatch"}
+	if str(room.get("currency", "chips")) != expected_currency:
+		return {"include": false, "reason": "currency_mismatch"}
+	if str(room.get("visibility", "public")) != "public":
+		return {"include": false, "reason": "private_room"}
+	var status := str(room.get("status", ""))
+	var hand_state := str(room.get("hand_state", status))
+	if bool(room.get("session_complete", false)):
+		return {"include": false, "reason": "session_complete"}
+	if int(room.get("seated_count", 0)) >= int(room.get("max_players", 6)):
+		return {"include": false, "reason": "full"}
+	if status not in ["waiting", "waiting_for_players", "waiting_ready", "ready_to_start", "open"] and not bool(room.get("host_in_local_warmup", false)):
+		return {"include": false, "reason": "not_waiting_public_room"}
+	if hand_state in ["preflop", "flop", "turn", "river", "showdown", "hand_over", "closed", "finished"]:
+		return {"include": false, "reason": "playing_not_quick_joinable"}
 	if int(room.get("buy_in", 0)) != int(config.get("buy_in", 0)):
 		return {"include": false, "reason": "buy_in_mismatch"}
 	if int(room.get("small_blind", 0)) != int(config.get("small_blind", 0)) or int(room.get("big_blind", 0)) != int(config.get("big_blind", 0)):
@@ -2888,7 +2992,7 @@ func _build_replay_panel() -> void:
 		var replay_id: String = _replay_id_for_record(preview_record, hand)
 		var unlocked: bool = _is_replay_unlocked(preview_record, hand)
 		var item := PanelContainer.new()
-		item.custom_minimum_size = Vector2(0, 96)
+		item.custom_minimum_size = Vector2(0, 112)
 		item.mouse_filter = Control.MOUSE_FILTER_STOP
 		item.tooltip_text = "Open static hand review"
 		item.gui_input.connect(_on_replay_item_gui_input.bind(hand))
@@ -4281,13 +4385,13 @@ func _make_replay_dealer_thumbnail(index_entry: Dictionary, record: Dictionary) 
 		var placeholder := ColorRect.new()
 		placeholder.name = "ReplayDealerThumbnailPlaceholder"
 		placeholder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		placeholder.custom_minimum_size = Vector2(40, 48)
+		placeholder.custom_minimum_size = Vector2(56, 68)
 		placeholder.color = Color(0.18, 0.22, 0.38, 0.45)
 		return placeholder
 	var thumb := TextureRect.new()
 	thumb.name = "ReplayDealerThumbnail"
 	thumb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	thumb.custom_minimum_size = Vector2(40, 48)
+	thumb.custom_minimum_size = Vector2(56, 68)
 	thumb.texture = texture
 	thumb.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	thumb.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -4384,7 +4488,8 @@ func _replay_profit_label(index_entry: Dictionary, record: Dictionary = {}) -> S
 		return "Practice"
 	if not index_entry.has("net_chips") and not index_entry.has("profit"):
 		return "-"
-	return "%s Chips" % _format_replay_delta(_replay_profit_value(index_entry))
+	var currency: String = str(record.get("currency", index_entry.get("currency", "gems" if str(record.get("table_type", "")).ends_with("_gem") else "chips")))
+	return "%s %s" % [_format_replay_delta(_replay_profit_value(index_entry)), _currency_label(currency)]
 
 
 func _replay_profit_value(index_entry: Dictionary) -> int:

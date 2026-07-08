@@ -72,14 +72,17 @@ static func _index_entry(record: Dictionary, file_path: String) -> Dictionary:
 	var profit: int = _local_profit(record)
 	var sign: String = "+" if profit >= 0 else ""
 	var mode: String = str(record.get("mode", ""))
+	var currency: String = str(record.get("currency", "gems" if str(record.get("table_type", "")).ends_with("_gem") else "chips"))
+	var unit_label: String = "Gems" if currency in ["gem", "gems"] else "Chips"
 	var mode_label: String = _mode_label(str(record.get("mode", "")))
 	var hand_id: String = str(record.get("hand_id", "hand_000000"))
-	var result_text: String = "Practice" if mode in ["training", "local_warmup"] else "%s%d Chips" % [sign, profit]
+	var result_text: String = "Practice" if mode in ["training", "local_warmup"] else "%s%d %s" % [sign, profit, unit_label]
 	return {
 		"hand_id": hand_id,
 		"room_id": str(record.get("room_id", "")),
 		"room_code": str(record.get("room_code", "")),
 		"mode": mode,
+		"currency": currency,
 		"dealer_id": str(record.get("dealer_id", "")),
 		"ended_at": str(record.get("ended_at", "")),
 		"player_result": result_text,

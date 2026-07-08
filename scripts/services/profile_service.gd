@@ -109,10 +109,13 @@ func apply_session_result(session_result: Dictionary) -> Dictionary:
 	var profile := get_current_profile()
 	var profit: int = int(session_result.get("session_profit", session_result.get("profit", 0)))
 	var final_table_chips: int = int(session_result.get("session_end_chips", session_result.get("final_chips", 0)))
+	var currency: String = str(session_result.get("currency", "chips"))
 	var total_chips: int = PlayerProfileScript.get_total_chips(profile)
 	var previous_sessions: int = int(profile.get("total_sessions_played", 0))
 	var previous_hands_won: int = int(profile.get("total_hands_won", 0))
-	if bool(session_result.get("buy_in_deducted_from_wallet", false)):
+	if currency in ["gem", "gems"] and bool(session_result.get("buy_in_deducted_from_wallet", false)):
+		profile["gems"] = max(PlayerProfileScript.get_total_gems(profile) + final_table_chips, 0)
+	elif bool(session_result.get("buy_in_deducted_from_wallet", false)):
 		profile["total_chips"] = max(total_chips + final_table_chips, 0)
 	else:
 		profile["total_chips"] = max(total_chips + profit, 0)
@@ -152,9 +155,20 @@ func select_avatar(avatar_id: String) -> Dictionary:
 	return get_current_profile()
 
 func deduct_table_buy_in(buy_in: int) -> Dictionary:
+	return deduct_table_buy_in_currency(buy_in, "chips")
+
+func deduct_table_buy_in_currency(buy_in: int, currency: String = "chips") -> Dictionary:
 	if buy_in <= 0:
 		return get_current_profile()
 	var profile := get_current_profile()
+	if currency in ["gem", "gems"]:
+		var total_gems: int = PlayerProfileScript.get_total_gems(profile)
+		if total_gems < buy_in:
+			push_warning("[ProfileService] Cannot deduct buy-in %d from wallet gems %d." % [buy_in, total_gems])
+			return {}
+		profile["gems"] = total_gems - buy_in
+		save_current_profile(profile)
+		return get_current_profile()
 	var total_chips: int = PlayerProfileScript.get_total_chips(profile)
 	if total_chips < buy_in:
 		push_warning("[ProfileService] Cannot deduct buy-in %d from wallet chips %d." % [buy_in, total_chips])
@@ -178,9 +192,17 @@ func transfer_chips_to_table(amount: int) -> Dictionary:
 	return {"success": true, "amount": transfer_amount, "profile": get_current_profile()}
 
 func refund_table_chips(amount: int) -> Dictionary:
+	return refund_table_currency(amount, "chips")
+
+func refund_table_currency(amount: int, currency: String = "chips") -> Dictionary:
 	if amount <= 0:
 		return get_current_profile()
 	var profile := get_current_profile()
+	if currency in ["gem", "gems"]:
+		var total_gems: int = PlayerProfileScript.get_total_gems(profile)
+		profile["gems"] = total_gems + amount
+		save_current_profile(profile)
+		return get_current_profile()
 	var total_chips: int = PlayerProfileScript.get_total_chips(profile)
 	profile["total_chips"] = total_chips + amount
 	profile["chips"] = int(profile["total_chips"])

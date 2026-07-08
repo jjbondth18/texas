@@ -24,11 +24,14 @@ interface Client {
   devSimulated?: boolean;
 }
 
+type RoomTableType = "public_chip" | "public_gem" | "private_chip" | "private_gem";
+type RoomCurrency = "chips" | "gems";
+
 interface Room {
   id: string;
   table: TableState;
   clients: Set<string>;
-  tableType: "public_chip" | "private_chip";
+  tableType: RoomTableType;
   visibility: "public" | "private";
   roomCode: string;
   tableName: string;
@@ -67,6 +70,8 @@ const DEFAULT_MAX_PLAYERS = 6;
 const DEV_BOT_MIN_WALLET_CHIPS = 50000;
 const ALLOWED_BUY_INS = new Set([5000, 10000, 20000, 50000]);
 const ALLOWED_BLIND_PAIRS = new Set(["25/50", "50/100", "100/200"]);
+const ALLOWED_GEM_BUY_INS = new Set([20, 50, 100, 200]);
+const ALLOWED_GEM_BLIND_PAIRS = new Set(["1/2", "2/5", "5/10"]);
 const ALLOWED_HAND_COUNTS = new Set([0, 5, 10, 20]);
 const ALLOWED_IDENTITY_PROVIDERS = new Set(["local_dev", "steam"]);
 const ACTION_TIMEOUT_MS = DEFAULT_ACTION_TIME_SECONDS * 1000;
@@ -246,6 +251,7 @@ export class RoomManager {
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
           const wallet = this.wallets.get(client.id);
+          const currency = roomCurrency(room);
           this.send(client, {
             type: "sit_down_result",
             request_id: message.request_id,
@@ -255,7 +261,7 @@ export class RoomManager {
             player_id: client.id,
             server_player_id: client.id,
             reason,
-            wallet_chips: wallet?.chips ?? 0,
+            wallet_chips: currency === "gems" ? (wallet?.gems ?? 0) : (wallet?.chips ?? 0),
             required_chips: room.buyIn,
           });
           throw error;
@@ -401,6 +407,7 @@ export class RoomManager {
           room_id: room.id,
           room_code: room.roomCode,
           table_type: room.tableType,
+          currency: roomCurrency(room),
           visibility: room.visibility,
           table_name: room.tableName,
           dealer_id: room.dealerId,
@@ -479,7 +486,7 @@ export class RoomManager {
       ...tableConfig,
       tableName: tableConfig.tableName || `${client.name}'s Private Room`,
       isPublic: false,
-      tableType: "private_chip",
+      tableType: tableConfig.tableType ?? "private_chip",
       visibility: "private",
       roomCode,
     });
@@ -496,6 +503,7 @@ export class RoomManager {
     if (!room) throw new Error("room_not_found");
     if (room.sessionComplete || this.publicRoomState(room) === "session_complete") throw new Error("room_not_available");
     if (this.occupiedSeatCount(room) >= room.maxPlayers) throw new Error("table_full");
+    this.ensureCanAffordRoom(client, room);
     this.joinRoom(client, room.id);
     this.recordLog(`${client.id} joined private table ${room.id} code=${roomCode}`);
     return room;
@@ -512,6 +520,7 @@ export class RoomManager {
 
   private quickJoinTable(client: Client, message: ClientMessage): Room {
     const tableConfig = this.tableConfigFromMessage(message);
+    this.ensureCanAffordTableConfig(client, tableConfig);
     this.logQuickJoinDiagnostics(client.id, tableConfig);
     const matchedRoom = this.bestQuickJoinRoom(tableConfig);
     if (matchedRoom) {
@@ -528,7 +537,21 @@ export class RoomManager {
     return room;
   }
 
-  private bestQuickJoinRoom(tableConfig: Partial<Pick<Room, "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): Room | undefined {
+  private ensureCanAffordRoom(client: Client, room: Room): void {
+    this.ensureCanAffordTableConfig(client, { tableType: room.tableType, buyIn: room.buyIn });
+  }
+
+  private ensureCanAffordTableConfig(client: Client, tableConfig: Partial<Pick<Room, "tableType" | "buyIn">>): void {
+    const currency = String(tableConfig.tableType || "").endsWith("_gem") ? "gems" : "chips";
+    if (currency !== "gems") return;
+    const buyIn = Math.floor(numberOr(tableConfig.buyIn, DEFAULT_TABLE_BUY_IN));
+    this.wallets.ensure(client.id);
+    const wallet = this.wallets.get(client.id);
+    const balance = currency === "gems" ? (wallet?.gems ?? 0) : (wallet?.chips ?? 0);
+    if (!wallet || balance < buyIn) throw new Error(currency === "gems" ? "insufficient_gems" : "insufficient_chips");
+  }
+
+  private bestQuickJoinRoom(tableConfig: Partial<Pick<Room, "tableType" | "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): Room | undefined {
     return [...this.rooms.values()]
       .filter((room) => this.isQuickJoinMatch(room, tableConfig))
       .sort((a, b) => {
@@ -540,24 +563,26 @@ export class RoomManager {
       })[0];
   }
 
-  private isQuickJoinMatch(room: Room, tableConfig: Partial<Pick<Room, "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): boolean {
+  private isQuickJoinMatch(room: Room, tableConfig: Partial<Pick<Room, "tableType" | "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): boolean {
     const listDecision = this.publicRoomListDecision(room);
     if (!listDecision.include) return false;
+    if (room.tableType !== tableConfig.tableType) return false;
     if (room.buyIn !== tableConfig.buyIn || room.smallBlind !== tableConfig.smallBlind || room.bigBlind !== tableConfig.bigBlind || room.handCount !== tableConfig.handCount) return false;
     return true;
   }
 
-  private quickJoinRejectReason(room: Room, tableConfig: Partial<Pick<Room, "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): string {
+  private quickJoinRejectReason(room: Room, tableConfig: Partial<Pick<Room, "tableType" | "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): string {
     const listDecision = this.publicRoomListDecision(room);
     if (!listDecision.include) return listDecision.reason;
+    if (room.tableType !== tableConfig.tableType) return "table_type_mismatch";
     if (room.buyIn !== tableConfig.buyIn) return "buy_in_mismatch";
     if (room.smallBlind !== tableConfig.smallBlind || room.bigBlind !== tableConfig.bigBlind) return "blinds_mismatch";
     if (room.handCount !== tableConfig.handCount) return "hand_count_mismatch";
     return "candidate";
   }
 
-  private logQuickJoinDiagnostics(clientId: string, tableConfig: Partial<Pick<Room, "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): void {
-    const header = `[QuickMatch] request from player=${clientId} selected buy_in=${tableConfig.buyIn} small_blind=${tableConfig.smallBlind} big_blind=${tableConfig.bigBlind} hand_count=${tableConfig.handCount}`;
+  private logQuickJoinDiagnostics(clientId: string, tableConfig: Partial<Pick<Room, "tableType" | "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): void {
+    const header = `[QuickMatch] request from player=${clientId} table_type=${tableConfig.tableType} currency=${tableConfig.tableType?.endsWith("_gem") ? "gems" : "chips"} selected buy_in=${tableConfig.buyIn} small_blind=${tableConfig.smallBlind} big_blind=${tableConfig.bigBlind} hand_count=${tableConfig.handCount}`;
     console.log(header);
     this.recordLog(header);
     let candidateCount = 0;
@@ -589,7 +614,7 @@ export class RoomManager {
     const occupiedSeats = this.occupiedSeatCount(room);
     const hostWarming = room.hostInLocalWarmup !== "";
     if (!room.isPublic || room.visibility !== "public") return { include: false, reason: "private_room" };
-    if (room.tableType !== "public_chip") return { include: false, reason: "not_public_chip" };
+    if (room.tableType !== "public_chip" && room.tableType !== "public_gem") return { include: false, reason: "not_public_table" };
     if (room.sessionComplete || roomState === "session_complete") return { include: false, reason: "session_complete" };
     if (occupiedSeats >= room.maxPlayers) return { include: false, reason: "full" };
     if (currentPlayers <= 0 && occupiedSeats > 0) return { include: false, reason: "disconnected_only" };
@@ -610,7 +635,7 @@ export class RoomManager {
       const room = entry.room;
       const roomState = this.publicRoomState(room);
       const line =
-        `[TableList] room ${room.id}: visibility=${room.visibility} listed=${room.isPublic} table_type=${room.tableType} currency=chips room_state=${roomState} table_state=${room.table.phase} ` +
+        `[TableList] room ${room.id}: visibility=${room.visibility} listed=${room.isPublic} table_type=${room.tableType} currency=${roomCurrency(room)} room_state=${roomState} table_state=${room.table.phase} ` +
         `host_in_local_warmup=${room.hostInLocalWarmup !== ""} is_ai_warmup=${room.isAiWarmup} official_session_started=${room.officialHandStarted} ` +
         `current_players=${this.publicSeatedCount(room)} max_players=${room.maxPlayers} buy_in=${room.buyIn} small_blind=${room.smallBlind} big_blind=${room.bigBlind} ` +
         `hand_count=${room.handCount} include=${entry.decision.include} reason=${entry.decision.reason}`;
@@ -624,7 +649,7 @@ export class RoomManager {
     return {
       room_id: room.id,
       table_type: room.tableType,
-      currency: "chips",
+      currency: roomCurrency(room),
       allow_quick_join: this.isQuickJoinablePublicChipTable(room),
       room_code: room.roomCode || undefined,
       visibility: room.visibility,
@@ -815,8 +840,14 @@ export class RoomManager {
     const seatIndex = seat.seatIndex;
     this.wallets.ensure(client.id);
     const wallet = this.wallets.get(client.id);
-    if (!wallet || wallet.chips < room.buyIn) throw new Error("insufficient_chips");
-    this.wallets.deductChips(client.id, room.buyIn, { reason: "table_buy_in", relatedRoomId: room.id });
+    const currency = roomCurrency(room);
+    const walletBalance = currency === "gems" ? (wallet?.gems ?? 0) : (wallet?.chips ?? 0);
+    if (!wallet || walletBalance < room.buyIn) throw new Error(currency === "gems" ? "insufficient_gems" : "insufficient_chips");
+    if (currency === "gems") {
+      this.wallets.deductGems(client.id, room.buyIn, { reason: "gem_table_buy_in", relatedRoomId: room.id });
+    } else {
+      this.wallets.deductChips(client.id, room.buyIn, { reason: "table_buy_in", relatedRoomId: room.id });
+    }
     if (room.hostPlayerId === "") room.hostPlayerId = client.id;
     room.table.sitDown(toPlayer(client), seatIndex, room.buyIn);
     if (room.hostInLocalWarmup !== "" && this.realConnectedSeatedCount(room) >= 2) {
@@ -844,7 +875,7 @@ export class RoomManager {
   }
 
   private isManagedChipRoom(room: Room): boolean {
-    return room.tableType === "public_chip" || room.tableType === "private_chip";
+    return room.tableType === "public_chip" || room.tableType === "private_chip" || room.tableType === "public_gem" || room.tableType === "private_gem";
   }
 
   private requireSeated(room: Room, client: Client, message: ClientMessage, command: string): void {
@@ -1133,17 +1164,21 @@ export class RoomManager {
     } else {
       room.table.cashOut(client.id);
     }
-    const wallet = this.wallets.refundTableChips(client.id, amount, { reason, relatedRoomId: room.id, relatedHandId: room.table.handId > 0 ? String(room.table.handId) : undefined });
-    this.recordLog(`Wallet refund: reason=${reason} player_id=${client.id} amount=${amount} wallet_after=${wallet.chips} room_id=${room.id}`);
+    const wallet = roomCurrency(room) === "gems"
+      ? this.wallets.addGems(client.id, amount, { reason, relatedRoomId: room.id, relatedHandId: room.table.handId > 0 ? String(room.table.handId) : undefined })
+      : this.wallets.refundTableChips(client.id, amount, { reason, relatedRoomId: room.id, relatedHandId: room.table.handId > 0 ? String(room.table.handId) : undefined });
+    const walletAfter = roomCurrency(room) === "gems" ? wallet.gems : wallet.chips;
+    this.recordLog(`Wallet refund: currency=${roomCurrency(room)} reason=${reason} player_id=${client.id} amount=${amount} wallet_after=${walletAfter} room_id=${room.id}`);
     this.sendWalletSnapshot(client, room.id);
     room.clients.delete(client.id);
     client.roomId = undefined;
   }
 
   private exitSettlementReason(room: Room): string {
-    if (room.sessionComplete || room.table.phase === "session_complete") return "session_complete_cash_out";
-    if (this.isManagedChipRoom(room) && !room.officialHandStarted) return "left_before_official_hand";
-    return "table_cash_out";
+    const gem = roomCurrency(room) === "gems";
+    if (room.sessionComplete || room.table.phase === "session_complete") return gem ? "gem_session_complete_cash_out" : "session_complete_cash_out";
+    if (this.isManagedChipRoom(room) && !room.officialHandStarted) return gem ? "gem_left_before_official_hand" : "left_before_official_hand";
+    return gem ? "gem_table_cash_out" : "table_cash_out";
   }
 
   private isCashOutDuringActiveHand(room: Room): boolean {
@@ -1214,12 +1249,15 @@ export class RoomManager {
           roomCode: room.roomCode,
           mode: room.visibility === "private" ? "private" : "public",
           tableType: room.tableType,
+          currency: roomCurrency(room),
           dealerId: room.dealerId,
           maxHands: room.handCount,
         })
       : undefined;
     const snapshot = {
       ...room.table.publicSnapshot(),
+      table_type: room.tableType,
+      currency: roomCurrency(room),
       dealer_id: room.dealerId,
       buy_in: room.buyIn,
       hand_count: room.handCount,
@@ -1357,25 +1395,29 @@ export class RoomManager {
     return { provider, externalId, playerId };
   }
 
-  private tableConfigFromMessage(message: ClientMessage): Partial<Pick<Room, "tableName" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "actionTimeSeconds" | "maxPlayers" | "isPublic">> {
+  private tableConfigFromMessage(message: ClientMessage): Partial<Pick<Room, "tableName" | "tableType" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "actionTimeSeconds" | "maxPlayers" | "isPublic">> {
+    const isPublic = message.is_public ?? true;
+    const tableType = normalizeTableType(String(message.table_type || ""), normalizeCurrency(String(message.currency || "")), isPublic);
+    const currency = tableType.endsWith("_gem") ? "gems" : "chips";
     const buyIn = Math.floor(numberOr(message.buy_in, DEFAULT_TABLE_BUY_IN));
     const smallBlind = Math.floor(numberOr(message.small_blind, DEFAULT_SMALL_BLIND));
     const bigBlind = Math.floor(numberOr(message.big_blind, DEFAULT_BIG_BLIND));
     const handCount = normalizeHandCount(message.hand_count, DEFAULT_HAND_COUNT);
     const maxPlayers = Math.floor(numberOr(message.max_players, DEFAULT_MAX_PLAYERS));
-    if (!ALLOWED_BUY_INS.has(buyIn)) throw new Error("invalid_table_config");
-    if (!ALLOWED_BLIND_PAIRS.has(`${smallBlind}/${bigBlind}`)) throw new Error("invalid_table_config");
+    if (currency === "gems" ? !ALLOWED_GEM_BUY_INS.has(buyIn) : !ALLOWED_BUY_INS.has(buyIn)) throw new Error("invalid_table_config");
+    if (currency === "gems" ? !ALLOWED_GEM_BLIND_PAIRS.has(`${smallBlind}/${bigBlind}`) : !ALLOWED_BLIND_PAIRS.has(`${smallBlind}/${bigBlind}`)) throw new Error("invalid_table_config");
     if (!ALLOWED_HAND_COUNTS.has(handCount)) throw new Error("invalid_table_config");
     if (maxPlayers < 2 || maxPlayers > DEFAULT_MAX_PLAYERS) throw new Error("invalid_table_config");
     return {
       tableName: String(message.table_name || "").trim() || undefined,
+      tableType,
       smallBlind,
       bigBlind,
       buyIn,
       handCount,
       actionTimeSeconds: DEFAULT_ACTION_TIME_SECONDS,
       maxPlayers,
-      isPublic: message.is_public ?? true,
+      isPublic,
     };
   }
 
@@ -1439,6 +1481,25 @@ function normalizeDealerId(value: string): string {
 
 function randomDealerId(): string {
   return DEALER_IDS[Math.floor(Math.random() * DEALER_IDS.length)] ?? DEFAULT_DEALER_ID;
+}
+
+function roomCurrency(room: Pick<Room, "tableType">): RoomCurrency {
+  return room.tableType.endsWith("_gem") ? "gems" : "chips";
+}
+
+function normalizeCurrency(value: string): RoomCurrency | "" {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "gem" || normalized === "gems") return "gems";
+  if (normalized === "chip" || normalized === "chips") return "chips";
+  return "";
+}
+
+function normalizeTableType(value: string, currencyHint: RoomCurrency | "", isPublic: boolean): RoomTableType {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "public_gem" || normalized === "private_gem" || normalized === "public_chip" || normalized === "private_chip") return normalized;
+  const currency = currencyHint || "chips";
+  if (isPublic) return currency === "gems" ? "public_gem" : "public_chip";
+  return currency === "gems" ? "private_gem" : "private_chip";
 }
 
 function normalizeRoomCode(value: string): string {

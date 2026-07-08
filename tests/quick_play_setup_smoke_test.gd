@@ -41,8 +41,12 @@ func _initialize() -> void:
 	var chip_settings: VBoxContainer = home.get("_quick_chip_settings_container") as VBoxContainer
 	var gem_placeholder: VBoxContainer = home.get("_quick_gem_placeholder_container") as VBoxContainer
 	_require(chip_settings != null and not chip_settings.visible, "Gem Match must hide Chip Table settings.")
-	_require(gem_placeholder != null and gem_placeholder.visible, "Gem Match must show the coming soon placeholder.")
-	_require(start_button != null and start_button.disabled and start_button.text == "COMING SOON", "Gem Match must disable Quick Table join.")
+	_require(gem_placeholder != null and gem_placeholder.visible, "Gem Match must show Gem setup settings.")
+	var gem_buy_in_buttons: Dictionary = Dictionary(home.get("_quick_gem_buy_in_buttons"))
+	var gem_blinds_buttons: Dictionary = Dictionary(home.get("_quick_gem_blinds_buttons"))
+	_require(gem_buy_in_buttons.has(20) and gem_buy_in_buttons.has(200), "Gem Match must expose Gem buy-in choices.")
+	_require(gem_blinds_buttons.has("1/2") and gem_blinds_buttons.has("5/10"), "Gem Match must expose Gem blind choices.")
+	_require(start_button != null and start_button.text == "FIND TABLE", "Gem Quick action must read FIND TABLE.")
 
 	print("Quick play setup smoke test passed.")
 	quit(0)

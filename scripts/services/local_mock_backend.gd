@@ -55,10 +55,12 @@ func quick_join_public_table(player: Dictionary, preferred_config: Dictionary = 
 func create_friends_room(profile: Dictionary, setup_config: Dictionary = {}) -> Dictionary:
 	var room_id := _mock_room_code()
 	_current_context = _build_table_context("friends_room", "mock_friends_table_%s" % room_id, room_id, profile, false, true, 0, setup_config)
-	_current_context["table_type"] = "private_room"
+	var table_type: String = str(setup_config.get("table_type", "private_room"))
+	_current_context["table_type"] = table_type
 	_current_context["room_code"] = room_id
 	var table_session: Dictionary = Dictionary(_current_context.get("table_session", {}))
-	table_session["table_type"] = "private_room"
+	table_session["table_type"] = table_type
+	table_session["currency"] = str(setup_config.get("currency", "chips"))
 	table_session["status"] = "waiting_ready"
 	_current_context["table_session"] = table_session
 	_current_context["room_state"] = "waiting_ready"
@@ -93,6 +95,8 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 	var max_hands: int = 999 if training else int(setup_config.get("max_hands", 10))
 	var buy_in_deducted: bool = bool(setup_config.get("buy_in_deducted_from_wallet", false))
 	var dealer_id: String = DealerLibraryScript.normalize_dealer_id(str(setup_config.get("dealer_id", setup_config.get("selected_dealer_id", DealerLibraryScript.get_random_dealer_id("%s:%s" % [mode, table_id])))))
+	var currency: String = str(setup_config.get("currency", "chips"))
+	var table_type: String = str(setup_config.get("table_type", "training_ai" if training else mode))
 	return {
 		"mode": mode,
 		"backend_type": "local_mock",
@@ -105,7 +109,8 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 		"small_blind": small_blind,
 		"big_blind": big_blind,
 		"is_training": training,
-		"table_type": "training_ai" if training else mode,
+		"table_type": table_type,
+		"currency": currency,
 		"uses_practice_chips": training,
 		"affects_account_balance": not training,
 		"buy_in_deducted_from_wallet": buy_in_deducted,
@@ -119,7 +124,8 @@ func _build_table_context(mode: String, table_id: String, room_id: String, profi
 		"dealer_id": dealer_id,
 		"table_session": {
 			"mode": mode,
-			"table_type": "training_ai" if training else mode,
+			"table_type": table_type,
+			"currency": currency,
 			"uses_practice_chips": training,
 			"affects_account_balance": not training,
 			"buy_in_deducted_from_wallet": buy_in_deducted,
@@ -155,6 +161,8 @@ func _build_public_table_context(table: Dictionary, profile: Dictionary) -> Dict
 		"big_blind": int(table.get("big_blind", 50)),
 		"max_hands": int(table.get("hand_count", 10)),
 		"dealer_id": str(table.get("dealer_id", "")),
+		"currency": str(table.get("currency", "chips")),
+		"table_type": str(table.get("table_type", PublicTableRegistryScript.TABLE_TYPE_PUBLIC_CHIP)),
 	}
 	var is_ai_warmup: bool = bool(table.get("is_ai_warmup", false))
 	var warmup_ai_ids: Array = Array(table.get("warmup_ai_player_ids", []))
@@ -163,7 +171,8 @@ func _build_public_table_context(table: Dictionary, profile: Dictionary) -> Dict
 	var context := _build_table_context("quick_play", String(table.get("table_id", "mock_public_table")), "", profile, false, false, ai_count, setup_config)
 	context["seats"] = _build_public_table_seats(table, PlayerProfileScript.normalized_dict(profile), int(setup_config.get("buy_in", PlayerProfileScript.DEFAULT_TABLE_BUY_IN)))
 	context["table_name"] = String(table.get("table_name", "Public Chip Table"))
-	context["table_type"] = PublicTableRegistryScript.TABLE_TYPE_PUBLIC_CHIP
+	context["table_type"] = str(table.get("table_type", PublicTableRegistryScript.TABLE_TYPE_PUBLIC_CHIP))
+	context["currency"] = str(table.get("currency", "chips"))
 	context["room_state"] = String(table.get("status", "waiting"))
 	context["hand_state"] = String(table.get("hand_state", context.get("room_state", "waiting")))
 	context["pot"] = 0
@@ -177,7 +186,8 @@ func _build_public_table_context(table: Dictionary, profile: Dictionary) -> Dict
 	context["pending_real_joiners"] = Array(table.get("pending_real_joiners", [])).duplicate(true)
 	context["warmup_ai_player_ids"] = warmup_ai_ids.duplicate()
 	context["ai_player_count"] = ai_count
-	context["table_session"]["table_type"] = PublicTableRegistryScript.TABLE_TYPE_PUBLIC_CHIP
+	context["table_session"]["table_type"] = context["table_type"]
+	context["table_session"]["currency"] = context["currency"]
 	context["table_session"]["status"] = String(table.get("status", "waiting"))
 	context["table_session"]["waiting_for_real_players"] = context["waiting_for_real_players"]
 	context["table_session"]["is_ai_warmup"] = context["is_ai_warmup"]
@@ -194,8 +204,8 @@ func _public_table_config_from_setup(setup_config: Dictionary, player: Dictionar
 	var big_blind: int = int(setup_config.get("big_blind", 50))
 	var hand_count: int = int(setup_config.get("max_hands", setup_config.get("hand_count", 10)))
 	return {
-		"table_type": PublicTableRegistryScript.TABLE_TYPE_PUBLIC_CHIP,
-		"currency": "chip",
+		"table_type": str(setup_config.get("table_type", PublicTableRegistryScript.TABLE_TYPE_PUBLIC_CHIP)),
+		"currency": str(setup_config.get("currency", "chips")),
 		"table_name": "Public Chip %d/%d" % [small_blind, big_blind],
 		"small_blind": small_blind,
 		"big_blind": big_blind,

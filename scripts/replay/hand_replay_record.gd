@@ -12,6 +12,7 @@ static func from_server_payload(payload: Dictionary) -> Dictionary:
 	record["results"] = Dictionary(record.get("results", {})).duplicate(true)
 	record["community_cards"] = Dictionary(record.get("community_cards", {})).duplicate(true)
 	record["dealer_id"] = str(record.get("dealer_id", ""))
+	record["currency"] = str(record.get("currency", "gems" if str(record.get("table_type", "")).ends_with("_gem") else "chips"))
 	return record
 
 
@@ -31,6 +32,7 @@ static func from_local_flow(flow_snapshot: Dictionary, ui_snapshot: Dictionary, 
 		"room_code": str(ui_snapshot.get("room_code", ui_snapshot.get("room_label", ""))),
 		"mode": mode,
 		"table_type": str(session_data.get("table_type", ui_snapshot.get("table_type", mode))),
+		"currency": str(session_data.get("currency", ui_snapshot.get("currency", "gems" if str(session_data.get("table_type", "")).ends_with("_gem") else "chips"))),
 		"dealer_id": str(session_data.get("dealer_id", session_data.get("selected_dealer_id", ui_snapshot.get("dealer_id", "")))),
 		"started_at": ended_at,
 		"ended_at": ended_at,
@@ -86,6 +88,7 @@ static func from_ui_snapshot(ui_snapshot: Dictionary, private_snapshot: Dictiona
 		"room_code": str(ui_snapshot.get("room_code", ui_snapshot.get("room_label", ""))),
 		"mode": _mode_from_table_type(str(ui_snapshot.get("table_type", table_info.get("table_type", "")))),
 		"table_type": str(ui_snapshot.get("table_type", table_info.get("table_type", ""))),
+		"currency": str(ui_snapshot.get("currency", table_info.get("currency", "gems" if str(ui_snapshot.get("table_type", table_info.get("table_type", ""))).ends_with("_gem") else "chips"))),
 		"dealer_id": str(ui_snapshot.get("dealer_id", table_info.get("dealer_id", ""))),
 		"started_at": Time.get_datetime_string_from_system(true),
 		"ended_at": Time.get_datetime_string_from_system(true),
@@ -118,13 +121,13 @@ static func _mode_from_session(session_data: Dictionary) -> String:
 	var table_type: String = str(session_data.get("table_type", ""))
 	if mode == "training" or table_type == "training_ai":
 		return "training"
-	if mode == "friends_room" or table_type == "private_room" or table_type == "private_chip":
+	if mode == "friends_room" or table_type in ["private_room", "private_chip", "private_gem"]:
 		return "private"
 	return "public"
 
 
 static func _mode_from_table_type(table_type: String) -> String:
-	if table_type in ["private_room", "private_chip"]:
+	if table_type in ["private_room", "private_chip", "private_gem"]:
 		return "private"
 	if table_type == "training_ai":
 		return "training"

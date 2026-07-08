@@ -31,6 +31,7 @@ Each `HandReplayRecord` contains:
 - `room_code`
 - `mode`: `public`, `private`, `training`, or `local_warmup`
 - `table_type`
+- `currency`: `chips` or `gems`
 - `dealer_id`
 - `started_at`
 - `ended_at`
@@ -52,6 +53,8 @@ Action records include `seq`, `street`, `actor_seat`, `actor_player_id`, `action
 
 Result records include winners, winner seat/player identifiers, amount won, hand rank text where available, pot type, final pot, side pots, and server hand result rows where available.
 
+`currency` identifies the wallet unit used by the recorded table. Public/private chip tables use `chips`; public/private gem tables use `gems`; training and local warm-up remain practice-only. Replay display must use this field for profit units and must not infer every official hand as Chips.
+
 `dealer_id` is presentation metadata only. It identifies the dealer/croupier art used by the original table and is not part of poker rules, settlement, wallet changes, or replay unlock state.
 
 ## Mode Coverage
@@ -66,7 +69,9 @@ The Replay Room currently reads only `replay_index.json`. If no records exist, i
 
 `No hands recorded yet. Play a table to generate replay records.`
 
-Replay index entries include `dealer_id` so the Replay Room can render dealer thumbnails without loading every full replay file. Old records or missing dealers fall back to the default dealer id, then to a neutral placeholder if the texture cannot load.
+Replay index entries include `dealer_id` so the Replay Room can render dealer thumbnails without loading every full replay file. Old records or missing dealers fall back to the default dealer id, then to a neutral placeholder if the texture cannot load. The Replay list thumbnail uses the dealer/croupier art at a readable larger size while keeping locked/unlocked and profit text visible.
+
+Replay index entries also include `currency` so list rows can render `+200 Chips`, `-50 Gems`, or `Practice` without loading the full file.
 
 ## Replay Viewer v1
 
@@ -100,7 +105,7 @@ Replay list rows are formatted for reading, not debugging:
 - stakes line: `Public Table - NLH 50 / 100`
 - result line: `Winner: Luna0581 - Pot 1,000`
 - timestamp line: the `ended_at` / index timestamp when available
-- right-side result: `+200 Chips`, `-100 Chips`, or `Practice`
+- right-side result: `+200 Chips`, `-50 Gems`, or `Practice`
 - left thumbnail: dealer/croupier art from `dealer_id`
 
 The detail page does not keep an empty top summary grid. The static review focuses on `PLAYERS`, `BOARD & RESULT`, and `ACTION TIMELINE`, with unlock/play actions beside the hand title.

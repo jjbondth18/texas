@@ -4,6 +4,7 @@ class_name PublicTableRegistry
 const DealerLibraryScript := preload("res://scripts/data/dealer_library.gd")
 
 const TABLE_TYPE_PUBLIC_CHIP := "public_chip"
+const TABLE_TYPE_PUBLIC_GEM := "public_gem"
 const STATUS_WAITING := "waiting"
 const STATUS_WAITING_FOR_PLAYERS := "waiting_for_players"
 const STATUS_READY_TO_START := "waiting_ready"
@@ -62,11 +63,14 @@ static func create_public_table(config: Dictionary = {}) -> Dictionary:
 	var real_player_ids: Array[String] = []
 	for player_id in Array(normalized_config.get("real_player_ids", player_ids)):
 		real_player_ids.append(str(player_id))
+	var table_type: String = str(normalized_config.get("table_type", TABLE_TYPE_PUBLIC_CHIP))
+	var currency: String = str(normalized_config.get("currency", "chips"))
+	var default_table_name: String = "Public Gem %03d" % max(_next_table_number - 1, 1) if currency in ["gem", "gems"] else "Public Chip %03d" % max(_next_table_number - 1, 1)
 	var table := {
 		"table_id": table_id,
-		"table_name": str(normalized_config.get("table_name", "Public Chip %03d" % max(_next_table_number - 1, 1))),
-		"table_type": TABLE_TYPE_PUBLIC_CHIP,
-		"currency": "chip",
+		"table_name": str(normalized_config.get("table_name", default_table_name)),
+		"table_type": table_type,
+		"currency": currency,
 		"status": STATUS_WAITING_FOR_PLAYERS,
 		"hand_state": STATUS_WAITING_FOR_PLAYERS,
 		"betting_round": "waiting",
@@ -141,7 +145,7 @@ static func start_ai_warmup(table_id: String, ai_count: int = 3) -> Dictionary:
 	if not _tables.has(table_id):
 		return {}
 	var table: Dictionary = _normalized_public_table(Dictionary(_tables[table_id]))
-	if not _is_public_chip_table(table):
+	if not _is_public_matchable_table(table):
 		return {}
 	table["is_ai_warmup"] = false
 	table["host_in_local_warmup"] = true
@@ -186,7 +190,7 @@ static func leave_public_table(table_id: String, player_id: String) -> void:
 	if not _tables.has(table_id):
 		return
 	var table: Dictionary = Dictionary(_tables[table_id]).duplicate(true)
-	if str(table.get("table_type", "")) != TABLE_TYPE_PUBLIC_CHIP:
+	if not _is_public_matchable_table(table):
 		return
 	var player_ids: Array = Array(table.get("player_ids", [])).duplicate()
 	player_ids.erase(player_id)
@@ -277,8 +281,13 @@ static func _normalized_public_table_config(config: Dictionary) -> Dictionary:
 				result["small_blind"] = int(str(pieces[0]))
 			if not result.has("big_blind") and str(pieces[1]).is_valid_int():
 				result["big_blind"] = int(str(pieces[1]))
-	result["table_type"] = TABLE_TYPE_PUBLIC_CHIP
-	result["currency"] = "chip"
+	var currency := str(result.get("currency", "chips"))
+	if currency == "gem":
+		currency = "gems"
+	elif currency == "chip":
+		currency = "chips"
+	result["currency"] = currency
+	result["table_type"] = str(result.get("table_type", TABLE_TYPE_PUBLIC_GEM if currency == "gems" else TABLE_TYPE_PUBLIC_CHIP))
 	result["buy_in"] = int(result.get("buy_in", 20000))
 	result["small_blind"] = int(result.get("small_blind", 25))
 	result["big_blind"] = int(result.get("big_blind", 50))
@@ -325,8 +334,13 @@ static func _is_public_chip_table(table: Dictionary) -> bool:
 	var currency: String = str(table.get("currency", "chip"))
 	return str(table.get("table_type", "")) == TABLE_TYPE_PUBLIC_CHIP and currency in ["chip", "chips"]
 
+static func _is_public_matchable_table(table: Dictionary) -> bool:
+	var table_type: String = str(table.get("table_type", ""))
+	var currency: String = str(table.get("currency", "chips"))
+	return (table_type == TABLE_TYPE_PUBLIC_CHIP and currency in ["chip", "chips"]) or (table_type == TABLE_TYPE_PUBLIC_GEM and currency in ["gem", "gems"])
+
 static func _is_clean_joinable_public_table(table: Dictionary, quick_join: bool) -> bool:
-	if not _is_public_chip_table(table):
+	if not _is_public_matchable_table(table):
 		return false
 	if quick_join and not bool(table.get("allow_quick_join", true)):
 		return false
@@ -417,6 +431,10 @@ static func _is_connected_occupied_player(data: Dictionary) -> bool:
 static func _table_matches_preferred_config(table: Dictionary, preferred_config: Dictionary) -> bool:
 	if preferred_config.is_empty():
 		return true
+	if preferred_config.has("table_type") and str(table.get("table_type", "")) != str(preferred_config.get("table_type", "")):
+		return false
+	if preferred_config.has("currency") and str(table.get("currency", "")) != str(preferred_config.get("currency", "")):
+		return false
 	if preferred_config.has("buy_in") and int(table.get("buy_in", 0)) != int(preferred_config.get("buy_in", 0)):
 		return false
 	if preferred_config.has("small_blind") and int(table.get("small_blind", 0)) != int(preferred_config.get("small_blind", 0)):

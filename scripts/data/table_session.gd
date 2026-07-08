@@ -27,6 +27,7 @@ const DEFAULT_ACTION_TIME_SECONDS := 60
 
 var mode := MODE_QUICK_PLAY
 var table_type := MODE_QUICK_PLAY
+var currency := "chips"
 var uses_practice_chips := false
 var affects_account_balance := true
 var buy_in_deducted_from_wallet := false
@@ -64,6 +65,7 @@ var selected_dealer_id := DEFAULT_DEALER_ID
 func configure_from_context(context: Dictionary) -> void:
 	mode = String(context.get("mode", MODE_QUICK_PLAY))
 	table_type = String(context.get("table_type", "training_ai" if mode == MODE_TRAINING else mode))
+	currency = String(context.get("currency", "gems" if table_type in ["public_gem", "private_gem"] else "chips"))
 	uses_practice_chips = bool(context.get("uses_practice_chips", mode == MODE_TRAINING))
 	affects_account_balance = bool(context.get("affects_account_balance", mode != MODE_TRAINING))
 	buy_in_deducted_from_wallet = bool(context.get("buy_in_deducted_from_wallet", false))
@@ -275,6 +277,7 @@ func to_dict() -> Dictionary:
 	return {
 		"mode": mode,
 		"table_type": table_type,
+		"currency": currency,
 		"uses_practice_chips": uses_practice_chips,
 		"affects_account_balance": affects_account_balance,
 		"buy_in_deducted_from_wallet": buy_in_deducted_from_wallet,

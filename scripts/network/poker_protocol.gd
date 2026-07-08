@@ -151,7 +151,8 @@ static func create_private_table(config: Dictionary = {}) -> Dictionary:
 	for key in config.keys():
 		data[key] = config[key]
 	data["is_public"] = false
-	data["table_type"] = "private_chip"
+	if not data.has("table_type"):
+		data["table_type"] = "private_chip"
 	return _message(CREATE_PRIVATE_TABLE, data)
 
 static func join_private_table(room_code: String) -> Dictionary:

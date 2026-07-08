@@ -5,6 +5,7 @@ export interface ReplayRoomMeta {
   roomCode?: string;
   mode: "public" | "private" | "training" | "local_warmup";
   tableType: string;
+  currency?: "chips" | "gems";
   dealerId?: string;
   maxHands: number;
 }
@@ -66,6 +67,7 @@ export function buildHandReplayRecord(table: TableState, meta: ReplayRoomMeta): 
     room_code: meta.roomCode ?? "",
     mode: meta.mode,
     table_type: meta.tableType,
+    currency: meta.currency ?? (meta.tableType.endsWith("_gem") ? "gems" : "chips"),
     dealer_id: meta.dealerId ?? "",
     started_at: new Date(firstAction?.timestamp_ms ?? Date.now()).toISOString(),
     ended_at: new Date(lastAction?.timestamp_ms ?? Date.now()).toISOString(),

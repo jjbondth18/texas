@@ -93,7 +93,7 @@ func _initialize() -> void:
 	home.call("_show_quick_play_setup")
 	home.call("_select_quick_play_mode", "gem")
 	home.call("_start_quick_play_from_setup")
-	_require(PublicTableRegistryScript.list_public_tables().is_empty(), "Gem Match placeholder must not create a public table")
+	_require(PublicTableRegistryScript.list_public_tables().is_empty(), "Quick Gem must block insufficient Gems before creating a public table")
 
 	home.queue_free()
 	PublicTableRegistryScript.reset()
