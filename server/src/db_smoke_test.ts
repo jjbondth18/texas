@@ -38,7 +38,6 @@ if (Number(afterAvatarBuy.total_wallet_chips) !== 9500) throw new Error("buy_ava
 if (Number(afterAvatarBuy.avatar_unlock_count) !== 2) throw new Error("buy_avatar should write avatar unlock");
 if (countRows("wallet_transactions", "reason = 'avatar_purchase' AND amount = -1500") !== 1) throw new Error("avatar purchase should write negative wallet transaction");
 expectThrows("already_unlocked", () => manager.handle("db_smoke_player", { type: "buy_avatar", avatar_id: "1_01" }));
-expectThrows("insufficient_gems", () => manager.handle("db_smoke_player", { type: "buy_avatar", avatar_id: "1_03" }));
 expectThrows("avatar_not_unlocked", () => manager.handle("db_smoke_player", { type: "select_avatar", avatar_id: "2_01" }));
 manager.handle("db_smoke_player", { type: "select_avatar", avatar_id: "1_01" });
 if (manager.getClient("db_smoke_player")?.avatarId !== "1_01") throw new Error("select_avatar should update selected profile avatar");

@@ -7,18 +7,32 @@ const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const DEFAULT_PLAYER_ID := "local_player"
 const DEFAULT_PLAYER_NAME := "Luna0581"
 const DEFAULT_AVATAR_ID := "4_05"
-const DEFAULT_LEVEL := 24
-const DEFAULT_XP_CURRENT := 875
-const DEFAULT_XP_MAX := 1500
+const XP_PER_LEVEL := 100
+const DEFAULT_TOTAL_XP := 0
+const DEFAULT_LEVEL := 1
+const DEFAULT_XP_CURRENT := 0
+const DEFAULT_XP_MAX := XP_PER_LEVEL
 const DEFAULT_TOTAL_CHIPS := 24500
 const DEFAULT_GEMS := 0
 const DEFAULT_TABLE_BUY_IN := 20000
 const SCHEMA_VERSION := 3
 const DAILY_LOGIN_CHIPS := 1000
+const DAILY_LOGIN_XP := 25
 const REPLAY_UNLOCK_COST_GEMS := 20
+const TITLE_UNLOCKS := [
+	{"level": 1, "title": "Rookie"},
+	{"level": 3, "title": "Casual Player"},
+	{"level": 5, "title": "Table Regular"},
+	{"level": 10, "title": "Sharp Caller"},
+	{"level": 15, "title": "River Hunter"},
+	{"level": 20, "title": "Card Shark"},
+	{"level": 30, "title": "High Roller"},
+	{"level": 50, "title": "Poker Legend"},
+]
 
 var player_id := DEFAULT_PLAYER_ID
 var name := ""
+var total_xp := DEFAULT_TOTAL_XP
 var level := 1
 var xp_current := 0
 var xp_max := 1
@@ -35,6 +49,7 @@ var biggest_pot := 0
 var best_hand_desc := ""
 var best_session_profit := 0
 var last_daily_reward_date := ""
+var last_daily_reward_xp_date := ""
 var daily_reward_claimed_today := false
 var replay_unlock_cost_gems := REPLAY_UNLOCK_COST_GEMS
 var unlocked_replay_ids: Array[String] = []
@@ -43,7 +58,7 @@ func _init(
 	player_name: String = "",
 	player_level: int = 1,
 	current_xp: int = 0,
-	max_xp: int = 1,
+	_max_xp: int = 1,
 	player_chips: int = 0,
 	player_gems: int = 0,
 	avatar_path: String = "",
@@ -54,9 +69,11 @@ func _init(
 	profile_stats: Dictionary = {}
 ) -> void:
 	name = player_name
-	level = player_level
-	xp_current = current_xp
-	xp_max = max(max_xp, 1)
+	var legacy_xp_progress: int = clamp(current_xp, 0, XP_PER_LEVEL - 1)
+	total_xp = int(profile_stats.get("total_xp", max(0, (player_level - 1) * XP_PER_LEVEL + legacy_xp_progress)))
+	level = level_for_total_xp(total_xp)
+	xp_current = xp_current_for_total_xp(total_xp)
+	xp_max = XP_PER_LEVEL
 	avatar = avatar_path
 	player_id = profile_player_id
 	avatar_id = profile_avatar_id if profile_avatar_id != "" else DEFAULT_AVATAR_ID
@@ -82,6 +99,7 @@ func _init(
 	best_hand_desc = String(profile_stats.get("best_hand_desc", ""))
 	best_session_profit = int(profile_stats.get("best_session_profit", 0))
 	last_daily_reward_date = String(profile_stats.get("last_daily_reward_date", ""))
+	last_daily_reward_xp_date = String(profile_stats.get("last_daily_reward_xp_date", ""))
 	daily_reward_claimed_today = bool(profile_stats.get("daily_reward_claimed_today", false))
 	replay_unlock_cost_gems = int(profile_stats.get("replay_unlock_cost_gems", REPLAY_UNLOCK_COST_GEMS))
 	unlocked_replay_ids.clear()
@@ -99,8 +117,11 @@ func to_lobby_dict() -> Dictionary:
 		"player_id": player_id,
 		"name": name,
 		"player_name": name,
+		"total_xp": total_xp,
 		"level": level,
 		"xp_text": xp_text(),
+		"current_title_name": title_for_level(level),
+		"title": title_for_level(level),
 		"chips": balance.chips,
 		"total_chips": balance.chips,
 		"gems": balance.gems,
@@ -116,6 +137,7 @@ func to_lobby_dict() -> Dictionary:
 		"best_hand_desc": best_hand_desc,
 		"best_session_profit": best_session_profit,
 		"last_daily_reward_date": last_daily_reward_date,
+		"last_daily_reward_xp_date": last_daily_reward_xp_date,
 		"daily_reward_claimed_today": daily_reward_claimed_today,
 		"replay_unlock_cost_gems": replay_unlock_cost_gems,
 		"unlocked_replay_ids": unlocked_replay_ids.duplicate(),
@@ -179,6 +201,27 @@ static func get_total_chips(data: Dictionary) -> int:
 
 static func get_total_gems(data: Dictionary) -> int:
 	return int(data.get("gems", DEFAULT_GEMS))
+
+static func get_total_xp(data: Dictionary) -> int:
+	var legacy_xp_progress: int = clamp(int(data.get("xp_current", DEFAULT_XP_CURRENT)), 0, XP_PER_LEVEL - 1)
+	return int(data.get("total_xp", max(0, (int(data.get("level", DEFAULT_LEVEL)) - 1) * XP_PER_LEVEL + legacy_xp_progress)))
+
+static func level_for_total_xp(value: int) -> int:
+	return int(floor(float(max(value, 0)) / float(XP_PER_LEVEL))) + 1
+
+static func xp_current_for_total_xp(value: int) -> int:
+	return max(value, 0) % XP_PER_LEVEL
+
+static func title_for_level(value: int) -> String:
+	var resolved := "Rookie"
+	for entry in TITLE_UNLOCKS:
+		var threshold := int(entry.get("level", 1))
+		if value >= threshold:
+			resolved = String(entry.get("title", resolved))
+	return resolved
+
+static func title_for_profile(data: Dictionary) -> String:
+	return title_for_level(level_for_total_xp(get_total_xp(data)))
 
 static func table_buy_in(data: Dictionary) -> int:
 	return min(DEFAULT_TABLE_BUY_IN, max(get_total_chips(data), 0))

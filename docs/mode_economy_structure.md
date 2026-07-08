@@ -160,3 +160,19 @@ These rules describe the local/mock table behavior and the target contract for t
 - The host client is not trusted to finalize account settlement. In the future server version, the server maintains table state and the host has no special settlement authority.
 
 Gem tables use the same lifecycle rules as chip tables, but their table stack maps to account Gems instead of account Chips.
+
+## Profile Progression And Cosmetic Currency
+
+Chips are the ordinary account currency for public/private chip table buy-ins, Add Chips table transfers, and standard cosmetic purchases such as Character Avatars.
+
+Gems are reserved for replay unlocks and future premium features. Ordinary Character Avatars do not spend Gems.
+
+Profile progression is deliberately lightweight:
+
+- Daily login grants the existing chip bonus plus `25 XP`.
+- XP currently comes only from daily login.
+- Level is calculated as `floor(total_xp / 100) + 1`.
+- The highest title unlocked by the player's level is shown on the Profile page.
+- Titles are cosmetic profile labels only. They are not shown at the poker table and do not affect gameplay, matchmaking, cards, betting, luck, rewards, or economy.
+
+See `docs/profile_progression.md` for the title table and avatar purchase rules.

@@ -2,6 +2,7 @@ extends RefCounted
 class_name AvatarLibrary
 
 const AVATAR_ROOT := "res://assets/playersAv_cut/"
+const DEFAULT_AVATAR_PRICE_CHIPS := 7500
 const DEFAULT_UNLOCKED_CANDIDATES := ["4_05", "1_01", "1_02", "2_01", "6_05"]
 const UNLOCK_RULE_AVATARS := {
 	"first_session_complete": "1_03",
@@ -104,6 +105,10 @@ static func display_name_for_avatar_id(avatar_id: String) -> String:
 	if index < 0:
 		index = 0
 	return String(FALLBACK_DISPLAY_NAMES[index % FALLBACK_DISPLAY_NAMES.size()])
+
+
+static func price_chips_for_avatar_id(_avatar_id: String) -> int:
+	return DEFAULT_AVATAR_PRICE_CHIPS
 
 
 static func default_avatar_id() -> String:

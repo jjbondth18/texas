@@ -64,9 +64,9 @@ static func get_settings_view_model() -> Dictionary:
 static func _mock_player_profile():
 	return PlayerProfileScript.new(
 		"Luna0581",
-		24,
-		875,
-		1500,
+		PlayerProfileScript.DEFAULT_LEVEL,
+		PlayerProfileScript.DEFAULT_XP_CURRENT,
+		PlayerProfileScript.DEFAULT_XP_MAX,
 		24500,
 		PlayerProfileScript.DEFAULT_GEMS,
 		LOCAL_AVATAR_PATH,

@@ -11,7 +11,7 @@ import { PlayerRepository } from "./db/player_repository.js";
 import { IdentityRepository } from "./db/identity_repository.js";
 import { ResultRepository } from "./db/result_repository.js";
 import { WalletRepository } from "./db/wallet_repository.js";
-import { AVATAR_CATALOG, findAvatarCatalogItem } from "./avatar_catalog.js";
+import { AVATAR_CATALOG, DEFAULT_AVATAR_PRICE_CHIPS, findAvatarCatalogItem } from "./avatar_catalog.js";
 import { config } from "./config.js";
 import { buildHandReplayRecord } from "./replay.js";
 
@@ -756,15 +756,13 @@ export class RoomManager {
     this.wallets.ensure(client.id);
     const wallet = this.wallets.get(client.id);
     if (!wallet) throw new Error("wallet not found");
-    if (item.currency === "chips") {
-      if (wallet.chips < item.price_chips) throw new Error("insufficient_chips");
-      this.wallets.deductChips(client.id, item.price_chips, { reason: "avatar_purchase" });
-    } else if (item.currency === "gems") {
-      if (wallet.gems < item.price_gems) throw new Error("insufficient_gems");
-      this.wallets.deductGems(client.id, item.price_gems, { reason: "avatar_purchase" });
-    }
+    const priceChips = item.price_chips > 0 ? item.price_chips : DEFAULT_AVATAR_PRICE_CHIPS;
+    if (wallet.chips < priceChips) throw new Error("insufficient_chips");
+    this.wallets.deductChips(client.id, priceChips, { reason: "avatar_purchase" });
     this.avatars.unlockAvatar(client.id, avatarId);
-    this.sendWalletSnapshot(client, client.roomId);
+    const profile = this.players.setAvatar(client.id, avatarId);
+    client.avatarId = profile.avatar_id;
+    this.send(client, { type: "profile_snapshot", player_id: client.id, room_id: client.roomId, ...this.profilePayload(client.id) });
   }
 
   private selectAvatar(client: Client, avatarIdRaw: string): void {
@@ -773,6 +771,7 @@ export class RoomManager {
     if (!this.avatars.hasAvatar(client.id, avatarId)) throw new Error("avatar_not_unlocked");
     const profile = this.players.setAvatar(client.id, avatarId);
     client.avatarId = profile.avatar_id;
+    this.send(client, { type: "profile_snapshot", player_id: client.id, room_id: client.roomId, ...this.profilePayload(client.id) });
   }
 
   private markHostStartedLocalWarmup(room: Room, client: Client): void {

@@ -1411,7 +1411,7 @@ func _claim_daily_login_bonus() -> void:
 	var service := ProfileServiceScript.new()
 	_player_profile = service.claim_daily_login_bonus()
 	if service.was_last_daily_bonus_claimed():
-		_show_toast("Daily Login Bonus\n+%s Chips", [_format_number(PlayerProfileScript.DAILY_LOGIN_CHIPS)], 2.6)
+		_show_toast("Daily Login Bonus\n+%s Chips\n+%d XP", [_format_number(PlayerProfileScript.DAILY_LOGIN_CHIPS), PlayerProfileScript.DAILY_LOGIN_XP], 2.6)
 
 func _connect_profile_server() -> void:
 	if _profile_ws_client != null:
@@ -1463,7 +1463,9 @@ func _on_profile_server_wallet_synced(wallet: Dictionary) -> void:
 
 func _on_profile_server_daily_login_awarded(chips: int) -> void:
 	if chips > 0:
-		_show_toast("Daily Bonus\n+%s Chips", [_format_number(chips)], 2.6)
+		_player_profile = ProfileServiceScript.new().apply_server_daily_login_xp_award()
+		_refresh_profile_views_from_server()
+		_show_toast("Daily Bonus\n+%s Chips\n+%d XP", [_format_number(chips), PlayerProfileScript.DAILY_LOGIN_XP], 2.6)
 
 func _on_avatar_catalog_received(catalog: Array) -> void:
 	_avatar_catalog = catalog.duplicate(true)
@@ -1490,7 +1492,7 @@ func _server_lobby_error_text(message: String) -> String:
 		"room_not_available":
 			return "Room is no longer available."
 		"insufficient_chips":
-			return "Not enough chips for this buy-in."
+			return "Not enough chips."
 		"insufficient_gems":
 			return "Not enough gems. Visit Store to get more gems."
 		_:
@@ -4939,10 +4941,13 @@ func _refresh_profile_panel() -> void:
 	if _profile_name_label != null:
 		_profile_name_label.text = PlayerProfileScript.get_player_name(_player_profile)
 	if _profile_level_label != null:
-		_profile_level_label.text = "Level %d  |  XP %d / %d" % [
-			int(_player_profile.get("level", PlayerProfileScript.DEFAULT_LEVEL)),
-			int(_player_profile.get("xp_current", PlayerProfileScript.DEFAULT_XP_CURRENT)),
-			int(_player_profile.get("xp_max", PlayerProfileScript.DEFAULT_XP_MAX)),
+		var total_xp: int = PlayerProfileScript.get_total_xp(_player_profile)
+		var level: int = PlayerProfileScript.level_for_total_xp(total_xp)
+		_profile_level_label.text = "Title: %s\nLevel %d\nXP %d / %d" % [
+			PlayerProfileScript.title_for_level(level),
+			level,
+			PlayerProfileScript.xp_current_for_total_xp(total_xp),
+			PlayerProfileScript.XP_PER_LEVEL,
 		]
 	if _profile_avatar_rect != null:
 		var selected_avatar_id: String = PlayerProfileScript.get_avatar_id(_player_profile)
@@ -5004,16 +5009,18 @@ func _refresh_avatar_gallery() -> void:
 			continue
 		var is_unlocked: bool = unlocked.has(avatar_id)
 		var is_selected: bool = avatar_id == selected_id
-		button.disabled = not is_unlocked and not _profile_server_connected
+		var price_chips: int = _avatar_price_chips(avatar_id)
+		var can_afford: bool = PlayerProfileScript.get_total_chips(_player_profile) >= price_chips
+		button.disabled = not is_unlocked and not can_afford
 		var display_name: String = AvatarLibraryScript.display_name_for_avatar_id(avatar_id)
-		var status_text := "Unlocked"
+		var status_text := "SELECT"
 		if is_selected:
-			status_text = "Selected"
+			status_text = "SELECTED"
 		elif not is_unlocked:
-			if _profile_server_connected:
+			if can_afford:
 				status_text = "Buy %s" % _avatar_price_text(avatar_id)
 			else:
-				status_text = "Locked"
+				status_text = "Need %s" % _avatar_price_text(avatar_id)
 		button.text = "%s\n%s" % [display_name, status_text]
 		button.tooltip_text = "%s\n%s" % [avatar_id, status_text]
 		button.modulate = Color(1.08, 1.08, 1.12, 1.0) if is_unlocked else Color(0.62, 0.62, 0.72, 0.88)
@@ -5048,25 +5055,38 @@ func _on_avatar_selected(avatar_id: String) -> void:
 			_profile_ws_client.select_avatar(_server_avatar_id_for_client(avatar_id))
 			_show_toast("Avatar\nSelecting on server...", [], 1.4)
 		else:
+			var server_price_chips: int = _avatar_price_chips(avatar_id)
+			if PlayerProfileScript.get_total_chips(_player_profile) < server_price_chips:
+				_show_toast("Avatar\nNot enough chips.\nNeed %s Chips.", [_format_number(server_price_chips)], 2.4)
+				return
 			_profile_ws_client.buy_avatar(_server_avatar_id_for_client(avatar_id))
 			_show_toast("Avatar\nPurchase request sent...", [], 1.4)
 		return
 	var service := ProfileServiceScript.new()
-	_player_profile = service.select_avatar(avatar_id)
+	var local_unlocked: Array = Array(_player_profile.get("unlocked_avatar_ids", []))
+	if local_unlocked.has(avatar_id):
+		_player_profile = service.select_avatar(avatar_id)
+	else:
+		var result: Dictionary = service.purchase_avatar_with_chips(avatar_id, _avatar_price_chips(avatar_id))
+		_player_profile = Dictionary(result.get("profile", service.get_current_profile()))
+		if not bool(result.get("success", false)):
+			_show_toast("Avatar\nNot enough chips.\nNeed %s Chips.", [_format_number(_avatar_price_chips(avatar_id))], 2.4)
+			_refresh_profile_panel()
+			return
+		_show_toast("Avatar purchased.\n%s selected.", [AvatarLibraryScript.display_name_for_avatar_id(avatar_id)], 2.2)
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
 	_refresh_profile_panel()
 
 func _avatar_price_text(avatar_id: String) -> String:
+	return "%s Chips" % _format_number(_avatar_price_chips(avatar_id))
+
+func _avatar_price_chips(avatar_id: String) -> int:
 	var item := _catalog_item_for_avatar(avatar_id)
 	if item.is_empty():
-		return "Locked"
-	var currency := str(item.get("currency", "free"))
-	if currency == "chips":
-		return "%s Chips" % _format_number(int(item.get("price_chips", 0)))
-	if currency == "gems":
-		return "%s Gems" % _format_number(int(item.get("price_gems", 0)))
-	return "Free"
+		return AvatarLibraryScript.price_chips_for_avatar_id(avatar_id)
+	var price: int = int(item.get("price_chips", 0))
+	return price if price > 0 else AvatarLibraryScript.price_chips_for_avatar_id(avatar_id)
 
 func _catalog_item_for_avatar(avatar_id: String) -> Dictionary:
 	var server_avatar_id := _server_avatar_id_for_client(avatar_id)

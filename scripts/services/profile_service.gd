@@ -55,6 +55,7 @@ func apply_server_profile_snapshot(profile_snapshot: Dictionary, wallet_snapshot
 			profile["avatar_id"] = normalized_unlocked[0]
 			profile["avatar"] = AvatarLibraryScript.avatar_path(normalized_unlocked[0])
 	if daily_login_awarded:
+		_grant_daily_login_xp(profile, _today_key())
 		profile["last_daily_reward_date"] = _today_key()
 		profile["daily_reward_claimed_today"] = true
 	_server_profile_synced = true
@@ -153,6 +154,32 @@ func select_avatar(avatar_id: String) -> Dictionary:
 	profile["avatar"] = AvatarLibraryScript.avatar_path(avatar_id)
 	save_current_profile(profile)
 	return get_current_profile()
+
+func purchase_avatar_with_chips(avatar_id: String, price_chips: int = AvatarLibraryScript.DEFAULT_AVATAR_PRICE_CHIPS) -> Dictionary:
+	var clean_id := avatar_id.strip_edges()
+	var profile := get_current_profile()
+	if clean_id == "":
+		return {"success": false, "reason": "missing_avatar_id", "profile": profile}
+	var unlocked: Array = Array(profile.get("unlocked_avatar_ids", [])).duplicate()
+	if unlocked.has(clean_id):
+		profile["selected_avatar_id"] = clean_id
+		profile["avatar_id"] = clean_id
+		profile["avatar"] = AvatarLibraryScript.avatar_path(clean_id)
+		save_current_profile(profile)
+		return {"success": true, "reason": "already_unlocked", "profile": get_current_profile()}
+	var cost: int = max(price_chips, 0)
+	var chips: int = PlayerProfileScript.get_total_chips(profile)
+	if chips < cost:
+		return {"success": false, "reason": "not_enough_chips", "required_chips": cost, "wallet_chips": chips, "profile": profile}
+	profile["total_chips"] = chips - cost
+	profile["chips"] = int(profile["total_chips"])
+	unlocked.append(clean_id)
+	profile["unlocked_avatar_ids"] = unlocked
+	profile["selected_avatar_id"] = clean_id
+	profile["avatar_id"] = clean_id
+	profile["avatar"] = AvatarLibraryScript.avatar_path(clean_id)
+	save_current_profile(profile)
+	return {"success": true, "reason": "purchased", "profile": get_current_profile()}
 
 func deduct_table_buy_in(buy_in: int) -> Dictionary:
 	return deduct_table_buy_in_currency(buy_in, "chips")
@@ -265,11 +292,12 @@ func claim_daily_login_bonus(today: String = "") -> Dictionary:
 	var total_chips: int = PlayerProfileScript.get_total_chips(profile)
 	profile["total_chips"] = total_chips + PlayerProfileScript.DAILY_LOGIN_CHIPS
 	profile["chips"] = int(profile["total_chips"])
+	_grant_daily_login_xp(profile, date_key)
 	profile["last_daily_reward_date"] = date_key
 	profile["daily_reward_claimed_today"] = true
 	save_current_profile(profile)
 	_last_daily_bonus_claimed = true
-	print("Daily Login Bonus: +%d Chips" % PlayerProfileScript.DAILY_LOGIN_CHIPS)
+	print("Daily Login Bonus: +%d Chips, +%d XP" % [PlayerProfileScript.DAILY_LOGIN_CHIPS, PlayerProfileScript.DAILY_LOGIN_XP])
 	return get_current_profile()
 
 func was_last_daily_bonus_claimed() -> bool:
@@ -307,6 +335,35 @@ func _try_unlock_avatar_for_rule(rule_id: String, unlocked: Array, new_ids: Arra
 		return
 	unlocked.append(avatar_id)
 	new_ids.append(avatar_id)
+
+func apply_server_daily_login_xp_award(today: String = "") -> Dictionary:
+	var profile := get_current_profile()
+	var date_key: String = today if today != "" else _today_key()
+	_grant_daily_login_xp(profile, date_key)
+	profile["last_daily_reward_date"] = date_key
+	profile["daily_reward_claimed_today"] = true
+	save_current_profile(profile)
+	return get_current_profile()
+
+func _grant_daily_login_xp(profile: Dictionary, date_key: String) -> void:
+	if String(profile.get("last_daily_reward_xp_date", "")) == date_key:
+		_refresh_progression_fields(profile)
+		return
+	var total_xp: int = PlayerProfileScript.get_total_xp(profile) + PlayerProfileScript.DAILY_LOGIN_XP
+	profile["total_xp"] = total_xp
+	profile["last_daily_reward_xp_date"] = date_key
+	_refresh_progression_fields(profile)
+
+func _refresh_progression_fields(profile: Dictionary) -> void:
+	var total_xp: int = PlayerProfileScript.get_total_xp(profile)
+	var level: int = PlayerProfileScript.level_for_total_xp(total_xp)
+	profile["total_xp"] = total_xp
+	profile["level"] = level
+	profile["xp_current"] = PlayerProfileScript.xp_current_for_total_xp(total_xp)
+	profile["xp_max"] = PlayerProfileScript.XP_PER_LEVEL
+	profile["xp_text"] = "%d / %d XP" % [int(profile["xp_current"]), PlayerProfileScript.XP_PER_LEVEL]
+	profile["current_title_name"] = PlayerProfileScript.title_for_level(level)
+	profile["title"] = profile["current_title_name"]
 
 func is_profile_backend_available() -> bool:
 	return _server_profile_synced
