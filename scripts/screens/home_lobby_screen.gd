@@ -9,7 +9,8 @@ enum LobbyState {
 	PROFILE,
 	SETTINGS,
 	ROOM_BROWSER,
-	FRIENDS_ROOM
+	FRIENDS_ROOM,
+	EVENTS
 }
 
 @export var background_motion_enabled := true
@@ -46,6 +47,7 @@ var _prompt: Label
 var _play_panel: PanelContainer
 var _room_browser_panel: PanelContainer
 var _friends_room_panel: PanelContainer
+var _events_panel: PanelContainer
 var _replay_panel: PanelContainer
 var _replay_fullscreen_overlay: Control
 var _replay_fullscreen_timeline_panel: PanelContainer
@@ -234,6 +236,7 @@ func _ready() -> void:
 	_build_play_panel()
 	_build_room_browser_panel()
 	_build_friends_room_panel()
+	_build_events_panel()
 	_build_replay_panel()
 	_build_store_panel()
 	_build_profile_panel()
@@ -264,6 +267,7 @@ func _ready() -> void:
 
 	MusicServiceScript.play_home_bgm(self)
 	_apply_settings(_settings_service.load_settings())
+	call_deferred("_ensure_home_bgm_active")
 	
 	var lobby_vm := MockDataProvider.get_lobby_view_model()
 	_player_profile = ProfileServiceScript.new().get_current_profile()
@@ -278,6 +282,7 @@ func _ready() -> void:
 
 func set_state(new_state: LobbyState, animated: bool = true) -> void:
 	current_state = new_state
+	_ensure_home_bgm_active()
 	if _quick_play_setup_panel != null and new_state != LobbyState.PLAY_EXPANDED:
 		_quick_play_setup_panel.visible = false
 	if new_state == LobbyState.PROFILE:
@@ -288,7 +293,7 @@ func set_state(new_state: LobbyState, animated: bool = true) -> void:
 	var nav_id := "home"
 	match current_state:
 		LobbyState.COLLAPSED: nav_id = "home"
-		LobbyState.PLAY_EXPANDED, LobbyState.ROOM_BROWSER, LobbyState.FRIENDS_ROOM: nav_id = "play"
+		LobbyState.PLAY_EXPANDED, LobbyState.ROOM_BROWSER, LobbyState.FRIENDS_ROOM, LobbyState.EVENTS: nav_id = "play"
 		LobbyState.REPLAY: nav_id = "replay"
 		LobbyState.STORE: nav_id = "store"
 		LobbyState.PROFILE: nav_id = "profile"
@@ -298,6 +303,11 @@ func set_state(new_state: LobbyState, animated: bool = true) -> void:
 		_left_nav.set_active(nav_id)
 		
 	_set_expanded(current_state != LobbyState.COLLAPSED, not animated)
+
+func _ensure_home_bgm_active() -> void:
+	if _replay_fullscreen_overlay != null and _replay_fullscreen_overlay.visible:
+		return
+	MusicServiceScript.ensure_home_bgm(self)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
@@ -1115,6 +1125,7 @@ func _get_panel_for_state(state: LobbyState) -> PanelContainer:
 		LobbyState.SETTINGS: return _settings_panel
 		LobbyState.ROOM_BROWSER: return _room_browser_panel
 		LobbyState.FRIENDS_ROOM: return _friends_room_panel
+		LobbyState.EVENTS: return _events_panel
 		_: return null
 
 func _set_expanded(value: bool, immediate: bool = false) -> void:
@@ -1127,7 +1138,7 @@ func _set_expanded(value: bool, immediate: bool = false) -> void:
 	var logo_scale := LOGO_EXPANDED_SCALE if value else LOGO_COLLAPSED_SCALE
 	
 	var active_panel := _get_panel_for_state(current_state)
-	var all_panels := [_play_panel, _replay_panel, _store_panel, _profile_panel, _settings_panel, _room_browser_panel, _friends_room_panel]
+	var all_panels := [_play_panel, _replay_panel, _store_panel, _profile_panel, _settings_panel, _room_browser_panel, _friends_room_panel, _events_panel]
 	
 	if _transition_tween:
 		_transition_tween.kill()
@@ -1239,7 +1250,7 @@ func _on_mode_selected(id: String) -> void:
 		"private_table":
 			set_state(LobbyState.FRIENDS_ROOM)
 		"events":
-			_show_coming_soon("EVENTS")
+			set_state(LobbyState.EVENTS)
 		_:
 			_show_coming_soon(id.to_upper())
 
@@ -2441,6 +2452,109 @@ func _modal_button(label_text: String) -> Button:
 	button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.72), Color(0.62, 0.36, 1.0, 0.55), 8))
 	button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.040, 0.046, 0.094, 0.92), Color(1.0, 0.28, 0.78, 0.90), 8))
 	return button
+
+func _build_events_panel() -> void:
+	_events_panel = PanelContainer.new()
+	_events_panel.name = "EventsComingSoonPanel"
+	_events_panel.anchor_left = 0.0
+	_events_panel.anchor_top = 0.22
+	_events_panel.anchor_right = 1.0
+	_events_panel.anchor_bottom = 0.88
+	_events_panel.offset_left = MAIN_LEFT
+	_events_panel.offset_right = -MAIN_RIGHT
+	_events_panel.visible = false
+	_events_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	_events_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.016, 0.72), Color(0.62, 0.36, 1.0, 0.28), 8, 1))
+	_lobby_ui_root.add_child(_events_panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 28)
+	margin.add_theme_constant_override("margin_right", 28)
+	margin.add_theme_constant_override("margin_top", 24)
+	margin.add_theme_constant_override("margin_bottom", 24)
+	_events_panel.add_child(margin)
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 18)
+	margin.add_child(column)
+
+	var title := Label.new()
+	title.text = "EVENTS"
+	HomeTheme.make_font_settings(title, 28, Color(1.0, 1.0, 1.0, 0.96))
+	column.add_child(title)
+
+	var subtitle := Label.new()
+	subtitle.text = "Limited-time tables and special rules."
+	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(subtitle, 14, HomeTheme.MUTED)
+	column.add_child(subtitle)
+
+	var cards := HBoxContainer.new()
+	cards.add_theme_constant_override("separation", 18)
+	cards.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.add_child(cards)
+	_add_event_card(cards, "ALL-IN SURVIVAL", "A survival poker event. Lowest stacks are eliminated every few hands. Last player standing wins.")
+	_add_event_card(cards, "LUCKY SPIN TABLE", "Special tables with random bonus pots and rotating rewards.")
+	_add_event_card(cards, "WEEKEND GEM CUP", "Scheduled gem-entry event with leaderboard rewards.")
+
+	var note := Label.new()
+	note.text = "Events are planned for a future update. No event tables are created and no chips or gems are charged."
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(note, 13, Color(0.72, 0.78, 0.94, 0.92))
+	column.add_child(note)
+
+	var back_button := _modal_button("Back to Play")
+	back_button.pressed.connect(func() -> void:
+		set_state(LobbyState.PLAY_EXPANDED)
+	)
+	column.add_child(back_button)
+
+func _add_event_card(parent: HBoxContainer, title_text: String, body_text: String) -> void:
+	var card := PanelContainer.new()
+	card.name = "%sEventCard" % title_text.replace(" ", "")
+	card.custom_minimum_size = Vector2(330, 260)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.008, 0.010, 0.024, 0.72), Color(1.0, 0.0, 0.5, 0.26), 10, 1))
+	parent.add_child(card)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 18)
+	margin.add_theme_constant_override("margin_right", 18)
+	margin.add_theme_constant_override("margin_top", 18)
+	margin.add_theme_constant_override("margin_bottom", 18)
+	card.add_child(margin)
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 12)
+	margin.add_child(column)
+
+	var title := Label.new()
+	title.text = title_text
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(title, 20, HomeTheme.PINK)
+	column.add_child(title)
+
+	var body := Label.new()
+	body.text = body_text
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	HomeTheme.make_font_settings(body, 14, Color(0.84, 0.88, 1.0, 0.92))
+	column.add_child(body)
+
+	var status := Label.new()
+	status.text = "COMING SOON"
+	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HomeTheme.make_font_settings(status, 13, HomeTheme.CYAN)
+	column.add_child(status)
+
+	card.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton:
+			var mouse_event: InputEventMouseButton = event as InputEventMouseButton
+			if mouse_event.button_index == MOUSE_BUTTON_LEFT and mouse_event.pressed:
+				_show_toast("Coming Soon.\nThis event mode is planned for a future update.", [], 2.4)
+	)
 
 func _build_room_browser_panel() -> void:
 	_room_browser_panel = PanelContainer.new()

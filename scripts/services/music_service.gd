@@ -14,6 +14,9 @@ static func play_home_bgm(owner: Node) -> void:
 static func play_table_bgm(owner: Node) -> void:
 	_play_bgm(owner, TABLE_BGM_PATH)
 
+static func ensure_home_bgm(owner: Node) -> void:
+	_play_bgm(owner, HOME_BGM_PATH)
+
 static func current_bgm_path() -> String:
 	return _current_path
 
@@ -34,7 +37,7 @@ static func _play_bgm(owner: Node, path: String) -> void:
 		return
 	_ensure_music_bus()
 	_ensure_player(owner)
-	if _current_path == path and _player.playing:
+	if _current_path == path and _player.playing and _player.stream != null:
 		return
 	var stream: AudioStream = _load_audio_stream(path)
 	if stream == null:
@@ -62,7 +65,9 @@ static func _ensure_player(owner: Node) -> void:
 
 static func _load_audio_stream(path: String) -> AudioStream:
 	if ResourceLoader.exists(path):
-		return load(path) as AudioStream
+		var imported_stream := load(path) as AudioStream
+		if imported_stream != null:
+			return imported_stream
 	var absolute_path := ProjectSettings.globalize_path(path)
 	return AudioStreamOggVorbis.load_from_file(absolute_path)
 

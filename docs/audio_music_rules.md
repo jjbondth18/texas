@@ -5,6 +5,7 @@ Music is managed through `scripts/services/music_service.gd`.
 ## Tracks
 
 - Home/Lobby, Store, Profile, Settings, and Replay Room list/detail use `res://assets/music/bgm1.ogg`.
+- Events Coming Soon uses the Home/Lobby track because it is a lobby mode page, not gameplay.
 - Poker gameplay screens use `res://assets/music/bgm2.ogg`.
 
 Gameplay screens include:
@@ -20,6 +21,7 @@ Gameplay screens include:
 ## Switching
 
 - HomeLobbyScreen requests Home BGM when the lobby loads.
+- HomeLobbyScreen also re-confirms Home BGM when switching among Home, Play, Store, Profile, Settings, Replay list/detail, Room Browser, Friends Room, and Events.
 - PokerTableScreen requests Table BGM in `_ready()`.
 - Replay fullscreen playback requests Table BGM when the fullscreen replay overlay is shown.
 - Exiting PokerTableScreen or hiding Replay fullscreen playback requests Home BGM again.
