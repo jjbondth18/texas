@@ -1485,7 +1485,9 @@ func _on_profile_server_daily_login_awarded(chips: int, xp: int = PlayerProfileS
 
 func _on_profile_server_daily_bonus_claim_failed(reason: String) -> void:
 	if reason == "already_claimed_today":
-		_show_toast("Daily Bonus\nAlready claimed today.", [], 2.4)
+		var state: Dictionary = PlayerProfileScript.daily_bonus_display_state(_player_profile)
+		var next_day: int = int(state.get("next_reward_day", state.get("current_day", 1)))
+		_show_toast("Daily Bonus\nAlready claimed today. Next reward: Day %d tomorrow." % next_day, [], 2.8)
 	else:
 		_show_toast("Daily Bonus\nCould not claim daily bonus.", [], 2.4)
 	_refresh_profile_views_from_server()

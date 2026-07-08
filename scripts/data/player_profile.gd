@@ -275,13 +275,27 @@ static func daily_bonus_display_state(data: Dictionary, today: String = "") -> D
 			completed_in_cycle = current_day
 	elif claimed_today:
 		can_claim_today = false
+	var next_reward_day: int = current_day
+	if claimed_today:
+		next_reward_day = 1 if current_day >= DAILY_BONUS_REWARDS.size() else current_day + 1
 	var days: Array[Dictionary] = []
 	for reward_value in DAILY_BONUS_REWARDS:
 		var reward := Dictionary(reward_value)
 		var day: int = int(reward.get("day", 1))
 		var is_claimed: bool = day <= completed_in_cycle
+		var is_claimed_today: bool = claimed_today and day == current_day
 		var can_claim: bool = can_claim_today and not claimed_today and day == current_day and not is_claimed
-		var is_future: bool = not is_claimed and not can_claim
+		var is_next: bool = claimed_today and day == next_reward_day and not is_claimed
+		var is_future: bool = not is_claimed and not can_claim and not is_next
+		var status_text := "LOCKED"
+		if is_claimed_today:
+			status_text = "CLAIMED TODAY"
+		elif is_claimed:
+			status_text = "CLAIMED"
+		elif can_claim:
+			status_text = "CLAIM"
+		elif is_next:
+			status_text = "NEXT"
 		days.append({
 			"day": day,
 			"label": "Day %d" % day,
@@ -289,16 +303,27 @@ static func daily_bonus_display_state(data: Dictionary, today: String = "") -> D
 			"xp": int(reward.get("xp", 0)),
 			"gems": int(reward.get("gems", 0)),
 			"claimed": is_claimed,
+			"claimed_today_card": is_claimed_today,
 			"active": can_claim,
 			"claimable": can_claim,
+			"next": is_next,
 			"future": is_future,
 			"locked": is_future,
+			"highlight": can_claim or is_claimed_today,
+			"soft_highlight": is_next,
+			"status_text": status_text,
 		})
+	var action_line: String = "Today: Claim Day %d reward" % current_day
+	if claimed_today:
+		action_line = "Next Reward: Day %d available tomorrow" % next_reward_day
 	return {
 		"current_day": current_day,
 		"claimed_today": claimed_today,
 		"claimed_days_in_cycle": completed_in_cycle,
 		"can_claim_today": can_claim_today,
+		"next_reward_day": next_reward_day,
+		"summary_line": "Cycle Progress: %d / %d" % [completed_in_cycle, DAILY_BONUS_REWARDS.size()],
+		"action_line": action_line,
 		"days": days,
 	}
 

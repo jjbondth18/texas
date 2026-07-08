@@ -35,7 +35,7 @@ func _rebuild_cells() -> void:
 	var copy_box := VBoxContainer.new()
 	copy_box.name = "DailyBonusCopyBox"
 	copy_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	copy_box.custom_minimum_size = Vector2(220, 1)
+	copy_box.custom_minimum_size = Vector2(250, 1)
 	_row.add_child(copy_box)
 	var title := Label.new()
 	title.text = "DAILY BONUS"
@@ -46,6 +46,17 @@ func _rebuild_cells() -> void:
 	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	HomeTheme.make_font_settings(copy, 12, HomeTheme.MUTED)
 	copy_box.add_child(copy)
+	var progress := Label.new()
+	progress.text = str(_state.get("summary_line", "Cycle Progress: 0 / 7"))
+	progress.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	HomeTheme.make_font_settings(progress, 13, HomeTheme.CYAN)
+	copy_box.add_child(progress)
+	var action := Label.new()
+	action.text = str(_state.get("action_line", "Today: Claim Day 1 reward"))
+	action.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	action.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(action, 12, HomeTheme.TEXT)
+	copy_box.add_child(action)
 	var days: Array = Array(_state.get("days", []))
 	if days.is_empty():
 		days = Array(PlayerProfileScript.daily_bonus_display_state(PlayerProfileScript.default_profile()).get("days", []))
@@ -58,9 +69,13 @@ func _bonus_cell(bonus: Dictionary) -> PanelContainer:
 	cell.mouse_filter = Control.MOUSE_FILTER_PASS
 	var active: bool = bool(bonus.get("active", false))
 	var claimed: bool = bool(bonus.get("claimed", false))
+	var claimed_today: bool = bool(bonus.get("claimed_today_card", false))
+	var next: bool = bool(bonus.get("next", false))
 	var locked: bool = bool(bonus.get("locked", bonus.get("future", false)))
-	cell.add_theme_stylebox_override("panel", _cell_style(active, false))
-	if claimed:
+	var highlighted: bool = bool(bonus.get("highlight", active or claimed_today))
+	var soft_highlighted: bool = bool(bonus.get("soft_highlight", next))
+	cell.add_theme_stylebox_override("panel", _cell_style(highlighted, soft_highlighted, false))
+	if claimed and not claimed_today:
 		cell.modulate.a = 0.64
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -69,15 +84,9 @@ func _bonus_cell(bonus: Dictionary) -> PanelContainer:
 	var day := Label.new()
 	day.text = str(bonus.get("label", "Day %d" % int(bonus.get("day", 1))))
 	day.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	HomeTheme.make_font_settings(day, 11, HomeTheme.PINK if active else HomeTheme.MUTED)
+	HomeTheme.make_font_settings(day, 11, HomeTheme.PINK if highlighted else HomeTheme.MUTED)
 	box.add_child(day)
-	var status_text := "-"
-	if claimed:
-		status_text = "CLAIMED"
-	elif active:
-		status_text = "CLAIM"
-	elif locked:
-		status_text = "LOCKED"
+	var status_text := str(bonus.get("status_text", "LOCKED" if locked else "-"))
 	if active:
 		var claim_button := Button.new()
 		claim_button.text = status_text
@@ -95,7 +104,14 @@ func _bonus_cell(bonus: Dictionary) -> PanelContainer:
 		var mark := Label.new()
 		mark.text = status_text
 		mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		HomeTheme.make_font_settings(mark, 13, HomeTheme.CYAN if claimed else HomeTheme.MUTED)
+		var status_color := HomeTheme.MUTED
+		if claimed_today:
+			status_color = HomeTheme.PINK
+		elif next:
+			status_color = HomeTheme.CYAN
+		elif claimed:
+			status_color = HomeTheme.MUTED
+		HomeTheme.make_font_settings(mark, 11 if status_text.length() > 9 else 13, status_color)
 		box.add_child(mark)
 	var rewards := Label.new()
 	rewards.text = _reward_text(bonus)
@@ -103,8 +119,8 @@ func _bonus_cell(bonus: Dictionary) -> PanelContainer:
 	rewards.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	HomeTheme.make_font_settings(rewards, 11, HomeTheme.TEXT)
 	box.add_child(rewards)
-	cell.mouse_entered.connect(func() -> void: cell.add_theme_stylebox_override("panel", _cell_style(active, true)))
-	cell.mouse_exited.connect(func() -> void: cell.add_theme_stylebox_override("panel", _cell_style(active, false)))
+	cell.mouse_entered.connect(func() -> void: cell.add_theme_stylebox_override("panel", _cell_style(highlighted, soft_highlighted, true)))
+	cell.mouse_exited.connect(func() -> void: cell.add_theme_stylebox_override("panel", _cell_style(highlighted, soft_highlighted, false)))
 	return cell
 
 func _reward_text(bonus: Dictionary) -> String:
@@ -131,9 +147,15 @@ func _format_number(value: int) -> String:
 		count += 1
 	return ("-" if value < 0 else "") + out
 
-func _cell_style(active: bool, hovered: bool) -> StyleBoxFlat:
-	var border := HomeTheme.PINK if active else (HomeTheme.CYAN if hovered else Color(0.2, 0.22, 0.35, 0.25))
-	var bg := Color(0.025, 0.015, 0.04, 0.8) if active else Color(0.008, 0.01, 0.025, 0.6)
+func _cell_style(highlighted: bool, soft_highlighted: bool, hovered: bool) -> StyleBoxFlat:
+	var border := Color(0.2, 0.22, 0.35, 0.25)
+	if highlighted:
+		border = HomeTheme.PINK
+	elif soft_highlighted:
+		border = Color(HomeTheme.CYAN.r, HomeTheme.CYAN.g, HomeTheme.CYAN.b, 0.55)
+	elif hovered:
+		border = Color(0.2, 0.22, 0.35, 0.45)
+	var bg := Color(0.025, 0.015, 0.04, 0.8) if highlighted else Color(0.008, 0.01, 0.025, 0.6)
 	if hovered:
 		bg = bg.lightened(0.08)
 	var style := HomeTheme.make_panel_style(bg, border, 7, 1)
@@ -141,6 +163,6 @@ func _cell_style(active: bool, hovered: bool) -> StyleBoxFlat:
 	style.content_margin_right = 8
 	style.content_margin_top = 6
 	style.content_margin_bottom = 6
-	style.shadow_color = Color(border.r, border.g, border.b, 0.20 if active or hovered else 0.0)
-	style.shadow_size = 12 if active or hovered else 0
+	style.shadow_color = Color(border.r, border.g, border.b, 0.20 if highlighted or hovered else 0.0)
+	style.shadow_size = 12 if highlighted or hovered else 0
 	return style
