@@ -12,10 +12,12 @@ const ITEMS := [
 	{ "id": "profile", "title": "PROFILE" },
 	{ "id": "settings", "title": "SETTINGS" },
 ]
+const LocalizationManagerScript := preload("res://scripts/services/localization_manager.gd")
 
 var _list: VBoxContainer
 var _items: Dictionary = {}
 var _play_submenu: VBoxContainer
+var _play_submenu_buttons: Dictionary = {}
 var active_id := "home"
 
 const DEBUG_SHOW_HIT_RECTS := false
@@ -102,7 +104,18 @@ func _ready() -> void:
 	HomeTheme.make_font_settings(version, 11, Color(0.45, 0.54, 0.74, 0.55))
 	_list.add_child(version)
 	set_active(active_id)
+	apply_localization()
 	queue_redraw()
+
+func apply_localization() -> void:
+	for item_data in ITEMS:
+		var id := str(item_data["id"])
+		if _items.has(id):
+			_items[id].setup(id, LocalizationManagerScript.tr_key("nav.%s" % id))
+	for mode_id in _play_submenu_buttons.keys():
+		var button := _play_submenu_buttons[mode_id] as Button
+		if button != null:
+			button.text = LocalizationManagerScript.tr_key("mode.%s.title" % str(mode_id))
 
 func _draw() -> void:
 	if DEBUG_SHOW_HIT_RECTS:
@@ -154,6 +167,7 @@ func _build_play_submenu() -> void:
 		button.add_theme_stylebox_override("hover", _submenu_hover_style())
 		button.add_theme_stylebox_override("pressed", _submenu_hover_style())
 		button.pressed.connect(func() -> void: play_submenu_selected.emit(mode_data["id"]))
+		_play_submenu_buttons[str(mode_data["id"])] = button
 		var indent := MarginContainer.new()
 		indent.add_theme_constant_override("margin_left", 42)
 		indent.mouse_filter = Control.MOUSE_FILTER_IGNORE

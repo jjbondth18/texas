@@ -107,6 +107,7 @@ const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const DealerLibraryScript := preload("res://scripts/data/dealer_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 const SettingsServiceScript := preload("res://scripts/services/settings_service.gd")
+const LocalizationManagerScript := preload("res://scripts/services/localization_manager.gd")
 const PokerWsClientScript := preload("res://scripts/network/poker_ws_client.gd")
 const NetworkConfigScript := preload("res://scripts/network/network_config.gd")
 const ReplayCardViewScene := preload("res://scenes/components/card_view.tscn")
@@ -230,6 +231,7 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	_local_backend = LocalMockBackendScript.new()
 	_settings_service = SettingsServiceScript.new()
+	LocalizationManagerScript.load_saved_locale(_settings_service.load_settings())
 	_build_background()
 	_build_foreground()
 	_build_layout()
@@ -403,7 +405,7 @@ func _build_layout() -> void:
 
 	_prompt = Label.new()
 	_prompt.name = "CollapsedPrompt"
-	_prompt.text = "Select PLAY to choose a table mode"
+	_prompt.text = _t("home.prompt")
 	_prompt.anchor_left = 0.5
 	_prompt.anchor_top = 1.0
 	_prompt.anchor_right = 0.5
@@ -504,7 +506,7 @@ func _build_play_panel() -> void:
 	var title := Label.new()
 	title.name = "ChooseRoomTitle"
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	title.text = "CHOOSE YOUR ROOM"
+	title.text = _t("home.choose_room")
 	HomeTheme.make_font_settings(title, 20, Color(0.9, 0.92, 1.0, 0.9))
 	content.add_child(title)
 
@@ -521,6 +523,8 @@ func _build_play_panel() -> void:
 		var card := preload("res://scenes/components/mode_card.tscn").instantiate() as ModeCard
 		var data_with_img := Dictionary(mode_data).duplicate()
 		data_with_img["image"] = MODE_IMAGES.get(data_with_img["id"], "")
+		data_with_img["title"] = _t("mode.%s.title" % str(data_with_img["id"]))
+		data_with_img["subtitle"] = _t("mode.%s.subtitle" % str(data_with_img["id"]))
 		card.configure(data_with_img)
 		card.mode_selected.connect(_on_mode_selected)
 		_mode_cards.append(card)
@@ -1402,6 +1406,12 @@ func _can_afford_buy_in_for_currency(buy_in: int, currency: String) -> bool:
 	if server_authoritative_profile and _profile_server_connected and not _profile_server_wallet_synced:
 		return false
 	return _wallet_amount_for_currency(currency) >= buy_in
+
+func _t(key: String) -> String:
+	return LocalizationManagerScript.tr_key(key)
+
+func _tf(key: String, params: Dictionary) -> String:
+	return LocalizationManagerScript.trf(key, params)
 
 func _currency_label(currency: String) -> String:
 	return "Gems" if currency in ["gem", "gems"] else "Chips"
@@ -2479,7 +2489,7 @@ func _build_events_panel() -> void:
 	margin.add_child(column)
 
 	var title := Label.new()
-	title.text = "EVENTS"
+	title.text = _t("events.title")
 	HomeTheme.make_font_settings(title, 28, Color(1.0, 1.0, 1.0, 0.96))
 	column.add_child(title)
 
@@ -2493,9 +2503,9 @@ func _build_events_panel() -> void:
 	cards.add_theme_constant_override("separation", 18)
 	cards.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.add_child(cards)
-	_add_event_card(cards, "ALL-IN SURVIVAL", "A survival poker event. Lowest stacks are eliminated every few hands. Last player standing wins.")
-	_add_event_card(cards, "LUCKY SPIN TABLE", "Special tables with random bonus pots and rotating rewards.")
-	_add_event_card(cards, "WEEKEND GEM CUP", "Scheduled gem-entry event with leaderboard rewards.")
+	_add_event_card(cards, _t("events.all_in_survival.title"), _t("events.all_in_survival.desc"))
+	_add_event_card(cards, _t("events.lucky_spin.title"), _t("events.lucky_spin.desc"))
+	_add_event_card(cards, _t("events.weekend_gem_cup.title"), _t("events.weekend_gem_cup.desc"))
 
 	var note := Label.new()
 	note.text = "Events are planned for a future update. No event tables are created and no chips or gems are charged."
@@ -2553,7 +2563,7 @@ func _add_event_card(parent: HBoxContainer, title_text: String, body_text: Strin
 		if event is InputEventMouseButton:
 			var mouse_event: InputEventMouseButton = event as InputEventMouseButton
 			if mouse_event.button_index == MOUSE_BUTTON_LEFT and mouse_event.pressed:
-				_show_toast("Coming Soon.\nThis event mode is planned for a future update.", [], 2.4)
+				_show_toast(_t("events.card_toast"), [], 2.4)
 	)
 
 func _build_room_browser_panel() -> void:
@@ -3094,12 +3104,12 @@ func _build_replay_panel() -> void:
 	header.add_child(title_box)
 	
 	var title := Label.new()
-	title.text = "REPLAY ROOM"
+	title.text = _t("replay.room_title")
 	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
 	title_box.add_child(title)
 	
 	var sub := Label.new()
-	sub.text = "HAND REVIEW & PERFORMANCE ANALYSIS"
+	sub.text = _t("replay.room_subtitle")
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	title_box.add_child(sub)
 	
@@ -3272,7 +3282,7 @@ func _render_replay_detail_error(message: String) -> void:
 	_set_replay_playback_layout(false)
 	_clear_replay_detail()
 	var title := Label.new()
-	title.text = "HAND REVIEW"
+	title.text = _tf("replay.hand_review", {"hand_id": ""}).strip_edges()
 	HomeTheme.make_font_settings(title, 16, HomeTheme.CYAN)
 	_replay_detail_vbox.add_child(title)
 	var error_label := Label.new()
@@ -3295,13 +3305,13 @@ func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
 	header.add_theme_constant_override("separation", 16)
 	_replay_detail_vbox.add_child(header)
 	var title := Label.new()
-	title.text = "HAND REVIEW - HAND %s" % hand_id
+	title.text = _tf("replay.hand_review", {"hand_id": hand_id})
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	HomeTheme.make_font_settings(title, 16, HomeTheme.CYAN)
 	header.add_child(title)
 
 	if replay_unlocked:
-		var play_button := _make_replay_primary_button("PLAY REPLAY", HomeTheme.CYAN)
+		var play_button := _make_replay_primary_button(_t("replay.play_replay"), HomeTheme.CYAN)
 		play_button.pressed.connect(_open_replay_playback.bind(record, index_entry))
 		header.add_child(play_button)
 	else:
@@ -4782,7 +4792,7 @@ func _build_store_panel() -> void:
 	var title_box := VBoxContainer.new()
 	main_vbox.add_child(title_box)
 	var title := Label.new()
-	title.text = "STORE"
+	title.text = _t("store.title")
 	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
 	title_box.add_child(title)
 	var sub := Label.new()
@@ -4916,7 +4926,7 @@ func _build_profile_panel() -> void:
 	var title_box := VBoxContainer.new()
 	main_vbox.add_child(title_box)
 	var title := Label.new()
-	title.text = "PLAYER PROFILE"
+	title.text = _t("profile.title")
 	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
 	title_box.add_child(title)
 	var sub := Label.new()
@@ -5232,16 +5242,16 @@ func _on_avatar_selected(avatar_id: String) -> void:
 
 func _show_avatar_purchase_confirm(avatar_id: String, price_chips: int) -> void:
 	var dialog := ConfirmationDialog.new()
-	dialog.title = "Confirm Purchase"
-	dialog.dialog_text = "Buy %s for %s Chips?" % [
-		AvatarLibraryScript.display_name_for_avatar_id(avatar_id),
-		_format_number(price_chips),
-	]
+	dialog.title = _t("avatar.confirm_title")
+	dialog.dialog_text = _tf("avatar.confirm_text", {
+		"name": AvatarLibraryScript.display_name_for_avatar_id(avatar_id),
+		"price": _format_number(price_chips),
+	})
 	dialog.confirmed.connect(_confirm_avatar_purchase.bind(avatar_id, price_chips, dialog))
 	dialog.canceled.connect(dialog.queue_free)
 	add_child(dialog)
-	dialog.get_ok_button().text = "CONFIRM"
-	dialog.get_cancel_button().text = "CANCEL"
+	dialog.get_ok_button().text = _t("common.confirm").to_upper()
+	dialog.get_cancel_button().text = _t("common.cancel").to_upper()
 	dialog.popup_centered(Vector2(380, 150))
 
 func _confirm_avatar_purchase(avatar_id: String, price_chips: int, dialog: ConfirmationDialog) -> void:
@@ -5321,11 +5331,11 @@ func _build_settings_panel() -> void:
 	var title_box := VBoxContainer.new()
 	main_vbox.add_child(title_box)
 	var title := Label.new()
-	title.text = "SETTINGS"
+	title.text = _t("settings.title")
 	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
 	title_box.add_child(title)
 	var sub := Label.new()
-	sub.text = "LOCAL PREFERENCES ONLY. ECONOMY, TABLE RULES, AND SERVER MODE ARE UNCHANGED."
+	sub.text = _t("settings.subtitle")
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	title_box.add_child(sub)
 
@@ -5335,41 +5345,44 @@ func _build_settings_panel() -> void:
 	content.add_theme_constant_override("separation", 10)
 	main_vbox.add_child(content)
 
-	var master_slider := _add_settings_slider(content, "AUDIO", "Master Volume", float(settings.get("master_volume", 1.0)))
-	var music_slider := _add_settings_slider(content, "", "Music Volume", float(settings.get("music_volume", 0.8)))
-	var sfx_slider := _add_settings_slider(content, "", "SFX Volume", float(settings.get("sfx_volume", 0.8)))
-	var mute_all := _add_settings_checkbox(content, "", "Mute All", bool(settings.get("mute_all", false)))
+	var master_slider := _add_settings_slider(content, _t("settings.audio"), _t("settings.master_volume"), float(settings.get("master_volume", 1.0)))
+	var music_slider := _add_settings_slider(content, "", _t("settings.music_volume"), float(settings.get("music_volume", 0.8)))
+	var sfx_slider := _add_settings_slider(content, "", _t("settings.sfx_volume"), float(settings.get("sfx_volume", 0.8)))
+	var mute_all := _add_settings_checkbox(content, "", _t("settings.mute_all"), bool(settings.get("mute_all", false)))
 
-	var show_hand_hints := _add_settings_checkbox(content, "GAMEPLAY", "Show Hand Hints", bool(settings.get("show_hand_hints", true)))
-	var confirm_big_bets := _add_settings_checkbox(content, "", "Confirm Big Bets", bool(settings.get("confirm_big_bets", true)))
-	var animation_speed := _add_settings_option(content, "", "Animation Speed", [
-		{"label": "Slow", "value": "slow"},
-		{"label": "Normal", "value": "normal"},
-		{"label": "Fast", "value": "fast"},
+	var show_hand_hints := _add_settings_checkbox(content, _t("settings.gameplay"), _t("settings.show_hand_hints"), bool(settings.get("show_hand_hints", true)))
+	var confirm_big_bets := _add_settings_checkbox(content, "", _t("settings.confirm_big_bets"), bool(settings.get("confirm_big_bets", true)))
+	var animation_speed := _add_settings_option(content, "", _t("settings.animation_speed"), [
+		{"label": _t("option.slow"), "value": "slow"},
+		{"label": _t("option.normal"), "value": "normal"},
+		{"label": _t("option.fast"), "value": "fast"},
 	], str(settings.get("animation_speed", "normal")))
 
-	var reduce_motion := _add_settings_checkbox(content, "DISPLAY", "Reduce Motion", bool(settings.get("reduce_motion", false)))
-	var ui_scale := _add_settings_option(content, "", "UI Scale", [
+	var reduce_motion := _add_settings_checkbox(content, _t("settings.display"), _t("settings.reduce_motion"), bool(settings.get("reduce_motion", false)))
+	var ui_scale := _add_settings_option(content, "", _t("settings.ui_scale"), [
 		{"label": "100%", "value": 1.0},
 		{"label": "110%", "value": 1.1},
 		{"label": "120%", "value": 1.2},
-	], float(settings.get("ui_scale", 1.0)), "Saved locally. Applied in future UI scale pass.")
+	], float(settings.get("ui_scale", 1.0)), _t("settings.ui_scale_note"))
+	var language_option := _add_settings_option(content, "", _t("settings.language"), LocalizationManagerScript.language_options(), str(settings.get("language_locale", LocalizationManagerScript.DEFAULT_LOCALE)), _t("settings.language_note"))
 
 	var footer := HBoxContainer.new()
 	footer.alignment = BoxContainer.ALIGNMENT_END
 	footer.add_theme_constant_override("separation", 10)
 	main_vbox.add_child(footer)
 
-	var reset_button := _settings_button("Reset Defaults")
+	var reset_button := _settings_button(_t("common.reset_defaults"))
 	reset_button.pressed.connect(func() -> void:
 		var defaults := _settings_service.reset_defaults()
+		LocalizationManagerScript.load_saved_locale(defaults)
 		_refresh_settings_panel()
+		_refresh_localized_ui(false)
 		_apply_settings(defaults)
-		_show_toast("Settings reset. Profile and wallet were not changed.")
+		_show_toast(_t("settings.reset"))
 	)
 	footer.add_child(reset_button)
 
-	var apply_button := _settings_button("Apply")
+	var apply_button := _settings_button(_t("common.apply"))
 	apply_button.pressed.connect(func() -> void:
 		var next_settings := {
 			"master_volume": float(master_slider.value),
@@ -5381,14 +5394,17 @@ func _build_settings_panel() -> void:
 			"animation_speed": str(animation_speed.get_meta("selected_value")),
 			"ui_scale": float(ui_scale.get_meta("selected_value")),
 			"reduce_motion": reduce_motion.button_pressed,
+			"language_locale": str(language_option.get_meta("selected_value")),
 		}
 		var saved := _settings_service.save_settings(next_settings)
+		LocalizationManagerScript.load_saved_locale(saved)
 		_apply_settings(saved)
-		_show_toast("Settings saved locally.")
+		_refresh_localized_ui(true)
+		_show_toast(_t("settings.saved"))
 	)
 	footer.add_child(apply_button)
 
-	var close_button := _settings_button("Close")
+	var close_button := _settings_button(_t("common.close"))
 	close_button.pressed.connect(func() -> void:
 		set_state(LobbyState.COLLAPSED)
 	)
@@ -5403,6 +5419,27 @@ func _refresh_settings_panel() -> void:
 	if current_state == LobbyState.SETTINGS:
 		_settings_panel.visible = true
 		_settings_panel.modulate.a = 1.0
+
+func _refresh_localized_ui(refresh_settings_panel: bool = true) -> void:
+	if _prompt != null:
+		_prompt.text = _t("home.prompt")
+	if _left_nav != null and _left_nav.has_method("apply_localization"):
+		_left_nav.call("apply_localization")
+	if _play_panel != null:
+		var title := _play_panel.get_node_or_null("ContentColumn/ChooseRoomTitle") as Label
+		if title != null:
+			title.text = _t("home.choose_room")
+	var lobby_vm := MockDataProvider.get_lobby_view_model()
+	var modes: Array = Array(lobby_vm.get("modes", []))
+	for index in range(min(_mode_cards.size(), modes.size())):
+		var mode_data := Dictionary(modes[index]).duplicate(true)
+		mode_data["image"] = MODE_IMAGES.get(mode_data["id"], "")
+		mode_data["title"] = _t("mode.%s.title" % str(mode_data["id"]))
+		mode_data["subtitle"] = _t("mode.%s.subtitle" % str(mode_data["id"]))
+		_mode_cards[index].configure(mode_data)
+	_refresh_daily_bonus_bar()
+	if refresh_settings_panel and _settings_panel != null:
+		_refresh_settings_panel()
 
 func _apply_settings(settings: Dictionary) -> void:
 	var normalized := SettingsServiceScript.normalize_settings(settings)
@@ -5427,10 +5464,10 @@ func _add_settings_checkbox(parent: VBoxContainer, section_title: String, label_
 	var row := _settings_row(parent, label_text)
 	var checkbox := CheckBox.new()
 	checkbox.button_pressed = value
-	checkbox.text = "On" if value else "Off"
+	checkbox.text = _t("option.on") if value else _t("option.off")
 	checkbox.focus_mode = Control.FOCUS_NONE
 	checkbox.toggled.connect(func(enabled: bool) -> void:
-		checkbox.text = "On" if enabled else "Off"
+		checkbox.text = _t("option.on") if enabled else _t("option.off")
 	)
 	row.add_child(checkbox)
 	return checkbox

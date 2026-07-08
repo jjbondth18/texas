@@ -7,6 +7,8 @@ class_name ActionBar
 
 signal action_pressed(action: Dictionary)
 
+const LocalizationManagerScript := preload("res://scripts/services/localization_manager.gd")
+
 var actions: Array[Dictionary] = []
 var pot_amount: int = 0
 
@@ -203,18 +205,18 @@ func set_actions(new_actions: Array, current_pot: int = 0) -> void:
 
 	if not _fold_action.is_empty():
 		_fold_button.disabled = not bool(_fold_action.get("enabled", true))
-		_fold_button.text = String(_fold_action.get("label", "FOLD")).to_upper()
+		_fold_button.text = str(_fold_action.get("label", _t("table.fold"))).to_upper()
 	else:
 		_fold_button.disabled = true
-		_fold_button.text = "FOLD"
+		_fold_button.text = _t("table.fold")
 
 	if not _check_call_action.is_empty():
 		_check_call_button.disabled = not bool(_check_call_action.get("enabled", true))
 		var amt := int(_check_call_action.get("amount", 0))
-		_check_call_button.text = "CALL %d" % amt if amt > 0 else "CHECK"
+		_check_call_button.text = "%s %d" % [_t("table.call"), amt] if amt > 0 else _t("table.check")
 	else:
 		_check_call_button.disabled = true
-		_check_call_button.text = "CHECK"
+		_check_call_button.text = _t("table.check")
 
 	if not _raise_action.is_empty():
 		var enabled := bool(_raise_action.get("enabled", true))
@@ -230,7 +232,7 @@ func set_actions(new_actions: Array, current_pot: int = 0) -> void:
 		_h_slider.min_value = min_amt
 		_h_slider.max_value = max_amt
 		_h_slider.value = min_amt
-		_raise_confirm_button.text = String(_raise_action.get("id", "raise")).to_upper()
+		_raise_confirm_button.text = _localized_action_label(str(_raise_action.get("id", "raise")))
 		_raise_value_label.text = _format_chips(min_amt)
 	else:
 		_raise_confirm_button.disabled = true
@@ -239,7 +241,7 @@ func set_actions(new_actions: Array, current_pot: int = 0) -> void:
 		_h_slider.editable = false
 		for btn in [_pot_half_button, _pot_two_thirds_button, _pot_button, _all_in_button]:
 			btn.disabled = true
-		_raise_confirm_button.text = "RAISE"
+		_raise_confirm_button.text = _t("table.raise")
 		_raise_value_label.text = "0"
 
 	if not _all_in_action.is_empty():
@@ -294,9 +296,9 @@ func _build_player_info_overlay() -> void:
 
 	_chips_caption_label = _make_label("CHIPS", 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
 	_buy_in_value_label = _make_label("20,000", 19, Color(0.93, 0.93, 1.0), HORIZONTAL_ALIGNMENT_LEFT, false)
-	_buy_in_caption_label = _make_label("BUY-IN", 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
-	_session_caption_label = _make_label("SESSION RESULT", 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
-	_winrate_caption_label = _make_label("WIN RATE", 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
+	_buy_in_caption_label = _make_label(_t("table.buy_in"), 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
+	_session_caption_label = _make_label(_t("table.session_result"), 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
+	_winrate_caption_label = _make_label(_t("table.win_rate"), 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
 	_buy_in_tile = _make_info_tile("BuyInTile", Color(0.78, 0.45, 1.0, 0.55))
 	_session_tile = _make_info_tile("SessionTile", Color(0.0, 0.95, 0.55, 0.55))
 	_winrate_tile = _make_info_tile("WinrateTile", Color(1.0, 0.0, 0.5, 0.50))
@@ -325,11 +327,11 @@ func _build_hand_panel() -> void:
 	_hand_base.name = "HandGlowBase"
 	_hand_base.add_theme_stylebox_override("panel", _make_hand_base_style())
 	$FocusZone.add_child(_hand_base)
-	_hand_title_label = _make_label("YOUR HAND", 14, Color(0.84, 0.87, 1.0), HORIZONTAL_ALIGNMENT_CENTER, true)
+	_hand_title_label = _make_label(_t("table.your_hand"), 14, Color(0.84, 0.87, 1.0), HORIZONTAL_ALIGNMENT_CENTER, true)
 	$FocusZone.add_child(_hand_title_label)
 	_hand_subtitle_label = _make_label("HIGH CARD: ACE", 12, Color(0.86, 0.80, 1.0, 0.90), HORIZONTAL_ALIGNMENT_CENTER, false)
 	$FocusZone.add_child(_hand_subtitle_label)
-	timer_label.text = "YOUR HAND"
+	timer_label.text = _t("table.your_hand")
 	timer_label.add_theme_font_override("font", _bold_font)
 	timer_label.add_theme_font_size_override("font_size", 14)
 	timer_label.add_theme_color_override("font_color", Color(0.84, 0.87, 1.0))
@@ -338,7 +340,7 @@ func _build_hand_panel() -> void:
 
 
 func _build_action_controls() -> void:
-	_bet_title_label = _make_label("BET AMOUNT", 13, Color(0.84, 0.87, 1.0), HORIZONTAL_ALIGNMENT_CENTER, true)
+	_bet_title_label = _make_label(_t("table.bet_amount"), 13, Color(0.84, 0.87, 1.0), HORIZONTAL_ALIGNMENT_CENTER, true)
 	$ControlZone.add_child(_bet_title_label)
 
 	_pot_half_button = _pot_25_button
@@ -346,7 +348,7 @@ func _build_action_controls() -> void:
 	_pot_button = _make_button("POT")
 	_all_in_button = _max_button
 	_pot_half_button.text = "1/2 POT"
-	_all_in_button.text = "ALL-IN"
+	_all_in_button.text = _t("table.all_in")
 	$ControlZone/RaiseControlPanel.add_child(_pot_two_thirds_button)
 	$ControlZone/RaiseControlPanel.add_child(_pot_button)
 
@@ -896,6 +898,27 @@ func _on_profile_hover_exited() -> void:
 	var mat = _avatar_rect.material as ShaderMaterial
 	if mat != null:
 		tween.tween_method(func(val): mat.set_shader_parameter("glow_intensify", val), 1.2, 0.6, 0.25)
+
+
+func _t(key: String) -> String:
+	return LocalizationManagerScript.tr_key(key)
+
+
+func _localized_action_label(action_id: String) -> String:
+	match action_id:
+		"fold":
+			return _t("table.fold")
+		"check":
+			return _t("table.check")
+		"call":
+			return _t("table.call")
+		"bet":
+			return _t("table.bet")
+		"raise":
+			return _t("table.raise")
+		"all_in":
+			return _t("table.all_in")
+	return action_id.to_upper()
 
 
 func _process(delta: float) -> void:

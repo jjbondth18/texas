@@ -13,6 +13,7 @@ const DEFAULTS := {
 	"animation_speed": "normal",
 	"ui_scale": 1.0,
 	"reduce_motion": false,
+	"language_locale": "en-US",
 }
 
 static var _settings_cache: Dictionary = {}
@@ -61,6 +62,20 @@ static func normalize_settings(settings: Dictionary) -> Dictionary:
 	normalized["animation_speed"] = _normalized_choice(String(normalized.get("animation_speed", "normal")), ["slow", "normal", "fast"], "normal")
 	normalized["ui_scale"] = _normalized_ui_scale(float(normalized.get("ui_scale", 1.0)))
 	normalized["reduce_motion"] = bool(normalized.get("reduce_motion", false))
+	normalized["language_locale"] = _normalized_choice(str(normalized.get("language_locale", "en-US")), [
+		"en-US",
+		"zh-CN",
+		"zh-TW",
+		"ja-JP",
+		"ko-KR",
+		"es-ES",
+		"pt-BR",
+		"fr-FR",
+		"de-DE",
+		"it-IT",
+		"ru-RU",
+		"tr-TR",
+	], "en-US")
 	return normalized
 
 static func reset_for_tests(path: String = "", remove_file: bool = true) -> void:

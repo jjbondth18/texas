@@ -2,6 +2,7 @@ extends Control
 class_name PotDisplay
 
 const POT_CHIPS_TEXTURE := preload("res://assets/ui/chips/chips_scattered.png")
+const LocalizationManagerScript := preload("res://scripts/services/localization_manager.gd")
 
 var _chip_stack: TextureRect
 var _title: Label
@@ -20,7 +21,7 @@ func _ready() -> void:
 	add_child(_chip_stack)
 	
 	_title = Label.new()
-	_title.text = "TOTAL POT"
+	_title.text = LocalizationManagerScript.tr_key("table.total_pot")
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title.add_theme_font_size_override("font_size", 13)
 	_title.add_theme_color_override("font_color", Color(0.68, 0.58, 1.0))

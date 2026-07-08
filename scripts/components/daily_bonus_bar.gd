@@ -4,6 +4,7 @@ class_name DailyBonusBar
 signal claim_pressed
 
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
+const LocalizationManagerScript := preload("res://scripts/services/localization_manager.gd")
 
 var _state: Dictionary = {}
 var _row: HBoxContainer
@@ -38,21 +39,24 @@ func _rebuild_cells() -> void:
 	copy_box.custom_minimum_size = Vector2(250, 1)
 	_row.add_child(copy_box)
 	var title := Label.new()
-	title.text = "DAILY BONUS"
+	title.text = LocalizationManagerScript.tr_key("daily.title")
 	HomeTheme.make_font_settings(title, 18, HomeTheme.TEXT)
 	copy_box.add_child(title)
 	var copy := Label.new()
-	copy.text = "Claim once per day. Complete the 7-claim cycle for bonus gems."
+	copy.text = LocalizationManagerScript.tr_key("daily.copy")
 	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	HomeTheme.make_font_settings(copy, 12, HomeTheme.MUTED)
 	copy_box.add_child(copy)
 	var progress := Label.new()
-	progress.text = str(_state.get("summary_line", "Cycle Progress: 0 / 7"))
+	progress.text = LocalizationManagerScript.trf("daily.progress", {"claimed": int(_state.get("claimed_days_in_cycle", 0))})
 	progress.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	HomeTheme.make_font_settings(progress, 13, HomeTheme.CYAN)
 	copy_box.add_child(progress)
 	var action := Label.new()
-	action.text = str(_state.get("action_line", "Today: Claim Day 1 reward"))
+	if bool(_state.get("claimed_today", false)):
+		action.text = LocalizationManagerScript.trf("daily.next_tomorrow", {"day": int(_state.get("next_reward_day", 1))})
+	else:
+		action.text = LocalizationManagerScript.trf("daily.today_claim", {"day": int(_state.get("current_day", 1))})
 	action.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	action.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	HomeTheme.make_font_settings(action, 12, HomeTheme.TEXT)
@@ -86,7 +90,7 @@ func _bonus_cell(bonus: Dictionary) -> PanelContainer:
 	day.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	HomeTheme.make_font_settings(day, 11, HomeTheme.PINK if highlighted else HomeTheme.MUTED)
 	box.add_child(day)
-	var status_text := str(bonus.get("status_text", "LOCKED" if locked else "-"))
+	var status_text := _localized_status_text(str(bonus.get("status_text", "LOCKED" if locked else "-")))
 	if active:
 		var claim_button := Button.new()
 		claim_button.text = status_text
@@ -129,12 +133,26 @@ func _reward_text(bonus: Dictionary) -> String:
 	var xp: int = int(bonus.get("xp", 0))
 	var gems: int = int(bonus.get("gems", 0))
 	if chips > 0:
-		parts.append("%s Chips" % _format_number(chips))
+		parts.append(LocalizationManagerScript.trf("daily.chips", {"amount": _format_number(chips)}))
 	if xp > 0:
-		parts.append("+%d XP" % xp)
+		parts.append(LocalizationManagerScript.trf("daily.xp", {"amount": xp}))
 	if gems > 0:
-		parts.append("+%d Gems" % gems)
+		parts.append(LocalizationManagerScript.trf("daily.gems", {"amount": gems}))
 	return "\n".join(parts)
+
+func _localized_status_text(status_text: String) -> String:
+	match status_text:
+		"CLAIM":
+			return LocalizationManagerScript.tr_key("daily.claim")
+		"CLAIMED":
+			return LocalizationManagerScript.tr_key("daily.claimed")
+		"CLAIMED TODAY":
+			return LocalizationManagerScript.tr_key("daily.claimed_today")
+		"NEXT":
+			return LocalizationManagerScript.tr_key("daily.next")
+		"LOCKED":
+			return LocalizationManagerScript.tr_key("daily.locked")
+	return status_text
 
 func _format_number(value: int) -> String:
 	var raw := str(abs(value))
