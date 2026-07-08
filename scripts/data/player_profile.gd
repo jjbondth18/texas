@@ -16,8 +16,17 @@ const DEFAULT_TOTAL_CHIPS := 24500
 const DEFAULT_GEMS := 0
 const DEFAULT_TABLE_BUY_IN := 20000
 const SCHEMA_VERSION := 3
-const DAILY_LOGIN_CHIPS := 1000
+const DAILY_LOGIN_CHIPS := 500
 const DAILY_LOGIN_XP := 25
+const DAILY_BONUS_REWARDS := [
+	{"day": 1, "chips": 500, "xp": 25, "gems": 0},
+	{"day": 2, "chips": 750, "xp": 25, "gems": 0},
+	{"day": 3, "chips": 1000, "xp": 25, "gems": 0},
+	{"day": 4, "chips": 1250, "xp": 25, "gems": 0},
+	{"day": 5, "chips": 1500, "xp": 25, "gems": 0},
+	{"day": 6, "chips": 2000, "xp": 25, "gems": 0},
+	{"day": 7, "chips": 5000, "xp": 50, "gems": 5},
+]
 const REPLAY_UNLOCK_COST_GEMS := 20
 const TITLE_UNLOCKS := [
 	{"level": 1, "title": "Rookie"},
@@ -50,6 +59,7 @@ var best_hand_desc := ""
 var best_session_profit := 0
 var last_daily_reward_date := ""
 var last_daily_reward_xp_date := ""
+var daily_bonus_claim_count := 0
 var daily_reward_claimed_today := false
 var replay_unlock_cost_gems := REPLAY_UNLOCK_COST_GEMS
 var unlocked_replay_ids: Array[String] = []
@@ -100,6 +110,7 @@ func _init(
 	best_session_profit = int(profile_stats.get("best_session_profit", 0))
 	last_daily_reward_date = String(profile_stats.get("last_daily_reward_date", ""))
 	last_daily_reward_xp_date = String(profile_stats.get("last_daily_reward_xp_date", ""))
+	daily_bonus_claim_count = int(profile_stats.get("daily_bonus_claim_count", 0))
 	daily_reward_claimed_today = bool(profile_stats.get("daily_reward_claimed_today", false))
 	replay_unlock_cost_gems = int(profile_stats.get("replay_unlock_cost_gems", REPLAY_UNLOCK_COST_GEMS))
 	unlocked_replay_ids.clear()
@@ -138,6 +149,7 @@ func to_lobby_dict() -> Dictionary:
 		"best_session_profit": best_session_profit,
 		"last_daily_reward_date": last_daily_reward_date,
 		"last_daily_reward_xp_date": last_daily_reward_xp_date,
+		"daily_bonus_claim_count": daily_bonus_claim_count,
 		"daily_reward_claimed_today": daily_reward_claimed_today,
 		"replay_unlock_cost_gems": replay_unlock_cost_gems,
 		"unlocked_replay_ids": unlocked_replay_ids.duplicate(),
@@ -222,6 +234,48 @@ static func title_for_level(value: int) -> String:
 
 static func title_for_profile(data: Dictionary) -> String:
 	return title_for_level(level_for_total_xp(get_total_xp(data)))
+
+static func daily_bonus_reward_for_day(day: int) -> Dictionary:
+	var safe_day: int = clamp(day, 1, DAILY_BONUS_REWARDS.size())
+	return Dictionary(DAILY_BONUS_REWARDS[safe_day - 1]).duplicate(true)
+
+static func next_daily_bonus_day(data: Dictionary) -> int:
+	var claim_count: int = max(int(data.get("daily_bonus_claim_count", 0)), 0)
+	return (claim_count % DAILY_BONUS_REWARDS.size()) + 1
+
+static func daily_bonus_display_state(data: Dictionary, today: String = "") -> Dictionary:
+	var date_key := today
+	if date_key == "":
+		var now: Dictionary = Time.get_datetime_dict_from_system()
+		date_key = "%04d-%02d-%02d" % [int(now.get("year", 0)), int(now.get("month", 0)), int(now.get("day", 0))]
+	var claim_count: int = max(int(data.get("daily_bonus_claim_count", 0)), 0)
+	var claimed_today: bool = String(data.get("last_daily_reward_date", "")) == date_key and bool(data.get("daily_reward_claimed_today", false))
+	var completed_in_cycle: int = claim_count % DAILY_BONUS_REWARDS.size()
+	var current_day: int = completed_in_cycle + 1
+	if claimed_today:
+		current_day = completed_in_cycle if completed_in_cycle > 0 else DAILY_BONUS_REWARDS.size()
+	var days: Array[Dictionary] = []
+	for reward_value in DAILY_BONUS_REWARDS:
+		var reward := Dictionary(reward_value)
+		var day: int = int(reward.get("day", 1))
+		var is_claimed: bool = day <= completed_in_cycle
+		var can_claim: bool = not claimed_today and day == current_day
+		days.append({
+			"day": day,
+			"label": "Day %d" % day,
+			"chips": int(reward.get("chips", 0)),
+			"xp": int(reward.get("xp", 0)),
+			"gems": int(reward.get("gems", 0)),
+			"claimed": is_claimed,
+			"active": can_claim,
+			"claimable": can_claim,
+			"future": not is_claimed and not can_claim,
+		})
+	return {
+		"current_day": current_day,
+		"claimed_today": claimed_today,
+		"days": days,
+	}
 
 static func table_buy_in(data: Dictionary) -> int:
 	return min(DEFAULT_TABLE_BUY_IN, max(get_total_chips(data), 0))

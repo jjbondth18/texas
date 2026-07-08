@@ -734,6 +734,9 @@ export class RoomManager {
       unlocked_avatar_ids: unlocked,
       daily_login_awarded: daily.daily_login_awarded,
       awarded_chips: daily.awarded_chips,
+      awarded_xp: daily.awarded_xp,
+      awarded_gems: daily.awarded_gems,
+      daily_bonus_day: daily.reward_day,
       warning: avatarId !== requestedAvatarId ? `avatar ${requestedAvatarId} is not unlocked; using default` : undefined,
     };
   }

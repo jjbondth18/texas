@@ -10,11 +10,12 @@ func _init() -> void:
 	var starting_chips: int = PlayerProfileScript.get_total_chips(before)
 	var starting_gems: int = PlayerProfileScript.get_total_gems(before)
 	var starting_xp: int = PlayerProfileScript.get_total_xp(before)
+	var reward: Dictionary = PlayerProfileScript.daily_bonus_reward_for_day(1)
 
 	var first: Dictionary = service.claim_daily_login_bonus("2026-06-28")
-	_require(PlayerProfileScript.get_total_chips(first) == starting_chips + PlayerProfileScript.DAILY_LOGIN_CHIPS, "first daily login must add chips")
+	_require(PlayerProfileScript.get_total_chips(first) == starting_chips + int(reward.get("chips", 0)), "first daily login must add chips")
 	_require(PlayerProfileScript.get_total_gems(first) == starting_gems, "daily login must not add gems")
-	_require(PlayerProfileScript.get_total_xp(first) == starting_xp + PlayerProfileScript.DAILY_LOGIN_XP, "first daily login must add XP")
+	_require(PlayerProfileScript.get_total_xp(first) == starting_xp + int(reward.get("xp", 0)), "first daily login must add XP")
 
 	var second: Dictionary = service.claim_daily_login_bonus("2026-06-28")
 	_require(PlayerProfileScript.get_total_chips(second) == PlayerProfileScript.get_total_chips(first), "daily login must not double claim on same day")

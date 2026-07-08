@@ -123,6 +123,9 @@ export interface ServerMessage {
   unlocked_avatar_ids?: string[];
   daily_login_awarded?: boolean;
   awarded_chips?: number;
+  awarded_xp?: number;
+  awarded_gems?: number;
+  daily_bonus_day?: number;
   warning?: string;
   avatar_catalog?: AvatarCatalogItemSnapshot[];
   tables?: PublicTableSnapshot[];

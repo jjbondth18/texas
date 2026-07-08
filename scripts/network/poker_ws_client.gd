@@ -11,6 +11,7 @@ signal hello_received(player_id: String, room_id: String)
 signal profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_ids: Array)
 signal wallet_synced(wallet: Dictionary)
 signal daily_login_awarded(chips: int)
+signal daily_bonus_awarded(chips: int, xp: int, gems: int)
 signal avatar_catalog_received(catalog: Array)
 signal table_list_received(tables: Array)
 signal table_created(room_id: String, table_info: Dictionary)
@@ -240,9 +241,16 @@ func _emit_profile_payload(message: Dictionary) -> void:
 	var profile := Dictionary(message.get("profile", {})).duplicate(true)
 	var wallet := Dictionary(message.get("wallet", {})).duplicate(true)
 	var unlocked := Array(message.get("unlocked_avatar_ids", []))
+	if message.has("daily_login_awarded"):
+		profile["daily_reward_claimed_today"] = true
+		profile["last_daily_reward_date"] = Time.get_date_string_from_system()
 	if not profile.is_empty() or not wallet.is_empty() or not unlocked.is_empty():
 		profile_synced.emit(profile, wallet, unlocked)
 	if not wallet.is_empty():
 		wallet_synced.emit(wallet)
 	if bool(message.get("daily_login_awarded", false)):
-		daily_login_awarded.emit(int(message.get("awarded_chips", 0)))
+		var awarded_chips: int = int(message.get("awarded_chips", 0))
+		var awarded_xp: int = int(message.get("awarded_xp", 25))
+		var awarded_gems: int = int(message.get("awarded_gems", 0))
+		daily_login_awarded.emit(awarded_chips)
+		daily_bonus_awarded.emit(awarded_chips, awarded_xp, awarded_gems)

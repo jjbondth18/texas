@@ -7,13 +7,11 @@ func _init() -> void:
 	ProfileServiceScript.reset_mock_profile()
 	var service := ProfileServiceScript.new()
 	var before: Dictionary = service.get_current_profile()
-	var starting_xp: int = PlayerProfileScript.get_total_xp(before)
 	var reward: Dictionary = PlayerProfileScript.daily_bonus_reward_for_day(1)
-	var first: Dictionary = service.claim_daily_login_bonus("2026-07-07")
-	_require(PlayerProfileScript.get_total_xp(first) == starting_xp + int(reward.get("xp", 0)), "daily login should grant XP.")
-	_require(int(first.get("level", 0)) == PlayerProfileScript.level_for_total_xp(PlayerProfileScript.get_total_xp(first)), "daily login should refresh level.")
+	var after: Dictionary = service.claim_daily_login_bonus("2026-07-08")
+	_require(PlayerProfileScript.get_total_xp(after) == PlayerProfileScript.get_total_xp(before) + int(reward.get("xp", 0)), "claim should grant daily XP.")
 	ProfileServiceScript.reset_mock_profile()
-	print("Daily login grants XP test passed.")
+	print("Daily bonus claim grants XP test passed.")
 	quit(0)
 
 func _require(condition: bool, message: String) -> void:

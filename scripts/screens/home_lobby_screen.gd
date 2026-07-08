@@ -282,10 +282,9 @@ func _ready() -> void:
 	_player_profile = ProfileServiceScript.new().get_current_profile()
 	if server_authoritative_profile:
 		_connect_profile_server()
-	else:
-		_claim_daily_login_bonus()
 	lobby_vm["player"] = _player_profile
 	_top_bar.configure(_player_profile)
+	_refresh_daily_bonus_bar()
 	set_state(LobbyState.COLLAPSED, false)
 	call_deferred("_show_pending_launch_error")
 	_handle_runtime_capture_args()
@@ -534,6 +533,8 @@ func _build_play_panel() -> void:
 	_daily_bonus.name = "DailyBonusBar"
 	_daily_bonus.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_child(_daily_bonus)
+	if _daily_bonus.has_signal("claim_pressed"):
+		_daily_bonus.connect("claim_pressed", Callable(self, "_on_daily_bonus_claim_pressed"))
 
 
 func _build_quick_play_setup_panel() -> void:
@@ -1411,7 +1412,18 @@ func _claim_daily_login_bonus() -> void:
 	var service := ProfileServiceScript.new()
 	_player_profile = service.claim_daily_login_bonus()
 	if service.was_last_daily_bonus_claimed():
-		_show_toast("Daily Login Bonus\n+%s Chips\n+%d XP", [_format_number(PlayerProfileScript.DAILY_LOGIN_CHIPS), PlayerProfileScript.DAILY_LOGIN_XP], 2.6)
+		var reward: Dictionary = service.get_last_daily_bonus_reward()
+		_show_toast(_daily_bonus_toast_text("Daily Bonus Claimed", reward), [], 3.0)
+		if _top_bar != null:
+			_top_bar.configure(_player_profile)
+		_refresh_daily_bonus_bar()
+		_refresh_profile_panel()
+
+func _on_daily_bonus_claim_pressed() -> void:
+	if server_authoritative_profile:
+		_show_toast("Daily Bonus\nServer rewards are checked on login.", [], 2.4)
+		return
+	_claim_daily_login_bonus()
 
 func _connect_profile_server() -> void:
 	if _profile_ws_client != null:
@@ -1423,7 +1435,7 @@ func _connect_profile_server() -> void:
 	_profile_ws_client.disconnected.connect(_on_profile_server_disconnected)
 	_profile_ws_client.profile_synced.connect(_on_profile_server_profile_synced)
 	_profile_ws_client.wallet_synced.connect(_on_profile_server_wallet_synced)
-	_profile_ws_client.daily_login_awarded.connect(_on_profile_server_daily_login_awarded)
+	_profile_ws_client.daily_bonus_awarded.connect(_on_profile_server_daily_login_awarded)
 	_profile_ws_client.avatar_catalog_received.connect(_on_avatar_catalog_received)
 	_profile_ws_client.table_list_received.connect(_on_server_table_list_received)
 	_profile_ws_client.table_created.connect(_on_server_table_created)
@@ -1461,11 +1473,11 @@ func _on_profile_server_wallet_synced(wallet: Dictionary) -> void:
 	_profile_server_wallet_synced = true
 	_refresh_profile_views_from_server()
 
-func _on_profile_server_daily_login_awarded(chips: int) -> void:
+func _on_profile_server_daily_login_awarded(chips: int, xp: int = PlayerProfileScript.DAILY_LOGIN_XP, gems: int = 0) -> void:
 	if chips > 0:
-		_player_profile = ProfileServiceScript.new().apply_server_daily_login_xp_award()
+		_player_profile = ProfileServiceScript.new().apply_server_daily_login_xp_award("", xp, 0)
 		_refresh_profile_views_from_server()
-		_show_toast("Daily Bonus\n+%s Chips\n+%d XP", [_format_number(chips), PlayerProfileScript.DAILY_LOGIN_XP], 2.6)
+		_show_toast(_daily_bonus_toast_text("Daily Bonus Claimed", {"chips": chips, "xp": xp, "gems": gems}), [], 3.0)
 
 func _on_avatar_catalog_received(catalog: Array) -> void:
 	_avatar_catalog = catalog.duplicate(true)
@@ -1501,6 +1513,7 @@ func _server_lobby_error_text(message: String) -> String:
 func _refresh_profile_views_from_server() -> void:
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
+	_refresh_daily_bonus_bar()
 	_refresh_profile_panel()
 	if _quick_play_setup_panel != null and _quick_play_setup_panel.visible:
 		_update_quick_play_setup_profile()
@@ -2072,7 +2085,29 @@ func update_mode_cards(_data: Array) -> void:
 	pass
 
 func update_daily_bonus(_data: Dictionary) -> void:
-	pass
+	_refresh_daily_bonus_bar()
+
+func _refresh_daily_bonus_bar() -> void:
+	if _daily_bonus == null:
+		return
+	if _daily_bonus.has_method("configure"):
+		_daily_bonus.call("configure", PlayerProfileScript.daily_bonus_display_state(_player_profile))
+
+func _daily_bonus_toast_text(title: String, reward: Dictionary) -> String:
+	var parts: Array[String] = [title]
+	var day: int = int(reward.get("day", 0))
+	if day > 0:
+		parts.append("Day %d" % day)
+	var chips: int = int(reward.get("chips", 0))
+	var xp: int = int(reward.get("xp", 0))
+	var gems: int = int(reward.get("gems", 0))
+	if chips > 0:
+		parts.append("+%s Chips" % _format_number(chips))
+	if xp > 0:
+		parts.append("+%d XP" % xp)
+	if gems > 0:
+		parts.append("+%d Gems" % gems)
+	return "\n".join(parts)
 
 func _build_cta_button() -> void:
 	_cta_button = Button.new()
@@ -5059,24 +5094,62 @@ func _on_avatar_selected(avatar_id: String) -> void:
 			if PlayerProfileScript.get_total_chips(_player_profile) < server_price_chips:
 				_show_toast("Avatar\nNot enough chips.\nNeed %s Chips.", [_format_number(server_price_chips)], 2.4)
 				return
-			_profile_ws_client.buy_avatar(_server_avatar_id_for_client(avatar_id))
-			_show_toast("Avatar\nPurchase request sent...", [], 1.4)
+			_show_avatar_purchase_confirm(avatar_id, server_price_chips)
 		return
 	var service := ProfileServiceScript.new()
 	var local_unlocked: Array = Array(_player_profile.get("unlocked_avatar_ids", []))
 	if local_unlocked.has(avatar_id):
 		_player_profile = service.select_avatar(avatar_id)
 	else:
-		var result: Dictionary = service.purchase_avatar_with_chips(avatar_id, _avatar_price_chips(avatar_id))
-		_player_profile = Dictionary(result.get("profile", service.get_current_profile()))
-		if not bool(result.get("success", false)):
-			_show_toast("Avatar\nNot enough chips.\nNeed %s Chips.", [_format_number(_avatar_price_chips(avatar_id))], 2.4)
-			_refresh_profile_panel()
+		var local_price_chips: int = _avatar_price_chips(avatar_id)
+		if PlayerProfileScript.get_total_chips(_player_profile) < local_price_chips:
+			_show_toast("Avatar\nNot enough chips.\nNeed %s Chips.", [_format_number(local_price_chips)], 2.4)
 			return
-		_show_toast("Avatar purchased.\n%s selected.", [AvatarLibraryScript.display_name_for_avatar_id(avatar_id)], 2.2)
+		_show_avatar_purchase_confirm(avatar_id, local_price_chips)
+		return
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
 	_refresh_profile_panel()
+
+func _show_avatar_purchase_confirm(avatar_id: String, price_chips: int) -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Confirm Purchase"
+	dialog.dialog_text = "Buy %s for %s Chips?" % [
+		AvatarLibraryScript.display_name_for_avatar_id(avatar_id),
+		_format_number(price_chips),
+	]
+	dialog.confirmed.connect(_confirm_avatar_purchase.bind(avatar_id, price_chips, dialog))
+	dialog.canceled.connect(dialog.queue_free)
+	add_child(dialog)
+	dialog.get_ok_button().text = "CONFIRM"
+	dialog.get_cancel_button().text = "CANCEL"
+	dialog.popup_centered(Vector2(380, 150))
+
+func _confirm_avatar_purchase(avatar_id: String, price_chips: int, dialog: ConfirmationDialog) -> void:
+	if PlayerProfileScript.get_total_chips(_player_profile) < price_chips:
+		_show_toast("Avatar\nNot enough chips.\nNeed %s Chips.", [_format_number(price_chips)], 2.4)
+		if dialog != null:
+			dialog.queue_free()
+		_refresh_profile_panel()
+		return
+	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
+		_profile_ws_client.buy_avatar(_server_avatar_id_for_client(avatar_id))
+		_show_toast("Avatar\nPurchase request sent...", [], 1.4)
+		if dialog != null:
+			dialog.queue_free()
+		return
+	var service := ProfileServiceScript.new()
+	var result: Dictionary = service.purchase_avatar_with_chips(avatar_id, price_chips)
+	_player_profile = Dictionary(result.get("profile", service.get_current_profile()))
+	if bool(result.get("success", false)):
+		_show_toast("Avatar purchased.\n%s selected.", [AvatarLibraryScript.display_name_for_avatar_id(avatar_id)], 2.2)
+	else:
+		_show_toast("Avatar\nNot enough chips.\nNeed %s Chips.", [_format_number(price_chips)], 2.4)
+	if _top_bar != null:
+		_top_bar.configure(_player_profile)
+	_refresh_profile_panel()
+	if dialog != null:
+		dialog.queue_free()
 
 func _avatar_price_text(avatar_id: String) -> String:
 	return "%s Chips" % _format_number(_avatar_price_chips(avatar_id))

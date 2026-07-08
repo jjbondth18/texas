@@ -169,10 +169,14 @@ Gems are reserved for replay unlocks and future premium features. Ordinary Chara
 
 Profile progression is deliberately lightweight:
 
-- Daily login grants the existing chip bonus plus `25 XP`.
-- XP currently comes only from daily login.
+- Daily Bonus is claimed from Home with the `CLAIM` button.
+- Daily Bonus grants Chips and XP on Days 1-6.
+- Day 7 grants `5,000 Chips`, `50 XP`, and `5 Gems`.
+- After Day 7, the next claim loops back to Day 1.
+- XP currently comes only from Daily Bonus.
 - Level is calculated as `floor(total_xp / 100) + 1`.
 - The highest title unlocked by the player's level is shown on the Profile page.
 - Titles are cosmetic profile labels only. They are not shown at the poker table and do not affect gameplay, matchmaking, cards, betting, luck, rewards, or economy.
+- Ordinary Character Avatars use Chips only and require a Confirm Purchase dialog before chips are deducted.
 
 See `docs/profile_progression.md` for the title table and avatar purchase rules.

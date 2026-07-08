@@ -13,9 +13,11 @@ func _initialize() -> void:
 	await process_frame
 
 	var toast_label: Label = home.get("_toast_label") as Label
-	_require(toast_label != null and toast_label.visible, "Daily bonus toast must be shown on first home entry.")
-	_require(toast_label.text.find("Daily Login Bonus") != -1, "Daily bonus toast must name the bonus.")
-	_require(toast_label.text.find("+1,000 Chips") != -1, "Daily bonus toast must show +1,000 Chips.")
+	var daily_texts: String = _collect_text(home.get("_daily_bonus") as Node)
+	_require(daily_texts.find("DAILY BONUS") != -1, "Daily bonus bar must be shown on home entry.")
+	_require(daily_texts.find("CLAIM") != -1, "Daily bonus bar must show a CLAIM action instead of auto-claiming.")
+	_require(daily_texts.find("500 Chips") != -1, "Daily bonus Day 1 must show 500 Chips.")
+	_require(toast_label == null or not toast_label.visible, "Daily bonus must not auto-claim on first home entry.")
 
 	home.call("_on_mode_selected", "quick_play")
 	await process_frame

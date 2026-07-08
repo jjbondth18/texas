@@ -96,15 +96,8 @@ static func _mock_main_nav_items() -> Array[Dictionary]:
 	]
 
 static func _mock_daily_bonus():
-	return DailyBonusStateScript.new(4, [
-		{"day": 1, "reward": 500, "claimed": true},
-		{"day": 2, "reward": 750, "claimed": true},
-		{"day": 3, "reward": 1000, "claimed": true},
-		{"day": 4, "reward": 1500, "claimed": false},
-		{"day": 5, "reward": 2000, "claimed": false},
-		{"day": 6, "reward": 3000, "claimed": false},
-		{"day": 7, "reward": 5000, "claimed": false},
-	])
+	var state: Dictionary = PlayerProfileScript.daily_bonus_display_state(_mock_player_profile().to_dict())
+	return DailyBonusStateScript.new(int(state.get("current_day", 1)), Array(state.get("days", [])))
 
 static func _mock_room_infos() -> Array:
 	return [

@@ -11,6 +11,7 @@ static var _saved_profile: Dictionary = {}
 static var _loaded_save_suffix := ""
 static var _last_unlocked_avatar_ids: Array[String] = []
 static var _last_daily_bonus_claimed := false
+static var _last_daily_bonus_reward: Dictionary = {}
 static var _server_profile_synced := false
 
 func get_current_profile() -> Dictionary:
@@ -55,7 +56,7 @@ func apply_server_profile_snapshot(profile_snapshot: Dictionary, wallet_snapshot
 			profile["avatar_id"] = normalized_unlocked[0]
 			profile["avatar"] = AvatarLibraryScript.avatar_path(normalized_unlocked[0])
 	if daily_login_awarded:
-		_grant_daily_login_xp(profile, _today_key())
+		_grant_daily_login_xp(profile, _today_key(), PlayerProfileScript.DAILY_LOGIN_XP)
 		profile["last_daily_reward_date"] = _today_key()
 		profile["daily_reward_claimed_today"] = true
 	_server_profile_synced = true
@@ -283,25 +284,44 @@ func claim_daily_login_bonus(today: String = "") -> Dictionary:
 	var profile := get_current_profile()
 	if _server_profile_synced:
 		_last_daily_bonus_claimed = false
+		_last_daily_bonus_reward = {}
 		return profile
 	var date_key: String = today if today != "" else _today_key()
 	var already_claimed: bool = String(profile.get("last_daily_reward_date", "")) == date_key and bool(profile.get("daily_reward_claimed_today", false))
 	_last_daily_bonus_claimed = false
+	_last_daily_bonus_reward = {}
 	if already_claimed:
 		return profile
+	var reward_day: int = PlayerProfileScript.next_daily_bonus_day(profile)
+	var reward: Dictionary = PlayerProfileScript.daily_bonus_reward_for_day(reward_day)
+	var chips_awarded: int = int(reward.get("chips", 0))
+	var xp_awarded: int = int(reward.get("xp", 0))
+	var gems_awarded: int = int(reward.get("gems", 0))
 	var total_chips: int = PlayerProfileScript.get_total_chips(profile)
-	profile["total_chips"] = total_chips + PlayerProfileScript.DAILY_LOGIN_CHIPS
+	profile["total_chips"] = total_chips + chips_awarded
 	profile["chips"] = int(profile["total_chips"])
-	_grant_daily_login_xp(profile, date_key)
+	profile["gems"] = PlayerProfileScript.get_total_gems(profile) + gems_awarded
+	_grant_daily_login_xp(profile, date_key, xp_awarded)
+	profile["daily_bonus_claim_count"] = max(int(profile.get("daily_bonus_claim_count", 0)), 0) + 1
 	profile["last_daily_reward_date"] = date_key
 	profile["daily_reward_claimed_today"] = true
 	save_current_profile(profile)
 	_last_daily_bonus_claimed = true
-	print("Daily Login Bonus: +%d Chips, +%d XP" % [PlayerProfileScript.DAILY_LOGIN_CHIPS, PlayerProfileScript.DAILY_LOGIN_XP])
+	_last_daily_bonus_reward = {
+		"day": reward_day,
+		"chips": chips_awarded,
+		"xp": xp_awarded,
+		"gems": gems_awarded,
+		"profile": get_current_profile(),
+	}
+	print("Daily Bonus Day %d: +%d Chips, +%d XP, +%d Gems" % [reward_day, chips_awarded, xp_awarded, gems_awarded])
 	return get_current_profile()
 
 func was_last_daily_bonus_claimed() -> bool:
 	return _last_daily_bonus_claimed
+
+func get_last_daily_bonus_reward() -> Dictionary:
+	return _last_daily_bonus_reward.duplicate(true)
 
 func get_last_unlocked_avatar_ids() -> Array[String]:
 	return _last_unlocked_avatar_ids.duplicate()
@@ -311,6 +331,7 @@ static func reset_mock_profile() -> void:
 	_loaded_save_suffix = IdentityServiceScript.dev_save_suffix()
 	_last_unlocked_avatar_ids.clear()
 	_last_daily_bonus_claimed = false
+	_last_daily_bonus_reward = {}
 	_server_profile_synced = false
 
 func _unlock_avatars_for_session(profile: Dictionary, session_result: Dictionary, previous_sessions: int, previous_hands_won: int) -> Array[String]:
@@ -336,20 +357,22 @@ func _try_unlock_avatar_for_rule(rule_id: String, unlocked: Array, new_ids: Arra
 	unlocked.append(avatar_id)
 	new_ids.append(avatar_id)
 
-func apply_server_daily_login_xp_award(today: String = "") -> Dictionary:
+func apply_server_daily_login_xp_award(today: String = "", xp_awarded: int = PlayerProfileScript.DAILY_LOGIN_XP, gems_awarded: int = 0) -> Dictionary:
 	var profile := get_current_profile()
 	var date_key: String = today if today != "" else _today_key()
-	_grant_daily_login_xp(profile, date_key)
+	_grant_daily_login_xp(profile, date_key, xp_awarded)
+	if gems_awarded > 0:
+		profile["gems"] = PlayerProfileScript.get_total_gems(profile) + gems_awarded
 	profile["last_daily_reward_date"] = date_key
 	profile["daily_reward_claimed_today"] = true
 	save_current_profile(profile)
 	return get_current_profile()
 
-func _grant_daily_login_xp(profile: Dictionary, date_key: String) -> void:
+func _grant_daily_login_xp(profile: Dictionary, date_key: String, xp_awarded: int) -> void:
 	if String(profile.get("last_daily_reward_xp_date", "")) == date_key:
 		_refresh_progression_fields(profile)
 		return
-	var total_xp: int = PlayerProfileScript.get_total_xp(profile) + PlayerProfileScript.DAILY_LOGIN_XP
+	var total_xp: int = PlayerProfileScript.get_total_xp(profile) + max(xp_awarded, 0)
 	profile["total_xp"] = total_xp
 	profile["last_daily_reward_xp_date"] = date_key
 	_refresh_progression_fields(profile)
