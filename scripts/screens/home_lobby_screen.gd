@@ -567,7 +567,7 @@ func _build_quick_play_setup_panel() -> void:
 	margin.add_child(column)
 
 	var title := Label.new()
-	title.text = "QUICK PLAY"
+	title.text = _t("mode.quick_play.title")
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	HomeTheme.make_font_settings(title, 28, HomeTheme.TEXT)
 	column.add_child(title)
@@ -612,15 +612,15 @@ func _build_quick_play_setup_panel() -> void:
 	_quick_chip_settings_container.add_theme_constant_override("separation", 12)
 	column.add_child(_quick_chip_settings_container)
 	var chip_mode_note := Label.new()
-	chip_mode_note.text = "Quickly join the best available public chip table with your selected stakes.\nIf no matching table is available, a new public table will be created."
+	chip_mode_note.text = _t("quick.copy_chip")
 	chip_mode_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	chip_mode_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	chip_mode_note.custom_minimum_size = Vector2(520, 0)
 	HomeTheme.make_font_settings(chip_mode_note, 13, HomeTheme.MUTED)
 	_quick_chip_settings_container.add_child(chip_mode_note)
-	_build_quick_setup_section(_quick_chip_settings_container, "BUY-IN", _quick_buy_in_buttons, CHIP_BUY_IN_OPTIONS, _select_quick_buy_in)
+	_build_quick_setup_section(_quick_chip_settings_container, "buy_in", _t("common.buy_in").to_upper(), _quick_buy_in_buttons, CHIP_BUY_IN_OPTIONS, _select_quick_buy_in)
 	_build_quick_blinds_section(_quick_chip_settings_container, CHIP_BLIND_OPTIONS, _quick_blinds_buttons)
-	_build_quick_setup_section(_quick_chip_settings_container, "HAND COUNT", _quick_hand_count_buttons, [5, 10, 20, 999], _select_quick_hand_count)
+	_build_quick_setup_section(_quick_chip_settings_container, "hand_count", _t("common.hand_count").to_upper(), _quick_hand_count_buttons, [5, 10, 20, 999], _select_quick_hand_count)
 
 	_build_quick_gem_settings(column)
 
@@ -631,7 +631,7 @@ func _build_quick_play_setup_panel() -> void:
 
 	var start_button := Button.new()
 	_quick_start_button = start_button
-	start_button.text = "FIND TABLE"
+	start_button.text = _t("common.find_table").to_upper()
 	start_button.custom_minimum_size = Vector2(180, 48)
 	start_button.focus_mode = Control.FOCUS_NONE
 	start_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -642,7 +642,7 @@ func _build_quick_play_setup_panel() -> void:
 	button_row.add_child(start_button)
 
 	var cancel_button := Button.new()
-	cancel_button.text = "CANCEL"
+	cancel_button.text = _t("common.cancel").to_upper()
 	cancel_button.custom_minimum_size = Vector2(140, 48)
 	cancel_button.focus_mode = Control.FOCUS_NONE
 	cancel_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -659,8 +659,8 @@ func _build_quick_mode_switch(parent: VBoxContainer) -> void:
 	switch_row.add_theme_constant_override("separation", 8)
 	parent.add_child(switch_row)
 
-	_add_quick_mode_button(switch_row, "chip", "CHIP TABLE")
-	_add_quick_mode_button(switch_row, "gem", "GEM MATCH")
+	_add_quick_mode_button(switch_row, "chip", _t("mode.chip_table").to_upper())
+	_add_quick_mode_button(switch_row, "gem", _t("mode.gem_match").to_upper())
 
 
 func _add_quick_mode_button(parent: HBoxContainer, mode: String, label: String) -> void:
@@ -682,15 +682,15 @@ func _build_quick_gem_settings(parent: VBoxContainer) -> void:
 	parent.add_child(_quick_gem_placeholder_container)
 
 	var detail_label := Label.new()
-	detail_label.text = "Quickly join the best available public gem table with your selected stakes.\nIf no matching table is available, a new public gem table will be created."
+	detail_label.text = _t("quick.copy_gem")
 	detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	detail_label.custom_minimum_size = Vector2(520, 0)
 	HomeTheme.make_font_settings(detail_label, 13, HomeTheme.MUTED)
 	_quick_gem_placeholder_container.add_child(detail_label)
-	_build_quick_setup_section(_quick_gem_placeholder_container, "BUY-IN", _quick_gem_buy_in_buttons, GEM_BUY_IN_OPTIONS, _select_quick_buy_in)
+	_build_quick_setup_section(_quick_gem_placeholder_container, "buy_in", _t("common.buy_in").to_upper(), _quick_gem_buy_in_buttons, GEM_BUY_IN_OPTIONS, _select_quick_buy_in)
 	_build_quick_blinds_section(_quick_gem_placeholder_container, GEM_BLIND_OPTIONS, _quick_gem_blinds_buttons)
-	_build_quick_setup_section(_quick_gem_placeholder_container, "HAND COUNT", _quick_gem_hand_count_buttons, [5, 10, 20, 999], _select_quick_hand_count)
+	_build_quick_setup_section(_quick_gem_placeholder_container, "hand_count", _t("common.hand_count").to_upper(), _quick_gem_hand_count_buttons, [5, 10, 20, 999], _select_quick_hand_count)
 
 
 func _build_table_creation_setup_panels() -> void:
@@ -768,7 +768,7 @@ func _render_table_creation_setup_panel(panel: PanelContainer, public_table: boo
 	margin.add_child(column)
 
 	var title := Label.new()
-	title.text = "CREATE PUBLIC TABLE" if public_table else "CREATE PRIVATE ROOM"
+	title.text = _t("setup.create_public_table") if public_table else _t("setup.create_private_room")
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	HomeTheme.make_font_settings(title, 28, HomeTheme.TEXT)
 	column.add_child(title)
@@ -783,27 +783,27 @@ func _render_table_creation_setup_panel(panel: PanelContainer, public_table: boo
 	var can_afford_buy_in := (not (public_table and gem_selected)) and _can_afford_buy_in_for_currency(buy_in, selected_currency)
 	if public_table:
 		if gem_selected:
-			mode_note.text = "Use Quick Gem to automatically match public gem tables."
+			mode_note.text = _t("setup.public_gem_quick_note")
 		elif not can_afford_buy_in:
-			mode_note.text = "Not enough server wallet chips. Required: %s. Wallet: %s." % [_format_number(buy_in), _format_number(wallet_amount)]
+			mode_note.text = _tf("table.not_enough_buyin_chips_detail", {"required": _format_number(buy_in), "wallet": _format_number(wallet_amount)})
 		else:
-			mode_note.text = "Create a public chip table with your selected stakes."
+			mode_note.text = _t("setup.public_chip_note")
 	else:
 		if gem_selected:
-			mode_note.text = "Private gem room. Share the room code with friends."
+			mode_note.text = _t("setup.private_gem_note")
 		elif not can_afford_buy_in:
-			mode_note.text = "Not enough server wallet chips. Required: %s. Wallet: %s." % [_format_number(buy_in), _format_number(wallet_amount)]
+			mode_note.text = _tf("table.not_enough_buyin_chips_detail", {"required": _format_number(buy_in), "wallet": _format_number(wallet_amount)})
 		else:
-			mode_note.text = "Private chip table. Share the room code with friends."
+			mode_note.text = _t("setup.private_chip_note")
 	mode_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	mode_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	mode_note.custom_minimum_size = Vector2(520, 0)
 	HomeTheme.make_font_settings(mode_note, 13, HomeTheme.MUTED)
 	column.add_child(mode_note)
 
-	_add_table_setup_option_row(column, values, "buy_in", "BUY-IN" if public_table else "STARTING STACK / BUY-IN", GEM_BUY_IN_OPTIONS if gem_selected else CHIP_BUY_IN_OPTIONS, public_table)
+	_add_table_setup_option_row(column, values, "buy_in", _t("common.buy_in").to_upper() if public_table else _t("setup.starting_stack_buy_in"), GEM_BUY_IN_OPTIONS if gem_selected else CHIP_BUY_IN_OPTIONS, public_table)
 	_add_blinds_setup_option_row(column, values, public_table, GEM_BLIND_OPTIONS if gem_selected else CHIP_BLIND_OPTIONS)
-	_add_table_setup_option_row(column, values, "max_hands", "HAND COUNT", [5, 10, 20, 999], public_table)
+	_add_table_setup_option_row(column, values, "max_hands", _t("common.hand_count").to_upper(), [5, 10, 20, 999], public_table)
 
 	var buttons := HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -811,7 +811,7 @@ func _render_table_creation_setup_panel(panel: PanelContainer, public_table: boo
 	column.add_child(buttons)
 
 	var confirm := Button.new()
-	confirm.text = "COMING SOON" if public_table and gem_selected else ("CREATE TABLE" if public_table else "CREATE ROOM")
+	confirm.text = _t("common.coming_soon").to_upper() if public_table and gem_selected else (_t("common.create_table").to_upper() if public_table else _t("common.create_room").to_upper())
 	confirm.custom_minimum_size = Vector2(180, 48)
 	confirm.focus_mode = Control.FOCUS_NONE
 	confirm.disabled = (public_table and gem_selected) or not can_afford_buy_in
@@ -825,7 +825,7 @@ func _render_table_creation_setup_panel(panel: PanelContainer, public_table: boo
 	buttons.add_child(confirm)
 
 	var cancel := Button.new()
-	cancel.text = "CANCEL"
+	cancel.text = _t("common.cancel").to_upper()
 	cancel.custom_minimum_size = Vector2(128, 44)
 	cancel.focus_mode = Control.FOCUS_NONE
 	cancel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -841,7 +841,7 @@ func _add_table_setup_mode_switch(parent: VBoxContainer, public_table: bool, sel
 	switch_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	switch_row.add_theme_constant_override("separation", 8)
 	parent.add_child(switch_row)
-	var chip_button: Button = _table_setup_mode_button("CHIP TABLE", selected_mode == "chip", false)
+	var chip_button: Button = _table_setup_mode_button(_t("mode.chip_table").to_upper(), selected_mode == "chip", false)
 	chip_button.pressed.connect(func() -> void:
 		if public_table:
 			_public_table_setup_mode = "chip"
@@ -854,11 +854,11 @@ func _add_table_setup_mode_switch(parent: VBoxContainer, public_table: bool, sel
 	switch_row.add_child(chip_button)
 
 	var gem_disabled := public_table
-	var gem_button: Button = _table_setup_mode_button("GEM MATCH" if public_table else "GEM ROOM", selected_mode == "gem", gem_disabled)
-	gem_button.tooltip_text = "Use Quick Gem for public gem matchmaking." if public_table else "Create a private gem room."
+	var gem_button: Button = _table_setup_mode_button(_t("mode.gem_match").to_upper() if public_table else _t("mode.gem_room").to_upper(), selected_mode == "gem", gem_disabled)
+	gem_button.tooltip_text = _t("setup.public_gem_quick_note") if public_table else _t("setup.private_gem_note")
 	gem_button.pressed.connect(func() -> void:
 		if public_table:
-			_show_toast("Use Quick Gem for public gem matchmaking.")
+			_show_toast(_t("setup.public_gem_quick_note"))
 			return
 		_private_room_setup_mode = "gem"
 		_apply_table_setup_mode_defaults(_private_room_setup_values, "gem")
@@ -918,7 +918,7 @@ func _add_table_setup_profile_row(parent: VBoxContainer, currency: String = "chi
 
 	var chips_label := Label.new()
 	chips_label.text = "%s: %s" % [
-		("Server Wallet %s" if server_authoritative_profile and _profile_server_connected else "Wallet %s") % _currency_label(currency),
+		(_t("common.server_wallet_currency") if server_authoritative_profile and _profile_server_connected else _t("common.wallet_currency")) % _currency_label(currency),
 		_format_number(_wallet_amount_for_currency(currency)),
 	]
 	HomeTheme.make_font_settings(chips_label, 14, HomeTheme.GOLD)
@@ -963,12 +963,12 @@ func _add_table_setup_option_row(parent: VBoxContainer, values: Dictionary, key:
 		button.disabled = disabled
 		button.mouse_default_cursor_shape = Control.CURSOR_ARROW if disabled else Control.CURSOR_POINTING_HAND
 		if disabled:
-			button.tooltip_text = "Not enough %s." % _currency_label(currency).to_lower()
+			button.tooltip_text = _tf("common.not_enough_currency", {"currency": _currency_label(currency).to_lower()})
 			button.add_theme_stylebox_override("disabled", HomeTheme.make_button_style(Color(0.012, 0.014, 0.028, 0.46), Color(0.34, 0.32, 0.48, 0.28), 18))
 			button.add_theme_color_override("font_disabled_color", Color(0.55, 0.55, 0.68, 0.72))
 		button.pressed.connect(func() -> void:
 			if disabled:
-				_show_toast("Not enough gems. Visit Store to get more gems." if currency == "gems" else "Not enough chips for this buy-in.")
+				_show_toast(_t("table.not_enough_buyin_gems") if currency == "gems" else _t("table.not_enough_buyin_chips"))
 				return
 			values[key] = option_value
 			_render_table_creation_setup_panel(_public_table_setup_panel if public_table else _private_room_setup_panel, public_table)
@@ -978,7 +978,7 @@ func _add_table_setup_option_row(parent: VBoxContainer, values: Dictionary, key:
 
 func _add_blinds_setup_option_row(parent: VBoxContainer, values: Dictionary, public_table: bool, blind_pairs: Array = []) -> void:
 	var label := Label.new()
-	label.text = "BLINDS"
+	label.text = _t("common.blinds").to_upper()
 	HomeTheme.make_font_settings(label, 12, HomeTheme.MUTED)
 	parent.add_child(label)
 	var row := HBoxContainer.new()
@@ -1012,9 +1012,9 @@ func _table_setup_option_button(label_text: String, selected: bool) -> Button:
 
 func _table_setup_option_label(key: String, value: int) -> String:
 	if key == "max_hands":
-		return "Unlimited" if value >= 999 else "%d hands" % value
+		return _t("common.unlimited") if value >= 999 else _tf("common.hands_count", {"count": value})
 	if key == "max_players":
-		return "%d players" % value
+		return _tf("common.players_count", {"count": value})
 	return _format_number(value)
 
 
@@ -1024,7 +1024,7 @@ func _clear_node_children(node: Node) -> void:
 		child.queue_free()
 
 
-func _build_quick_setup_section(parent: VBoxContainer, title_text: String, buttons: Dictionary, values: Array, callback: Callable) -> void:
+func _build_quick_setup_section(parent: VBoxContainer, option_key: String, title_text: String, buttons: Dictionary, values: Array, callback: Callable) -> void:
 	var title := Label.new()
 	title.text = title_text
 	HomeTheme.make_font_settings(title, 12, HomeTheme.MUTED)
@@ -1035,7 +1035,7 @@ func _build_quick_setup_section(parent: VBoxContainer, title_text: String, butto
 	for value_item in values:
 		var value: int = int(value_item)
 		var button := Button.new()
-		button.text = _quick_option_label(title_text, value)
+		button.text = _quick_option_label(option_key, value)
 		button.custom_minimum_size = Vector2(150, 42)
 		button.focus_mode = Control.FOCUS_NONE
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -1048,7 +1048,7 @@ func _build_quick_setup_section(parent: VBoxContainer, title_text: String, butto
 
 func _build_quick_blinds_section(parent: VBoxContainer, blind_pairs: Array, buttons: Dictionary) -> void:
 	var title := Label.new()
-	title.text = "BLINDS"
+	title.text = _t("common.blinds").to_upper()
 	HomeTheme.make_font_settings(title, 12, HomeTheme.MUTED)
 	parent.add_child(title)
 	var row := HBoxContainer.new()
@@ -1284,7 +1284,7 @@ func _start_quick_play_from_setup() -> void:
 	var currency := _quick_currency()
 	if not _can_afford_buy_in_for_currency(_selected_quick_buy_in, currency):
 		_refresh_quick_play_setup_options()
-		_show_toast("Not enough gems. Visit Store to get more gems." if currency == "gems" else "Not enough chips for this buy-in.")
+		_show_toast(_t("common.not_enough_gems_store") if currency == "gems" else _t("table.not_enough_buyin_chips"))
 		return
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
 		_hide_quick_play_setup()
@@ -1414,14 +1414,14 @@ func _tf(key: String, params: Dictionary) -> String:
 	return LocalizationManagerScript.trf(key, params)
 
 func _currency_label(currency: String) -> String:
-	return "Gems" if currency in ["gem", "gems"] else "Chips"
+	return _t("store.gems") if currency in ["gem", "gems"] else _t("store.chips")
 
 func _claim_daily_login_bonus() -> void:
 	var service := ProfileServiceScript.new()
 	_player_profile = service.claim_daily_login_bonus()
 	if service.was_last_daily_bonus_claimed():
 		var reward: Dictionary = service.get_last_daily_bonus_reward()
-		_show_toast(_daily_bonus_toast_text("Daily Bonus Claimed", reward), [], 3.0)
+		_show_toast(_daily_bonus_toast_text(_t("daily.claimed_title"), reward), [], 3.0)
 		if _top_bar != null:
 			_top_bar.configure(_player_profile)
 		_refresh_daily_bonus_bar()
@@ -1430,7 +1430,7 @@ func _claim_daily_login_bonus() -> void:
 func _on_daily_bonus_claim_pressed() -> void:
 	if server_authoritative_profile:
 		if _profile_ws_client == null or not _profile_server_connected:
-			_show_toast("Daily Bonus\nCould not claim daily bonus.", [], 2.4)
+			_show_toast(_t("daily.claim_failed"), [], 2.4)
 			return
 		_profile_ws_client.claim_daily_bonus()
 		return
@@ -1492,15 +1492,15 @@ func _on_profile_server_daily_login_awarded(chips: int, xp: int = PlayerProfileS
 		str(PlayerProfileScript.get_total_chips(_player_profile)),
 		str(PlayerProfileScript.get_total_gems(_player_profile)),
 	])
-	_show_toast(_daily_bonus_toast_text("Daily Bonus Claimed", {"chips": chips, "xp": xp, "gems": gems}), [], 3.0)
+	_show_toast(_daily_bonus_toast_text(_t("daily.claimed_title"), {"chips": chips, "xp": xp, "gems": gems}), [], 3.0)
 
 func _on_profile_server_daily_bonus_claim_failed(reason: String) -> void:
 	if reason == "already_claimed_today":
 		var state: Dictionary = PlayerProfileScript.daily_bonus_display_state(_player_profile)
 		var next_day: int = int(state.get("next_reward_day", state.get("current_day", 1)))
-		_show_toast("Daily Bonus\nAlready claimed today. Next reward: Day %d tomorrow." % next_day, [], 2.8)
+		_show_toast(_tf("daily.already_claimed", {"day": next_day}), [], 2.8)
 	else:
-		_show_toast("Daily Bonus\nCould not claim daily bonus.", [], 2.4)
+		_show_toast(_t("daily.claim_failed"), [], 2.4)
 	_refresh_profile_views_from_server()
 
 func _on_avatar_catalog_received(catalog: Array) -> void:
@@ -1522,15 +1522,15 @@ func _on_profile_server_error(message: String) -> void:
 func _server_lobby_error_text(message: String) -> String:
 	match message:
 		"room_not_found":
-			return "Room not found."
+			return _t("server_error.room_not_found")
 		"table_full":
-			return "Room is full."
+			return _t("server_error.table_full")
 		"room_not_available":
-			return "Room is no longer available."
+			return _t("server_error.room_not_available")
 		"insufficient_chips":
-			return "Not enough chips."
+			return _t("common.not_enough_chips")
 		"insufficient_gems":
-			return "Not enough gems. Visit Store to get more gems."
+			return _t("common.not_enough_gems_store")
 		_:
 			return message
 
@@ -1711,15 +1711,15 @@ func _refresh_quick_play_setup_options() -> void:
 		_quick_gem_placeholder_container.visible = not is_chip_mode
 	if _quick_start_button != null:
 		_quick_start_button.disabled = _selected_quick_buy_in > wallet_amount
-		_quick_start_button.text = "FIND TABLE"
+		_quick_start_button.text = _t("common.find_table").to_upper()
 		_quick_start_button.mouse_default_cursor_shape = Control.CURSOR_ARROW if _quick_start_button.disabled else Control.CURSOR_POINTING_HAND
 		_quick_start_button.add_theme_stylebox_override("disabled", HomeTheme.make_button_style(Color(0.08, 0.06, 0.10, 0.62), Color(0.76, 0.52, 0.9, 0.28), 22))
 		_quick_start_button.add_theme_color_override("font_disabled_color", Color(0.78, 0.72, 0.86, 0.72))
 	if _quick_play_setup_hint_label != null:
 		if _selected_quick_buy_in > wallet_amount:
-			_quick_play_setup_hint_label.text = "Not enough gems. Visit Store to get more gems." if not is_chip_mode else "Not enough server wallet chips."
+			_quick_play_setup_hint_label.text = _t("common.not_enough_gems_store") if not is_chip_mode else _t("table.not_enough_server_wallet_chips")
 		else:
-			_quick_play_setup_hint_label.text = "Quickly join the best available public %s table with your selected stakes.\nIf no matching table is available, a new public table will be created." % ("chip" if is_chip_mode else "gem")
+			_quick_play_setup_hint_label.text = _t("quick.copy_chip") if is_chip_mode else _t("quick.copy_gem")
 	for key_item in _quick_mode_buttons.keys():
 		var mode := str(key_item)
 		var button: Button = _quick_mode_buttons[key_item] as Button
@@ -1798,11 +1798,11 @@ func _apply_quick_option_style(button: Button, selected: bool, disabled: bool) -
 	button.add_theme_color_override("font_disabled_color", font)
 
 
-func _quick_option_label(title_text: String, value: int) -> String:
-	if title_text == "HAND COUNT" and value >= 999:
-		return "Unlimited"
-	if title_text == "HAND COUNT":
-		return "%d hands" % value
+func _quick_option_label(option_key: String, value: int) -> String:
+	if option_key == "hand_count" and value >= 999:
+		return _t("common.unlimited")
+	if option_key == "hand_count":
+		return _tf("common.hands_count", {"count": value})
 	return _format_number(value)
 
 
@@ -1873,18 +1873,18 @@ func _join_private_room_by_code() -> void:
 	if _friends_room_code_input != null:
 		room_code = _friends_room_code_input.text.strip_edges().to_upper()
 	if room_code == "":
-		_show_toast("Enter a room code.")
+		_show_toast(_t("friends.enter_room_code"))
 		return
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
-		_start_table_launch_transition("Joining private room...", func() -> void:
+		_start_table_launch_transition(_t("friends.joining_private_room"), func() -> void:
 			_profile_ws_client.join_private_table(room_code)
 		)
 		return
-	_start_table_launch_transition("Joining private room...", func() -> void:
+	_start_table_launch_transition(_t("friends.joining_private_room"), func() -> void:
 		var context: Dictionary = _local_backend.join_room(room_code, _player_profile)
 		if context.is_empty():
 			_finish_table_launch_transition()
-			_show_toast("Room not found.")
+			_show_toast(_t("server_error.room_not_found"))
 			return
 		_open_backend_table(context)
 	)
@@ -1892,16 +1892,16 @@ func _join_private_room_by_code() -> void:
 
 func _confirm_public_table_setup() -> void:
 	if _public_table_setup_mode == "gem":
-		_show_toast("Gem public tables require secure server matchmaking.")
+		_show_toast(_t("setup.public_gem_quick_note"))
 		return
 	var buy_in: int = int(_public_table_setup_values.get("buy_in", 10000))
 	if not _can_afford_public_buy_in(buy_in):
-		_show_toast("Not enough chips for this buy-in.")
+		_show_toast(_t("table.not_enough_buyin_chips"))
 		_render_table_creation_setup_panel(_public_table_setup_panel, true)
 		return
 	_hide_table_creation_setup_panels()
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
-		_start_table_launch_transition("Creating public table...", func() -> void:
+		_start_table_launch_transition(_t("browser.creating_public_table"), func() -> void:
 			_profile_ws_client.create_table("%s's Table" % PlayerProfileScript.get_player_name(_player_profile), {
 				"table_type": "public_chip",
 				"currency": "chip",
@@ -1918,9 +1918,9 @@ func _confirm_public_table_setup() -> void:
 		return
 	_reload_player_profile()
 	if PlayerProfileScript.get_total_chips(_player_profile) < buy_in:
-		_show_toast("Not enough wallet chips.")
+		_show_toast(_t("table.not_enough_wallet_chips"))
 		return
-	_start_table_launch_transition("Creating public table...", func() -> void:
+	_start_table_launch_transition(_t("browser.creating_public_table"), func() -> void:
 		var table: Dictionary = _local_backend.create_public_table(_public_table_config_from_values(_public_table_setup_values))
 		_join_public_chip_table_after_wallet_check(str(table.get("table_id", "")))
 	)
@@ -1930,21 +1930,21 @@ func _confirm_private_room_setup() -> void:
 	var buy_in: int = int(_private_room_setup_values.get("buy_in", 20000))
 	var currency := "gems" if _private_room_setup_mode == "gem" else "chips"
 	if not _can_afford_buy_in_for_currency(buy_in, currency):
-		_show_toast("Not enough gems. Visit Store to get more gems." if currency == "gems" else "Not enough chips for this buy-in.")
+		_show_toast(_t("common.not_enough_gems_store") if currency == "gems" else _t("table.not_enough_buyin_chips"))
 		_render_table_creation_setup_panel(_private_room_setup_panel, false)
 		return
 	_hide_table_creation_setup_panels()
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
-		_start_table_launch_transition("Creating private room...", func() -> void:
+		_start_table_launch_transition(_t("friends.creating_private_room"), func() -> void:
 			_profile_ws_client.create_private_table(_private_room_server_config_from_values())
 		)
 		return
-	_start_table_launch_transition("Creating private room...", func() -> void:
+	_start_table_launch_transition(_t("friends.creating_private_room"), func() -> void:
 		var service := ProfileServiceScript.new()
 		var buy_in_profile: Dictionary = service.deduct_table_buy_in_currency(buy_in, currency)
 		if buy_in_profile.is_empty():
 			_finish_table_launch_transition()
-			_show_toast("Not enough wallet %s." % _currency_label(currency).to_lower())
+			_show_toast(_tf("common.not_enough_wallet_currency", {"currency": _currency_label(currency).to_lower()}))
 			return
 		_player_profile = buy_in_profile
 		if _top_bar != null:
@@ -2214,19 +2214,19 @@ func _on_join_pressed(room_id: String) -> void:
 	print("Loading Poker Table: %s..." % room_id)
 	var table_info := _find_public_table_info(room_id)
 	if table_info.is_empty() or not _is_joinable_room_browser_table(table_info):
-		_show_toast("This table is no longer available.")
+		_show_toast(_t("server_error.room_not_available"))
 		_refresh_room_browser_rows()
 		return
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
 		var buy_in: int = int(table_info.get("buy_in", 10000))
 		if not _can_afford_public_buy_in(buy_in):
-			_show_toast("Not enough chips for this buy-in.")
+			_show_toast(_t("table.not_enough_buyin_chips"))
 			return
-		_start_table_launch_transition("Joining server table...", func() -> void:
+		_start_table_launch_transition(_t("browser.joining_server_table"), func() -> void:
 			_profile_ws_client.join_table(room_id)
 		)
 		return
-	_start_table_launch_transition("Joining public table...", func() -> void:
+	_start_table_launch_transition(_t("browser.joining_public_table"), func() -> void:
 		print("Transition complete. Poker table %s loaded." % room_id)
 		_join_public_chip_table_after_wallet_check(room_id)
 	)
@@ -2554,7 +2554,7 @@ func _add_event_card(parent: HBoxContainer, title_text: String, body_text: Strin
 	column.add_child(body)
 
 	var status := Label.new()
-	status.text = "COMING SOON"
+	status.text = _t("common.coming_soon").to_upper()
 	status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	HomeTheme.make_font_settings(status, 13, HomeTheme.CYAN)
 	column.add_child(status)
@@ -2590,20 +2590,20 @@ func _build_room_browser_panel() -> void:
 	var title_box := VBoxContainer.new()
 	content.add_child(title_box)
 	var title := Label.new()
-	title.text = "ROOM BROWSER"
+	title.text = _t("browser.title")
 	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
 	title_box.add_child(title)
 	var sub := Label.new()
-	sub.text = "PUBLIC CHIP TABLES - BROWSE, CREATE, OR JOIN"
+	sub.text = _t("browser.subtitle")
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	title_box.add_child(sub)
 	var browser_note := Label.new()
-	browser_note.text = "Public chip tables. Create a table or join one manually. Quick Chip players may also be seated into these tables."
+	browser_note.text = _t("browser.note")
 	HomeTheme.make_font_settings(browser_note, 12, Color(0.72, 0.78, 0.94, 0.92))
 	title_box.add_child(browser_note)
 
 	var create_button := Button.new()
-	create_button.text = "CREATE PUBLIC TABLE"
+	create_button.text = _t("browser.create_public_table")
 	create_button.custom_minimum_size = Vector2(240, 38)
 	create_button.focus_mode = Control.FOCUS_NONE
 	create_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -2635,7 +2635,7 @@ func _build_room_browser_panel() -> void:
 	list_vbox.add_child(header_pad)
 	
 	var col_widths := ROOM_BROWSER_COL_WIDTHS
-	var headers := ["ROOM NAME", "BLINDS", "PLAYERS", "BUY-IN LIMITS", ""]
+	var headers := [_t("browser.headers.room_name"), _t("browser.headers.blinds"), _t("browser.headers.players"), _t("browser.headers.buy_in_limits"), ""]
 	
 	for i in range(headers.size()):
 		var lbl := Label.new()
@@ -2661,7 +2661,7 @@ func _refresh_room_browser_rows() -> void:
 	var raw_count: int = rooms.size()
 	if rooms.is_empty():
 		var empty_label := Label.new()
-		empty_label.text = "No public tables yet. Create one to start a server-authoritative room." if _profile_server_connected else "Server unavailable. Showing local mock fallback when available."
+		empty_label.text = _t("browser.empty_server") if _profile_server_connected else _t("browser.empty_local")
 		empty_label.custom_minimum_size = Vector2(0, 54)
 		empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		HomeTheme.make_font_settings(empty_label, 13, HomeTheme.MUTED)
@@ -2681,7 +2681,7 @@ func _refresh_room_browser_rows() -> void:
 	print("[ClientTableList] raw server list count=%d after normalize count=%d after browser filter count=%d" % [raw_count, normalized_count, visible_count])
 	if visible_count == 0:
 		var filtered_empty_label := Label.new()
-		filtered_empty_label.text = "No clean public chip tables are available. Create a new table to start fresh."
+		filtered_empty_label.text = _t("browser.empty_filtered")
 		filtered_empty_label.custom_minimum_size = Vector2(0, 54)
 		filtered_empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		HomeTheme.make_font_settings(filtered_empty_label, 13, HomeTheme.MUTED)
@@ -2695,7 +2695,7 @@ func _normalized_room_browser_table(room: Dictionary) -> Dictionary:
 	var hand_state := str(room.get("hand_state", room.get("phase", status)))
 	return {
 		"room_id": room_id,
-		"table_name": str(room.get("table_name", room_id if room_id != "" else "Public Table")),
+		"table_name": str(room.get("table_name", room_id if room_id != "" else _t("replay.public_table"))),
 		"table_type": str(room.get("table_type", "public_chip")),
 		"visibility": str(room.get("visibility", "public" if bool(room.get("is_public", true)) else "private")),
 		"currency": str(room.get("currency", "chip")),
@@ -2893,11 +2893,11 @@ func _add_room_browser_row(room: Dictionary) -> void:
 	name_box.add_theme_constant_override("separation", 2)
 	row_hbox.add_child(name_box)
 	var name_lbl := Label.new()
-	name_lbl.text = str(room.get("table_name", "Public Table"))
+	name_lbl.text = str(room.get("table_name", _t("replay.public_table")))
 	HomeTheme.make_font_settings(name_lbl, 15, Color(1, 1, 1, 0.95))
 	name_box.add_child(name_lbl)
 	var public_badge := Label.new()
-	public_badge.text = "HOST WARMING UP / JOINABLE" if bool(room.get("host_in_local_warmup", false)) else ("SERVER PUBLIC CHIP" if _profile_server_connected else "LOCAL MOCK CHIP")
+	public_badge.text = _t("browser.public_badge_host_warmup") if bool(room.get("host_in_local_warmup", false)) else (_t("browser.public_badge_server") if _profile_server_connected else _t("browser.public_badge_local"))
 	HomeTheme.make_font_settings(public_badge, 11, HomeTheme.CYAN)
 	name_box.add_child(public_badge)
 	var blinds_lbl := Label.new()
@@ -2911,7 +2911,7 @@ func _add_room_browser_row(room: Dictionary) -> void:
 	HomeTheme.make_font_settings(players_lbl, 14, Color(0.85, 0.90, 1.0))
 	row_hbox.add_child(players_lbl)
 	var buyin_lbl := Label.new()
-	buyin_lbl.text = "%d Chips" % int(room.get("buy_in", 1000))
+	buyin_lbl.text = _tf("common.chips_amount", {"amount": _format_number(int(room.get("buy_in", 1000)))})
 	buyin_lbl.custom_minimum_size = Vector2(ROOM_BROWSER_COL_WIDTHS[3], 0)
 	HomeTheme.make_font_settings(buyin_lbl, 14, Color(0.85, 0.90, 1.0))
 	row_hbox.add_child(buyin_lbl)
@@ -2919,7 +2919,7 @@ func _add_room_browser_row(room: Dictionary) -> void:
 	btn_container.custom_minimum_size = Vector2(ROOM_BROWSER_COL_WIDTHS[4], 0)
 	row_hbox.add_child(btn_container)
 	var join_btn := Button.new()
-	join_btn.text = "JOIN"
+	join_btn.text = _t("browser.join").to_upper()
 	join_btn.custom_minimum_size = Vector2(100, 36)
 	join_btn.focus_mode = Control.FOCUS_NONE
 	join_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -2962,16 +2962,16 @@ func _build_friends_room_panel() -> void:
 	_friends_room_panel.add_child(content)
 
 	var title := Label.new()
-	title.text = "FRIENDS ROOM"
+	title.text = _t("friends.title")
 	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
 	content.add_child(title)
 
 	var sub := Label.new()
-	sub.text = "Private casual room. Share a room code with friends."
+	sub.text = _t("friends.subtitle")
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	content.add_child(sub)
 	var room_note := Label.new()
-	room_note.text = "Create a private chip table or join with a room code. Private rooms are not listed in public Browser."
+	room_note.text = _t("friends.note")
 	HomeTheme.make_font_settings(room_note, 12, Color(0.72, 0.78, 0.94, 0.92))
 	content.add_child(room_note)
 
@@ -2984,10 +2984,10 @@ func _build_friends_room_panel() -> void:
 	room_box.add_theme_constant_override("separation", 12)
 	room_card.add_child(room_box)
 
-	_friends_room_id_label = _room_lobby_label("ROOM CODE: -", 17, Color(1.0, 0.92, 0.72, 0.96))
-	_friends_room_seats_label = _room_lobby_label("SEATS: -", 15, Color(0.88, 0.92, 1.0, 0.92))
-	_friends_room_ready_label = _room_lobby_label("READY: -", 15, HomeTheme.PURPLE)
-	room_box.add_child(_room_lobby_label("PRIVATE CASUAL ROOM", 13, HomeTheme.CYAN))
+	_friends_room_id_label = _room_lobby_label(_tf("friends.room_code_value", {"code": "-"}), 17, Color(1.0, 0.92, 0.72, 0.96))
+	_friends_room_seats_label = _room_lobby_label(_tf("friends.seats_value", {"count": "-", "max": "9"}), 15, Color(0.88, 0.92, 1.0, 0.92))
+	_friends_room_ready_label = _room_lobby_label(_tf("friends.ready_value", {"status": "-"}), 15, HomeTheme.PURPLE)
+	room_box.add_child(_room_lobby_label(_t("friends.private_casual_room"), 13, HomeTheme.CYAN))
 	room_box.add_child(_friends_room_id_label)
 	room_box.add_child(_friends_room_seats_label)
 	room_box.add_child(_friends_room_ready_label)
@@ -2997,7 +2997,7 @@ func _build_friends_room_panel() -> void:
 	room_box.add_child(button_row)
 
 	var start_button := Button.new()
-	start_button.text = "CREATE PRIVATE ROOM"
+	start_button.text = _t("friends.create_private_room")
 	start_button.custom_minimum_size = Vector2(190, 42)
 	start_button.focus_mode = Control.FOCUS_NONE
 	start_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -3012,9 +3012,9 @@ func _build_friends_room_panel() -> void:
 	join_section.add_theme_constant_override("separation", 8)
 	room_box.add_child(join_section)
 
-	var join_title := _room_lobby_label("JOIN PRIVATE ROOM", 14, HomeTheme.TEXT)
+	var join_title := _room_lobby_label(_t("friends.join_private_room"), 14, HomeTheme.TEXT)
 	join_section.add_child(join_title)
-	var join_hint := _room_lobby_label("Enter a room code from your friend.", 12, HomeTheme.MUTED)
+	var join_hint := _room_lobby_label(_t("friends.join_hint"), 12, HomeTheme.MUTED)
 	join_section.add_child(join_hint)
 	var join_row := HBoxContainer.new()
 	join_row.add_theme_constant_override("separation", 10)
@@ -3022,14 +3022,14 @@ func _build_friends_room_panel() -> void:
 
 	_friends_room_code_input = LineEdit.new()
 	_friends_room_code_input.name = "PrivateRoomCodeInput"
-	_friends_room_code_input.placeholder_text = "Enter Room Code"
+	_friends_room_code_input.placeholder_text = _t("friends.enter_room_code")
 	_friends_room_code_input.custom_minimum_size = Vector2(220, 42)
 	_friends_room_code_input.max_length = 12
 	_friends_room_code_input.text_submitted.connect(func(_text: String) -> void: _join_private_room_by_code())
 	join_row.add_child(_friends_room_code_input)
 
 	var join_button := Button.new()
-	join_button.text = "JOIN ROOM"
+	join_button.text = _t("friends.join_room")
 	join_button.custom_minimum_size = Vector2(150, 42)
 	join_button.focus_mode = Control.FOCUS_NONE
 	join_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -3041,7 +3041,7 @@ func _build_friends_room_panel() -> void:
 	join_row.add_child(join_button)
 
 	var back_button := Button.new()
-	back_button.text = "BACK"
+	back_button.text = _t("common.back").to_upper()
 	back_button.custom_minimum_size = Vector2(110, 42)
 	back_button.focus_mode = Control.FOCUS_NONE
 	back_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -3069,9 +3069,9 @@ func _update_friends_room_panel() -> void:
 	var room_code := str(_friends_room_context.get("room_code", _friends_room_context.get("room_id", "-")))
 	if room_code == "":
 		room_code = "-"
-	_friends_room_id_label.text = "ROOM CODE: %s" % room_code
-	_friends_room_seats_label.text = "SEATS: %d / 9" % occupied
-	_friends_room_ready_label.text = "READY: Press READY at the table." if occupied > 0 else "READY: Create or join a room."
+	_friends_room_id_label.text = _tf("friends.room_code_value", {"code": room_code})
+	_friends_room_seats_label.text = _tf("friends.seats_value", {"count": occupied, "max": 9})
+	_friends_room_ready_label.text = _tf("friends.ready_value", {"status": _t("friends.ready_hint_table") if occupied > 0 else _t("friends.ready_hint_lobby")})
 
 func _build_replay_panel() -> void:
 	_replay_panel = PanelContainer.new()
@@ -3142,7 +3142,7 @@ func _build_replay_panel() -> void:
 	
 	if replay_records.is_empty():
 		var empty_label := Label.new()
-		empty_label.text = "No hands recorded yet.\nPlay a table to generate replay records."
+		empty_label.text = _t("replay.no_hands")
 		empty_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		empty_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		empty_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -3158,7 +3158,7 @@ func _build_replay_panel() -> void:
 		var item := PanelContainer.new()
 		item.custom_minimum_size = Vector2(0, 112)
 		item.mouse_filter = Control.MOUSE_FILTER_STOP
-		item.tooltip_text = "Open static hand review"
+		item.tooltip_text = _t("replay.open_static_review")
 		item.gui_input.connect(_on_replay_item_gui_input.bind(hand))
 		item.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.012, 0.016, 0.035, 0.65), Color(0.3, 0.35, 0.55, 0.15), 6, 1))
 		var item_hbox := HBoxContainer.new()
@@ -3197,7 +3197,7 @@ func _build_replay_panel() -> void:
 		desc_vbox.add_child(item_played_at)
 
 		var lock_label := Label.new()
-		lock_label.text = "UNLOCKED" if unlocked else "LOCKED"
+		lock_label.text = _t("replay.unlocked").to_upper() if unlocked else _t("replay.locked").to_upper()
 		HomeTheme.make_font_settings(lock_label, 10, HomeTheme.CYAN if unlocked else HomeTheme.GOLD)
 		desc_vbox.add_child(lock_label)
 		if replay_id != "":
@@ -3247,11 +3247,11 @@ func _open_replay_detail(hand: Dictionary) -> void:
 	_stop_replay_playback()
 	var file_path: String = str(hand.get("file_path", ""))
 	if file_path == "" or not FileAccess.file_exists(file_path):
-		_render_replay_detail_error("Replay file missing.")
+		_render_replay_detail_error(_t("replay.file_missing"))
 		return
 	var record: Dictionary = ReplayServiceScript.new().load_replay_record(file_path)
 	if record.is_empty():
-		_render_replay_detail_error("Replay file missing.")
+		_render_replay_detail_error(_t("replay.file_missing"))
 		return
 	_replay_current_record = record.duplicate(true)
 	_replay_current_index_entry = hand.duplicate(true)
@@ -3266,11 +3266,11 @@ func _render_replay_detail_empty(has_records: bool) -> void:
 	_replay_current_index_entry = {}
 	_clear_replay_detail()
 	var title := Label.new()
-	title.text = "HAND RECORDS"
+	title.text = _t("replay.hand_records")
 	HomeTheme.make_font_settings(title, 16, HomeTheme.CYAN)
 	_replay_detail_vbox.add_child(title)
 	var body := Label.new()
-	body.text = "Select a recorded hand to open the static review." if has_records else "No hands recorded yet.\nPlay a table to generate replay records."
+	body.text = _t("replay.select_hand") if has_records else _t("replay.no_hands")
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	HomeTheme.make_font_settings(body, 13, Color(0.72, 0.76, 0.92))
 	_replay_detail_vbox.add_child(body)
@@ -3315,12 +3315,12 @@ func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
 		play_button.pressed.connect(_open_replay_playback.bind(record, index_entry))
 		header.add_child(play_button)
 	else:
-		var unlock_button := _make_replay_primary_button("UNLOCK REPLAY - %d GEMS" % PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS, HomeTheme.GOLD)
+		var unlock_button := _make_replay_primary_button(_tf("replay.unlock_button", {"cost": PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS}), HomeTheme.GOLD)
 		unlock_button.pressed.connect(_unlock_replay_from_detail.bind(record, index_entry))
 		header.add_child(unlock_button)
 
 	var unlock_hint := Label.new()
-	unlock_hint.text = "Replay unlocked. Playback is available." if replay_unlocked else "Spend %d gems to unlock full replay playback." % PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS
+	unlock_hint.text = _t("replay.unlock_hint_unlocked") if replay_unlocked else _tf("replay.unlock_hint_locked", {"cost": PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS})
 	unlock_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	HomeTheme.make_font_settings(unlock_hint, 12, HomeTheme.MUTED)
 	_replay_detail_vbox.add_child(unlock_hint)
@@ -3330,17 +3330,17 @@ func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
 	body_hbox.add_theme_constant_override("separation", 16)
 	_replay_detail_vbox.add_child(body_hbox)
 
-	var players_box := _make_replay_section("PLAYERS", Vector2(260, 0))
+	var players_box := _make_replay_section(_t("replay.players").to_upper(), Vector2(260, 0))
 	body_hbox.add_child(players_box)
 	var players_vbox: VBoxContainer = players_box.get_node("Content") as VBoxContainer
 	_add_replay_players(players_vbox, players)
 
-	var board_box := _make_replay_section("BOARD & RESULT", Vector2(230, 0))
+	var board_box := _make_replay_section(_t("replay.board_result").to_upper(), Vector2(230, 0))
 	body_hbox.add_child(board_box)
 	var board_vbox: VBoxContainer = board_box.get_node("Content") as VBoxContainer
 	_add_replay_board_and_results(board_vbox, record)
 
-	var actions_box := _make_replay_section("ACTION TIMELINE", Vector2(360, 0))
+	var actions_box := _make_replay_section(_t("replay.action_timeline").to_upper(), Vector2(360, 0))
 	actions_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	body_hbox.add_child(actions_box)
 	var actions_vbox: VBoxContainer = actions_box.get_node("Content") as VBoxContainer
@@ -3384,16 +3384,16 @@ func _unlock_replay_from_detail(record: Dictionary, index_entry: Dictionary) -> 
 	var result: Dictionary = ProfileServiceScript.new().unlock_replay(replay_id, PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS)
 	if not bool(result.get("success", false)):
 		if str(result.get("reason", "")) == "not_enough_gems":
-			_show_toast("Not enough gems.\nVisit Store to get more gems.", [], 3.0)
+			_show_toast(_t("replay.not_enough_gems"), [], 3.0)
 		else:
-			_show_toast("Replay unlock failed.", [], 2.4)
+			_show_toast(_t("replay.unlock_failed"), [], 2.4)
 		return
 	_player_profile = Dictionary(result.get("profile", ProfileServiceScript.new().get_current_profile()))
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
 	_refresh_profile_panel()
 	_update_replay_list_lock_label(replay_id, true)
-	_show_toast("Replay unlocked.\n%s gems spent.", [_format_number(PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS)], 2.6)
+	_show_toast(_tf("replay.unlock_success", {"cost": _format_number(PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS)}), [], 2.6)
 	_render_replay_detail(record, index_entry)
 
 func _update_replay_list_lock_label(replay_id: String, unlocked: bool) -> void:
@@ -3402,13 +3402,13 @@ func _update_replay_list_lock_label(replay_id: String, unlocked: bool) -> void:
 	var label: Label = _replay_list_lock_labels.get(replay_id, null) as Label
 	if label == null:
 		return
-	label.text = "UNLOCKED" if unlocked else "LOCKED"
+	label.text = _t("replay.unlocked").to_upper() if unlocked else _t("replay.locked").to_upper()
 	HomeTheme.make_font_settings(label, 10, HomeTheme.CYAN if unlocked else HomeTheme.GOLD)
 
 
 func _open_replay_playback(record: Dictionary, index_entry: Dictionary) -> void:
 	if not _is_replay_unlocked(record, index_entry):
-		_show_toast("Unlock this replay first.", [], 2.4)
+		_show_toast(_t("replay.unlock_first"), [], 2.4)
 		return
 	_stop_replay_playback()
 	_replay_playback_record = record.duplicate(true)
@@ -3574,7 +3574,7 @@ func _toggle_replay_playback() -> void:
 	_ensure_replay_playback_timer()
 	_replay_playback_is_playing = true
 	if _replay_playback_play_button != null:
-		_replay_playback_play_button.text = "PAUSE"
+		_replay_playback_play_button.text = _t("replay.pause").to_upper()
 	_replay_playback_timer.wait_time = 0.8 / _replay_playback_speed
 	_replay_playback_timer.start()
 	if _replay_poker_table_screen != null:
@@ -3584,7 +3584,7 @@ func _toggle_replay_playback() -> void:
 func _toggle_replay_playback_speed() -> void:
 	_replay_playback_speed = 2.0 if _replay_playback_speed == 1.0 else 1.0
 	if _replay_playback_speed_button != null:
-		_replay_playback_speed_button.text = "SPEED %sx" % int(_replay_playback_speed)
+		_replay_playback_speed_button.text = _tf("replay.speed", {"speed": int(_replay_playback_speed)})
 	if _replay_playback_is_playing and _replay_playback_timer != null:
 		_replay_playback_timer.wait_time = 0.8 / _replay_playback_speed
 		_replay_playback_timer.start()
@@ -3610,7 +3610,7 @@ func _stop_replay_playback() -> void:
 	if _replay_playback_timer != null:
 		_replay_playback_timer.stop()
 	if _replay_playback_play_button != null:
-		_replay_playback_play_button.text = "PLAY"
+		_replay_playback_play_button.text = _t("replay.play").to_upper()
 	if _replay_poker_table_screen != null:
 		_refresh_replay_playback_view()
 
@@ -4796,19 +4796,19 @@ func _build_store_panel() -> void:
 	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
 	title_box.add_child(title)
 	var sub := Label.new()
-	sub.text = "Mock wallet packs for local development testing."
+	sub.text = _t("store.subtitle")
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	title_box.add_child(sub)
 	
 	var dev_label := Label.new()
-	dev_label.text = "MOCK PURCHASE / DEV ONLY"
+	dev_label.text = _t("store.dev_badge")
 	HomeTheme.make_font_settings(dev_label, 13, HomeTheme.GOLD)
 	main_vbox.add_child(dev_label)
 
 	var tabs := HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 12)
 	main_vbox.add_child(tabs)
-	for tab_name in ["CHIPS", "GEMS"]:
+	for tab_name in [_t("store.chips").to_upper(), _t("store.gems").to_upper()]:
 		var tab := Button.new()
 		tab.text = tab_name
 		tab.custom_minimum_size = Vector2(140, 36)
@@ -4822,8 +4822,8 @@ func _build_store_panel() -> void:
 	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	main_vbox.add_child(grid)
 
-	_add_store_currency_column(grid, "CHIPS", "Mock Purchase Chips\nDEV ONLY\nGame chips are used for buy-ins, betting, and standard cosmetics.", [10000, 50000, 100000], "chips", HomeTheme.GOLD)
-	_add_store_currency_column(grid, "GEMS", "Mock Purchase Gems\nDEV ONLY\nGems are used for premium features such as replay access in future versions.", [100, 500, 1200], "gems", HomeTheme.PINK)
+	_add_store_currency_column(grid, _t("store.chips").to_upper(), _t("store.chips_desc"), [10000, 50000, 100000], "chips", HomeTheme.GOLD)
+	_add_store_currency_column(grid, _t("store.gems").to_upper(), _t("store.gems_desc"), [100, 500, 1200], "gems", HomeTheme.PINK)
 
 func _add_store_currency_column(parent: Container, title_text: String, desc_text: String, packs: Array, currency: String, accent: Color) -> void:
 	var card := PanelContainer.new()
@@ -4834,7 +4834,7 @@ func _add_store_currency_column(parent: Container, title_text: String, desc_text
 	vbox.add_theme_constant_override("separation", 14)
 	card.add_child(vbox)
 	var title := Label.new()
-	title.text = "Mock Purchase %s" % title_text.capitalize()
+	title.text = _tf("store.mock_purchase_title", {"currency": title_text.capitalize()})
 	HomeTheme.make_font_settings(title, 18, accent)
 	vbox.add_child(title)
 	var desc := Label.new()
@@ -4845,7 +4845,7 @@ func _add_store_currency_column(parent: Container, title_text: String, desc_text
 	for pack_item in packs:
 		var amount: int = int(pack_item)
 		var button := Button.new()
-		button.text = "Mock Buy %s %s" % [_format_number(amount), title_text.capitalize()]
+		button.text = _tf("store.mock_buy", {"amount": _format_number(amount), "currency": title_text.capitalize()})
 		button.custom_minimum_size = Vector2(220, 42)
 		button.focus_mode = Control.FOCUS_NONE
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -4856,9 +4856,9 @@ func _add_store_currency_column(parent: Container, title_text: String, desc_text
 
 func _show_mock_purchase_confirm(currency: String, amount: int) -> void:
 	var dialog := ConfirmationDialog.new()
-	dialog.title = "Mock purchase?"
+	dialog.title = _t("store.mock_purchase_confirm_title")
 	var target := "server wallet" if server_authoritative_profile and _profile_server_connected else "local wallet"
-	dialog.dialog_text = "MOCK PURCHASE / DEV ONLY\nThis is a mock purchase for development only.\nAdd %s %s to your %s?" % [_format_number(amount), currency.to_upper(), target]
+	dialog.dialog_text = _tf("store.mock_purchase_confirm_text", {"amount": _format_number(amount), "currency": currency.to_upper(), "target": target})
 	dialog.confirmed.connect(_confirm_mock_purchase.bind(currency, amount, dialog))
 	dialog.canceled.connect(dialog.queue_free)
 	add_child(dialog)
@@ -4868,9 +4868,9 @@ func _confirm_mock_purchase(currency: String, amount: int, dialog: ConfirmationD
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
 		var err := _profile_ws_client.mock_purchase(currency, amount)
 		if err == OK:
-			_show_toast("Mock purchase sent to server wallet.", [], 1.4)
+			_show_toast(_t("store.mock_purchase_sent"), [], 1.4)
 		else:
-			_show_toast("Mock purchase failed.\nServer wallet sync failed.", [], 2.4)
+			_show_toast(_t("store.mock_purchase_server_failed"), [], 2.4)
 		if dialog != null:
 			dialog.queue_free()
 		return
@@ -4887,13 +4887,13 @@ func _confirm_mock_purchase(currency: String, amount: int, dialog: ConfirmationD
 
 func _on_server_mock_purchase_result(ok: bool, currency: String, amount: int, wallet: Dictionary) -> void:
 	if not ok:
-		_show_toast("Mock purchase failed.", [], 2.4)
+		_show_toast(_t("store.mock_purchase_failed"), [], 2.4)
 		return
 	if not wallet.is_empty():
 		_player_profile = ProfileServiceScript.new().apply_wallet_snapshot(wallet)
 		_refresh_profile_views_from_server()
 	var label := "Gems" if currency == "gems" else "Chips"
-	_show_toast("Mock purchase complete.\n+%s %s added to server wallet.", [_format_number(amount), label], 2.8)
+	_show_toast(_tf("store.mock_purchase_complete", {"amount": _format_number(amount), "currency": label}), [], 2.8)
 
 func _build_profile_panel() -> void:
 	_profile_panel = PanelContainer.new()
@@ -4930,7 +4930,7 @@ func _build_profile_panel() -> void:
 	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
 	title_box.add_child(title)
 	var sub := Label.new()
-	sub.text = "STATISTICS & UNLOCKED ACHIEVEMENTS"
+	sub.text = _t("profile.subtitle")
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	title_box.add_child(sub)
 	
@@ -4991,7 +4991,7 @@ func _build_profile_panel() -> void:
 	right_panel.add_child(r_vbox)
 	
 	var s_title := Label.new()
-	s_title.text = "OVERVIEW & STATS"
+	s_title.text = _t("profile.overview_stats")
 	HomeTheme.make_font_settings(s_title, 16, HomeTheme.PURPLE)
 	r_vbox.add_child(s_title)
 	
@@ -5027,7 +5027,7 @@ func _build_profile_panel() -> void:
 	gallery_vbox.add_theme_constant_override("separation", 10)
 	gallery_panel.add_child(gallery_vbox)
 	var gallery_title := Label.new()
-	gallery_title.text = "CHARACTER AVATARS"
+	gallery_title.text = _t("profile.character_avatars")
 	HomeTheme.make_font_settings(gallery_title, 16, HomeTheme.PURPLE)
 	gallery_vbox.add_child(gallery_title)
 	var gallery_scroll := ScrollContainer.new()
@@ -5044,7 +5044,7 @@ func _build_profile_panel() -> void:
 	_build_avatar_gallery()
 		
 	var ach_title := Label.new()
-	ach_title.text = "ACHIEVEMENTS"
+	ach_title.text = _t("profile.achievements")
 	HomeTheme.make_font_settings(ach_title, 16, HomeTheme.PURPLE)
 	r_vbox.add_child(ach_title)
 	
@@ -5079,23 +5079,23 @@ func _make_profile_stat_tile(parent: Container, title_text: String) -> Label:
 func _profile_stat_title(stat_id: String) -> String:
 	match stat_id:
 		"total_chips":
-			return "TOTAL CHIPS"
+			return _t("profile.total_chips").to_upper()
 		"total_sessions_played":
-			return "TOTAL SESSIONS"
+			return _t("profile.total_sessions").to_upper()
 		"total_hands_played":
-			return "TOTAL HANDS"
+			return _t("profile.total_hands").to_upper()
 		"total_hands_won":
-			return "HANDS WON"
+			return _t("profile.hands_won").to_upper()
 		"win_rate":
-			return "WIN RATE"
+			return _t("profile.win_rate").to_upper()
 		"total_profit":
-			return "TOTAL PROFIT"
+			return _t("profile.total_profit").to_upper()
 		"biggest_pot":
-			return "BIGGEST POT"
+			return _t("profile.biggest_pot").to_upper()
 		"best_session_profit":
-			return "BEST SESSION PROFIT"
+			return _t("profile.best_session_profit").to_upper()
 		"best_hand_desc":
-			return "BEST HAND"
+			return _t("profile.best_hand").to_upper()
 		_:
 			return stat_id.to_upper()
 
@@ -5107,11 +5107,11 @@ func _refresh_profile_panel() -> void:
 	if _profile_level_label != null:
 		var total_xp: int = PlayerProfileScript.get_total_xp(_player_profile)
 		var level: int = PlayerProfileScript.level_for_total_xp(total_xp)
-		_profile_level_label.text = "Title: %s\nLevel %d\nXP %d / %d" % [
+		_profile_level_label.text = "%s: %s\n%s\n%s" % [
+			_t("profile.title_label"),
 			PlayerProfileScript.title_for_level(level),
-			level,
-			PlayerProfileScript.xp_current_for_total_xp(total_xp),
-			PlayerProfileScript.XP_PER_LEVEL,
+			_tf("profile.level", {"level": level}),
+			_tf("profile.xp", {"current": PlayerProfileScript.xp_current_for_total_xp(total_xp), "next": PlayerProfileScript.XP_PER_LEVEL}),
 		]
 	if _profile_avatar_rect != null:
 		var selected_avatar_id: String = PlayerProfileScript.get_avatar_id(_player_profile)
@@ -5123,7 +5123,7 @@ func _refresh_profile_panel() -> void:
 		_profile_avatar_rect.texture = texture
 		_profile_avatar_rect.visible = texture != null
 		if _profile_avatar_name_label != null:
-			_profile_avatar_name_label.text = "Selected Avatar: %s" % AvatarLibraryScript.display_name_for_avatar_id(selected_avatar_id)
+			_profile_avatar_name_label.text = _tf("profile.selected_avatar", {"avatar": AvatarLibraryScript.display_name_for_avatar_id(selected_avatar_id)})
 	_set_profile_stat("total_chips", _format_number(PlayerProfileScript.get_total_chips(_player_profile)))
 	_set_profile_stat("total_sessions_played", _format_number(int(_player_profile.get("total_sessions_played", 0))))
 	_set_profile_stat("total_hands_played", _format_number(int(_player_profile.get("total_hands_played", 0))))
@@ -5177,14 +5177,14 @@ func _refresh_avatar_gallery() -> void:
 		var can_afford: bool = PlayerProfileScript.get_total_chips(_player_profile) >= price_chips
 		button.disabled = not is_unlocked and not can_afford
 		var display_name: String = AvatarLibraryScript.display_name_for_avatar_id(avatar_id)
-		var status_text := "SELECT"
+		var status_text := _t("avatar.select").to_upper()
 		if is_selected:
-			status_text = "SELECTED"
+			status_text = _t("avatar.selected").to_upper()
 		elif not is_unlocked:
 			if can_afford:
-				status_text = "Buy %s" % _avatar_price_text(avatar_id)
+				status_text = _tf("avatar.buy_chips", {"price": _format_number(price_chips)})
 			else:
-				status_text = "Need %s" % _avatar_price_text(avatar_id)
+				status_text = _tf("avatar.need_chips", {"price": _format_number(price_chips)})
 		button.text = "%s\n%s" % [display_name, status_text]
 		button.tooltip_text = "%s\n%s" % [avatar_id, status_text]
 		button.modulate = Color(1.08, 1.08, 1.12, 1.0) if is_unlocked else Color(0.62, 0.62, 0.72, 0.88)
@@ -5217,11 +5217,11 @@ func _on_avatar_selected(avatar_id: String) -> void:
 		var unlocked: Array = Array(_player_profile.get("unlocked_avatar_ids", []))
 		if unlocked.has(avatar_id):
 			_profile_ws_client.select_avatar(_server_avatar_id_for_client(avatar_id))
-			_show_toast("Avatar\nSelecting on server...", [], 1.4)
+			_show_toast(_t("avatar.selecting_server"), [], 1.4)
 		else:
 			var server_price_chips: int = _avatar_price_chips(avatar_id)
 			if PlayerProfileScript.get_total_chips(_player_profile) < server_price_chips:
-				_show_toast("Avatar\nNot enough chips.\nNeed %s Chips.", [_format_number(server_price_chips)], 2.4)
+				_show_toast(_tf("avatar.not_enough", {"price": _format_number(server_price_chips)}), [], 2.4)
 				return
 			_show_avatar_purchase_confirm(avatar_id, server_price_chips)
 		return
@@ -5232,7 +5232,7 @@ func _on_avatar_selected(avatar_id: String) -> void:
 	else:
 		var local_price_chips: int = _avatar_price_chips(avatar_id)
 		if PlayerProfileScript.get_total_chips(_player_profile) < local_price_chips:
-			_show_toast("Avatar\nNot enough chips.\nNeed %s Chips.", [_format_number(local_price_chips)], 2.4)
+			_show_toast(_tf("avatar.not_enough", {"price": _format_number(local_price_chips)}), [], 2.4)
 			return
 		_show_avatar_purchase_confirm(avatar_id, local_price_chips)
 		return
@@ -5256,14 +5256,14 @@ func _show_avatar_purchase_confirm(avatar_id: String, price_chips: int) -> void:
 
 func _confirm_avatar_purchase(avatar_id: String, price_chips: int, dialog: ConfirmationDialog) -> void:
 	if PlayerProfileScript.get_total_chips(_player_profile) < price_chips:
-		_show_toast("Avatar\nNot enough chips.\nNeed %s Chips.", [_format_number(price_chips)], 2.4)
+		_show_toast(_tf("avatar.not_enough", {"price": _format_number(price_chips)}), [], 2.4)
 		if dialog != null:
 			dialog.queue_free()
 		_refresh_profile_panel()
 		return
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
 		_profile_ws_client.buy_avatar(_server_avatar_id_for_client(avatar_id))
-		_show_toast("Avatar\nPurchase request sent...", [], 1.4)
+		_show_toast(_t("avatar.purchase_sent"), [], 1.4)
 		if dialog != null:
 			dialog.queue_free()
 		return
@@ -5271,9 +5271,9 @@ func _confirm_avatar_purchase(avatar_id: String, price_chips: int, dialog: Confi
 	var result: Dictionary = service.purchase_avatar_with_chips(avatar_id, price_chips)
 	_player_profile = Dictionary(result.get("profile", service.get_current_profile()))
 	if bool(result.get("success", false)):
-		_show_toast("Avatar purchased.\n%s selected.", [AvatarLibraryScript.display_name_for_avatar_id(avatar_id)], 2.2)
+		_show_toast(_tf("avatar.purchased_selected", {"name": AvatarLibraryScript.display_name_for_avatar_id(avatar_id)}), [], 2.2)
 	else:
-		_show_toast("Avatar\nNot enough chips.\nNeed %s Chips.", [_format_number(price_chips)], 2.4)
+		_show_toast(_tf("avatar.not_enough", {"price": _format_number(price_chips)}), [], 2.4)
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
 	_refresh_profile_panel()

@@ -64,6 +64,54 @@ First-pass localized areas:
 
 Internal debug logs, server diagnostics, test messages, and table protocol payloads are intentionally not localized.
 
+## Localization Audit Phase 2
+
+The second audit pass expands localization coverage across the main player-facing surfaces:
+
+- Quick Play setup, chip/gem mode switch, buy-in, blinds, hand-count options, and find-table actions.
+- Public Room Browser headers, empty states, create/join buttons, public-table badges, and buy-in labels.
+- Friends Room private-room setup, room-code labels, join form, and ready hints.
+- Replay Room list/detail labels, unlock/replay buttons, lock states, section headers, and replay toasts.
+- Store mock purchase labels, dev-only warnings, confirmation dialog, and result toasts.
+- Profile overview, avatar gallery, avatar buy/select state, and avatar purchase feedback.
+- Poker table waiting/ready panel, start warm-up button, exit/play-again buttons, sit-down failure messages, and table info labels.
+
+New player-facing strings should be added as stable keys rather than inline English. Prefer grouped prefixes:
+
+- `nav.*`
+- `mode.*`
+- `common.*`
+- `quick.*`
+- `setup.*`
+- `browser.*`
+- `friends.*`
+- `table.*`
+- `replay.*`
+- `daily.*`
+- `profile.*`
+- `avatar.*`
+- `store.*`
+- `events.*`
+
+Dynamic text uses `LocalizationManager.trf(key, params)`. Example:
+
+```gdscript
+LocalizationManagerScript.trf("avatar.confirm_text", {
+	"name": avatar_name,
+	"price": formatted_price,
+})
+```
+
+All keys introduced in this audit pass are present in every one of the twelve locale files. Non-English packs may still use English fallback copy for newly introduced long-form strings until a native translation pass replaces them.
+
+Do not localize protocol and diagnostic identifiers:
+
+- `room_id` and `hand_id` values
+- `table_type` values such as `public_chip`
+- transaction reasons such as `table_buy_in`
+- enum names, JSON keys, server logs, debug logs, resource paths, and test names
+- card ranks, suit symbols, and raw replay record fields
+
 ## Fonts
 
 Project assets were checked for `.ttf`, `.otf`, and `.ttc` files. No bundled CJK-capable font asset was found in `assets/` at the time of this pass. The current implementation relies on Godot/system fallback fonts for CJK text. A future polish pass should add a bundled UI font family with Simplified Chinese, Traditional Chinese, Japanese, and Korean coverage.

@@ -1,6 +1,8 @@
 extends PanelContainer
 class_name TableRoomInfoPanel
 
+const LocalizationManagerScript := preload("res://scripts/services/localization_manager.gd")
+
 var _room_label: Label
 var _blinds_label: Label
 var _table_room_label: Label
@@ -46,7 +48,7 @@ func _ready() -> void:
 
 	_table_room_label = Label.new()
 	_table_room_label.name = "RoomIdLabel"
-	_table_room_label.text = "Room: Training"
+	_table_room_label.text = _tf("table.room_label", {"room": _t("mode.training.title")})
 	_table_room_label.add_theme_font_size_override("font_size", 12)
 	_table_room_label.add_theme_color_override("font_color", Color(0.72, 0.94, 1.0, 0.82))
 	vbox.add_child(_table_room_label)
@@ -58,26 +60,26 @@ func _ready() -> void:
 	
 	_hand_label = Label.new()
 	_hand_label.name = "HandIdLabel"
-	_hand_label.text = "Hand #88451236"
+	_hand_label.text = _tf("table.hand_number", {"hand": "88451236"})
 	_hand_label.add_theme_font_size_override("font_size", 12)
 	_hand_label.add_theme_color_override("font_color", Color(0.65, 0.76, 1.0, 0.7))
 	vbox.add_child(_hand_label)
 
 	_progress_label = Label.new()
 	_progress_label.name = "HandProgressLabel"
-	_progress_label.text = "Hand 0 / 10"
+	_progress_label.text = _tf("table.hand_progress", {"current": 0, "max": 10})
 	_progress_label.add_theme_font_size_override("font_size", 12)
 	_progress_label.add_theme_color_override("font_color", Color(0.95, 0.92, 1.0, 0.82))
 	vbox.add_child(_progress_label)
 
 	_seat_label = Label.new()
-	_seat_label.text = "Seat: 5"
+	_seat_label.text = _tf("table.seat_label", {"seat": 5})
 	_seat_label.add_theme_font_size_override("font_size", 12)
 	_seat_label.add_theme_color_override("font_color", Color(0.72, 0.86, 1.0, 0.78))
 	vbox.add_child(_seat_label)
 	
 	_timer_caption_label = Label.new()
-	_timer_caption_label.text = "ACTION TIMER"
+	_timer_caption_label.text = _t("table.action_timer")
 	_timer_caption_label.add_theme_font_size_override("font_size", 10)
 	_timer_caption_label.add_theme_color_override("font_color", Color(1.0, 0.0, 0.5, 0.8)) # Pink label
 	vbox.add_child(_timer_caption_label)
@@ -106,9 +108,9 @@ func _process(_delta: float) -> void:
 
 func set_room_info(table_id: String, blinds_text: String) -> void:
 	if _table_room_label:
-		_table_room_label.text = "Room: %s" % _safe_room_text(table_id)
+		_table_room_label.text = _tf("table.room_label", {"room": _safe_room_text(table_id)})
 	if _hand_label:
-		_hand_label.text = "Hand #%d" % int(abs(table_id.hash()) % 100000000)
+		_hand_label.text = _tf("table.hand_number", {"hand": int(abs(table_id.hash()) % 100000000)})
 	if _blinds_label:
 		_blinds_label.text = "NLH %s" % blinds_text
 
@@ -116,9 +118,9 @@ func set_table_context(stage: String, hand_id: String, seat_id: int, blinds_text
 	if _room_label:
 		_room_label.text = stage.to_upper()
 	if _hand_label:
-		_hand_label.text = "Hand ID: %s" % _safe_room_text(hand_id)
+		_hand_label.text = _tf("table.hand_id_label", {"hand_id": _safe_room_text(hand_id)})
 	if _table_room_label:
-		_table_room_label.text = "Room: %s" % _safe_room_text(room_text)
+		_table_room_label.text = _tf("table.room_label", {"room": _safe_room_text(room_text)})
 	if _blinds_label:
 		_blinds_label.text = "NLH %s" % blinds_text
 	if progress_text != "":
@@ -131,15 +133,15 @@ func set_hand_progress(progress_text: String) -> void:
 
 func set_seat(seat_id: int) -> void:
 	if _seat_label:
-		_seat_label.text = "Seat: %d" % seat_id
+		_seat_label.text = _tf("table.seat_label", {"seat": seat_id})
 
 func set_action_timer(remaining_seconds: int, total_seconds: int, active: bool) -> void:
 	_timer_active = active
 	if _timer_caption_label:
 		if active:
-			_timer_caption_label.text = "ACTION TIMER  %ds" % max(remaining_seconds, 0)
+			_timer_caption_label.text = _tf("table.action_timer_seconds", {"seconds": max(remaining_seconds, 0)})
 		else:
-			_timer_caption_label.text = "ACTION TIMER"
+			_timer_caption_label.text = _t("table.action_timer")
 	if _timer_bar:
 		if active:
 			var total: int = max(total_seconds, 1)
@@ -150,5 +152,11 @@ func set_action_timer(remaining_seconds: int, total_seconds: int, active: bool) 
 func _safe_room_text(value: String) -> String:
 	var text := value.strip_edges()
 	if text == "" or text.to_lower() in ["null", "undefined", "<null>"]:
-		return "Training"
+		return _t("mode.training.title")
 	return text
+
+func _t(key: String) -> String:
+	return LocalizationManagerScript.tr_key(key)
+
+func _tf(key: String, params: Dictionary) -> String:
+	return LocalizationManagerScript.trf(key, params)

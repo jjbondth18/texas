@@ -265,7 +265,7 @@ func set_action_timer(remaining_seconds: int, total_seconds: int, active: bool, 
 	if not active:
 		timer_label.text = ""
 		return
-	var label: String = "YOUR TURN" if is_local_turn else "TURN TIMER"
+	var label: String = _t("table.your_turn") if is_local_turn else _t("table.turn_timer")
 	timer_label.text = "%s  %ds" % [label, _turn_timer_remaining]
 	var ratio: float = clamp(float(_turn_timer_remaining) / float(_turn_timer_total), 0.0, 1.0)
 	var color: Color = Color(1.0, 0.32, 0.80) if ratio <= 0.35 else Color(0.84, 0.87, 1.0)
@@ -294,7 +294,7 @@ func _build_player_info_overlay() -> void:
 	initials.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	$IdentityZone/AvatarPanel.add_child(initials)
 
-	_chips_caption_label = _make_label("CHIPS", 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
+	_chips_caption_label = _make_label(_t("store.chips").to_upper(), 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
 	_buy_in_value_label = _make_label("20,000", 19, Color(0.93, 0.93, 1.0), HORIZONTAL_ALIGNMENT_LEFT, false)
 	_buy_in_caption_label = _make_label(_t("table.buy_in"), 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
 	_session_caption_label = _make_label(_t("table.session_result"), 12, Color(0.65, 0.55, 0.80), HORIZONTAL_ALIGNMENT_LEFT, false)
@@ -329,7 +329,7 @@ func _build_hand_panel() -> void:
 	$FocusZone.add_child(_hand_base)
 	_hand_title_label = _make_label(_t("table.your_hand"), 14, Color(0.84, 0.87, 1.0), HORIZONTAL_ALIGNMENT_CENTER, true)
 	$FocusZone.add_child(_hand_title_label)
-	_hand_subtitle_label = _make_label("HIGH CARD: ACE", 12, Color(0.86, 0.80, 1.0, 0.90), HORIZONTAL_ALIGNMENT_CENTER, false)
+	_hand_subtitle_label = _make_label(_t("table.high_card_ace"), 12, Color(0.86, 0.80, 1.0, 0.90), HORIZONTAL_ALIGNMENT_CENTER, false)
 	$FocusZone.add_child(_hand_subtitle_label)
 	timer_label.text = _t("table.your_hand")
 	timer_label.add_theme_font_override("font", _bold_font)

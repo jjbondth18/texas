@@ -31,6 +31,7 @@ const NetworkConfigScript := preload("res://scripts/network/network_config.gd")
 const ServerTableSnapshotScript := preload("res://scripts/state/table_snapshot.gd")
 const HandReplayRecordScript := preload("res://scripts/replay/hand_replay_record.gd")
 const ReplayRepositoryScript := preload("res://scripts/replay/replay_repository.gd")
+const LocalizationManagerScript := preload("res://scripts/services/localization_manager.gd")
 
 const DESIGN_SIZE := Vector2(2560, 1000)
 const SERVER_DEFAULT_BUY_IN := 5000
@@ -402,18 +403,18 @@ func _build_public_waiting_panel() -> void:
 	box.add_theme_constant_override("separation", 10)
 	margin.add_child(box)
 	_public_waiting_title_label = Label.new()
-	_public_waiting_title_label.text = "WAITING FOR PLAYERS"
+	_public_waiting_title_label.text = _t("table.waiting_for_players")
 	_public_waiting_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_public_waiting_title_label.add_theme_font_size_override("font_size", 22)
 	_public_waiting_title_label.add_theme_color_override("font_color", Color(1.0, 0.94, 1.0, 0.98))
 	box.add_child(_public_waiting_title_label)
 	_public_waiting_body_label = Label.new()
-	_public_waiting_body_label.text = "1 / 6 seated\nStart AI warm-up while waiting.\nWarm-up uses practice chips and does not affect your wallet."
+	_public_waiting_body_label.text = _tf("table.waiting_body", {"count": 1, "max": 6})
 	_public_waiting_body_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_public_waiting_body_label.add_theme_font_size_override("font_size", 14)
 	_public_waiting_body_label.add_theme_color_override("font_color", Color(0.72, 0.78, 1.0, 0.92))
 	box.add_child(_public_waiting_body_label)
-	_public_waiting_button = _top_control_button("START AI WARM-UP", Vector2(210, 42))
+	_public_waiting_button = _top_control_button(_t("table.start_ai_warmup"), Vector2(210, 42))
 	_public_waiting_button.pressed.connect(_on_public_waiting_button_pressed)
 	box.add_child(_public_waiting_button)
 	_content_root.add_child(_public_waiting_panel)
@@ -883,18 +884,18 @@ func _on_server_start_ai_warmup_result(ok: bool, room_id: String, reason: String
 		_begin_local_public_warmup()
 		return
 	var failure_reason := reason if reason != "" else "unknown"
-	_on_server_error("START AI WARM-UP failed: %s" % failure_reason)
+	_on_server_error(_tf("table.start_ai_warmup_failed", {"reason": failure_reason}))
 
 func _server_sit_down_failure_message(reason: String, wallet_chips: int = -1, required_chips: int = -1) -> String:
 	if reason == "insufficient_gems":
 		if wallet_chips >= 0 and required_chips >= 0:
-			return "Not enough gems for this buy-in. Required: %s. Wallet: %s." % [_format_chips(required_chips), _format_chips(wallet_chips)]
-		return "Not enough gems for this buy-in."
+			return _tf("table.not_enough_buyin_gems_detail", {"required": _format_chips(required_chips), "wallet": _format_chips(wallet_chips)})
+		return _t("table.not_enough_buyin_gems")
 	if reason == "insufficient_chips":
 		if wallet_chips >= 0 and required_chips >= 0:
-			return "Not enough chips for this buy-in. Required: %s. Wallet: %s." % [_format_chips(required_chips), _format_chips(wallet_chips)]
-		return "Not enough chips for this buy-in."
-	return "Failed to sit down at table. reason=%s" % reason
+			return _tf("table.not_enough_buyin_chips_detail", {"required": _format_chips(required_chips), "wallet": _format_chips(wallet_chips)})
+		return _t("table.not_enough_buyin_chips")
+	return _tf("table.failed_sit_down_reason", {"reason": reason})
 
 func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
 	var apply_start := Time.get_ticks_msec()
@@ -3030,11 +3031,11 @@ func _refresh_public_waiting_controls() -> void:
 	var should_show := _should_show_public_warmup_entry()
 	var should_show_ready := _should_show_public_ready_entry()
 	var local_ready: bool = _is_local_public_ready()
-	var ready_text: String = "UNREADY" if local_ready else "READY"
+	var ready_text: String = _t("table.unready") if local_ready else _t("table.ready")
 	var start_block_reason := _public_start_block_reason()
 	if _ai_warmup_button != null:
-		_ai_warmup_button.text = ready_text if should_show_ready else "START AI WARM-UP"
-		_ai_warmup_button.tooltip_text = start_block_reason if start_block_reason != "" else ("Toggle your public room ready state." if should_show_ready else "Practice with AI while waiting for real players.")
+		_ai_warmup_button.text = ready_text if should_show_ready else _t("table.start_ai_warmup")
+		_ai_warmup_button.tooltip_text = start_block_reason if start_block_reason != "" else (_t("table.ready_toggle_hint") if should_show_ready else _t("table.warmup_hint"))
 		_ai_warmup_button.visible = should_show or should_show_ready
 		_ai_warmup_button.disabled = not (should_show or should_show_ready)
 	if _dev_simulate_real_join_button != null:
@@ -3046,35 +3047,33 @@ func _refresh_public_waiting_controls() -> void:
 	if _public_waiting_panel != null:
 		_public_waiting_panel.visible = should_show or (_server_seat_confirmed and _server_local_seat_index >= 0 and _is_public_ready_to_start_state())
 	if _public_waiting_button != null:
-		_public_waiting_button.text = "START AI WARM-UP" if should_show else ready_text
-		_public_waiting_button.tooltip_text = "Practice with AI while waiting for real players." if should_show else start_block_reason
+		_public_waiting_button.text = _t("table.start_ai_warmup") if should_show else ready_text
+		_public_waiting_button.tooltip_text = _t("table.warmup_hint") if should_show else start_block_reason
 		_public_waiting_button.visible = should_show or should_show_ready
 		_public_waiting_button.disabled = not (should_show or should_show_ready)
 	if _public_waiting_body_label != null and should_show:
 		if _public_waiting_title_label != null:
-			_public_waiting_title_label.text = "WAITING FOR PLAYERS"
-		_public_waiting_body_label.text = "%d / 6 seated\nStart local AI warm-up while waiting.\nPractice chips only. Public room stays open." % _real_public_player_count_from_flow()
+			_public_waiting_title_label.text = _t("table.waiting_for_players")
+		_public_waiting_body_label.text = _tf("table.waiting_body", {"count": _real_public_player_count_from_flow(), "max": 6})
 	elif _public_waiting_body_label != null and _is_public_ready_to_start_state():
 		var ready_count: int = int(_server_latest_ui_snapshot.get("ready_count", 0))
 		var ready_required: int = int(_server_latest_ui_snapshot.get("ready_required_count", _real_public_player_count_from_flow()))
 		if _is_public_starting_countdown_state():
 			if _public_waiting_title_label != null:
-				_public_waiting_title_label.text = "STARTING"
-			_public_waiting_body_label.text = "%d / 6 seated\nAll players ready.\nStarting in %d..." % [
-				_real_public_player_count_from_flow(),
-				_server_countdown_seconds(_server_latest_ui_snapshot),
-			]
+				_public_waiting_title_label.text = _t("table.starting")
+			_public_waiting_body_label.text = _tf("table.starting_countdown", {"count": _real_public_player_count_from_flow(), "max": 6, "seconds": _server_countdown_seconds(_server_latest_ui_snapshot)})
 		else:
 			if _public_waiting_title_label != null:
-				_public_waiting_title_label.text = "PRIVATE ROOM" if _is_private_room_table() else "WAITING FOR READY"
-			_public_waiting_body_label.text = "%d / 6 seated\nReady: %d / %d\n%s" % [
-				_real_public_player_count_from_flow(),
-				ready_count,
-				ready_required,
-				start_block_reason if start_block_reason != "" else "Press READY when you are ready to play.",
-			]
+				_public_waiting_title_label.text = _t("table.private_room") if _is_private_room_table() else _t("table.waiting_for_ready")
+			_public_waiting_body_label.text = _tf("table.ready_body", {
+				"count": _real_public_player_count_from_flow(),
+				"max": 6,
+				"ready": ready_count,
+				"required": ready_required,
+				"hint": start_block_reason if start_block_reason != "" else _t("table.press_ready_hint"),
+			})
 	elif _public_waiting_title_label != null:
-		_public_waiting_title_label.text = "WAITING FOR PLAYERS"
+		_public_waiting_title_label.text = _t("table.waiting_for_players")
 
 func _is_public_ready_to_start_state() -> bool:
 	if not server_authoritative or _local_public_warmup_active:
@@ -3548,14 +3547,14 @@ func _build_session_result_panel() -> void:
 		column.add_child(row)
 		var play_again := Button.new()
 		play_again.name = "PlayAgainButton"
-		play_again.text = "PLAY AGAIN"
+		play_again.text = _t("table.play_again")
 		play_again.custom_minimum_size = Vector2(180, 48)
 		play_again.pressed.connect(_restart_session)
 		row.add_child(play_again)
 		_session_play_again_button = play_again
 		var home_button := Button.new()
 		home_button.name = "BackHomeButton"
-		home_button.text = "EXIT TABLE"
+		home_button.text = _t("table.exit_table")
 		home_button.custom_minimum_size = Vector2(190, 48)
 		home_button.pressed.connect(_request_exit_table)
 		row.add_child(home_button)
@@ -3577,14 +3576,14 @@ func _show_session_result_panel() -> void:
 	if _session_play_again_button != null:
 		_session_play_again_button.name = "PlayAgainButton"
 		_session_play_again_button.disabled = not can_play_again
-		_session_play_again_button.tooltip_text = "" if can_play_again else "Not enough chips for this buy-in."
+		_session_play_again_button.tooltip_text = "" if can_play_again else _t("table.not_enough_buyin_chips")
 		_apply_session_button_style(_session_play_again_button, "primary", not can_play_again)
 	var back_button: Button = _session_result_panel.find_child("BackHomeButton", true, false) as Button
 	if back_button != null:
-		back_button.text = "EXIT TABLE"
+		back_button.text = _t("table.exit_table")
 		_apply_session_button_style(back_button, "secondary", false)
 	if _session_play_again_hint_label != null:
-		_session_play_again_hint_label.text = "" if can_play_again else "Not enough chips for this buy-in"
+		_session_play_again_hint_label.text = "" if can_play_again else _t("table.not_enough_buyin_chips")
 	var profile: Dictionary = TableLaunchContext.get_player_profile()
 	if _session_result_name_label != null:
 		_session_result_name_label.text = "%s  |  %s" % [PlayerProfileScript.get_player_name(profile), _session_mode_label()]
@@ -4284,8 +4283,8 @@ func _apply_launch_context(target_snapshot: Dictionary) -> void:
 				if not TableLaunchContext.pending_real_joiners.is_empty():
 					messages.insert(3, "Real player joined. Returning to public table...")
 			elif _is_public_waiting_for_real_players():
-				target_snapshot["connection_status"] = "WAITING FOR PLAYERS"
-				messages.insert(0, "WAITING FOR PLAYERS")
+				target_snapshot["connection_status"] = _t("table.waiting_for_players")
+				messages.insert(0, _t("table.waiting_for_players"))
 				messages.insert(1, "%d / 6 seated" % _real_public_player_count_from_flow())
 				messages.insert(2, "Start AI warm-up while waiting?")
 			target_snapshot["system_messages"] = messages
@@ -4563,7 +4562,7 @@ func _configure_table_flow_from_launch_context() -> void:
 	right_row.add_theme_constant_override("separation", 14)
 	_top_bar_root.add_child(right_row)
 
-	var top_exit := _top_control_button("EXIT TABLE", Vector2(180, 56))
+	var top_exit := _top_control_button(_t("table.exit_table"), Vector2(180, 56))
 	top_exit.pressed.connect(_request_exit_table)
 	right_row.add_child(top_exit)
 	right_row.add_child(_top_control_button("⚙", Vector2(56, 56)))
@@ -4664,7 +4663,7 @@ func _build_top_bar_container_layout() -> void:
 	right_container.add_theme_constant_override("separation", 14)
 	right_container.visible = false
 
-	var top_exit := _top_control_button("EXIT TABLE", Vector2(180, 56))
+	var top_exit := _top_control_button(_t("table.exit_table"), Vector2(180, 56))
 	top_exit.pressed.connect(_request_exit_table)
 	right_container.add_child(top_exit)
 	right_container.add_child(_top_control_button("⚙", Vector2(56, 56)))
@@ -4710,7 +4709,7 @@ func _build_top_action_bar() -> void:
 	_top_right_action_bar.add_theme_constant_override("separation", 14)
 
 	_clear_children(_top_right_action_bar)
-	var exit_button := _top_control_button("EXIT TABLE", Vector2(180, 56))
+	var exit_button := _top_control_button(_t("table.exit_table"), Vector2(180, 56))
 	exit_button.pressed.connect(_request_exit_table)
 	_top_right_action_bar.add_child(exit_button)
 	_start_exit_button_pulse(exit_button)
@@ -4721,13 +4720,13 @@ func _build_top_action_bar() -> void:
 	settings_button.pressed.connect(_toggle_settings_panel)
 	_top_right_action_bar.add_child(settings_button)
 
-	var dealer_button := _top_control_button("DEALER", Vector2(118, 56))
+	var dealer_button := _top_control_button(_t("table.dealer"), Vector2(118, 56))
 	_dealer_cosmetic_button = dealer_button
 	dealer_button.tooltip_text = "Choose dealer character."
 	dealer_button.pressed.connect(_toggle_dealer_cosmetic_panel)
 	_top_right_action_bar.add_child(dealer_button)
 
-	var ai_warmup_button := _top_control_button("START AI WARM-UP", Vector2(190, 56))
+	var ai_warmup_button := _top_control_button(_t("table.start_ai_warmup"), Vector2(190, 56))
 	_ai_warmup_button = ai_warmup_button
 	ai_warmup_button.tooltip_text = "Practice with AI while waiting for real players."
 	ai_warmup_button.pressed.connect(_start_public_ai_warmup)
@@ -4736,7 +4735,7 @@ func _build_top_action_bar() -> void:
 	_dev_simulate_real_join_button = null
 
 
-	var add_chips_button := _top_control_button("ADD CHIPS", Vector2(150, 56))
+	var add_chips_button := _top_control_button(_t("table.add_chips"), Vector2(150, 56))
 	_add_chips_button = add_chips_button
 	add_chips_button.tooltip_text = "Move wallet chips to this table."
 	add_chips_button.pressed.connect(_toggle_add_chips_panel)
@@ -5468,7 +5467,7 @@ func _top_control_button(text_value: String, min_size: Vector2) -> Button:
 	button.disabled = false
 	button.focus_mode = Control.FOCUS_NONE
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-	button.add_theme_font_size_override("font_size", 13 if text_value == "EXIT TABLE" else 18)
+	button.add_theme_font_size_override("font_size", 13 if text_value == _t("table.exit_table") else 18)
 	button.add_theme_color_override("font_color", Color(0.94, 0.92, 1.0))
 	button.add_theme_color_override("font_hover_color", Color.WHITE)
 	button.add_theme_stylebox_override("normal", _top_control_style(false, text_value))
@@ -5484,10 +5483,10 @@ func _debug_click(label: String) -> void:
 func _top_control_style(hovered: bool, text_value: String = "") -> StyleBoxFlat:
 	var accent := Color(0.92, 0.26, 1.0, 0.72)
 	var bg := Color(0.055, 0.025, 0.080, 0.60)
-	if text_value == "EXIT TABLE":
+	if text_value == _t("table.exit_table"):
 		accent = Color(1.0, 0.0, 0.32, 0.95)
 		bg = Color(0.18, 0.035, 0.090, 0.74)
-	elif text_value == "ADD CHIPS" or text_value.begins_with("+"):
+	elif text_value == _t("table.add_chips") or text_value == _t("table.add_gems") or text_value.begins_with("+"):
 		accent = Color(0.0, 0.95, 0.72, 0.90)
 		bg = Color(0.020, 0.120, 0.100, 0.66)
 	var style := HomeTheme.make_panel_style(
@@ -5550,6 +5549,12 @@ func _format_chips(value: int) -> String:
 		result = s[i] + result
 		count += 1
 	return result
+
+func _t(key: String) -> String:
+	return LocalizationManagerScript.tr_key(key)
+
+func _tf(key: String, params: Dictionary) -> String:
+	return LocalizationManagerScript.trf(key, params)
 
 func _hide_editor_guides(node: Node) -> void:
 	if node.name.begins_with("Guide"):
