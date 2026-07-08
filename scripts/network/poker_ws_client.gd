@@ -252,6 +252,10 @@ func _emit_profile_payload(message: Dictionary) -> void:
 	if message.has("daily_bonus_status"):
 		var daily_status := Dictionary(message.get("daily_bonus_status", {}))
 		profile["daily_bonus_claim_count"] = int(daily_status.get("claim_count", profile.get("daily_bonus_claim_count", 0)))
+		profile["daily_bonus_cycle_day"] = int(daily_status.get("cycle_day", daily_status.get("current_day", profile.get("daily_bonus_cycle_day", 1))))
+		profile["daily_bonus_claimed_days_in_cycle"] = int(daily_status.get("claimed_days_in_cycle", profile.get("daily_bonus_claimed_days_in_cycle", 0)))
+		profile["daily_bonus_can_claim_today"] = bool(daily_status.get("can_claim_today", false))
+		profile["daily_bonus_status_synced"] = true
 		profile["daily_reward_claimed_today"] = bool(daily_status.get("already_claimed_today", false))
 		if bool(profile.get("daily_reward_claimed_today", false)):
 			profile["last_daily_reward_date"] = str(daily_status.get("claim_date", Time.get_date_string_from_system()))

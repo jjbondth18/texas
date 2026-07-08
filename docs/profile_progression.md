@@ -4,7 +4,7 @@ Profile progression is a lightweight account-display layer. It does not grant ta
 
 ## Daily Bonus
 
-Daily Bonus is claimed from the Home page with the `CLAIM` button. Rewards use a simple seven-day loop and do not reset for missed days in the first version.
+Daily Bonus is claimed from the Home page with the `CLAIM` button. It is a seven-claim cycle, not a consecutive-login streak. Missing days do not reset progress.
 
 Logging in only checks Daily Bonus status. It does not grant Chips, XP, or Gems. In authoritative server mode the client requests `daily_bonus_status` during profile sync, and clicking `CLAIM` sends `claim_daily_bonus` to the server. The server is authoritative for whether the current date can be claimed.
 
@@ -18,7 +18,14 @@ Logging in only checks Daily Bonus status. It does not grant Chips, XP, or Gems.
 | 6 | 2,000 | 25 | 0 |
 | 7 | 5,000 | 50 | 5 |
 
-Each natural day can be claimed once. After claiming Day 7, the next eligible claim returns to Day 1.
+Each natural day can be claimed once. Claiming once advances the cycle by one day: Day 1 -> Day 2 -> Day 3 -> Day 4 -> Day 5 -> Day 6 -> Day 7 -> Day 1. After claiming Day 7, the next eligible claim returns to Day 1.
+
+The Home Daily Bonus bar uses explicit states:
+
+- Claimed cycle days show `CLAIMED`.
+- The current claimable cycle day shows `CLAIM`.
+- Future cycle days show `LOCKED`.
+- If today's claim has already been made, the current day also shows `CLAIMED`.
 
 The chip, XP, and Gem rewards share the same once-per-day claim rule. If the daily bonus has already been claimed for the current date, no reward is granted again.
 

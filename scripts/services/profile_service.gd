@@ -37,6 +37,14 @@ func apply_server_profile_snapshot(profile_snapshot: Dictionary, wallet_snapshot
 		profile["player_id"] = String(profile_snapshot.get("player_id", profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID)))
 		if profile_snapshot.has("daily_bonus_claim_count"):
 			profile["daily_bonus_claim_count"] = int(profile_snapshot.get("daily_bonus_claim_count", profile.get("daily_bonus_claim_count", 0)))
+		if profile_snapshot.has("daily_bonus_cycle_day"):
+			profile["daily_bonus_cycle_day"] = int(profile_snapshot.get("daily_bonus_cycle_day", profile.get("daily_bonus_cycle_day", 1)))
+		if profile_snapshot.has("daily_bonus_claimed_days_in_cycle"):
+			profile["daily_bonus_claimed_days_in_cycle"] = int(profile_snapshot.get("daily_bonus_claimed_days_in_cycle", profile.get("daily_bonus_claimed_days_in_cycle", 0)))
+		if profile_snapshot.has("daily_bonus_can_claim_today"):
+			profile["daily_bonus_can_claim_today"] = bool(profile_snapshot.get("daily_bonus_can_claim_today", false))
+		if profile_snapshot.has("daily_bonus_status_synced"):
+			profile["daily_bonus_status_synced"] = bool(profile_snapshot.get("daily_bonus_status_synced", false))
 		if profile_snapshot.has("daily_reward_claimed_today"):
 			profile["daily_reward_claimed_today"] = bool(profile_snapshot.get("daily_reward_claimed_today", false))
 		if profile_snapshot.has("last_daily_reward_date"):
@@ -309,6 +317,11 @@ func claim_daily_login_bonus(today: String = "") -> Dictionary:
 	profile["gems"] = PlayerProfileScript.get_total_gems(profile) + gems_awarded
 	_grant_daily_login_xp(profile, date_key, xp_awarded)
 	profile["daily_bonus_claim_count"] = max(int(profile.get("daily_bonus_claim_count", 0)), 0) + 1
+	var completed_in_cycle: int = int(profile["daily_bonus_claim_count"]) % PlayerProfileScript.DAILY_BONUS_REWARDS.size()
+	profile["daily_bonus_cycle_day"] = reward_day
+	profile["daily_bonus_claimed_days_in_cycle"] = reward_day if completed_in_cycle == 0 else completed_in_cycle
+	profile["daily_bonus_can_claim_today"] = false
+	profile["daily_bonus_status_synced"] = false
 	profile["last_daily_reward_date"] = date_key
 	profile["daily_reward_claimed_today"] = true
 	save_current_profile(profile)

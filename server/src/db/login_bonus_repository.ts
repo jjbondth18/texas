@@ -19,9 +19,11 @@ export interface DailyBonusReward {
 
 export interface DailyBonusStatus {
   current_day: number;
+  cycle_day: number;
   can_claim_today: boolean;
   already_claimed_today: boolean;
   claim_count: number;
+  claimed_days_in_cycle: number;
   claim_date: string;
   rewards: DailyBonusReward[];
 }
@@ -51,14 +53,19 @@ export class LoginBonusRepository {
       .prepare("SELECT COUNT(*) AS count FROM daily_login_claims WHERE player_id = ?")
       .get(playerId) as { count?: number } | undefined;
     const claimCount = Number(previousClaimRow?.count ?? 0);
-    const currentDay = existing
+    const cycleDay = existing
       ? (((Math.max(claimCount, 1) - 1) % DAILY_BONUS_REWARDS.length) + 1)
       : ((claimCount % DAILY_BONUS_REWARDS.length) + 1);
+    const claimedDaysInCycle = existing
+      ? cycleDay
+      : claimCount % DAILY_BONUS_REWARDS.length;
     return {
-      current_day: currentDay,
+      current_day: cycleDay,
+      cycle_day: cycleDay,
       can_claim_today: !existing,
       already_claimed_today: Boolean(existing),
       claim_count: claimCount,
+      claimed_days_in_cycle: claimedDaysInCycle,
       claim_date: claimDate,
       rewards: DAILY_BONUS_REWARDS.map((reward) => ({ ...reward })),
     };

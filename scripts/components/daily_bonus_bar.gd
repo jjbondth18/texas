@@ -42,7 +42,7 @@ func _rebuild_cells() -> void:
 	HomeTheme.make_font_settings(title, 18, HomeTheme.TEXT)
 	copy_box.add_child(title)
 	var copy := Label.new()
-	copy.text = "Claim today's chips, XP, and weekly Gems."
+	copy.text = "Claim once per day. Complete the 7-claim cycle for bonus gems."
 	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	HomeTheme.make_font_settings(copy, 12, HomeTheme.MUTED)
 	copy_box.add_child(copy)
@@ -58,6 +58,7 @@ func _bonus_cell(bonus: Dictionary) -> PanelContainer:
 	cell.mouse_filter = Control.MOUSE_FILTER_PASS
 	var active: bool = bool(bonus.get("active", false))
 	var claimed: bool = bool(bonus.get("claimed", false))
+	var locked: bool = bool(bonus.get("locked", bonus.get("future", false)))
 	cell.add_theme_stylebox_override("panel", _cell_style(active, false))
 	if claimed:
 		cell.modulate.a = 0.64
@@ -75,6 +76,8 @@ func _bonus_cell(bonus: Dictionary) -> PanelContainer:
 		status_text = "CLAIMED"
 	elif active:
 		status_text = "CLAIM"
+	elif locked:
+		status_text = "LOCKED"
 	if active:
 		var claim_button := Button.new()
 		claim_button.text = status_text

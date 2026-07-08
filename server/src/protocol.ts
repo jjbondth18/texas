@@ -143,9 +143,11 @@ export interface ServerMessage {
 
 export interface DailyBonusStatusSnapshot {
   current_day: number;
+  cycle_day: number;
   can_claim_today: boolean;
   already_claimed_today: boolean;
   claim_count: number;
+  claimed_days_in_cycle: number;
   claim_date: string;
   rewards: Array<{ day: number; chips: number; xp: number; gems: number }>;
 }

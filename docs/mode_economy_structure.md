@@ -172,6 +172,7 @@ Profile progression is deliberately lightweight:
 - Daily Bonus is claimed from Home with the `CLAIM` button.
 - Logging in only checks whether Daily Bonus can be claimed; rewards are not auto-granted on login.
 - In authoritative server mode, `CLAIM` sends `claim_daily_bonus`, then the server grants and returns the updated wallet/profile status.
+- Daily Bonus is a 7-claim cycle, not a consecutive-login streak. Missing days do not reset progress.
 - Daily Bonus grants Chips and XP on Days 1-6.
 - Day 7 grants `5,000 Chips`, `50 XP`, and `5 Gems`.
 - After Day 7, the next claim loops back to Day 1.
