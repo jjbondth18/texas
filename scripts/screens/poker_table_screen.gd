@@ -18,6 +18,7 @@ const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
 const RoomInfoPanelScene := preload("res://scripts/components/table_room_info_panel.gd")
 const LayoutSchema := preload("res://scripts/dev/poker_table_layout_schema.gd")
 const TexasTableFlowScript := preload("res://scripts/core/texas_table_flow.gd")
+const MusicServiceScript := preload("res://scripts/services/music_service.gd")
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const DealerLibraryScript := preload("res://scripts/data/dealer_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
@@ -194,6 +195,7 @@ var _local_public_warmup_active := false
 var _local_public_warmup_return_pending := false
 
 func _ready() -> void:
+	MusicServiceScript.play_table_bgm(self)
 	_hide_editor_guides(self)
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_ai_rng.randomize()
@@ -4177,6 +4179,7 @@ func _complete_return_home() -> void:
 		else:
 			_cash_out_remaining_table_chips_to_wallet()
 	TableLaunchContext.clear_table_session()
+	MusicServiceScript.play_home_bgm(self)
 	ScreenNavigator.return_home(get_tree())
 
 

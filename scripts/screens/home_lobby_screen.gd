@@ -92,12 +92,12 @@ var _fade_overlay: ColorRect
 var _launch_transition_label: Label
 var _launch_transition_tween: Tween
 var _is_launching_table := false
-var _bgm_player: AudioStreamPlayer
 
 const MockDataProvider := preload("res://scripts/demo/mock_data_provider.gd")
 const ScreenNavigator := preload("res://scripts/app/screen_navigator.gd")
 const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
 const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
+const MusicServiceScript := preload("res://scripts/services/music_service.gd")
 const LocalMockBackendScript := preload("res://scripts/services/local_mock_backend.gd")
 const StoreMockServiceScript := preload("res://scripts/services/store_mock_service.gd")
 const ReplayServiceScript := preload("res://scripts/services/replay_service.gd")
@@ -262,20 +262,7 @@ func _ready() -> void:
 	_launch_transition_label.add_theme_color_override("font_color", Color(0.96, 0.92, 1.0, 0.96))
 	_fade_overlay.add_child(_launch_transition_label)
 
-	_bgm_player = AudioStreamPlayer.new()
-	_bgm_player.name = "BGMPlayer"
-	var ogg = load("res://assets/music/bgm1.ogg") if ResourceLoader.exists("res://assets/music/bgm1.ogg") else AudioStreamOggVorbis.load_from_file(ProjectSettings.globalize_path("res://assets/music/bgm1.ogg"))
-	if ogg:
-		if ogg.has_method("set_loop"):
-			ogg.set_loop(true)
-		elif "loop" in ogg:
-			ogg.loop = true
-		_bgm_player.stream = ogg
-	_bgm_player.finished.connect(func() -> void:
-		_bgm_player.play()
-	)
-	add_child(_bgm_player)
-	_bgm_player.play()
+	MusicServiceScript.play_home_bgm(self)
 	_apply_settings(_settings_service.load_settings())
 	
 	var lobby_vm := MockDataProvider.get_lobby_view_model()
@@ -3352,6 +3339,7 @@ func _ensure_replay_fullscreen_overlay() -> void:
 
 func _show_replay_fullscreen_overlay() -> void:
 	_ensure_replay_fullscreen_overlay()
+	MusicServiceScript.play_table_bgm(self)
 	_replay_fullscreen_overlay.visible = true
 	_replay_fullscreen_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_replay_fullscreen_overlay.move_to_front()
@@ -3370,6 +3358,7 @@ func _hide_replay_fullscreen_overlay() -> void:
 		_replay_fullscreen_overlay.visible = false
 		_replace_replay_children(_replay_fullscreen_overlay)
 	_replay_poker_table_screen = null
+	MusicServiceScript.play_home_bgm(self)
 	if current_state == LobbyState.REPLAY and _replay_panel != null:
 		_replay_panel.visible = true
 	if _center_brand != null and current_state != LobbyState.COLLAPSED:
@@ -5306,10 +5295,6 @@ func _apply_settings(settings: Dictionary) -> void:
 	if _settings_service != null:
 		_settings_service.apply_safe_settings(normalized)
 	set_background_motion_enabled(not bool(normalized.get("reduce_motion", false)))
-	if _bgm_player != null:
-		var master := 0.0 if bool(normalized.get("mute_all", false)) else float(normalized.get("master_volume", 1.0))
-		var lobby_music_volume := clampf(master * float(normalized.get("music_volume", 0.8)), 0.0, 1.0)
-		_bgm_player.volume_db = -80.0 if lobby_music_volume <= 0.0 else linear_to_db(lobby_music_volume)
 
 func _add_settings_slider(parent: VBoxContainer, section_title: String, label_text: String, value: float) -> HSlider:
 	_add_settings_section_label(parent, section_title)
