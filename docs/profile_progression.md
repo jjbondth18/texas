@@ -6,6 +6,8 @@ Profile progression is a lightweight account-display layer. It does not grant ta
 
 Daily Bonus is claimed from the Home page with the `CLAIM` button. Rewards use a simple seven-day loop and do not reset for missed days in the first version.
 
+Logging in only checks Daily Bonus status. It does not grant Chips, XP, or Gems. In authoritative server mode the client requests `daily_bonus_status` during profile sync, and clicking `CLAIM` sends `claim_daily_bonus` to the server. The server is authoritative for whether the current date can be claimed.
+
 | Day | Chips | XP | Gems |
 | --- | ---: | ---: | ---: |
 | 1 | 500 | 25 | 0 |

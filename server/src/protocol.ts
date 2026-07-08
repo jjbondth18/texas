@@ -14,6 +14,7 @@ export type ClientMessageType =
   | "player_action"
   | "get_profile"
   | "get_avatar_catalog"
+  | "claim_daily_bonus"
   | "buy_avatar"
   | "select_avatar"
   | "mock_purchase"
@@ -31,6 +32,7 @@ export type ServerMessageType =
   | "private_snapshot"
   | "profile_snapshot"
   | "wallet_snapshot"
+  | "daily_bonus_result"
   | "avatar_catalog"
   | "table_list"
   | "quick_table_matched"
@@ -126,6 +128,7 @@ export interface ServerMessage {
   awarded_xp?: number;
   awarded_gems?: number;
   daily_bonus_day?: number;
+  daily_bonus_status?: DailyBonusStatusSnapshot;
   warning?: string;
   avatar_catalog?: AvatarCatalogItemSnapshot[];
   tables?: PublicTableSnapshot[];
@@ -136,6 +139,15 @@ export interface ServerMessage {
   is_ai_warmup?: boolean;
   local_warmup?: boolean;
   host_in_local_warmup?: boolean;
+}
+
+export interface DailyBonusStatusSnapshot {
+  current_day: number;
+  can_claim_today: boolean;
+  already_claimed_today: boolean;
+  claim_count: number;
+  claim_date: string;
+  rewards: Array<{ day: number; chips: number; xp: number; gems: number }>;
 }
 
 export interface AvatarCatalogItemSnapshot {

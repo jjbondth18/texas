@@ -12,6 +12,7 @@ signal profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_i
 signal wallet_synced(wallet: Dictionary)
 signal daily_login_awarded(chips: int)
 signal daily_bonus_awarded(chips: int, xp: int, gems: int)
+signal daily_bonus_claim_failed(reason: String)
 signal avatar_catalog_received(catalog: Array)
 signal table_list_received(tables: Array)
 signal table_created(room_id: String, table_info: Dictionary)
@@ -126,6 +127,9 @@ func get_profile() -> int:
 func get_avatar_catalog() -> int:
 	return send_message(PokerProtocolScript.get_avatar_catalog())
 
+func claim_daily_bonus() -> int:
+	return send_message(PokerProtocolScript.claim_daily_bonus())
+
 func buy_avatar(avatar_id: String) -> int:
 	return send_message(PokerProtocolScript.buy_avatar(avatar_id))
 
@@ -173,6 +177,10 @@ func _handle_message(message: Dictionary) -> void:
 			var wallet := Dictionary(message.get("wallet", {})).duplicate(true)
 			if not wallet.is_empty():
 				wallet_synced.emit(wallet)
+		PokerProtocolScript.DAILY_BONUS_RESULT:
+			_emit_profile_payload(message)
+			if not bool(message.get("ok", false)):
+				daily_bonus_claim_failed.emit(str(message.get("reason", "daily_bonus_failed")))
 		PokerProtocolScript.AVATAR_CATALOG:
 			avatar_catalog_received.emit(Array(message.get("avatar_catalog", [])).duplicate(true))
 		PokerProtocolScript.TABLE_LIST:
@@ -241,9 +249,12 @@ func _emit_profile_payload(message: Dictionary) -> void:
 	var profile := Dictionary(message.get("profile", {})).duplicate(true)
 	var wallet := Dictionary(message.get("wallet", {})).duplicate(true)
 	var unlocked := Array(message.get("unlocked_avatar_ids", []))
-	if message.has("daily_login_awarded"):
-		profile["daily_reward_claimed_today"] = true
-		profile["last_daily_reward_date"] = Time.get_date_string_from_system()
+	if message.has("daily_bonus_status"):
+		var daily_status := Dictionary(message.get("daily_bonus_status", {}))
+		profile["daily_bonus_claim_count"] = int(daily_status.get("claim_count", profile.get("daily_bonus_claim_count", 0)))
+		profile["daily_reward_claimed_today"] = bool(daily_status.get("already_claimed_today", false))
+		if bool(profile.get("daily_reward_claimed_today", false)):
+			profile["last_daily_reward_date"] = str(daily_status.get("claim_date", Time.get_date_string_from_system()))
 	if not profile.is_empty() or not wallet.is_empty() or not unlocked.is_empty():
 		profile_synced.emit(profile, wallet, unlocked)
 	if not wallet.is_empty():

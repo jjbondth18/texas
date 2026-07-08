@@ -16,6 +16,7 @@ const PLAYER_ACTION := "player_action"
 const ADD_TABLE_CHIPS := "add_table_chips"
 const GET_PROFILE := "get_profile"
 const GET_AVATAR_CATALOG := "get_avatar_catalog"
+const CLAIM_DAILY_BONUS := "claim_daily_bonus"
 const BUY_AVATAR := "buy_avatar"
 const SELECT_AVATAR := "select_avatar"
 const MOCK_PURCHASE := "mock_purchase"
@@ -30,6 +31,7 @@ const PRIVATE_SNAPSHOT := "private_snapshot"
 const SIT_DOWN_RESULT := "sit_down_result"
 const PROFILE_SNAPSHOT := "profile_snapshot"
 const WALLET_SNAPSHOT := "wallet_snapshot"
+const DAILY_BONUS_RESULT := "daily_bonus_result"
 const AVATAR_CATALOG := "avatar_catalog"
 const TABLE_LIST := "table_list"
 const QUICK_TABLE_MATCHED := "quick_table_matched"
@@ -116,6 +118,9 @@ static func get_profile() -> Dictionary:
 
 static func get_avatar_catalog() -> Dictionary:
 	return _message(GET_AVATAR_CATALOG)
+
+static func claim_daily_bonus() -> Dictionary:
+	return _message(CLAIM_DAILY_BONUS)
 
 static func buy_avatar(avatar_id: String) -> Dictionary:
 	return _message(BUY_AVATAR, {"avatar_id": avatar_id})

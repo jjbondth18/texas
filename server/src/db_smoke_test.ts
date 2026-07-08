@@ -19,14 +19,20 @@ if (!helloClient) throw new Error("hello did not migrate client to requested pla
 const firstProfile = manager.adminSnapshot(false);
 if (Number(firstProfile.player_count) !== 1) throw new Error("expected one player after hello");
 if (Number(firstProfile.identity_count) !== 1) throw new Error("expected local_dev identity after hello");
-if (Number(firstProfile.total_wallet_chips) !== 10500) throw new Error("expected 10000 initial chips plus day 1 daily login chips");
+if (Number(firstProfile.total_wallet_chips) !== 10000) throw new Error("hello should not auto-grant daily bonus chips");
 if (Number(firstProfile.avatar_unlock_count) !== 1) throw new Error("new player should unlock the default avatar");
 const db = getDatabase();
 initializeSchema(db);
 if (countRows("schema_migrations") < 2) throw new Error("migrations should be recorded and re-runnable");
 if (countRows("player_identities", "provider = 'local_dev' AND external_id = 'db_smoke_player'") !== 1) throw new Error("hello should write local_dev identity");
 if (countRows("wallet_transactions", "reason = 'initial_grant' AND amount = 10000") !== 1) throw new Error("initial chips should write wallet transaction");
-if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips' AND amount = 500") !== 1) throw new Error("daily login should write chip wallet transaction");
+if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips'") !== 0) throw new Error("hello should not write daily login wallet transaction");
+manager.handle("db_smoke_player", { type: "claim_daily_bonus" });
+const afterDailyClaim = manager.adminSnapshot(false);
+if (Number(afterDailyClaim.total_wallet_chips) !== 10500) throw new Error("claim_daily_bonus should grant day 1 chips");
+if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips' AND amount = 500") !== 1) throw new Error("daily login claim should write chip wallet transaction");
+manager.handle("db_smoke_player", { type: "claim_daily_bonus" });
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 10500) throw new Error("claim_daily_bonus should not award twice on the same day");
 
 const repeatIdentityClient = manager.connect();
 manager.handle(repeatIdentityClient.id, { type: "hello", auth_provider: "local_dev", external_id: "db_smoke_player", name: "DB Smoke Repeat" });

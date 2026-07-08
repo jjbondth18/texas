@@ -199,6 +199,10 @@ export class RoomManager {
       this.send(client, { type: "profile_snapshot", request_id: message.request_id, ...this.profilePayload(client.id) });
       return;
     }
+    if (message.type === "claim_daily_bonus") {
+      this.claimDailyBonus(client, message.request_id);
+      return;
+    }
     if (message.type === "get_avatar_catalog") {
       this.send(client, { type: "avatar_catalog", request_id: message.request_id, avatar_catalog: AVATAR_CATALOG });
       return;
@@ -721,7 +725,7 @@ export class RoomManager {
     this.avatars.unlockAvatar(client.id, "default");
     const avatarId = this.avatars.hasAvatar(client.id, requestedAvatarId) ? requestedAvatarId : "default";
     const profile = this.players.upsert(client.id, displayName, avatarId);
-    const daily = this.loginBonus.claimTodayIfNeeded(client.id);
+    const dailyStatus = this.loginBonus.status(client.id);
     this.ensureDevBotWallet(client.id);
     const wallet = this.wallets.get(client.id)!;
     const unlocked = this.avatars.getUnlockedAvatars(client.id);
@@ -732,23 +736,40 @@ export class RoomManager {
       profile,
       wallet,
       unlocked_avatar_ids: unlocked,
-      daily_login_awarded: daily.daily_login_awarded,
-      awarded_chips: daily.awarded_chips,
-      awarded_xp: daily.awarded_xp,
-      awarded_gems: daily.awarded_gems,
-      daily_bonus_day: daily.reward_day,
+      daily_bonus_status: dailyStatus,
       warning: avatarId !== requestedAvatarId ? `avatar ${requestedAvatarId} is not unlocked; using default` : undefined,
     };
   }
 
-  private profilePayload(playerId: string): Pick<ServerMessage, "profile" | "wallet" | "unlocked_avatar_ids"> {
+  private profilePayload(playerId: string): Pick<ServerMessage, "profile" | "wallet" | "unlocked_avatar_ids" | "daily_bonus_status"> {
     const profile = this.players.find(playerId);
     const wallet = this.wallets.get(playerId);
     return {
       profile,
       wallet,
       unlocked_avatar_ids: this.avatars.getUnlockedAvatars(playerId),
+      daily_bonus_status: this.loginBonus.status(playerId),
     };
+  }
+
+  private claimDailyBonus(client: Client, requestId?: string): void {
+    const daily = this.loginBonus.claimToday(client.id);
+    const payload = {
+      type: "daily_bonus_result" as const,
+      request_id: requestId,
+      ok: daily.daily_login_awarded,
+      player_id: client.id,
+      server_player_id: client.id,
+      reason: daily.daily_login_awarded ? "" : "already_claimed_today",
+      daily_login_awarded: daily.daily_login_awarded,
+      awarded_chips: daily.awarded_chips,
+      awarded_xp: daily.awarded_xp,
+      awarded_gems: daily.awarded_gems,
+      daily_bonus_day: daily.reward_day,
+      daily_bonus_status: daily.status,
+      ...this.profilePayload(client.id),
+    };
+    this.send(client, payload);
   }
 
   private buyAvatar(client: Client, avatarIdRaw: string): void {

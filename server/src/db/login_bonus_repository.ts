@@ -7,6 +7,23 @@ export interface DailyLoginResult {
   awarded_xp: number;
   awarded_gems: number;
   reward_day: number;
+  status: DailyBonusStatus;
+}
+
+export interface DailyBonusReward {
+  day: number;
+  chips: number;
+  xp: number;
+  gems: number;
+}
+
+export interface DailyBonusStatus {
+  current_day: number;
+  can_claim_today: boolean;
+  already_claimed_today: boolean;
+  claim_count: number;
+  claim_date: string;
+  rewards: DailyBonusReward[];
 }
 
 const DAILY_BONUS_REWARDS = [
@@ -25,17 +42,42 @@ export class LoginBonusRepository {
     private readonly walletRepository: WalletRepository,
   ) {}
 
-  claimTodayIfNeeded(playerId: string, now = new Date()): DailyLoginResult {
+  status(playerId: string, now = new Date()): DailyBonusStatus {
     const claimDate = now.toISOString().slice(0, 10);
     const existing = this.db
       .prepare("SELECT 1 AS found FROM daily_login_claims WHERE player_id = ? AND claim_date = ?")
       .get(playerId, claimDate);
-    if (existing) return { daily_login_awarded: false, awarded_chips: 0, awarded_xp: 0, awarded_gems: 0, reward_day: 0 };
     const previousClaimRow = this.db
       .prepare("SELECT COUNT(*) AS count FROM daily_login_claims WHERE player_id = ?")
       .get(playerId) as { count?: number } | undefined;
-    const previousClaimCount = Number(previousClaimRow?.count ?? 0);
-    const reward = DAILY_BONUS_REWARDS[previousClaimCount % DAILY_BONUS_REWARDS.length];
+    const claimCount = Number(previousClaimRow?.count ?? 0);
+    const currentDay = existing
+      ? (((Math.max(claimCount, 1) - 1) % DAILY_BONUS_REWARDS.length) + 1)
+      : ((claimCount % DAILY_BONUS_REWARDS.length) + 1);
+    return {
+      current_day: currentDay,
+      can_claim_today: !existing,
+      already_claimed_today: Boolean(existing),
+      claim_count: claimCount,
+      claim_date: claimDate,
+      rewards: DAILY_BONUS_REWARDS.map((reward) => ({ ...reward })),
+    };
+  }
+
+  claimToday(playerId: string, now = new Date()): DailyLoginResult {
+    const beforeStatus = this.status(playerId, now);
+    if (!beforeStatus.can_claim_today) {
+      return {
+        daily_login_awarded: false,
+        awarded_chips: 0,
+        awarded_xp: 0,
+        awarded_gems: 0,
+        reward_day: beforeStatus.current_day,
+        status: beforeStatus,
+      };
+    }
+    const reward = DAILY_BONUS_REWARDS[beforeStatus.claim_count % DAILY_BONUS_REWARDS.length];
+    const claimDate = beforeStatus.claim_date;
     const claimedAt = now.toISOString();
     const transaction = this.db.transaction(() => {
       this.db
@@ -51,6 +93,7 @@ export class LoginBonusRepository {
       awarded_xp: reward.xp,
       awarded_gems: reward.gems,
       reward_day: reward.day,
+      status: this.status(playerId, now),
     };
   }
 }

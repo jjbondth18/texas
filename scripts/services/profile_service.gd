@@ -35,6 +35,12 @@ func apply_server_profile_snapshot(profile_snapshot: Dictionary, wallet_snapshot
 	var profile := get_current_profile()
 	if not profile_snapshot.is_empty():
 		profile["player_id"] = String(profile_snapshot.get("player_id", profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID)))
+		if profile_snapshot.has("daily_bonus_claim_count"):
+			profile["daily_bonus_claim_count"] = int(profile_snapshot.get("daily_bonus_claim_count", profile.get("daily_bonus_claim_count", 0)))
+		if profile_snapshot.has("daily_reward_claimed_today"):
+			profile["daily_reward_claimed_today"] = bool(profile_snapshot.get("daily_reward_claimed_today", false))
+		if profile_snapshot.has("last_daily_reward_date"):
+			profile["last_daily_reward_date"] = str(profile_snapshot.get("last_daily_reward_date", profile.get("last_daily_reward_date", "")))
 		var display_name := String(profile_snapshot.get("display_name", profile_snapshot.get("player_name", profile_snapshot.get("name", "")))).strip_edges()
 		if display_name != "":
 			profile["name"] = display_name

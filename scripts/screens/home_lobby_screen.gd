@@ -1421,7 +1421,10 @@ func _claim_daily_login_bonus() -> void:
 
 func _on_daily_bonus_claim_pressed() -> void:
 	if server_authoritative_profile:
-		_show_toast("Daily Bonus\nServer rewards are checked on login.", [], 2.4)
+		if _profile_ws_client == null or not _profile_server_connected:
+			_show_toast("Daily Bonus\nCould not claim daily bonus.", [], 2.4)
+			return
+		_profile_ws_client.claim_daily_bonus()
 		return
 	_claim_daily_login_bonus()
 
@@ -1436,6 +1439,7 @@ func _connect_profile_server() -> void:
 	_profile_ws_client.profile_synced.connect(_on_profile_server_profile_synced)
 	_profile_ws_client.wallet_synced.connect(_on_profile_server_wallet_synced)
 	_profile_ws_client.daily_bonus_awarded.connect(_on_profile_server_daily_login_awarded)
+	_profile_ws_client.daily_bonus_claim_failed.connect(_on_profile_server_daily_bonus_claim_failed)
 	_profile_ws_client.avatar_catalog_received.connect(_on_avatar_catalog_received)
 	_profile_ws_client.table_list_received.connect(_on_server_table_list_received)
 	_profile_ws_client.table_created.connect(_on_server_table_created)
@@ -1478,6 +1482,13 @@ func _on_profile_server_daily_login_awarded(chips: int, xp: int = PlayerProfileS
 		_player_profile = ProfileServiceScript.new().apply_server_daily_login_xp_award("", xp, 0)
 		_refresh_profile_views_from_server()
 		_show_toast(_daily_bonus_toast_text("Daily Bonus Claimed", {"chips": chips, "xp": xp, "gems": gems}), [], 3.0)
+
+func _on_profile_server_daily_bonus_claim_failed(reason: String) -> void:
+	if reason == "already_claimed_today":
+		_show_toast("Daily Bonus\nAlready claimed today.", [], 2.4)
+	else:
+		_show_toast("Daily Bonus\nCould not claim daily bonus.", [], 2.4)
+	_refresh_profile_views_from_server()
 
 func _on_avatar_catalog_received(catalog: Array) -> void:
 	_avatar_catalog = catalog.duplicate(true)
