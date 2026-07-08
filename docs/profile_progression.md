@@ -8,6 +8,8 @@ Daily Bonus is claimed from the Home page with the `CLAIM` button. It is a seven
 
 Logging in only checks Daily Bonus status. It does not grant Chips, XP, or Gems. In authoritative server mode the client requests `daily_bonus_status` during profile sync, and clicking `CLAIM` sends `claim_daily_bonus` to the server. The server is authoritative for whether the current date can be claimed.
 
+Daily Bonus claim is atomic: a successful claim grants Chips/Gems, writes wallet transactions, updates the claim row, returns the latest wallet/profile status, and then refreshes the Home TopBar/Profile/Daily Bonus UI. If the server cannot grant the wallet reward, it must not mark the day as claimed. Duplicate same-day claims return `already_claimed_today` and do not grant rewards again.
+
 | Day | Chips | XP | Gems |
 | --- | ---: | ---: | ---: |
 | 1 | 500 | 25 | 0 |
@@ -23,9 +25,10 @@ Each natural day can be claimed once. Claiming once advances the cycle by one da
 The Home Daily Bonus bar uses explicit states:
 
 - Claimed cycle days show `CLAIMED`.
+- The day claimed during the current date shows `CLAIMED TODAY`.
 - The current claimable cycle day shows `CLAIM`.
-- Future cycle days show `LOCKED`.
-- If today's claim has already been made, the current day also shows `CLAIMED`.
+- The next day after today's completed claim shows `NEXT`.
+- Later future cycle days show `LOCKED`.
 
 The chip, XP, and Gem rewards share the same once-per-day claim rule. If the daily bonus has already been claimed for the current date, no reward is granted again.
 

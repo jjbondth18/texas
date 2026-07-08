@@ -753,7 +753,32 @@ export class RoomManager {
   }
 
   private claimDailyBonus(client: Client, requestId?: string): void {
+    const statusBefore = this.loginBonus.status(client.id);
+    const walletBefore = this.wallets.get(client.id);
+    console.log(
+      `[DailyBonus] claim request player_id=${client.id}`,
+    );
+    console.log(
+      `[DailyBonus] before chips=${walletBefore?.chips ?? "missing"} gems=${walletBefore?.gems ?? "missing"} xp=client_local`,
+    );
+    console.log(
+      `[DailyBonus] status before: cycle_day=${statusBefore.cycle_day} claim_count=${statusBefore.claim_count} already_claimed_today=${statusBefore.already_claimed_today} can_claim_today=${statusBefore.can_claim_today}`,
+    );
     const daily = this.loginBonus.claimToday(client.id);
+    const walletAfter = this.wallets.get(client.id);
+    const audit = this.loginBonus.auditDailyBonus(client.id);
+    console.log(
+      `[DailyBonus] rewards: chips=${daily.awarded_chips} xp=${daily.awarded_xp} gems=${daily.awarded_gems}`,
+    );
+    console.log(
+      `[DailyBonus] after chips=${walletAfter?.chips ?? "missing"} gems=${walletAfter?.gems ?? "missing"} xp=client_local`,
+    );
+    console.log(
+      `[DailyBonus] status after: cycle_day=${daily.status.cycle_day} claim_count=${daily.status.claim_count} already_claimed_today=${daily.status.already_claimed_today}`,
+    );
+    if (audit.claimedWithoutRewardTransaction) {
+      console.warn(`[DailyBonusAudit] claimed without reward transaction player_id=${client.id}`);
+    }
     const payload = {
       type: "daily_bonus_result" as const,
       request_id: requestId,
@@ -769,6 +794,9 @@ export class RoomManager {
       daily_bonus_status: daily.status,
       ...this.profilePayload(client.id),
     };
+    console.log(
+      `[DailyBonus] response wallet chips=${payload.wallet?.chips ?? "missing"} gems=${payload.wallet?.gems ?? "missing"} xp=${daily.awarded_xp}`,
+    );
     this.send(client, payload);
   }
 

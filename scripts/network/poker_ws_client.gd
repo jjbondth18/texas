@@ -179,6 +179,19 @@ func _handle_message(message: Dictionary) -> void:
 				wallet_synced.emit(wallet)
 		PokerProtocolScript.DAILY_BONUS_RESULT:
 			_emit_profile_payload(message)
+			var result_wallet := Dictionary(message.get("wallet", {}))
+			var result_status := Dictionary(message.get("daily_bonus_status", {}))
+			print("[DailyBonusClient] claim response success=%s" % str(bool(message.get("ok", false))))
+			print("[DailyBonusClient] wallet chips=%s gems=%s xp=%s" % [
+				str(result_wallet.get("chips", "missing")),
+				str(result_wallet.get("gems", "missing")),
+				str(message.get("awarded_xp", 0)),
+			])
+			print("[DailyBonusClient] status cycle_day=%s claimed_days=%s already_claimed_today=%s" % [
+				str(result_status.get("cycle_day", result_status.get("current_day", "?"))),
+				str(result_status.get("claimed_days_in_cycle", "?")),
+				str(result_status.get("already_claimed_today", false)),
+			])
 			if not bool(message.get("ok", false)):
 				daily_bonus_claim_failed.emit(str(message.get("reason", "daily_bonus_failed")))
 		PokerProtocolScript.AVATAR_CATALOG:
