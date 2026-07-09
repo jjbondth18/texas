@@ -100,6 +100,7 @@ const ScreenNavigator := preload("res://scripts/app/screen_navigator.gd")
 const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
 const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
 const MusicServiceScript := preload("res://scripts/services/music_service.gd")
+const SfxManagerScript := preload("res://scripts/services/sfx_manager.gd")
 const LocalMockBackendScript := preload("res://scripts/services/local_mock_backend.gd")
 const StoreMockServiceScript := preload("res://scripts/services/store_mock_service.gd")
 const ReplayServiceScript := preload("res://scripts/services/replay_service.gd")
@@ -1323,6 +1324,7 @@ func _start_quick_play_from_setup() -> void:
 				_show_toast("Not enough wallet %s." % _currency_label(currency).to_lower())
 				return
 			_player_profile = buy_in_profile
+			_play_currency_sfx(currency, "quick_buy_in:%s:%d" % [currency, Time.get_ticks_msec()])
 			if _top_bar != null:
 				_top_bar.configure(_player_profile)
 			context["local_player_profile"] = _player_profile
@@ -1416,11 +1418,24 @@ func _tf(key: String, params: Dictionary) -> String:
 func _currency_label(currency: String) -> String:
 	return _t("store.gems") if currency in ["gem", "gems"] else _t("store.chips")
 
+func _play_currency_sfx(currency: String, event_id: String) -> void:
+	if currency in ["gem", "gems"]:
+		SfxManagerScript.play_gem(self, event_id)
+	else:
+		SfxManagerScript.play_chip(self, event_id)
+
+func _play_reward_sfx(reward: Dictionary, event_id: String) -> void:
+	if int(reward.get("gems", 0)) > 0:
+		SfxManagerScript.play_gem(self, "%s:gems" % event_id)
+	elif int(reward.get("chips", 0)) > 0:
+		SfxManagerScript.play_chip(self, "%s:chips" % event_id)
+
 func _claim_daily_login_bonus() -> void:
 	var service := ProfileServiceScript.new()
 	_player_profile = service.claim_daily_login_bonus()
 	if service.was_last_daily_bonus_claimed():
 		var reward: Dictionary = service.get_last_daily_bonus_reward()
+		_play_reward_sfx(reward, "daily_bonus:local:%s" % str(reward.get("day", Time.get_ticks_msec())))
 		_show_toast(_daily_bonus_toast_text(_t("daily.claimed_title"), reward), [], 3.0)
 		if _top_bar != null:
 			_top_bar.configure(_player_profile)
@@ -1488,6 +1503,7 @@ func _on_profile_server_wallet_synced(wallet: Dictionary) -> void:
 func _on_profile_server_daily_login_awarded(chips: int, xp: int = PlayerProfileScript.DAILY_LOGIN_XP, gems: int = 0) -> void:
 	_player_profile = ProfileServiceScript.new().apply_server_daily_login_xp_award("", xp, 0)
 	_refresh_profile_views_from_server()
+	_play_reward_sfx({"chips": chips, "xp": xp, "gems": gems}, "daily_bonus:server:%d:%d:%d" % [chips, xp, gems])
 	print("[DailyBonusClient] topbar updated chips=%s gems=%s" % [
 		str(PlayerProfileScript.get_total_chips(_player_profile)),
 		str(PlayerProfileScript.get_total_gems(_player_profile)),
@@ -1947,6 +1963,7 @@ func _confirm_private_room_setup() -> void:
 			_show_toast(_tf("common.not_enough_wallet_currency", {"currency": _currency_label(currency).to_lower()}))
 			return
 		_player_profile = buy_in_profile
+		_play_currency_sfx(currency, "private_buy_in:%s:%d" % [currency, Time.get_ticks_msec()])
 		if _top_bar != null:
 			_top_bar.configure(_player_profile)
 		_friends_room_context = _local_backend.create_friends_room(_player_profile, _private_room_config_from_values())
@@ -2265,6 +2282,7 @@ func _join_public_chip_table_after_wallet_check(room_id: String) -> void:
 		_show_toast("Not enough wallet chips.")
 		return
 	_player_profile = buy_in_profile
+	SfxManagerScript.play_chip(self, "browser_public_buy_in:%d:%d" % [buy_in, Time.get_ticks_msec()])
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
 	context["buy_in_deducted_from_wallet"] = true
@@ -3389,6 +3407,7 @@ func _unlock_replay_from_detail(record: Dictionary, index_entry: Dictionary) -> 
 			_show_toast(_t("replay.unlock_failed"), [], 2.4)
 		return
 	_player_profile = Dictionary(result.get("profile", ProfileServiceScript.new().get_current_profile()))
+	SfxManagerScript.play_gem(self, "replay_unlock:%s" % replay_id)
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
 	_refresh_profile_panel()
@@ -3418,6 +3437,7 @@ func _open_replay_playback(record: Dictionary, index_entry: Dictionary) -> void:
 	_replay_playback_step = 0
 	_replay_playback_speed = 1.0
 	_render_replay_playback()
+	SfxManagerScript.play_shuffle(self, "replay:%s:shuffle" % _replay_id_for_record(record, index_entry))
 
 
 func _render_replay_playback() -> void:
@@ -3618,6 +3638,7 @@ func _stop_replay_playback() -> void:
 func _refresh_replay_playback_view() -> void:
 	var playback_state: Dictionary = _replay_playback_state_for_step(_replay_playback_record, _replay_playback_step)
 	var players: Array = Array(playback_state.get("players", []))
+	_play_replay_step_sfx(playback_state)
 	if _replay_poker_table_screen != null and _replay_poker_table_screen.has_method("render_replay_state"):
 		_replay_poker_table_screen.call(
 			"render_replay_state",
@@ -3644,6 +3665,28 @@ func _refresh_replay_playback_view() -> void:
 
 	_render_replay_table_view(playback_state, players)
 	_render_replay_playback_timeline()
+
+func _play_replay_step_sfx(_playback_state: Dictionary) -> void:
+	if _replay_playback_step <= 0:
+		return
+	var step_index := _replay_playback_step - 1
+	if step_index < 0 or step_index >= _replay_playback_steps.size():
+		return
+	var step: Dictionary = Dictionary(_replay_playback_steps[step_index])
+	var replay_id := _replay_id_for_record(_replay_playback_record, _replay_playback_index_entry)
+	var event_key := "replay:%s:step:%d" % [replay_id, step_index]
+	if str(step.get("kind", "")) == "action":
+		var action: Dictionary = Dictionary(step.get("action", {}))
+		var action_name := str(action.get("action", ""))
+		if action_name in ["small_blind", "big_blind", "call", "bet", "raise", "all_in"]:
+			SfxManagerScript.play_chip(self, event_key)
+		return
+	var street := str(step.get("street", ""))
+	var label := str(step.get("label", "")).to_lower()
+	if street in ["flop", "turn", "river"] or label.find("dealt") != -1:
+		SfxManagerScript.play_draw_card(self, event_key)
+	elif street in ["hand_over", "showdown"] or label.find("wins") != -1 or label.find("settled") != -1:
+		SfxManagerScript.play_win(self, event_key)
 
 
 func _render_replay_table_view(playback_state: Dictionary, players: Array) -> void:
@@ -4879,6 +4922,7 @@ func _confirm_mock_purchase(currency: String, amount: int, dialog: ConfirmationD
 		_player_profile = store.mock_purchase_gems(amount)
 	else:
 		_player_profile = store.mock_purchase_chips(amount)
+	_play_currency_sfx(currency, "mock_purchase:local:%s:%d" % [currency, amount])
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
 	_refresh_profile_panel()
@@ -4892,6 +4936,7 @@ func _on_server_mock_purchase_result(ok: bool, currency: String, amount: int, wa
 	if not wallet.is_empty():
 		_player_profile = ProfileServiceScript.new().apply_wallet_snapshot(wallet)
 		_refresh_profile_views_from_server()
+	_play_currency_sfx(currency, "mock_purchase:server:%s:%d" % [currency, amount])
 	var label := "Gems" if currency == "gems" else "Chips"
 	_show_toast(_tf("store.mock_purchase_complete", {"amount": _format_number(amount), "currency": label}), [], 2.8)
 

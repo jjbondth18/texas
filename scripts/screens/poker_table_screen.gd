@@ -19,6 +19,7 @@ const RoomInfoPanelScene := preload("res://scripts/components/table_room_info_pa
 const LayoutSchema := preload("res://scripts/dev/poker_table_layout_schema.gd")
 const TexasTableFlowScript := preload("res://scripts/core/texas_table_flow.gd")
 const MusicServiceScript := preload("res://scripts/services/music_service.gd")
+const SfxManagerScript := preload("res://scripts/services/sfx_manager.gd")
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const DealerLibraryScript := preload("res://scripts/data/dealer_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
@@ -1371,6 +1372,8 @@ func _reset_server_visible_hand_state(hand_id: int) -> void:
 	_server_visible_seat_actions.clear()
 	_server_visible_community_count = 0
 	_reset_visual_hand_state()
+	if hand_id > 0:
+		SfxManagerScript.play_shuffle(self, "server:%d:shuffle" % hand_id)
 
 func _seed_visible_seat_actions(seats: Array) -> void:
 	_server_visible_seat_actions.clear()
@@ -1482,11 +1485,15 @@ func _apply_server_playback_event(event: Dictionary) -> void:
 	if event_type == "phase":
 		_apply_server_phase_playback(action_id)
 		return
+	if event_type == "winner":
+		SfxManagerScript.play_win(self, "server:%s:win" % _sfx_current_hand_key())
 	var seat_id := int(event.get("seat_id", event.get("seat_index", -1)))
 	if seat_id < 0:
 		return
 	var action_label := _server_action_label(action_id)
 	var amount := int(event.get("amount", 0))
+	if _is_chip_sfx_action(action_id) and amount > 0:
+		SfxManagerScript.play_chip(self, _server_sfx_event_key(event, "chip"))
 	_server_visible_seat_actions[seat_id] = {"action": action_label, "amount": amount}
 	_show_seat_action_toast(seat_id, action_label, amount)
 
@@ -1739,6 +1746,7 @@ func _start_next_hand() -> void:
 	if hand_number > 0:
 		_append_session_log("Hand %s started." % _session_hand_count_text())
 	snapshot = _table_flow_to_ui_snapshot(_table_flow.start_new_hand())
+	SfxManagerScript.play_shuffle(self, "%s:shuffle" % _sfx_current_hand_key())
 	_apply_launch_context(snapshot)
 	_refresh()
 	_schedule_ai_turns()
@@ -2213,6 +2221,28 @@ func _find_action(actions: Array, action_id: String) -> Dictionary:
 			return data.duplicate(true)
 	return {}
 
+func _sfx_current_hand_key() -> String:
+	var hand_id := str(snapshot.get("hand_id", ""))
+	if hand_id == "" or hand_id == "waiting":
+		hand_id = str(_table_flow.hand_data.get("hand_id", ""))
+	if hand_id == "" and _server_visible_hand_id > 0:
+		hand_id = "server_hand_%d" % _server_visible_hand_id
+	if hand_id == "":
+		hand_id = "table_%s" % str(get_instance_id())
+	return hand_id
+
+func _sfx_visual_event_key(event: Dictionary, suffix: String) -> String:
+	return "%s:visual:%s:%d" % [_sfx_current_hand_key(), suffix, int(event.get("id", -1))]
+
+func _server_sfx_event_key(event: Dictionary, suffix: String) -> String:
+	var sequence := _server_event_sequence(event)
+	if sequence > 0:
+		return "server:%s:%s:%d" % [_sfx_current_hand_key(), suffix, sequence]
+	return "server:%s:%s:%s" % [_sfx_current_hand_key(), suffix, str(event.get("message", ""))]
+
+func _is_chip_sfx_action(action_id: String) -> bool:
+	return action_id in ["small_blind", "big_blind", "call", "bet", "raise", "all_in"]
+
 func _play_visual_events(events: Array) -> void:
 	if _animation_layer == null:
 		return
@@ -2234,10 +2264,13 @@ func _play_visual_events(events: Array) -> void:
 			"player_action":
 				_show_seat_action_toast(seat_id, action_label, amount)
 			"chip_move":
+				if amount > 0:
+					SfxManagerScript.play_chip(self, _sfx_visual_event_key(event, "chip"))
 				_play_flying_chip(seat_id)
 			"collect_bets":
 				deal_delay_offset += _play_collect_bets(event)
 			"deal_hole":
+				SfxManagerScript.play_draw_card(self, _sfx_visual_event_key(event, "draw"))
 				var hole_delay: float = deal_delay_offset + float(deal_order) * 0.14
 				_play_flying_card(_dealer_origin(), _seat_animation_point(seat_id), hole_delay, "deal_hole", "seat %d" % seat_id)
 				_extend_visual_pause(hole_delay + 0.88)
@@ -2345,6 +2378,7 @@ func _schedule_community_cards_reveal(cards: Array, delay: float, start_index: i
 func _animate_single_community_card(card_data: Dictionary, board_index: int, token: int) -> void:
 	if _flying_cards_root == null:
 		return
+	SfxManagerScript.play_draw_card(self, "%s:community:%d" % [_sfx_current_hand_key(), board_index])
 	var card_size := Vector2(88, 138)
 	var card := TextureRect.new()
 	card.name = "CommunityDealCard_%d" % board_index
@@ -2682,6 +2716,7 @@ func _begin_hand_result_reveal() -> void:
 	if _hand_result_hold_seconds <= 0.0:
 		_hand_result_hold_seconds = SHOWDOWN_REVEAL_HOLD_SECONDS if _showdown_reveal_active else FOLD_WIN_HOLD_SECONDS
 	_hand_result_message = _hand_result_summary_text(settlement, end_reason)
+	SfxManagerScript.play_win(self, "%s:win" % _sfx_current_hand_key())
 	_apply_showdown_reveal_to_snapshot()
 	_refresh_revealed_seat_cards()
 	_show_hand_result_banner("SHOWDOWN" if _showdown_reveal_active else "HAND RESULT", _hand_result_message)
@@ -5229,6 +5264,7 @@ func _add_chips_from_wallet(amount: int) -> void:
 		_table_session.session_profit = _table_session.session_end_chips - _table_session.session_start_chips
 		_update_launch_context_session()
 	_append_session_log("%s added %s chips from wallet." % [PlayerProfileScript.get_player_name(profile), _format_chips(added)])
+	SfxManagerScript.play_chip(self, "add_chips:%s:%d" % [_sfx_current_hand_key(), Time.get_ticks_msec()])
 	snapshot = _table_flow_to_ui_snapshot(_table_flow.to_snapshot())
 	_apply_launch_context(snapshot)
 	_refresh()
