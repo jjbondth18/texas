@@ -2270,7 +2270,6 @@ func _play_visual_events(events: Array) -> void:
 			"collect_bets":
 				deal_delay_offset += _play_collect_bets(event)
 			"deal_hole":
-				SfxManagerScript.play_draw_card(self, _sfx_visual_event_key(event, "draw"))
 				var hole_delay: float = deal_delay_offset + float(deal_order) * 0.14
 				_play_flying_card(_dealer_origin(), _seat_animation_point(seat_id), hole_delay, "deal_hole", "seat %d" % seat_id)
 				_extend_visual_pause(hole_delay + 0.88)

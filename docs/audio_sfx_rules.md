@@ -4,7 +4,7 @@ Gameplay sound effects are managed through `scripts/services/sfx_manager.gd`.
 
 ## Assets
 
-- Card deal/reveal: `res://assets/music/draw.wav`
+- Community card reveal: `res://assets/music/draw.wav`
 - Shuffle asset retained but disabled: `res://assets/music/shuffle.wav`
 - Chip movement and chip purchases: `res://assets/music/chip.wav`
 - Gem transactions: `res://assets/music/Gem.wav`
@@ -16,7 +16,7 @@ All gameplay SFX use the `SFX` audio bus. The existing Settings service controls
 
 ## Trigger Rules
 
-- `draw.wav`: individual hole-card deal events and community card reveal animation.
+- `draw.wav`: community card reveal animation. Opening hole-card deal SFX is disabled to avoid stacked startup artifacts.
 - Shuffle SFX: disabled. New hands and replay playback should not play `shuffle.wav`.
 - `chip.wav`: blinds, call, bet, raise, all-in chip movement, Add Chips success, chip buy-in success, and mock chip purchases.
 - `Gem.wav`: gem rewards or gem spending, including replay unlocks, mock gem purchases, and Daily Bonus gem rewards.

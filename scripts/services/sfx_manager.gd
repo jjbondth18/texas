@@ -19,7 +19,7 @@ const SFX_PATHS := {
 }
 
 const SFX_VOLUME_DB := {
-	"draw": -4.0,
+	"draw": -7.0,
 	"shuffle": -12.0,
 	"chip": -5.5,
 	"gem": -5.5,
