@@ -6,12 +6,18 @@ signal social_requested
 signal help_requested
 
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
+const LocalizationManagerScript := preload("res://scripts/services/localization_manager.gd")
 
 var _name_label: Label
 var _level_label: Label
 var _xp_bar: ProgressBar
 var _chips_label: Label
 var _premium_label: Label
+var _chips_title_label: Label
+var _gems_title_label: Label
+var _social_button: Button
+var _help_button: Button
+var _exit_button: Button
 var _avatar_rect: TextureRect
 
 func _ready() -> void:
@@ -57,20 +63,21 @@ func _ready() -> void:
 	_xp_bar.show_percentage = false
 	profile_text.add_child(_xp_bar)
 
-	_chips_label = _currency_pill(row, "CHIPS", HomeTheme.GOLD)
-	_premium_label = _currency_pill(row, "GEMS", HomeTheme.PINK)
-	var social_button := _top_icon("SOCIAL")
-	social_button.name = "SocialButton"
-	social_button.pressed.connect(func() -> void: social_requested.emit())
-	row.add_child(social_button)
-	var help_button := _top_icon("HELP")
-	help_button.name = "HelpButton"
-	help_button.pressed.connect(func() -> void: help_requested.emit())
-	row.add_child(help_button)
-	var exit_button := _top_icon("EXIT")
-	exit_button.name = "ExitButton"
-	exit_button.pressed.connect(func() -> void: exit_requested.emit())
-	row.add_child(exit_button)
+	_chips_label = _currency_pill(row, "topbar.chips", HomeTheme.GOLD)
+	_premium_label = _currency_pill(row, "topbar.gems", HomeTheme.PINK)
+	_social_button = _top_icon("topbar.social")
+	_social_button.name = "SocialButton"
+	_social_button.pressed.connect(func() -> void: social_requested.emit())
+	row.add_child(_social_button)
+	_help_button = _top_icon("topbar.help")
+	_help_button.name = "HelpButton"
+	_help_button.pressed.connect(func() -> void: help_requested.emit())
+	row.add_child(_help_button)
+	_exit_button = _top_icon("topbar.exit")
+	_exit_button.name = "ExitButton"
+	_exit_button.pressed.connect(func() -> void: exit_requested.emit())
+	row.add_child(_exit_button)
+	apply_localization()
 
 func configure(player: Dictionary) -> void:
 	if not is_node_ready():
@@ -90,7 +97,7 @@ func configure(player: Dictionary) -> void:
 		xp_max = int(player.get("xp_max", 1))
 		xp_txt = "%d / %d XP" % [xp_current, xp_max]
 		
-	_level_label.text = "LEVEL %s  |  %s" % [player.get("level", 1), xp_txt]
+	_level_label.text = LocalizationManagerScript.trf("topbar.level_xp", {"level": player.get("level", 1), "xp": xp_txt})
 	_xp_bar.max_value = max(xp_max, 1)
 	_xp_bar.value = xp_current
 	
@@ -115,7 +122,19 @@ func _apply_avatar(player: Dictionary) -> void:
 	_avatar_rect.texture = texture
 	_avatar_rect.visible = texture != null
 
-func _currency_pill(parent: Container, title: String, color: Color) -> Label:
+func apply_localization() -> void:
+	if _chips_title_label != null:
+		_chips_title_label.text = LocalizationManagerScript.tr_key("topbar.chips")
+	if _gems_title_label != null:
+		_gems_title_label.text = LocalizationManagerScript.tr_key("topbar.gems")
+	if _social_button != null:
+		_social_button.text = LocalizationManagerScript.tr_key("topbar.social")
+	if _help_button != null:
+		_help_button.text = LocalizationManagerScript.tr_key("topbar.help")
+	if _exit_button != null:
+		_exit_button.text = LocalizationManagerScript.tr_key("topbar.exit")
+
+func _currency_pill(parent: Container, title_key: String, color: Color) -> Label:
 	var pill := PanelContainer.new()
 	pill.custom_minimum_size = Vector2(132, 40)
 	pill.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -133,9 +152,13 @@ func _currency_pill(parent: Container, title: String, color: Color) -> Label:
 	var text_box := VBoxContainer.new()
 	row.add_child(text_box)
 	var label := Label.new()
-	label.text = title
+	label.text = LocalizationManagerScript.tr_key(title_key)
 	HomeTheme.make_font_settings(label, 9, HomeTheme.MUTED)
 	text_box.add_child(label)
+	if title_key == "topbar.chips":
+		_chips_title_label = label
+	elif title_key == "topbar.gems":
+		_gems_title_label = label
 	var value := Label.new()
 	HomeTheme.make_font_settings(value, 15, HomeTheme.TEXT)
 	text_box.add_child(value)
@@ -149,9 +172,9 @@ func _currency_style(color: Color, hovered: bool) -> StyleBoxFlat:
 	style.shadow_size = 12 if hovered else 4
 	return style
 
-func _top_icon(text: String) -> Button:
+func _top_icon(text_key: String) -> Button:
 	var button := Button.new()
-	button.text = text
+	button.text = LocalizationManagerScript.tr_key(text_key)
 	button.custom_minimum_size = Vector2(86, 40)
 	button.focus_mode = Control.FOCUS_NONE
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND

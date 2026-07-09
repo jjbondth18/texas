@@ -86,7 +86,7 @@ func _bonus_cell(bonus: Dictionary) -> PanelContainer:
 	box.add_theme_constant_override("separation", 3)
 	cell.add_child(box)
 	var day := Label.new()
-	day.text = str(bonus.get("label", "Day %d" % int(bonus.get("day", 1))))
+	day.text = LocalizationManagerScript.trf("daily.day", {"day": int(bonus.get("day", 1))})
 	day.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	HomeTheme.make_font_settings(day, 11, HomeTheme.PINK if highlighted else HomeTheme.MUTED)
 	box.add_child(day)

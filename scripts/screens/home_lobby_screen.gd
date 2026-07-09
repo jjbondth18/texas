@@ -2121,22 +2121,22 @@ func _daily_bonus_toast_text(title: String, reward: Dictionary) -> String:
 	var parts: Array[String] = [title]
 	var day: int = int(reward.get("day", 0))
 	if day > 0:
-		parts.append("Day %d" % day)
+		parts.append(_tf("daily.day", {"day": day}))
 	var chips: int = int(reward.get("chips", 0))
 	var xp: int = int(reward.get("xp", 0))
 	var gems: int = int(reward.get("gems", 0))
 	if chips > 0:
-		parts.append("+%s Chips" % _format_number(chips))
+		parts.append(_tf("daily.chips_gain", {"amount": _format_number(chips)}))
 	if xp > 0:
 		parts.append("+%d XP" % xp)
 	if gems > 0:
-		parts.append("+%d Gems" % gems)
+		parts.append(_tf("daily.gems_gain", {"amount": gems}))
 	return "\n".join(parts)
 
 func _build_cta_button() -> void:
 	_cta_button = Button.new()
 	_cta_button.name = "LobbyCTAButton"
-	_cta_button.text = "→  CLICK PLAY TO START"
+	_cta_button.text = _t("home.cta_play")
 	
 	# Layout / Anchors
 	_cta_button.anchor_left = 0.5
@@ -2323,16 +2323,16 @@ func _build_social_panel() -> void:
 	_social_panel = _create_home_modal("SocialPanel", Vector2(520, 260))
 	var column := _modal_column(_social_panel)
 	var title := Label.new()
-	title.text = "SOCIAL"
+	title.text = _t("social.title")
 	HomeTheme.make_font_settings(title, 24, Color(1, 1, 1, 0.96))
 	column.add_child(title)
 	var copy := Label.new()
-	copy.text = "Friends and messages will be available in a future update."
+	copy.text = _t("social.copy")
 	copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	HomeTheme.make_font_settings(copy, 15, Color(0.82, 0.86, 1.0, 0.92))
 	column.add_child(copy)
 	column.add_child(_modal_spacer())
-	var close_button := _modal_button("Close")
+	var close_button := _modal_button(_t("common.close"))
 	close_button.pressed.connect(func() -> void:
 		_social_panel.visible = false
 	)
@@ -2342,7 +2342,7 @@ func _build_help_panel() -> void:
 	_help_panel = _create_home_modal("HelpRulesPanel", Vector2(760, 620))
 	var column := _modal_column(_help_panel)
 	var title := Label.new()
-	title.text = "HELP & RULES"
+	title.text = _t("help.title")
 	HomeTheme.make_font_settings(title, 24, Color(1, 1, 1, 0.96))
 	column.add_child(title)
 
@@ -2354,43 +2354,43 @@ func _build_help_panel() -> void:
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation", 14)
 	scroll.add_child(content)
-	_add_help_section(content, "Poker Basics", [
-		"Each player gets 2 private cards.",
-		"Use community cards to make the best 5-card hand.",
-		"Betting rounds: Pre-Flop, Flop, Turn, River.",
+	_add_help_section(content, _t("help.poker_basics"), [
+		_t("help.basics.private_cards"),
+		_t("help.basics.community_cards"),
+		_t("help.basics.betting_rounds"),
 	])
-	_add_help_section(content, "Hand Rankings", [
-		"Royal Flush",
-		"Straight Flush",
-		"Four of a Kind",
-		"Full House",
-		"Flush",
-		"Straight",
-		"Three of a Kind",
-		"Two Pair",
-		"One Pair",
-		"High Card",
+	_add_help_section(content, _t("help.hand_rankings"), [
+		_t("help.rank.royal_flush"),
+		_t("help.rank.straight_flush"),
+		_t("help.rank.four_kind"),
+		_t("help.rank.full_house"),
+		_t("help.rank.flush"),
+		_t("help.rank.straight"),
+		_t("help.rank.three_kind"),
+		_t("help.rank.two_pair"),
+		_t("help.rank.one_pair"),
+		_t("help.rank.high_card"),
 	])
-	_add_help_section(content, "Game Modes", [
-		"Quick Chip auto-joins a public chip table.",
-		"Table Browser lets you choose public chip tables.",
-		"Friends Room is private and uses a room code.",
-		"Training uses practice chips only.",
-		"Gem Match is Coming Soon and requires secure server matchmaking.",
+	_add_help_section(content, _t("help.game_modes"), [
+		_t("help.modes.quick"),
+		_t("help.modes.browser"),
+		_t("help.modes.friends"),
+		_t("help.modes.training"),
+		_t("help.modes.gem"),
 	])
-	_add_help_section(content, "Chips & Gems", [
-		"Chips are used for public table buy-ins and betting.",
-		"Gems are reserved for future premium features such as Replay access.",
-		"Add Chips moves chips from wallet to table. It is not a purchase.",
+	_add_help_section(content, _t("help.chips_gems"), [
+		_t("help.currency.chips"),
+		_t("help.currency.gems"),
+		_t("help.currency.add_chips"),
 	])
-	_add_help_section(content, "Table Rules", [
-		"Leaving during a hand folds your hand.",
-		"Chips already committed stay in the pot.",
-		"Timeout may auto-check or auto-fold.",
-		"Repeated timeouts may put you in Sit Out.",
+	_add_help_section(content, _t("help.table_rules"), [
+		_t("help.rules.leave_folds"),
+		_t("help.rules.committed_chips"),
+		_t("help.rules.timeout"),
+		_t("help.rules.repeated_timeout"),
 	])
 
-	var close_button := _modal_button("Close")
+	var close_button := _modal_button(_t("common.close"))
 	close_button.pressed.connect(func() -> void:
 		_help_panel.visible = false
 	)
@@ -2494,7 +2494,7 @@ func _build_events_panel() -> void:
 	column.add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "Limited-time tables and special rules."
+	subtitle.text = _t("events.subtitle")
 	subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	HomeTheme.make_font_settings(subtitle, 14, HomeTheme.MUTED)
 	column.add_child(subtitle)
@@ -2508,12 +2508,12 @@ func _build_events_panel() -> void:
 	_add_event_card(cards, _t("events.weekend_gem_cup.title"), _t("events.weekend_gem_cup.desc"))
 
 	var note := Label.new()
-	note.text = "Events are planned for a future update. No event tables are created and no chips or gems are charged."
+	note.text = _t("events.note")
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	HomeTheme.make_font_settings(note, 13, Color(0.72, 0.78, 0.94, 0.92))
 	column.add_child(note)
 
-	var back_button := _modal_button("Back to Play")
+	var back_button := _modal_button(_t("events.back_to_play"))
 	back_button.pressed.connect(func() -> void:
 		set_state(LobbyState.PLAY_EXPANDED)
 	)
@@ -5049,12 +5049,17 @@ func _build_profile_panel() -> void:
 	r_vbox.add_child(ach_title)
 	
 	var achievements := [
-		"🏆 First Blood: Win a hand in Quick Play (Unlocked)",
-		"🏆 Showdown Master: Win with a Royal Flush (Locked)"
+		{"name_key": "achievement.first_blood.name", "desc_key": "achievement.first_blood.desc", "status_key": "achievement.status.unlocked"},
+		{"name_key": "achievement.showdown_master.name", "desc_key": "achievement.showdown_master.desc", "status_key": "achievement.status.locked"},
 	]
-	for ach in achievements:
+	for ach_value in achievements:
+		var ach: Dictionary = Dictionary(ach_value)
 		var a_lbl := Label.new()
-		a_lbl.text = ach
+		a_lbl.text = _tf("achievement.line", {
+			"name": _t(str(ach.get("name_key", ""))),
+			"desc": _t(str(ach.get("desc_key", ""))),
+			"status": _t(str(ach.get("status_key", ""))),
+		})
 		HomeTheme.make_font_settings(a_lbl, 12, Color(0.72, 0.76, 0.92))
 		r_vbox.add_child(a_lbl)
 	_refresh_profile_panel()
@@ -5109,7 +5114,7 @@ func _refresh_profile_panel() -> void:
 		var level: int = PlayerProfileScript.level_for_total_xp(total_xp)
 		_profile_level_label.text = "%s: %s\n%s\n%s" % [
 			_t("profile.title_label"),
-			PlayerProfileScript.title_for_level(level),
+			_localized_profile_title(level),
 			_tf("profile.level", {"level": level}),
 			_tf("profile.xp", {"current": PlayerProfileScript.xp_current_for_total_xp(total_xp), "next": PlayerProfileScript.XP_PER_LEVEL}),
 		]
@@ -5123,7 +5128,7 @@ func _refresh_profile_panel() -> void:
 		_profile_avatar_rect.texture = texture
 		_profile_avatar_rect.visible = texture != null
 		if _profile_avatar_name_label != null:
-			_profile_avatar_name_label.text = _tf("profile.selected_avatar", {"avatar": AvatarLibraryScript.display_name_for_avatar_id(selected_avatar_id)})
+			_profile_avatar_name_label.text = _tf("profile.selected_avatar", {"avatar": _avatar_display_name(selected_avatar_id)})
 	_set_profile_stat("total_chips", _format_number(PlayerProfileScript.get_total_chips(_player_profile)))
 	_set_profile_stat("total_sessions_played", _format_number(int(_player_profile.get("total_sessions_played", 0))))
 	_set_profile_stat("total_hands_played", _format_number(int(_player_profile.get("total_hands_played", 0))))
@@ -5148,7 +5153,7 @@ func _build_avatar_gallery() -> void:
 	for avatar_id in AvatarLibraryScript.load_all_avatars():
 		var button := Button.new()
 		button.name = "Avatar_%s" % avatar_id
-		button.text = AvatarLibraryScript.display_name_for_avatar_id(avatar_id)
+		button.text = _avatar_display_name(avatar_id)
 		button.custom_minimum_size = Vector2(138, 174)
 		button.icon = AvatarLibraryScript.get_avatar_by_id(avatar_id)
 		button.expand_icon = true
@@ -5176,7 +5181,7 @@ func _refresh_avatar_gallery() -> void:
 		var price_chips: int = _avatar_price_chips(avatar_id)
 		var can_afford: bool = PlayerProfileScript.get_total_chips(_player_profile) >= price_chips
 		button.disabled = not is_unlocked and not can_afford
-		var display_name: String = AvatarLibraryScript.display_name_for_avatar_id(avatar_id)
+		var display_name: String = _avatar_display_name(avatar_id)
 		var status_text := _t("avatar.select").to_upper()
 		if is_selected:
 			status_text = _t("avatar.selected").to_upper()
@@ -5244,7 +5249,7 @@ func _show_avatar_purchase_confirm(avatar_id: String, price_chips: int) -> void:
 	var dialog := ConfirmationDialog.new()
 	dialog.title = _t("avatar.confirm_title")
 	dialog.dialog_text = _tf("avatar.confirm_text", {
-		"name": AvatarLibraryScript.display_name_for_avatar_id(avatar_id),
+		"name": _avatar_display_name(avatar_id),
 		"price": _format_number(price_chips),
 	})
 	dialog.confirmed.connect(_confirm_avatar_purchase.bind(avatar_id, price_chips, dialog))
@@ -5271,7 +5276,7 @@ func _confirm_avatar_purchase(avatar_id: String, price_chips: int, dialog: Confi
 	var result: Dictionary = service.purchase_avatar_with_chips(avatar_id, price_chips)
 	_player_profile = Dictionary(result.get("profile", service.get_current_profile()))
 	if bool(result.get("success", false)):
-		_show_toast(_tf("avatar.purchased_selected", {"name": AvatarLibraryScript.display_name_for_avatar_id(avatar_id)}), [], 2.2)
+		_show_toast(_tf("avatar.purchased_selected", {"name": _avatar_display_name(avatar_id)}), [], 2.2)
 	else:
 		_show_toast(_tf("avatar.not_enough", {"price": _format_number(price_chips)}), [], 2.4)
 	if _top_bar != null:
@@ -5281,7 +5286,7 @@ func _confirm_avatar_purchase(avatar_id: String, price_chips: int, dialog: Confi
 		dialog.queue_free()
 
 func _avatar_price_text(avatar_id: String) -> String:
-	return "%s Chips" % _format_number(_avatar_price_chips(avatar_id))
+	return _tf("common.chips_amount", {"amount": _format_number(_avatar_price_chips(avatar_id))})
 
 func _avatar_price_chips(avatar_id: String) -> int:
 	var item := _catalog_item_for_avatar(avatar_id)
@@ -5289,6 +5294,19 @@ func _avatar_price_chips(avatar_id: String) -> int:
 		return AvatarLibraryScript.price_chips_for_avatar_id(avatar_id)
 	var price: int = int(item.get("price_chips", 0))
 	return price if price > 0 else AvatarLibraryScript.price_chips_for_avatar_id(avatar_id)
+
+func _avatar_display_name(avatar_id: String) -> String:
+	var key := "avatar.%s.name" % avatar_id
+	var localized := _t(key)
+	if localized != key:
+		return localized
+	return AvatarLibraryScript.display_name_for_avatar_id(avatar_id)
+
+func _localized_profile_title(level: int) -> String:
+	var raw_title := PlayerProfileScript.title_for_level(level)
+	var key := "profile.title.%s" % raw_title.to_lower().replace(" ", "_")
+	var localized := _t(key)
+	return localized if localized != key else raw_title
 
 func _catalog_item_for_avatar(avatar_id: String) -> Dictionary:
 	var server_avatar_id := _server_avatar_id_for_client(avatar_id)
@@ -5423,6 +5441,10 @@ func _refresh_settings_panel() -> void:
 func _refresh_localized_ui(refresh_settings_panel: bool = true) -> void:
 	if _prompt != null:
 		_prompt.text = _t("home.prompt")
+	if _cta_button != null:
+		_cta_button.text = _t("home.cta_play")
+	if _top_bar != null and _top_bar.has_method("apply_localization"):
+		_top_bar.call("apply_localization")
 	if _left_nav != null and _left_nav.has_method("apply_localization"):
 		_left_nav.call("apply_localization")
 	if _play_panel != null:
@@ -5438,8 +5460,50 @@ func _refresh_localized_ui(refresh_settings_panel: bool = true) -> void:
 		mode_data["subtitle"] = _t("mode.%s.subtitle" % str(mode_data["id"]))
 		_mode_cards[index].configure(mode_data)
 	_refresh_daily_bonus_bar()
+	_rebuild_localized_store_profile_pages()
+	_rebuild_localized_home_modals()
 	if refresh_settings_panel and _settings_panel != null:
 		_refresh_settings_panel()
+
+func _rebuild_localized_store_profile_pages() -> void:
+	var store_visible := _store_panel != null and _store_panel.visible
+	var profile_visible := _profile_panel != null and _profile_panel.visible
+	if _store_panel != null:
+		_store_panel.queue_free()
+		_store_panel = null
+	if _profile_panel != null:
+		_profile_panel.queue_free()
+		_profile_panel = null
+	_build_store_panel()
+	_build_profile_panel()
+	_store_panel.visible = store_visible
+	_profile_panel.visible = profile_visible
+	if store_visible:
+		_store_panel.modulate.a = 1.0
+	if profile_visible:
+		_profile_panel.modulate.a = 1.0
+
+func _rebuild_localized_home_modals() -> void:
+	var social_visible := _social_panel != null and _social_panel.visible
+	var help_visible := _help_panel != null and _help_panel.visible
+	var events_visible := _events_panel != null and _events_panel.visible
+	if _social_panel != null:
+		_social_panel.queue_free()
+		_social_panel = null
+	if _help_panel != null:
+		_help_panel.queue_free()
+		_help_panel = null
+	if _events_panel != null:
+		_events_panel.queue_free()
+		_events_panel = null
+	_build_social_panel()
+	_build_help_panel()
+	_build_events_panel()
+	_social_panel.visible = social_visible
+	_help_panel.visible = help_visible
+	_events_panel.visible = events_visible
+	if events_visible:
+		_events_panel.modulate.a = 1.0
 
 func _apply_settings(settings: Dictionary) -> void:
 	var normalized := SettingsServiceScript.normalize_settings(settings)

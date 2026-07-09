@@ -112,6 +112,31 @@ Do not localize protocol and diagnostic identifiers:
 - enum names, JSON keys, server logs, debug logs, resource paths, and test names
 - card ranks, suit symbols, and raw replay record fields
 
+## Localization Source Audit Phase 3
+
+Phase 3 adds a source audit document at `docs/localization_audit.md` and separates English sources into:
+
+- `MUST_LOCALIZE`: player-visible UI copy such as navigation, top-bar labels, Daily Bonus, Store, Profile, Events, Replay, table controls, avatar names, achievements, and title names.
+- `OPTIONAL_DEV_ONLY`: mock/dev labels that may remain English only when hidden from production players.
+- `KEEP_ENGLISH`: brand marks, player names, ids, enum values, transaction reasons, debug logs, paths, card ranks, and poker shorthand such as `NLH`.
+
+The phase also moves more data-driven display text onto keys:
+
+- Top bar: `topbar.chips`, `topbar.gems`, `topbar.social`, `topbar.help`, `topbar.exit`, `topbar.level_xp`.
+- Home shell: `home.cta_play`, Social modal, and Help modal copy.
+- Events: page note and back button.
+- Daily Bonus: localized day labels and reward toast fragments.
+- Profile metadata: `achievement.*`, `profile.title.*`, and `avatar.*.name`.
+
+For metadata libraries, keep ids stable and localize only the display layer. Example:
+
+```gdscript
+var avatar_id := "4_05"
+var display := LocalizationManagerScript.tr_key("avatar.%s.name" % avatar_id)
+```
+
+The `zh-CN` pack has explicit translations for the main Home, Store, Profile, Daily Bonus, Events, Social, and Help strings covered by this pass. All twelve locale files must remain parseable and share the same key set.
+
 ## Fonts
 
 Project assets were checked for `.ttf`, `.otf`, and `.ttc` files. No bundled CJK-capable font asset was found in `assets/` at the time of this pass. The current implementation relies on Godot/system fallback fonts for CJK text. A future polish pass should add a bundled UI font family with Simplified Chinese, Traditional Chinese, Japanese, and Korean coverage.
