@@ -5,9 +5,8 @@ func _init() -> void:
 	_require(source.find("play_shuffle(self, \"%s:shuffle\" % _sfx_current_hand_key())") != -1, "Local hands should play shuffle with a hand-scoped key.")
 	_require(source.find("play_shuffle(self, \"server:%d:shuffle\" % hand_id)") != -1, "Authoritative hands should play shuffle with a server hand key.")
 	var manager_source := FileAccess.get_file_as_string("res://scripts/services/sfx_manager.gd")
-	_require(manager_source.find("const SHUFFLE_SFX_ENABLED := false") != -1, "Shuffle SFX should be disabled even if hand-scoped call sites remain.")
-	_require(manager_source.find("if not SHUFFLE_SFX_ENABLED:") != -1, "play_shuffle should check the disabled flag.")
-	_require(manager_source.find("return play_sfx(_owner, \"shuffle\", _event_id)") != -1, "play_shuffle should keep the old route available if re-enabled.")
+	_require(manager_source.find("const SHUFFLE_SFX_ENABLED := true") != -1, "Shuffle SFX should be enabled for the current trial.")
+	_require(manager_source.find("_played_event_ids.has(unique_key)") != -1, "SFX manager should suppress repeated shuffle hand keys.")
 	print("SFX shuffle once per hand test passed.")
 	quit(0)
 
