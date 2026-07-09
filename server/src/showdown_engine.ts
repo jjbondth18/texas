@@ -4,6 +4,7 @@ import type { Seat, TableState } from "./table_state.js";
 export function settleHand(table: TableState): void {
   if (table.phase === "hand_over") return;
   const live = table.liveSeats();
+  table.showdownRevealedSeatIds = live.length > 1 ? live.map((seat) => seat.seatIndex) : [];
   if (live.length > 1) {
     table.runoutBoard();
     if (table.phase !== "showdown") {

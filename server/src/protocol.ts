@@ -256,6 +256,7 @@ export interface PublicSeatSnapshot {
   is_small_blind: boolean;
   is_big_blind: boolean;
   hole_card_count: number;
+  showdown_cards?: Card[];
 }
 
 export interface ActionLogEntry {

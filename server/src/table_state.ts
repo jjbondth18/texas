@@ -67,6 +67,7 @@ export class TableState {
   bigBlindSeat = -1;
   winners: WinnerRecord[] = [];
   lastHandResults: HandResultRecord[] = [];
+  showdownRevealedSeatIds: number[] = [];
   log: string[] = [];
   recentActions: ActionLogEntry[] = [];
   handActions: ActionLogEntry[] = [];
@@ -196,6 +197,7 @@ export class TableState {
     this.currentTurnSeat = -1;
     this.winners = [];
     this.lastHandResults = [];
+    this.showdownRevealedSeatIds = [];
     this.handStartChips = new Map(eligible.map((seat) => [seat.seatIndex, seat.chips]));
     for (const seat of this.seats) {
       seat.holeCards = [];
@@ -242,6 +244,7 @@ export class TableState {
     this.bigBlindSeat = -1;
     this.winners = [];
     this.lastHandResults = [];
+    this.showdownRevealedSeatIds = [];
     this.handActions = [];
     this.handStartChips = new Map();
     for (const seat of this.seats) {
@@ -301,6 +304,7 @@ export class TableState {
         is_small_blind: seat.isSmallBlind,
         is_big_blind: seat.isBigBlind,
         hole_card_count: seat.holeCards.length,
+        ...(this.showdownRevealedSeatIds.includes(seat.seatIndex) ? { showdown_cards: seat.holeCards.slice() } : {}),
       })),
       community_cards: this.communityCards.slice(),
       pot: this.totalPot(),

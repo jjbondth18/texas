@@ -92,6 +92,8 @@ while (lastSnapshot()?.phase !== "hand_over" && guard < 80) {
 const finalSnapshot = lastSnapshot();
 if (!finalSnapshot || finalSnapshot.phase !== "hand_over") throw new Error("smoke test did not reach hand_over");
 if (!finalSnapshot.last_hand_results || finalSnapshot.last_hand_results.length < 2) throw new Error("missing last hand chip results");
+const revealedShowdownSeats = finalSnapshot.seats.filter((seat) => (seat.showdown_cards ?? []).length === 2);
+if (revealedShowdownSeats.length < 2) throw new Error("showdown hand_over should reveal live showdown hole cards");
 
 const chipChanges = finalSnapshot.seats
   .filter((seat) => seat.player_id)

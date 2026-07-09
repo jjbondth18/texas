@@ -90,6 +90,15 @@ if (countRows("wallet_transactions", "reason = 'left_before_official_hand' AND a
 manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id });
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 9000) throw new Error("repeat cash_out should not double refund");
 
+const disconnectRoom = manager.createRoom();
+manager.handle("db_smoke_player", { type: "join_room", room_id: disconnectRoom.id });
+manager.handle("db_smoke_player", { type: "sit_down", room_id: disconnectRoom.id, seat_index: 0 });
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 4000) throw new Error("pre-hand disconnect setup should deduct buy-in");
+manager.disconnect("db_smoke_player");
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 9000) throw new Error("pre-hand disconnect should refund the full table stack");
+if (disconnectRoom.table.getSeat(0)?.playerId !== "") throw new Error("pre-hand disconnect should clear the exited seat");
+if (countRows("wallet_transactions", "reason = 'left_before_official_hand' AND amount = 5000") < 1) throw new Error("pre-hand disconnect should write left_before_official_hand wallet transaction");
+
 const handRoom = manager.createRoom({ isPublic: false });
 manager.handle("db_smoke_player", { type: "join_room", room_id: handRoom.id });
 manager.handle("db_smoke_player", { type: "sit_down", room_id: handRoom.id, seat_index: 0 });

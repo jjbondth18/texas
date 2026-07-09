@@ -186,6 +186,7 @@ var _server_playback_running := false
 var _server_visible_action_history: Array = []
 var _server_visible_seat_actions := {}
 var _server_visible_community_count := -1
+var _server_hole_deal_visual_hand_id := -1
 var _server_waiting_for_action_ack := false
 var _server_cash_out_pending_return := false
 var _server_leave_return_pending := false
@@ -599,6 +600,7 @@ func _boot_server_authoritative_table() -> void:
 	_server_pending_event_sequences.clear()
 	_server_played_event_sequences.clear()
 	_server_last_played_event_sequence = 0
+	_server_hole_deal_visual_hand_id = -1
 	_server_playback_running = false
 	_server_visible_action_history = []
 	_server_visible_seat_actions.clear()
@@ -1114,8 +1116,12 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		if is_local:
 			avatar_id = PlayerProfileScript.get_avatar_id(ProfileServiceScript.new().get_current_profile())
 		var cards: Array = []
+		var showdown_cards: Array = Array(server_seat.get("showdown_cards", []))
 		if is_local and private_matches_hand:
 			for card_item in Array(private_snapshot.get("hole_cards", [])):
+				cards.append(_server_card_to_ui_card(Dictionary(card_item), true))
+		elif not showdown_cards.is_empty():
+			for card_item in showdown_cards:
 				cards.append(_server_card_to_ui_card(Dictionary(card_item), true))
 		else:
 			for _i in range(int(server_seat.get("hole_card_count", 0))):
@@ -1371,6 +1377,7 @@ func _reset_server_visible_hand_state(hand_id: int) -> void:
 	_server_visible_hand_id = hand_id
 	_server_visible_seat_actions.clear()
 	_server_visible_community_count = 0
+	_server_hole_deal_visual_hand_id = hand_id
 	_reset_visual_hand_state()
 	if hand_id > 0:
 		SfxManagerScript.play_shuffle(self, "server:%d:shuffle" % hand_id)
@@ -1411,11 +1418,34 @@ func _server_apply_playback_projection(source_snapshot: Dictionary) -> Dictionar
 			seat["last_action_amount"] = 0
 		projected_seats.append(seat)
 	projected["seats"] = projected_seats
+	if _server_hole_deal_visual_hand_id == _server_visible_hand_id and _server_visible_hand_id > 0:
+		projected["visual_events"] = _server_hole_deal_visual_events(projected_seats, _server_visible_hand_id)
 	_apply_turn_highlight_to_snapshot(projected)
 	if _server_waiting_for_action_ack:
 		projected["available_actions"] = []
 		projected["turn_prompt"] = "Waiting for server..."
 	return projected
+
+func _server_hole_deal_visual_events(seats: Array, hand_id: int) -> Array:
+	var events: Array = []
+	for seat_item in seats:
+		var seat: Dictionary = Dictionary(seat_item)
+		if not bool(seat.get("occupied", str(seat.get("player_id", "")) != "")):
+			continue
+		var seat_id := int(seat.get("seat_id", seat.get("seat_index", -1)))
+		if seat_id < 0:
+			continue
+		var card_count := int(seat.get("hole_card_count", Array(seat.get("cards", [])).size()))
+		if card_count <= 0:
+			continue
+		for card_index in range(min(card_count, 2)):
+			events.append({
+				"id": 910000000 + hand_id * 100 + seat_id * 2 + card_index,
+				"type": "deal_hole",
+				"seat_id": seat_id,
+				"card_index": card_index,
+			})
+	return events
 
 func _apply_turn_highlight_to_snapshot(target_snapshot: Dictionary) -> void:
 	var turn_seat := _normalized_turn_seat(int(target_snapshot.get("turn_seat_index", -1)), String(target_snapshot.get("phase", "")))
@@ -1525,7 +1555,11 @@ func _refresh_server_playback_event_ui(event: Dictionary) -> void:
 		if _status_panel != null:
 			_status_panel.set_status(snapshot)
 	if event_type == "phase":
-		_apply_community_cards(Array(snapshot.get("community_cards", [])))
+		var community_cards: Array = Array(snapshot.get("community_cards", []))
+		if community_cards.size() > _visible_community_cards.size():
+			_schedule_community_cards_reveal(community_cards, 0.0, _visible_community_cards.size())
+		else:
+			_apply_community_cards(community_cards)
 	if message != "":
 		_append_server_history_line(message)
 	_warn_if_server_ui_slow("server playback event", apply_start, SERVER_UI_SLOW_PLAYBACK_WARNING_MS)

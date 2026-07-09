@@ -129,6 +129,12 @@ export class RoomManager {
     this.recordLog(`disconnect ${playerId}`);
     const room = client.roomId ? this.rooms.get(client.roomId) : undefined;
     if (room) {
+      if (this.shouldRefundDisconnectedBeforeOfficialHand(room, client)) {
+        this.cashOut(room, client);
+        this.broadcast(room);
+        client.ws = undefined;
+        return;
+      }
       room.table.markDisconnected(playerId);
       processAutomaticTurns(room.table);
       this.rescheduleActionTimer(room);
@@ -1275,6 +1281,13 @@ export class RoomManager {
     this.sendWalletSnapshot(client, room.id);
     room.clients.delete(client.id);
     client.roomId = undefined;
+  }
+
+  private shouldRefundDisconnectedBeforeOfficialHand(room: Room, client: Client): boolean {
+    if (!this.isManagedChipRoom(room)) return false;
+    if (room.officialHandStarted) return false;
+    if (!room.table.getSeatByPlayer(client.id)) return false;
+    return true;
   }
 
   private exitSettlementReason(room: Room): string {
