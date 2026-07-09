@@ -84,6 +84,7 @@ const TABLE_SEAT_JOIN_ORDER_9P = [5, 8, 2, 6, 4, 9, 1, 7, 3];
 const PUBLIC_SEAT_JOIN_ORDER = TABLE_SEAT_JOIN_ORDER_9P;
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const DEV_SIMULATED_START_BLOCK_REASON = "Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot.";
+const REPLAY_UNLOCK_COST_GEMS = 5;
 const DEALER_IDS = [
   "dealer_01_dog",
   "dealer_02_bear",
@@ -230,6 +231,10 @@ export class RoomManager {
       this.recordLog(`${client.id} mock_purchase currency=${currency} amount=${amount}`);
       this.send(client, { type: "mock_purchase_result", request_id: message.request_id, ok: true, player_id: client.id, server_player_id: client.id, currency, amount, source: "store_mock", wallet, wallet_chips: wallet.chips });
       this.send(client, { type: "wallet_snapshot", request_id: message.request_id, player_id: client.id, wallet });
+      return;
+    }
+    if (message.type === "unlock_replay") {
+      this.unlockReplay(client, message);
       return;
     }
     const roomId = message.room_id || client.roomId;
@@ -828,6 +833,49 @@ export class RoomManager {
     const profile = this.players.setAvatar(client.id, avatarId);
     client.avatarId = profile.avatar_id;
     this.send(client, { type: "profile_snapshot", player_id: client.id, room_id: client.roomId, ...this.profilePayload(client.id) });
+  }
+
+  private unlockReplay(client: Client, message: ClientMessage): void {
+    const replayId = String(message.replay_id || "").trim();
+    if (replayId === "") throw new Error("replay_not_found");
+    const result = this.db.transaction(() => {
+      const replay = this.replays.getReplayIndex(replayId);
+      if (!replay) throw new Error("replay_not_found");
+      if (!this.replays.isParticipant(replayId, client.id)) throw new Error("replay_access_denied");
+      const key = this.replays.getReplayKey(replayId);
+      if (!key) throw new Error("replay_key_missing");
+      const existing = this.replays.getUnlock(replayId, client.id);
+      if (existing) {
+        return {
+          replay,
+          key,
+          wallet: this.wallets.get(client.id) ?? this.wallets.ensure(client.id),
+          alreadyUnlocked: true,
+        };
+      }
+      const wallet = this.wallets.get(client.id) ?? this.wallets.ensure(client.id);
+      if (wallet.gems < REPLAY_UNLOCK_COST_GEMS) throw new Error("insufficient_gems");
+      const updatedWallet = this.wallets.deductGems(client.id, REPLAY_UNLOCK_COST_GEMS, {
+        reason: "replay_unlock",
+        relatedRoomId: replay.room_id,
+        relatedHandId: replay.hand_id,
+      });
+      this.replays.recordUnlock(replayId, client.id, REPLAY_UNLOCK_COST_GEMS, "gems");
+      return { replay, key, wallet: updatedWallet, alreadyUnlocked: false };
+    })();
+    this.send(client, {
+      type: "replay_unlocked",
+      request_id: message.request_id,
+      player_id: client.id,
+      server_player_id: client.id,
+      replay_id: replayId,
+      replay_key: result.key.key_material,
+      key_version: result.key.key_version,
+      checksum: result.replay.checksum,
+      already_unlocked: result.alreadyUnlocked,
+      wallet: result.wallet,
+    });
+    this.send(client, { type: "wallet_snapshot", request_id: message.request_id, player_id: client.id, wallet: result.wallet });
   }
 
   private markHostStartedLocalWarmup(room: Room, client: Client): void {

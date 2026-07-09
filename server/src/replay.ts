@@ -1,6 +1,6 @@
 import type { ActionLogEntry, Card } from "./protocol.js";
 import type { TableState } from "./table_state.js";
-import { createCipheriv, createHash, randomBytes } from "node:crypto";
+import { createCipheriv, createHash, createHmac, randomBytes } from "node:crypto";
 
 export interface ReplayRoomMeta {
   roomCode?: string;
@@ -58,7 +58,7 @@ export interface EncryptedReplayDelivery {
   encrypted_private_blob: string;
   checksum: string;
   key_version: number;
-  algorithm: "AES-256-GCM";
+  algorithm: "AES-256-CBC-HMAC-SHA256";
 }
 
 function cardCode(card: Card): string {
@@ -183,25 +183,32 @@ export function buildEncryptedReplayDelivery(record: Record<string, unknown>, ke
     encrypted_private_blob: encryptedPrivateBlob,
     checksum,
     key_version: 1,
-    algorithm: "AES-256-GCM",
+    algorithm: "AES-256-CBC-HMAC-SHA256",
   };
 }
 
 function encryptReplayRecord(record: Record<string, unknown>, keyMaterial: string): string {
   const key = Buffer.from(keyMaterial, "base64");
   if (key.length !== 32) throw new Error("invalid_replay_key");
-  // Godot Patch 4 should decrypt this AES-256-GCM envelope using iv/tag/ciphertext.
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  // Godot's AESContext does not provide GCM, so official replay blobs use
+  // AES-256-CBC with PKCS#7 padding plus HMAC-SHA256 over iv+ciphertext.
+  const encKey = deriveReplaySubkey(key, "texas-replay-enc-v1");
+  const macKey = deriveReplaySubkey(key, "texas-replay-mac-v1");
+  const iv = randomBytes(16);
+  const cipher = createCipheriv("aes-256-cbc", encKey, iv);
   const plaintext = Buffer.from(JSON.stringify(record), "utf8");
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const tag = cipher.getAuthTag();
+  const mac = createHmac("sha256", macKey).update(Buffer.concat([iv, ciphertext])).digest();
   return JSON.stringify({
-    algorithm: "AES-256-GCM",
+    algorithm: "AES-256-CBC-HMAC-SHA256",
     iv: iv.toString("base64"),
-    tag: tag.toString("base64"),
     ciphertext: ciphertext.toString("base64"),
+    mac: mac.toString("base64"),
   });
+}
+
+function deriveReplaySubkey(rootKey: Buffer, label: string): Buffer {
+  return createHmac("sha256", rootKey).update(label, "utf8").digest();
 }
 
 function buildReplayMetadata(record: Record<string, unknown>, checksum: string): ReplayMetadata {

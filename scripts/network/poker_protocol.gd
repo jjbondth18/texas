@@ -20,6 +20,7 @@ const CLAIM_DAILY_BONUS := "claim_daily_bonus"
 const BUY_AVATAR := "buy_avatar"
 const SELECT_AVATAR := "select_avatar"
 const MOCK_PURCHASE := "mock_purchase"
+const UNLOCK_REPLAY := "unlock_replay"
 const LIST_TABLES := "list_tables"
 const QUICK_JOIN_TABLE := "quick_join_table"
 const CREATE_TABLE := "create_table"
@@ -40,6 +41,7 @@ const TABLE_JOINED := "table_joined"
 const PRIVATE_TABLE_CREATED := "private_table_created"
 const PRIVATE_TABLE_JOINED := "private_table_joined"
 const MOCK_PURCHASE_RESULT := "mock_purchase_result"
+const REPLAY_UNLOCKED := "replay_unlocked"
 const START_AI_WARMUP_RESULT := "start_ai_warmup_result"
 const ERROR := "error"
 
@@ -130,6 +132,9 @@ static func select_avatar(avatar_id: String) -> Dictionary:
 
 static func mock_purchase(currency: String, amount: int, source: String = "store_mock") -> Dictionary:
 	return _message(MOCK_PURCHASE, {"currency": currency, "amount": amount, "source": source})
+
+static func unlock_replay(replay_id: String) -> Dictionary:
+	return _message(UNLOCK_REPLAY, {"replay_id": replay_id})
 
 static func list_tables() -> Dictionary:
 	return _message(LIST_TABLES)

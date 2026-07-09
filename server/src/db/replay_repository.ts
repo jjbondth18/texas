@@ -25,6 +25,15 @@ export interface ReplayKeyRecord {
   created_at: string;
 }
 
+export interface ReplayUnlockRecord {
+  replay_id: string;
+  player_id: string;
+  currency: string;
+  cost: number;
+  transaction_id?: string | null;
+  unlocked_at: string;
+}
+
 export class ReplayRepository {
   constructor(private readonly db: Database.Database) {}
 
@@ -72,5 +81,30 @@ export class ReplayRepository {
 
   hasReplay(replayId: string): boolean {
     return Boolean(this.getReplayIndex(replayId));
+  }
+
+  isParticipant(replayId: string, playerId: string): boolean {
+    const row = this.db.prepare("SELECT 1 AS found FROM replay_participants WHERE replay_id = ? AND player_id = ?").get(replayId, playerId);
+    return Boolean(row);
+  }
+
+  getUnlock(replayId: string, playerId: string): ReplayUnlockRecord | undefined {
+    return this.db.prepare("SELECT * FROM replay_unlocks WHERE replay_id = ? AND player_id = ?").get(replayId, playerId) as ReplayUnlockRecord | undefined;
+  }
+
+  isUnlocked(replayId: string, playerId: string): boolean {
+    return Boolean(this.getUnlock(replayId, playerId));
+  }
+
+  recordUnlock(replayId: string, playerId: string, cost: number, currency = "gems", transactionId?: string, unlockedAt = new Date().toISOString()): ReplayUnlockRecord {
+    // TODO: Wire transaction_id to wallet_transactions once WalletRepository returns inserted transaction IDs.
+    this.db
+      .prepare(
+        "INSERT OR IGNORE INTO replay_unlocks (replay_id, player_id, currency, cost, transaction_id, unlocked_at) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .run(replayId, playerId, currency, Math.floor(cost), transactionId ?? null, unlockedAt);
+    const unlock = this.getUnlock(replayId, playerId);
+    if (!unlock) throw new Error("replay_unlock_failed");
+    return unlock;
   }
 }

@@ -18,6 +18,7 @@ export type ClientMessageType =
   | "buy_avatar"
   | "select_avatar"
   | "mock_purchase"
+  | "unlock_replay"
   | "list_tables"
   | "quick_join_table"
   | "create_table"
@@ -41,6 +42,7 @@ export type ServerMessageType =
   | "private_table_created"
   | "private_table_joined"
   | "mock_purchase_result"
+  | "replay_unlocked"
   | "start_ai_warmup_result"
   | "error";
 export type ErrorCode =
@@ -51,6 +53,10 @@ export type ErrorCode =
   | "avatar_not_found"
   | "already_unlocked"
   | "avatar_not_unlocked"
+  | "replay_not_found"
+  | "replay_access_denied"
+  | "replay_key_missing"
+  | "replay_unlock_failed"
   | "room_not_found"
   | "room_not_available"
   | "table_full"
@@ -104,6 +110,7 @@ export interface ClientMessage {
   currency?: "chips" | "gems";
   source?: string;
   room_code?: string;
+  replay_id?: string;
 }
 
 export interface ServerMessage {
@@ -136,6 +143,11 @@ export interface ServerMessage {
   currency?: "chips" | "gems";
   amount?: number;
   source?: string;
+  replay_id?: string;
+  replay_key?: string;
+  key_version?: number;
+  checksum?: string;
+  already_unlocked?: boolean;
   is_ai_warmup?: boolean;
   local_warmup?: boolean;
   host_in_local_warmup?: boolean;

@@ -3,6 +3,8 @@ class_name ReplayRepository
 
 const REPLAY_DIR := "user://replays"
 const INDEX_PATH := "user://replays/replay_index.json"
+const OFFICIAL_ENCRYPTED_MODE := "official_encrypted"
+const ENCRYPTED_ALGORITHM := "AES-256-CBC-HMAC-SHA256"
 
 
 static func save_encrypted_delivery(delivery: Dictionary) -> bool:
@@ -85,8 +87,95 @@ static func load_hand_record(file_path: String) -> Dictionary:
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
 	file.close()
 	if parsed is Dictionary:
-		return Dictionary(parsed).duplicate(true)
+		var record: Dictionary = Dictionary(parsed).duplicate(true)
+		if is_official_encrypted_record(record):
+			return _load_encrypted_preview_record(record, file_path)
+		return record
 	return {}
+
+
+static func is_official_encrypted_record(record: Dictionary) -> bool:
+	return str(record.get("storage_mode", "")) == OFFICIAL_ENCRYPTED_MODE
+
+
+static func is_official_encrypted_entry(entry: Dictionary) -> bool:
+	return str(entry.get("storage_mode", "")) == OFFICIAL_ENCRYPTED_MODE
+
+
+static func has_unlock_cache(record_or_entry: Dictionary) -> bool:
+	var replay_id: String = _safe_file_part(str(record_or_entry.get("replay_id", "")))
+	var cache_path: String = _unlock_cache_path(record_or_entry)
+	if replay_id == "" or cache_path == "":
+		return false
+	if not FileAccess.file_exists(cache_path):
+		return false
+	var cache: Dictionary = _read_json_file(cache_path)
+	return bool(cache.get("unlocked", false)) and str(cache.get("replay_id", "")) == replay_id and str(cache.get("replay_key", "")) != ""
+
+
+static func save_unlock_cache(record_or_entry: Dictionary, replay_key: String, key_version: int, checksum: String) -> bool:
+	var replay_id: String = _safe_file_part(str(record_or_entry.get("replay_id", "")))
+	if replay_id == "" or replay_key == "":
+		return false
+	var replay_dir: String = _replay_dir_for_record(record_or_entry)
+	if replay_dir == "" or not _ensure_dir_path(replay_dir):
+		return false
+	var cache := {
+		"replay_id": replay_id,
+		"unlocked": true,
+		"replay_key": replay_key,
+		"key_version": key_version,
+		"checksum": checksum,
+		"unlocked_at": Time.get_datetime_string_from_system(true),
+		"authority": "server",
+	}
+	return _write_json_file("%s/unlock.json" % replay_dir, cache)
+
+
+static func load_unlocked_encrypted_record(record_or_entry: Dictionary, replay_key: String = "") -> Dictionary:
+	if not is_official_encrypted_record(record_or_entry) and not is_official_encrypted_entry(record_or_entry):
+		return load_hand_record(str(record_or_entry.get("file_path", "")))
+	var key: String = replay_key
+	if key == "":
+		key = str(_read_json_file(_unlock_cache_path(record_or_entry)).get("replay_key", ""))
+	if key == "":
+		return {}
+	var private_path: String = str(record_or_entry.get("private_blob_path", ""))
+	if private_path == "":
+		private_path = "%s/private.enc" % _replay_dir_for_record(record_or_entry)
+	if private_path == "" or not FileAccess.file_exists(private_path):
+		push_warning("Replay decrypt failed: missing local private.enc.")
+		return {"error": "missing_private_blob"}
+	var encrypted_blob: String = _read_text_file(private_path)
+	var expected_checksum: String = str(record_or_entry.get("checksum", ""))
+	var actual_checksum: String = _sha256_hex(encrypted_blob)
+	if expected_checksum != "" and actual_checksum != expected_checksum:
+		push_warning("Replay decrypt failed: checksum mismatch for %s." % str(record_or_entry.get("replay_id", "")))
+		return {"error": "replay_checksum_mismatch"}
+	var decrypted: Dictionary = _decrypt_private_blob(encrypted_blob, key)
+	if decrypted.is_empty():
+		return {"error": "replay_decrypt_failed"}
+	decrypted["file_path"] = str(record_or_entry.get("file_path", ""))
+	decrypted["storage_mode"] = OFFICIAL_ENCRYPTED_MODE
+	decrypted["locked"] = false
+	return decrypted
+
+
+static func _load_encrypted_preview_record(metadata: Dictionary, metadata_path: String) -> Dictionary:
+	var preview_path: String = str(metadata.get("public_preview_path", ""))
+	if preview_path == "":
+		preview_path = "%s/public_preview.json" % metadata_path.get_base_dir()
+	var preview: Dictionary = _read_json_file(preview_path)
+	var merged: Dictionary = metadata.duplicate(true)
+	for key in preview.keys():
+		if not merged.has(key):
+			merged[key] = preview[key]
+	merged["file_path"] = metadata_path
+	merged["public_preview_path"] = preview_path
+	if not merged.has("private_blob_path"):
+		merged["private_blob_path"] = "%s/private.enc" % metadata_path.get_base_dir()
+	merged["locked"] = not has_unlock_cache(merged)
+	return merged
 
 
 static func _update_index(record: Dictionary, file_path: String) -> void:
@@ -117,6 +206,7 @@ static func _index_entry(record: Dictionary, file_path: String) -> Dictionary:
 	var hand_id: String = str(record.get("hand_id", "hand_000000"))
 	var result_text: String = "Practice" if mode in ["training", "local_warmup"] else "%s%d %s" % [sign, profit, unit_label]
 	return {
+		"replay_id": str(record.get("replay_id", "")),
 		"hand_id": hand_id,
 		"room_id": str(record.get("room_id", "")),
 		"room_code": str(record.get("room_code", "")),
@@ -128,6 +218,12 @@ static func _index_entry(record: Dictionary, file_path: String) -> Dictionary:
 		"profit": profit,
 		"summary": _summary_text(record, hand_id, mode_label),
 		"file_path": file_path,
+		"public_preview_path": str(record.get("public_preview_path", "")),
+		"private_blob_path": str(record.get("private_blob_path", "")),
+		"storage_mode": str(record.get("storage_mode", "")),
+		"checksum": str(record.get("checksum", "")),
+		"key_version": int(record.get("key_version", 0)),
+		"locked": bool(record.get("locked", false)),
 	}
 
 
@@ -228,3 +324,113 @@ static func _write_text_file(path: String, text: String) -> bool:
 	file.store_string(text)
 	file.close()
 	return true
+
+
+static func _read_json_file(path: String) -> Dictionary:
+	if path == "" or not FileAccess.file_exists(path):
+		return {}
+	var text: String = _read_text_file(path)
+	var parsed: Variant = JSON.parse_string(text)
+	if parsed is Dictionary:
+		return Dictionary(parsed).duplicate(true)
+	return {}
+
+
+static func _read_text_file(path: String) -> String:
+	if path == "" or not FileAccess.file_exists(path):
+		return ""
+	var file: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return ""
+	var text: String = file.get_as_text()
+	file.close()
+	return text
+
+
+static func _replay_dir_for_record(record_or_entry: Dictionary) -> String:
+	var private_path: String = str(record_or_entry.get("private_blob_path", ""))
+	if private_path != "":
+		return private_path.get_base_dir()
+	var file_path: String = str(record_or_entry.get("file_path", ""))
+	if file_path != "":
+		return file_path.get_base_dir()
+	var replay_id: String = _safe_file_part(str(record_or_entry.get("replay_id", "")))
+	if replay_id != "":
+		return "%s/%s" % [REPLAY_DIR, replay_id]
+	return ""
+
+
+static func _unlock_cache_path(record_or_entry: Dictionary) -> String:
+	var replay_dir: String = _replay_dir_for_record(record_or_entry)
+	if replay_dir == "":
+		return ""
+	return "%s/unlock.json" % replay_dir
+
+
+static func _sha256_hex(text: String) -> String:
+	var context := HashingContext.new()
+	context.start(HashingContext.HASH_SHA256)
+	context.update(text.to_utf8_buffer())
+	return context.finish().hex_encode()
+
+
+static func _decrypt_private_blob(encrypted_blob: String, replay_key: String) -> Dictionary:
+	var envelope: Variant = JSON.parse_string(encrypted_blob)
+	if not (envelope is Dictionary):
+		return {}
+	var data: Dictionary = Dictionary(envelope)
+	if str(data.get("algorithm", "")) != ENCRYPTED_ALGORITHM:
+		push_warning("Replay decrypt failed: unsupported algorithm %s." % str(data.get("algorithm", "")))
+		return {}
+	var key: PackedByteArray = Marshalls.base64_to_raw(replay_key)
+	var iv: PackedByteArray = Marshalls.base64_to_raw(str(data.get("iv", "")))
+	var ciphertext: PackedByteArray = Marshalls.base64_to_raw(str(data.get("ciphertext", "")))
+	var expected_mac: PackedByteArray = Marshalls.base64_to_raw(str(data.get("mac", "")))
+	if key.size() != 32 or iv.size() != 16 or ciphertext.is_empty() or expected_mac.size() != 32:
+		return {}
+	var enc_key: PackedByteArray = _derive_replay_subkey(key, "texas-replay-enc-v1")
+	var mac_key: PackedByteArray = _derive_replay_subkey(key, "texas-replay-mac-v1")
+	var mac_input := PackedByteArray()
+	mac_input.append_array(iv)
+	mac_input.append_array(ciphertext)
+	var actual_mac: PackedByteArray = Crypto.new().hmac_digest(HashingContext.HASH_SHA256, mac_key, mac_input)
+	if not _constant_time_equal(actual_mac, expected_mac):
+		push_warning("Replay decrypt failed: HMAC mismatch.")
+		return {}
+	var aes := AESContext.new()
+	if aes.start(AESContext.MODE_CBC_DECRYPT, enc_key, iv) != OK:
+		return {}
+	var padded: PackedByteArray = aes.update(ciphertext)
+	aes.finish()
+	var plaintext_bytes: PackedByteArray = _strip_pkcs7_padding(padded)
+	if plaintext_bytes.is_empty():
+		return {}
+	var parsed: Variant = JSON.parse_string(plaintext_bytes.get_string_from_utf8())
+	if parsed is Dictionary:
+		return Dictionary(parsed).duplicate(true)
+	return {}
+
+
+static func _derive_replay_subkey(root_key: PackedByteArray, label: String) -> PackedByteArray:
+	return Crypto.new().hmac_digest(HashingContext.HASH_SHA256, root_key, label.to_utf8_buffer())
+
+
+static func _strip_pkcs7_padding(data: PackedByteArray) -> PackedByteArray:
+	if data.is_empty():
+		return PackedByteArray()
+	var pad: int = int(data[data.size() - 1])
+	if pad <= 0 or pad > 16 or pad > data.size():
+		return PackedByteArray()
+	for index in range(data.size() - pad, data.size()):
+		if int(data[index]) != pad:
+			return PackedByteArray()
+	return data.slice(0, data.size() - pad)
+
+
+static func _constant_time_equal(a: PackedByteArray, b: PackedByteArray) -> bool:
+	if a.size() != b.size():
+		return false
+	var diff := 0
+	for index in range(a.size()):
+		diff |= int(a[index]) ^ int(b[index])
+	return diff == 0

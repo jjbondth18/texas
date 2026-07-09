@@ -111,6 +111,19 @@ Contains:
 - Full board progression
 - Private/player state snapshots needed for playback
 
+Current implementation envelope:
+
+```json
+{
+  "algorithm": "AES-256-CBC-HMAC-SHA256",
+  "iv": "base64 16-byte IV",
+  "ciphertext": "base64 ciphertext",
+  "mac": "base64 HMAC-SHA256 over iv+ciphertext"
+}
+```
+
+The replay key is 32 random bytes encoded as base64. Encryption derives `enc_key = HMAC-SHA256(replay_key, "texas-replay-enc-v1")` and `mac_key = HMAC-SHA256(replay_key, "texas-replay-mac-v1")`; AES-256-CBC uses `enc_key`, while HMAC-SHA256 uses `mac_key`. The server computes a SHA-256 checksum over the encrypted envelope string for local file integrity checks. Godot's built-in AES client path does not expose AES-GCM, so Patch 4 uses AES-256-CBC with PKCS#7 padding plus HMAC-SHA256 in an encrypt-then-MAC construction. The replay key is never included in normal `hand_over` delivery.
+
 ### unlock.json
 
 Local cache only. Not authoritative.

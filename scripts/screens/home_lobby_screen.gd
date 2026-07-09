@@ -60,6 +60,8 @@ var _replay_detail_vbox: VBoxContainer
 var _replay_list_lock_labels: Dictionary = {}
 var _replay_current_record: Dictionary = {}
 var _replay_current_index_entry: Dictionary = {}
+var _pending_replay_unlock_record: Dictionary = {}
+var _pending_replay_unlock_index_entry: Dictionary = {}
 var _replay_playback_timer: Timer
 var _replay_playback_record: Dictionary = {}
 var _replay_playback_index_entry: Dictionary = {}
@@ -104,6 +106,7 @@ const SfxManagerScript := preload("res://scripts/services/sfx_manager.gd")
 const LocalMockBackendScript := preload("res://scripts/services/local_mock_backend.gd")
 const StoreMockServiceScript := preload("res://scripts/services/store_mock_service.gd")
 const ReplayServiceScript := preload("res://scripts/services/replay_service.gd")
+const ReplayRepositoryScript := preload("res://scripts/replay/replay_repository.gd")
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const DealerLibraryScript := preload("res://scripts/data/dealer_library.gd")
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
@@ -1468,6 +1471,7 @@ func _connect_profile_server() -> void:
 	_profile_ws_client.table_created.connect(_on_server_table_created)
 	_profile_ws_client.table_joined.connect(_on_server_table_joined)
 	_profile_ws_client.mock_purchase_result_received.connect(_on_server_mock_purchase_result)
+	_profile_ws_client.replay_unlocked_received.connect(_on_replay_server_unlocked)
 	_profile_ws_client.server_error.connect(_on_profile_server_error)
 	var err := _profile_ws_client.connect_to_server(NetworkConfigScript.server_url())
 	if err != OK:
@@ -1532,6 +1536,9 @@ func _on_avatar_catalog_received(catalog: Array) -> void:
 func _on_profile_server_error(message: String) -> void:
 	if message != "":
 		_show_toast("Server\n%s", [_server_lobby_error_text(message)], 2.8)
+	if not _pending_replay_unlock_record.is_empty() and message in ["insufficient_gems", "replay_access_denied", "replay_not_found", "replay_key_missing", "replay_unlock_failed"]:
+		_pending_replay_unlock_record = {}
+		_pending_replay_unlock_index_entry = {}
 	if _is_launching_table:
 		_finish_table_launch_transition()
 
@@ -1546,7 +1553,15 @@ func _server_lobby_error_text(message: String) -> String:
 		"insufficient_chips":
 			return _t("common.not_enough_chips")
 		"insufficient_gems":
-			return _t("common.not_enough_gems_store")
+			return _t("replay.not_enough_gems")
+		"replay_access_denied":
+			return "Replay access denied."
+		"replay_not_found":
+			return "Replay not found."
+		"replay_key_missing":
+			return _t("replay.unlock_failed")
+		"replay_unlock_failed":
+			return _t("replay.unlock_failed")
 		_:
 			return message
 
@@ -3385,6 +3400,9 @@ func _make_replay_primary_button(text: String, accent: Color) -> Button:
 	return button
 
 func _replay_id_for_record(record: Dictionary, index_entry: Dictionary = {}) -> String:
+	var explicit_replay_id := str(record.get("replay_id", index_entry.get("replay_id", ""))).strip_edges()
+	if explicit_replay_id != "":
+		return explicit_replay_id
 	var hand_id := str(record.get("hand_id", index_entry.get("hand_id", index_entry.get("replay_id", "")))).strip_edges()
 	var room_id := str(record.get("room_id", index_entry.get("room_id", ""))).strip_edges()
 	if hand_id != "" and room_id != "":
@@ -3393,12 +3411,32 @@ func _replay_id_for_record(record: Dictionary, index_entry: Dictionary = {}) -> 
 		return hand_id
 	return str(index_entry.get("file_path", "")).strip_edges()
 
+func _is_official_encrypted_replay(record: Dictionary, index_entry: Dictionary = {}) -> bool:
+	return ReplayRepositoryScript.is_official_encrypted_record(record) or ReplayRepositoryScript.is_official_encrypted_entry(index_entry)
+
 func _is_replay_unlocked(record: Dictionary, index_entry: Dictionary = {}) -> bool:
+	if _is_official_encrypted_replay(record, index_entry):
+		return ReplayRepositoryScript.has_unlock_cache(record if not record.is_empty() else index_entry)
 	var replay_id := _replay_id_for_record(record, index_entry)
 	return ProfileServiceScript.new().is_replay_unlocked(replay_id)
 
 func _unlock_replay_from_detail(record: Dictionary, index_entry: Dictionary) -> void:
 	var replay_id := _replay_id_for_record(record, index_entry)
+	if _is_official_encrypted_replay(record, index_entry):
+		if replay_id == "":
+			_show_toast(_t("replay.unlock_failed"), [], 2.4)
+			return
+		if _profile_ws_client == null or not _profile_server_connected:
+			_show_toast(_t("replay.unlock_failed"), [], 2.4)
+			return
+		_pending_replay_unlock_record = record.duplicate(true)
+		_pending_replay_unlock_index_entry = index_entry.duplicate(true)
+		var err := _profile_ws_client.unlock_replay(replay_id)
+		if err != OK:
+			_pending_replay_unlock_record = {}
+			_pending_replay_unlock_index_entry = {}
+			_show_toast(_t("replay.unlock_failed"), [], 2.4)
+		return
 	var result: Dictionary = ProfileServiceScript.new().unlock_replay(replay_id, PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS)
 	if not bool(result.get("success", false)):
 		if str(result.get("reason", "")) == "not_enough_gems":
@@ -3415,6 +3453,58 @@ func _unlock_replay_from_detail(record: Dictionary, index_entry: Dictionary) -> 
 	_show_toast(_tf("replay.unlock_success", {"cost": _format_number(PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS)}), [], 2.6)
 	_render_replay_detail(record, index_entry)
 
+func _on_replay_server_unlocked(replay_id: String, replay_key: String, key_version: int, checksum: String, already_unlocked: bool, wallet: Dictionary) -> void:
+	if replay_id == "":
+		_show_toast(_t("replay.unlock_failed"), [], 2.4)
+		return
+	var record: Dictionary = _pending_replay_unlock_record.duplicate(true)
+	var index_entry: Dictionary = _pending_replay_unlock_index_entry.duplicate(true)
+	if record.is_empty() or _replay_id_for_record(record, index_entry) != replay_id:
+		record = _replay_current_record.duplicate(true)
+		index_entry = _replay_current_index_entry.duplicate(true)
+	if record.is_empty() or _replay_id_for_record(record, index_entry) != replay_id:
+		_show_toast(_t("replay.unlock_failed"), [], 2.4)
+		return
+	if checksum != "":
+		record["checksum"] = checksum
+		index_entry["checksum"] = checksum
+	if key_version > 0:
+		record["key_version"] = key_version
+		index_entry["key_version"] = key_version
+	var full_record: Dictionary = ReplayRepositoryScript.load_unlocked_encrypted_record(record, replay_key)
+	if full_record.has("error"):
+		_show_toast(_replay_unlock_error_text(str(full_record.get("error", ""))), [], 3.0)
+		return
+	if full_record.is_empty():
+		_show_toast(_t("replay.unlock_failed"), [], 2.4)
+		return
+	if not ReplayRepositoryScript.save_unlock_cache(record, replay_key, key_version, checksum):
+		_show_toast(_t("replay.unlock_failed"), [], 2.4)
+		return
+	if not wallet.is_empty():
+		_player_profile = ProfileServiceScript.new().apply_wallet_snapshot(wallet)
+		_refresh_profile_views_from_server()
+	if not already_unlocked:
+		SfxManagerScript.play_gem(self, "replay_unlock:%s" % replay_id)
+	_update_replay_list_lock_label(replay_id, true)
+	_pending_replay_unlock_record = {}
+	_pending_replay_unlock_index_entry = {}
+	_replay_current_record = full_record.duplicate(true)
+	_replay_current_index_entry = index_entry.duplicate(true)
+	_show_toast(_t("replay.unlock_hint_unlocked"), [], 2.4)
+	_open_replay_playback(full_record, index_entry)
+
+func _replay_unlock_error_text(reason: String) -> String:
+	match reason:
+		"missing_private_blob":
+			return "Replay file missing."
+		"replay_checksum_mismatch":
+			return "Replay checksum mismatch."
+		"replay_decrypt_failed":
+			return _t("replay.unlock_failed")
+		_:
+			return _server_lobby_error_text(reason)
+
 func _update_replay_list_lock_label(replay_id: String, unlocked: bool) -> void:
 	if replay_id == "" or not _replay_list_lock_labels.has(replay_id):
 		return
@@ -3429,15 +3519,24 @@ func _open_replay_playback(record: Dictionary, index_entry: Dictionary) -> void:
 	if not _is_replay_unlocked(record, index_entry):
 		_show_toast(_t("replay.unlock_first"), [], 2.4)
 		return
+	var playback_record: Dictionary = record.duplicate(true)
+	if _is_official_encrypted_replay(record, index_entry):
+		playback_record = ReplayRepositoryScript.load_unlocked_encrypted_record(record)
+		if playback_record.has("error"):
+			_show_toast(_replay_unlock_error_text(str(playback_record.get("error", ""))), [], 3.0)
+			return
+		if playback_record.is_empty():
+			_show_toast(_t("replay.unlock_failed"), [], 2.4)
+			return
 	_stop_replay_playback()
-	_replay_playback_record = record.duplicate(true)
+	_replay_playback_record = playback_record.duplicate(true)
 	_replay_playback_index_entry = index_entry.duplicate(true)
-	_replay_playback_actions = _sorted_replay_actions(Array(record.get("actions", [])))
-	_replay_playback_steps = _build_replay_playback_steps(record)
+	_replay_playback_actions = _sorted_replay_actions(Array(playback_record.get("actions", [])))
+	_replay_playback_steps = _build_replay_playback_steps(playback_record)
 	_replay_playback_step = 0
 	_replay_playback_speed = 1.0
 	_render_replay_playback()
-	SfxManagerScript.play_shuffle(self, "replay:%s:shuffle" % _replay_id_for_record(record, index_entry))
+	SfxManagerScript.play_shuffle(self, "replay:%s:shuffle" % _replay_id_for_record(playback_record, index_entry))
 
 
 func _render_replay_playback() -> void:

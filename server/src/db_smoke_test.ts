@@ -23,7 +23,7 @@ if (Number(firstProfile.total_wallet_chips) !== 10000) throw new Error("hello sh
 if (Number(firstProfile.avatar_unlock_count) !== 1) throw new Error("new player should unlock the default avatar");
 const db = getDatabase();
 initializeSchema(db);
-if (countRows("schema_migrations") < 3) throw new Error("migrations should be recorded and re-runnable");
+if (countRows("schema_migrations") < 4) throw new Error("migrations should be recorded and re-runnable");
 if (countRows("player_identities", "provider = 'local_dev' AND external_id = 'db_smoke_player'") !== 1) throw new Error("hello should write local_dev identity");
 if (countRows("wallet_transactions", "reason = 'initial_grant' AND amount = 10000") !== 1) throw new Error("initial chips should write wallet transaction");
 if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips'") !== 0) throw new Error("hello should not write daily login wallet transaction");
@@ -429,12 +429,37 @@ if (replayHandOverMessage.snapshot.replay_record) throw new Error("official hand
 const replayDelivery = replayHandOverMessage.snapshot.replay_delivery;
 const replayDeliveryText = JSON.stringify(replayDelivery);
 if (replayDeliveryText.includes("hole_cards")) throw new Error("encrypted replay delivery should not expose plaintext hole_cards");
+if (replayDeliveryText.includes("replay_key")) throw new Error("encrypted replay delivery should not include replay_key");
+if (!String(replayDelivery.encrypted_private_blob || "").includes("AES-256-CBC-HMAC-SHA256")) throw new Error("encrypted replay delivery should use the client-supported encrypted envelope");
 if (!String(replayDelivery.encrypted_private_blob || "").includes("ciphertext")) throw new Error("encrypted replay delivery should include encrypted private blob envelope");
 const replayId = String(replayDelivery.replay_id || "");
 if (replayId === "") throw new Error("encrypted replay delivery should include replay_id");
 if (countRows("replay_index", "replay_id = '" + replayId + "'") !== 1) throw new Error("replay_index should persist encrypted replay metadata");
 if (countRows("replay_participants", "replay_id = '" + replayId + "'") < 2) throw new Error("replay_participants should persist hand participants");
 if (countRows("replay_keys", "replay_id = '" + replayId + "'") !== 1) throw new Error("replay_keys should persist replay key material");
+expectThrows("insufficient_gems", () => manager.handle("ready_host", { type: "unlock_replay", replay_id: replayId }));
+const replayUnlockNonParticipant = manager.connect();
+manager.handle(replayUnlockNonParticipant.id, { type: "hello", player_id: "replay_unlock_spectator", name: "Replay Unlock Spectator" });
+expectThrows("replay_access_denied", () => manager.handle("replay_unlock_spectator", { type: "unlock_replay", replay_id: replayId }));
+manager.handle("ready_host", { type: "mock_purchase", currency: "gems", amount: 10, source: "store_mock" });
+readyHostMessages.length = 0;
+const gemsBeforeReplayUnlock = Number(manager.adminSnapshot(false).total_wallet_gems);
+manager.handle("ready_host", { type: "unlock_replay", replay_id: replayId });
+const replayUnlockMessage = readyHostMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "replay_unlocked") as
+  | { type: string; replay_id?: string; replay_key?: string; key_version?: number; checksum?: string; already_unlocked?: boolean; wallet?: { gems?: number } }
+  | undefined;
+if (!replayUnlockMessage || replayUnlockMessage.replay_id !== replayId || !replayUnlockMessage.replay_key || replayUnlockMessage.already_unlocked !== false) throw new Error("participant replay unlock should return replay key");
+if (Number(manager.adminSnapshot(false).total_wallet_gems) !== gemsBeforeReplayUnlock - 5) throw new Error("participant replay unlock should deduct gems once");
+if (countRows("replay_unlocks", "replay_id = '" + replayId + "' AND player_id = 'ready_host' AND currency = 'gems' AND cost = 5") !== 1) throw new Error("replay unlock should write replay_unlocks record");
+if (countRows("wallet_transactions", "reason = 'replay_unlock' AND currency = 'gems' AND amount = -5 AND related_room_id = '" + readyRoom.id + "'") !== 1) throw new Error("replay unlock should write wallet transaction");
+readyHostMessages.length = 0;
+manager.handle("ready_host", { type: "unlock_replay", replay_id: replayId });
+const repeatedReplayUnlock = readyHostMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "replay_unlocked") as
+  | { type: string; replay_key?: string; already_unlocked?: boolean }
+  | undefined;
+if (!repeatedReplayUnlock || repeatedReplayUnlock.already_unlocked !== true || repeatedReplayUnlock.replay_key !== replayUnlockMessage.replay_key) throw new Error("repeated replay unlock should return same key without charging");
+if (Number(manager.adminSnapshot(false).total_wallet_gems) !== gemsBeforeReplayUnlock - 5) throw new Error("repeated replay unlock should not deduct gems twice");
+if (countRows("wallet_transactions", "reason = 'replay_unlock' AND currency = 'gems' AND amount = -5 AND related_room_id = '" + readyRoom.id + "'") !== 1) throw new Error("repeated replay unlock should not write another wallet transaction");
 readyRoom.table.phase = "preflop";
 const midJoiner = manager.connect();
 manager.handle(midJoiner.id, { type: "hello", player_id: "mid_joiner", name: "Mid Joiner" });
