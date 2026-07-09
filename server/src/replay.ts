@@ -1,5 +1,6 @@
 import type { ActionLogEntry, Card } from "./protocol.js";
 import type { TableState } from "./table_state.js";
+import { createCipheriv, createHash, randomBytes } from "node:crypto";
 
 export interface ReplayRoomMeta {
   roomCode?: string;
@@ -8,6 +9,56 @@ export interface ReplayRoomMeta {
   currency?: "chips" | "gems";
   dealerId?: string;
   maxHands: number;
+}
+
+export interface ReplayMetadata {
+  replay_id: string;
+  hand_id: string;
+  room_id: string;
+  room_code: string;
+  mode: string;
+  table_type: string;
+  currency: string;
+  dealer_id: string;
+  created_at: string;
+  ended_at: string;
+  small_blind: number;
+  big_blind: number;
+  buy_in?: number;
+  hand_number: number;
+  max_hands: number;
+  player_names: string[];
+  seat_indices: number[];
+  final_pot: number;
+  checksum: string;
+  schema_version: number;
+  storage_mode: "official_encrypted";
+  locked: boolean;
+}
+
+export interface ReplayPublicPreview {
+  replay_id: string;
+  hand_id: string;
+  room_id: string;
+  room_code: string;
+  mode: string;
+  table_type: string;
+  currency: string;
+  dealer_id: string;
+  ended_at: string;
+  players: Array<{ player_id: string; player_name: string; seat_index: number; ending_stack: number; final_status: string }>;
+  community_cards: unknown;
+  results: unknown;
+}
+
+export interface EncryptedReplayDelivery {
+  replay_id: string;
+  metadata: ReplayMetadata;
+  public_preview: ReplayPublicPreview;
+  encrypted_private_blob: string;
+  checksum: string;
+  key_version: number;
+  algorithm: "AES-256-GCM";
 }
 
 function cardCode(card: Card): string {
@@ -108,4 +159,109 @@ export function buildHandReplayRecord(table: TableState, meta: ReplayRoomMeta): 
       last_hand_results: table.lastHandResults.slice(),
     },
   };
+}
+
+export function replayIdFor(table: TableState): string {
+  return `${table.roomId}_hand_${String(table.handId).padStart(6, "0")}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+export function generateReplayKey(): string {
+  return randomBytes(32).toString("base64");
+}
+
+export function buildEncryptedReplayDelivery(record: Record<string, unknown>, keyMaterial: string): EncryptedReplayDelivery {
+  const replayId = String(record.replay_id || replayIdFromRecord(record));
+  record.replay_id = replayId;
+  const encryptedPrivateBlob = encryptReplayRecord(record, keyMaterial);
+  const checksum = createHash("sha256").update(encryptedPrivateBlob, "utf8").digest("hex");
+  const metadata = buildReplayMetadata(record, checksum);
+  const publicPreview = buildPublicPreview(record);
+  return {
+    replay_id: replayId,
+    metadata,
+    public_preview: publicPreview,
+    encrypted_private_blob: encryptedPrivateBlob,
+    checksum,
+    key_version: 1,
+    algorithm: "AES-256-GCM",
+  };
+}
+
+function encryptReplayRecord(record: Record<string, unknown>, keyMaterial: string): string {
+  const key = Buffer.from(keyMaterial, "base64");
+  if (key.length !== 32) throw new Error("invalid_replay_key");
+  // Godot Patch 4 should decrypt this AES-256-GCM envelope using iv/tag/ciphertext.
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const plaintext = Buffer.from(JSON.stringify(record), "utf8");
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return JSON.stringify({
+    algorithm: "AES-256-GCM",
+    iv: iv.toString("base64"),
+    tag: tag.toString("base64"),
+    ciphertext: ciphertext.toString("base64"),
+  });
+}
+
+function buildReplayMetadata(record: Record<string, unknown>, checksum: string): ReplayMetadata {
+  const players = Array.isArray(record.players) ? (record.players as Array<Record<string, unknown>>) : [];
+  const results = asRecord(record.results);
+  return {
+    replay_id: String(record.replay_id || replayIdFromRecord(record)),
+    hand_id: String(record.hand_id || ""),
+    room_id: String(record.room_id || ""),
+    room_code: String(record.room_code || ""),
+    mode: String(record.mode || "public"),
+    table_type: String(record.table_type || ""),
+    currency: String(record.currency || "chips"),
+    dealer_id: String(record.dealer_id || ""),
+    created_at: String(record.started_at || record.ended_at || new Date().toISOString()),
+    ended_at: String(record.ended_at || new Date().toISOString()),
+    small_blind: Number(record.small_blind || 0),
+    big_blind: Number(record.big_blind || 0),
+    hand_number: Number(record.hand_number || 0),
+    max_hands: Number(record.max_hands || 0),
+    player_names: players.map((player) => String(player.player_name || player.player_id || "")),
+    seat_indices: players.map((player) => Number(player.seat_index ?? -1)),
+    final_pot: Number(results.final_pot || 0),
+    checksum,
+    schema_version: Number(record.replay_version || 1),
+    storage_mode: "official_encrypted",
+    locked: true,
+  };
+}
+
+function buildPublicPreview(record: Record<string, unknown>): ReplayPublicPreview {
+  const players = Array.isArray(record.players) ? (record.players as Array<Record<string, unknown>>) : [];
+  return {
+    replay_id: String(record.replay_id || replayIdFromRecord(record)),
+    hand_id: String(record.hand_id || ""),
+    room_id: String(record.room_id || ""),
+    room_code: String(record.room_code || ""),
+    mode: String(record.mode || "public"),
+    table_type: String(record.table_type || ""),
+    currency: String(record.currency || "chips"),
+    dealer_id: String(record.dealer_id || ""),
+    ended_at: String(record.ended_at || new Date().toISOString()),
+    players: players.map((player) => ({
+      player_id: String(player.player_id || ""),
+      player_name: String(player.player_name || ""),
+      seat_index: Number(player.seat_index ?? -1),
+      ending_stack: Number(player.ending_stack || 0),
+      final_status: String(player.final_status || ""),
+    })),
+    community_cards: record.community_cards ?? {},
+    results: record.results ?? {},
+  };
+}
+
+function replayIdFromRecord(record: Record<string, unknown>): string {
+  const roomId = String(record.room_id || "room");
+  const handId = String(record.hand_id || "hand_000000");
+  return `${roomId}_${handId}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }

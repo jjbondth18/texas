@@ -315,6 +315,7 @@ export interface TableSnapshot {
   recent_actions: ActionLogEntry[];
   action_log: ActionLogEntry[];
   replay_record?: Record<string, unknown>;
+  replay_delivery?: Record<string, unknown>;
 }
 
 export interface PrivateSnapshot {

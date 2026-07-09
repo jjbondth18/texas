@@ -1,13 +1,14 @@
 import type Database from "better-sqlite3";
 import { migration001InitialSchema } from "./migrations/001_initial_schema.js";
 import { migration002WalletTransactions } from "./migrations/002_wallet_transactions.js";
+import { migration003ReplayMetadata } from "./migrations/003_replay_metadata.js";
 
 interface Migration {
   id: string;
   up(db: Database.Database): void;
 }
 
-const migrations: Migration[] = [migration001InitialSchema, migration002WalletTransactions];
+const migrations: Migration[] = [migration001InitialSchema, migration002WalletTransactions, migration003ReplayMetadata];
 
 export function runMigrations(db: Database.Database): void {
   db.exec(`

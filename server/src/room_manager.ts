@@ -11,9 +11,10 @@ import { PlayerRepository } from "./db/player_repository.js";
 import { IdentityRepository } from "./db/identity_repository.js";
 import { ResultRepository } from "./db/result_repository.js";
 import { WalletRepository } from "./db/wallet_repository.js";
+import { ReplayRepository } from "./db/replay_repository.js";
 import { AVATAR_CATALOG, DEFAULT_AVATAR_PRICE_CHIPS, findAvatarCatalogItem } from "./avatar_catalog.js";
 import { config } from "./config.js";
-import { buildHandReplayRecord } from "./replay.js";
+import { buildEncryptedReplayDelivery, buildHandReplayRecord, generateReplayKey, replayIdFor, type EncryptedReplayDelivery } from "./replay.js";
 
 interface Client {
   id: string;
@@ -58,6 +59,7 @@ interface Room {
   actionTimer?: ReturnType<typeof setTimeout>;
   actionTimerToken: number;
   actionDeadlineAt?: string;
+  replayDeliveries: Map<number, EncryptedReplayDelivery>;
   createdAt: string;
 }
 
@@ -111,6 +113,7 @@ export class RoomManager {
   private readonly avatars = new AvatarRepository(this.db);
   private readonly loginBonus = new LoginBonusRepository(this.db, this.wallets);
   private readonly results = new ResultRepository(this.db);
+  private readonly replays = new ReplayRepository(this.db);
 
   connect(ws?: WebSocket): Client {
     const client: Client = { id: `player_${this.nextPlayerId++}`, name: "Player", avatarId: "default", ws };
@@ -363,6 +366,7 @@ export class RoomManager {
       handResultToken: 0,
       handResultShownHandId: 0,
       actionTimerToken: 0,
+      replayDeliveries: new Map(),
       createdAt: new Date().toISOString(),
     };
     this.rooms.set(id, room);
@@ -1295,16 +1299,7 @@ export class RoomManager {
 
   private broadcast(room: Room): void {
     const roomState = this.publicRoomState(room);
-    const replayRecord = room.table.phase === "hand_over"
-      ? buildHandReplayRecord(room.table, {
-          roomCode: room.roomCode,
-          mode: room.visibility === "private" ? "private" : "public",
-          tableType: room.tableType,
-          currency: roomCurrency(room),
-          dealerId: room.dealerId,
-          maxHands: room.handCount,
-        })
-      : undefined;
+    const replayDelivery = room.table.phase === "hand_over" ? this.encryptedReplayDelivery(room) : undefined;
     const snapshot = {
       ...room.table.publicSnapshot(),
       table_type: room.tableType,
@@ -1333,7 +1328,7 @@ export class RoomManager {
       action_timeout_ms: this.actionTimeoutMs(room),
       action_deadline_at: room.actionDeadlineAt,
       dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
-      ...(replayRecord ? { replay_record: replayRecord } : {}),
+      ...(replayDelivery ? { replay_delivery: replayDelivery } : {}),
       table_info: this.tableSnapshot(room),
     };
     for (const playerId of room.clients) {
@@ -1345,6 +1340,44 @@ export class RoomManager {
       const privateSnapshot = room.table.privateSnapshot(playerId, legalActions(room.table, playerId));
       if (privateSnapshot) this.send(client, { type: "private_snapshot", room_id: room.id, snapshot: privateSnapshot });
     }
+  }
+
+  private encryptedReplayDelivery(room: Room): EncryptedReplayDelivery {
+    const cached = room.replayDeliveries.get(room.table.handId);
+    if (cached) return cached;
+    const replayId = replayIdFor(room.table);
+    const keyMaterial = this.replays.getReplayKey(replayId)?.key_material ?? generateReplayKey();
+    const record = buildHandReplayRecord(room.table, {
+      roomCode: room.roomCode,
+      mode: room.visibility === "private" ? "private" : "public",
+      tableType: room.tableType,
+      currency: roomCurrency(room),
+      dealerId: room.dealerId,
+      maxHands: room.handCount,
+    });
+    record.replay_id = replayId;
+    const delivery = buildEncryptedReplayDelivery(record, keyMaterial);
+    const createdAt = delivery.metadata.created_at;
+    this.replays.saveReplayIndex({
+      replay_id: replayId,
+      hand_id: delivery.metadata.hand_id,
+      room_id: room.id,
+      room_code: room.roomCode,
+      table_type: room.tableType,
+      currency: roomCurrency(room),
+      created_at: createdAt,
+      checksum: delivery.checksum,
+      schema_version: delivery.metadata.schema_version,
+    });
+    this.replays.saveParticipants(
+      replayId,
+      room.table.seats
+        .filter((seat) => seat.playerId !== "")
+        .map((seat) => ({ player_id: seat.playerId, seat_index: seat.seatIndex })),
+    );
+    this.replays.saveReplayKey({ replay_id: replayId, key_material: keyMaterial, key_version: delivery.key_version, created_at: createdAt });
+    room.replayDeliveries.set(room.table.handId, delivery);
+    return delivery;
   }
 
   private rescheduleActionTimer(room: Room): void {

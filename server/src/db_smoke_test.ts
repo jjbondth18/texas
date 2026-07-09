@@ -23,7 +23,7 @@ if (Number(firstProfile.total_wallet_chips) !== 10000) throw new Error("hello sh
 if (Number(firstProfile.avatar_unlock_count) !== 1) throw new Error("new player should unlock the default avatar");
 const db = getDatabase();
 initializeSchema(db);
-if (countRows("schema_migrations") < 2) throw new Error("migrations should be recorded and re-runnable");
+if (countRows("schema_migrations") < 3) throw new Error("migrations should be recorded and re-runnable");
 if (countRows("player_identities", "provider = 'local_dev' AND external_id = 'db_smoke_player'") !== 1) throw new Error("hello should write local_dev identity");
 if (countRows("wallet_transactions", "reason = 'initial_grant' AND amount = 10000") !== 1) throw new Error("initial chips should write wallet transaction");
 if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips'") !== 0) throw new Error("hello should not write daily login wallet transaction");
@@ -418,6 +418,24 @@ manager.handle("ready_joiner", { type: "ready", room_id: readyRoom.id, ready: tr
 manager.handle("ready_host", { type: "start_hand", room_id: readyRoom.id });
 if (readyRoom.table.phase === "waiting") throw new Error("host should be able to start public hand from ready_to_start");
 if (readyRoom.table.seats.filter((seat) => seat.isAi || seat.warmupAi).length !== 0) throw new Error("public hand should start with real players only");
+readyHostMessages.length = 0;
+readyRoom.table.phase = "hand_over";
+(manager as unknown as { broadcast(room: typeof readyRoom): void }).broadcast(readyRoom);
+const replayHandOverMessage = readyHostMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "table_snapshot") as
+  | { type: string; snapshot?: { replay_record?: unknown; replay_delivery?: { replay_id?: string; encrypted_private_blob?: string; metadata?: { checksum?: string }; public_preview?: unknown; checksum?: string; key_version?: number } } }
+  | undefined;
+if (!replayHandOverMessage?.snapshot?.replay_delivery) throw new Error("official hand_over should send encrypted replay delivery");
+if (replayHandOverMessage.snapshot.replay_record) throw new Error("official hand_over should not send plaintext replay_record");
+const replayDelivery = replayHandOverMessage.snapshot.replay_delivery;
+const replayDeliveryText = JSON.stringify(replayDelivery);
+if (replayDeliveryText.includes("hole_cards")) throw new Error("encrypted replay delivery should not expose plaintext hole_cards");
+if (!String(replayDelivery.encrypted_private_blob || "").includes("ciphertext")) throw new Error("encrypted replay delivery should include encrypted private blob envelope");
+const replayId = String(replayDelivery.replay_id || "");
+if (replayId === "") throw new Error("encrypted replay delivery should include replay_id");
+if (countRows("replay_index", "replay_id = '" + replayId + "'") !== 1) throw new Error("replay_index should persist encrypted replay metadata");
+if (countRows("replay_participants", "replay_id = '" + replayId + "'") < 2) throw new Error("replay_participants should persist hand participants");
+if (countRows("replay_keys", "replay_id = '" + replayId + "'") !== 1) throw new Error("replay_keys should persist replay key material");
+readyRoom.table.phase = "preflop";
 const midJoiner = manager.connect();
 manager.handle(midJoiner.id, { type: "hello", player_id: "mid_joiner", name: "Mid Joiner" });
 manager.handle("mid_joiner", { type: "join_room", room_id: readyRoom.id });

@@ -5,6 +5,45 @@ const REPLAY_DIR := "user://replays"
 const INDEX_PATH := "user://replays/replay_index.json"
 
 
+static func save_encrypted_delivery(delivery: Dictionary) -> bool:
+	if not _ensure_replay_dir():
+		push_warning("Encrypted replay save skipped: could not create user://replays.")
+		return false
+	var replay_id: String = _safe_file_part(str(delivery.get("replay_id", "")))
+	if replay_id == "":
+		push_warning("Encrypted replay save skipped: missing replay_id.")
+		return false
+	var replay_dir: String = "%s/%s" % [REPLAY_DIR, replay_id]
+	if not _ensure_dir_path(replay_dir):
+		push_warning("Encrypted replay save skipped: could not create %s." % replay_dir)
+		return false
+	var metadata: Dictionary = Dictionary(delivery.get("metadata", {})).duplicate(true)
+	var public_preview: Dictionary = Dictionary(delivery.get("public_preview", {})).duplicate(true)
+	var encrypted_blob: String = str(delivery.get("encrypted_private_blob", ""))
+	if metadata.is_empty() or encrypted_blob == "":
+		push_warning("Encrypted replay save skipped: incomplete delivery for %s." % replay_id)
+		return false
+	metadata["replay_id"] = str(metadata.get("replay_id", replay_id))
+	metadata["storage_mode"] = str(metadata.get("storage_mode", "official_encrypted"))
+	metadata["locked"] = bool(metadata.get("locked", true))
+	metadata["checksum"] = str(delivery.get("checksum", metadata.get("checksum", "")))
+	metadata["key_version"] = int(delivery.get("key_version", metadata.get("key_version", 1)))
+	var metadata_path: String = "%s/metadata.json" % replay_dir
+	var preview_path: String = "%s/public_preview.json" % replay_dir
+	var private_path: String = "%s/private.enc" % replay_dir
+	metadata["file_path"] = metadata_path
+	metadata["public_preview_path"] = preview_path
+	metadata["private_blob_path"] = private_path
+	if not _write_json_file(metadata_path, metadata):
+		return false
+	if not _write_json_file(preview_path, public_preview):
+		return false
+	if not _write_text_file(private_path, encrypted_blob):
+		return false
+	_update_index(metadata, metadata_path)
+	return true
+
+
 static func save_hand_record(record: Dictionary) -> bool:
 	if not _ensure_replay_dir():
 		push_warning("Replay save skipped: could not create user://replays.")
@@ -168,3 +207,24 @@ static func _ensure_replay_dir() -> bool:
 	if dir.dir_exists("replays"):
 		return true
 	return dir.make_dir_recursive("replays") == OK
+
+
+static func _ensure_dir_path(path: String) -> bool:
+	var dir: DirAccess = DirAccess.open("user://")
+	if dir == null:
+		return false
+	return dir.make_dir_recursive(path.replace("user://", "")) == OK
+
+
+static func _write_json_file(path: String, data: Dictionary) -> bool:
+	return _write_text_file(path, JSON.stringify(data, "\t"))
+
+
+static func _write_text_file(path: String, text: String) -> bool:
+	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		push_warning("Replay file write failed: %s" % error_string(FileAccess.get_open_error()))
+		return false
+	file.store_string(text)
+	file.close()
+	return true

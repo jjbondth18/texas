@@ -2874,6 +2874,16 @@ func _save_server_replay_record_if_present(server_snapshot: Dictionary, ui_snaps
 	var phase: String = str(server_snapshot.get("phase", server_snapshot.get("hand_state", "")))
 	if phase != "hand_over":
 		return
+	if server_snapshot.has("replay_delivery"):
+		var delivery: Dictionary = Dictionary(server_snapshot.get("replay_delivery", {})).duplicate(true)
+		var replay_id: String = str(delivery.get("replay_id", ""))
+		var key: String = "server_encrypted:%s" % replay_id
+		if replay_id == "" or _recorded_replay_hand_keys.has(key):
+			return
+		_recorded_replay_hand_keys[key] = true
+		if not ReplayRepositoryScript.save_encrypted_delivery(delivery):
+			push_warning("Encrypted hand replay record save failed for %s." % replay_id)
+		return
 	var record: Dictionary = {}
 	if server_snapshot.has("replay_record"):
 		record = HandReplayRecordScript.from_server_payload(Dictionary(server_snapshot.get("replay_record", {})))
