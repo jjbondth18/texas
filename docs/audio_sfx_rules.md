@@ -5,7 +5,7 @@ Gameplay sound effects are managed through `scripts/services/sfx_manager.gd`.
 ## Assets
 
 - Card deal/reveal: `res://assets/music/draw.wav`
-- New hand shuffle: `res://assets/music/shuffle.wav`
+- Shuffle asset retained but disabled: `res://assets/music/shuffle.wav`
 - Chip movement and chip purchases: `res://assets/music/chip.wav`
 - Gem transactions: `res://assets/music/Gem.wav`
 - Hand result/win: `res://assets/music/chip_gem_win.wav`
@@ -17,24 +17,18 @@ All gameplay SFX use the `SFX` audio bus. The existing Settings service controls
 ## Trigger Rules
 
 - `draw.wav`: individual hole-card deal events and community card reveal animation.
-- `shuffle.wav`: once per new hand, and once when opening replay playback.
+- Shuffle SFX: disabled. New hands and replay playback should not play `shuffle.wav`.
 - `chip.wav`: blinds, call, bet, raise, all-in chip movement, Add Chips success, chip buy-in success, and mock chip purchases.
 - `Gem.wav`: gem rewards or gem spending, including replay unlocks, mock gem purchases, and Daily Bonus gem rewards.
 - `chip_gem_win.wav`: once when a hand reaches result/showdown/winner state.
 
 `check`, `fold`, waiting states, snapshot refreshes, and replay step redraws must not trigger chip SFX.
 
-## Shuffle Playback Quality
+## Shuffle Playback
 
-`shuffle.wav` is intentionally quieter than other one-shot effects:
+`shuffle.wav` is currently disabled because the source asset produces an unpleasant electrical/compressed sound in-game. The file is kept in the project for future replacement, but `SfxManager.play_shuffle()` returns `false` and does not load or play the stream.
 
-- fixed `pitch_scale = 1.0`
-- no looping
-- import compression disabled for `assets/music/shuffle.wav.import`
-- default volume `-12 dB`
-- if a shuffle sound is already playing, duplicate shuffle requests are ignored
-
-Shuffle should be keyed by hand id, not by snapshot or UI refresh.
+Do not re-enable shuffle playback unless the asset is replaced or explicitly approved.
 
 ## Duplicate Prevention
 
@@ -42,7 +36,7 @@ Every event-triggered sound should provide a stable event id:
 
 - table visual event id for card/chip animation events
 - server action sequence for authoritative playback events
-- hand id for shuffle and hand result sounds
+- hand id for hand result sounds
 - replay id plus step index for replay playback sounds
 - transaction-style ids for wallet/profile events
 

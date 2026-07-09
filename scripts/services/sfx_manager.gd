@@ -8,6 +8,7 @@ const SHUFFLE_PATH := "res://assets/music/shuffle.wav"
 const CHIP_PATH := "res://assets/music/chip.wav"
 const GEM_PATH := "res://assets/music/Gem.wav"
 const WIN_PATH := "res://assets/music/chip_gem_win.wav"
+const SHUFFLE_SFX_ENABLED := false
 
 const SFX_PATHS := {
 	"draw": DRAW_CARD_PATH,
@@ -28,13 +29,14 @@ const SFX_VOLUME_DB := {
 static var _players: Array[AudioStreamPlayer] = []
 static var _played_event_ids: Dictionary = {}
 static var _last_sfx_id := ""
-static var _shuffle_player: AudioStreamPlayer = null
 
 static func play_draw_card(owner: Node, event_id: String = "") -> bool:
 	return play_sfx(owner, "draw", event_id)
 
-static func play_shuffle(owner: Node, event_id: String = "") -> bool:
-	return play_sfx(owner, "shuffle", event_id)
+static func play_shuffle(_owner: Node, _event_id: String = "") -> bool:
+	if not SHUFFLE_SFX_ENABLED:
+		return false
+	return play_sfx(_owner, "shuffle", _event_id)
 
 static func play_chip(owner: Node, event_id: String = "") -> bool:
 	return play_sfx(owner, "chip", event_id)
@@ -51,7 +53,7 @@ static func play_sfx(owner: Node, sfx_id: String, event_id: String = "") -> bool
 		if _played_event_ids.has(unique_key):
 			return false
 		_played_event_ids[unique_key] = true
-	if sfx_id == "shuffle" and _is_shuffle_playing():
+	if sfx_id == "shuffle" and not SHUFFLE_SFX_ENABLED:
 		return false
 	var stream := _load_sfx_stream(sfx_id)
 	if stream == null:
@@ -64,8 +66,6 @@ static func play_sfx(owner: Node, sfx_id: String, event_id: String = "") -> bool
 	player.volume_db = float(SFX_VOLUME_DB.get(sfx_id, -6.0))
 	player.pitch_scale = 1.0
 	player.stream_paused = false
-	if sfx_id == "shuffle":
-		_shuffle_player = player
 	player.play()
 	_last_sfx_id = sfx_id
 	return true
@@ -90,7 +90,6 @@ static func played_event_count() -> int:
 static func reset_for_tests() -> void:
 	_played_event_ids.clear()
 	_last_sfx_id = ""
-	_shuffle_player = null
 	for player in _players:
 		if is_instance_valid(player):
 			player.stop()
@@ -142,9 +141,6 @@ static func _ensure_sfx_bus() -> void:
 	var bus_index := AudioServer.get_bus_count()
 	AudioServer.add_bus(bus_index)
 	AudioServer.set_bus_name(bus_index, SFX_BUS)
-
-static func _is_shuffle_playing() -> bool:
-	return is_instance_valid(_shuffle_player) and _shuffle_player.playing
 
 static func _disable_stream_loop(stream: AudioStream) -> void:
 	if stream == null:
