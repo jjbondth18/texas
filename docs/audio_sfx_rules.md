@@ -24,6 +24,18 @@ All gameplay SFX use the `SFX` audio bus. The existing Settings service controls
 
 `check`, `fold`, waiting states, snapshot refreshes, and replay step redraws must not trigger chip SFX.
 
+## Shuffle Playback Quality
+
+`shuffle.wav` is intentionally quieter than other one-shot effects:
+
+- fixed `pitch_scale = 1.0`
+- no looping
+- import compression disabled for `assets/music/shuffle.wav.import`
+- default volume `-12 dB`
+- if a shuffle sound is already playing, duplicate shuffle requests are ignored
+
+Shuffle should be keyed by hand id, not by snapshot or UI refresh.
+
 ## Duplicate Prevention
 
 Every event-triggered sound should provide a stable event id:
