@@ -10,7 +10,9 @@ import { levelForTotalXp, titleIdForLevel } from "./db/profile_bootstrap_reposit
 process.env.TEXAS_DB_PATH = join(mkdtempSync(join(tmpdir(), "texas-db-smoke-")), "texas_dev.sqlite");
 
 const manager = new RoomManager();
-const client = manager.connect();
+const clientMessages: unknown[] = [];
+const clientWs = { OPEN: 1, readyState: 1, send: (data: string) => clientMessages.push(JSON.parse(data)) };
+const client = manager.connect(clientWs as any);
 
 manager.handle(client.id, { type: "hello", player_id: "db_smoke_player", name: "DB Smoke", avatar_id: "locked_avatar" });
 
@@ -30,6 +32,7 @@ if (countRows("player_progression", "player_id = 'db_smoke_player' AND total_xp 
 if (countRows("player_statistics", "player_id = 'db_smoke_player' AND hands_played = 0 AND hands_won = 0 AND chips_won = 0 AND gems_won = 0") !== 1) throw new Error("local_dev hello should bootstrap default statistics");
 if (countRows("wallet_transactions", "reason = 'initial_grant' AND amount = 10000") !== 1) throw new Error("initial chips should write wallet transaction");
 if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips'") !== 0) throw new Error("hello should not write daily login wallet transaction");
+clientMessages.length = 0;
 manager.handle("db_smoke_player", { type: "claim_daily_bonus" });
 const afterDailyClaim = manager.adminSnapshot(false);
 if (Number(afterDailyClaim.total_wallet_chips) !== 10500) throw new Error("claim_daily_bonus should grant day 1 chips");
@@ -38,6 +41,12 @@ if (progressionAfterDailyClaim.total_xp !== 25) throw new Error("claim_daily_bon
 if (progressionAfterDailyClaim.level !== levelForTotalXp(progressionAfterDailyClaim.total_xp)) throw new Error("daily bonus level should match authoritative total XP rule");
 if (progressionAfterDailyClaim.title_id !== titleIdForLevel(progressionAfterDailyClaim.level)) throw new Error("daily bonus title should match authoritative title rule");
 if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips' AND amount = 500") !== 1) throw new Error("daily login claim should write chip wallet transaction");
+const liveDailyResult = clientMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "daily_bonus_result") as
+  | { profile_snapshot?: { wallet?: { chips?: number; gems?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; daily_bonus?: { already_claimed_today?: boolean } }; daily_bonus_status?: { already_claimed_today?: boolean } }
+  | undefined;
+if (liveDailyResult?.profile_snapshot?.wallet?.chips !== 10500) throw new Error("daily bonus result should include updated profile_snapshot wallet");
+if (liveDailyResult.profile_snapshot.progression?.total_xp !== 25 || liveDailyResult.profile_snapshot.progression.level !== 1) throw new Error("daily bonus result should include updated XP and level in profile_snapshot");
+if (!liveDailyResult.profile_snapshot.daily_bonus?.already_claimed_today || !liveDailyResult.daily_bonus_status?.already_claimed_today) throw new Error("daily bonus result should include updated claim status");
 manager.handle("db_smoke_player", { type: "claim_daily_bonus" });
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 10500) throw new Error("claim_daily_bonus should not award twice on the same day");
 const progressionAfterRepeatedDailyClaim = db.prepare("SELECT total_xp, level FROM player_progression WHERE player_id = ?").get("db_smoke_player") as { total_xp: number; level: number };
@@ -48,9 +57,9 @@ manager.handle(repeatIdentityClient.id, { type: "hello", auth_provider: "local_d
 if (!manager.getClient("db_smoke_player")) throw new Error("same local_dev external_id should resolve to the same server player_id");
 
 manager.handle("db_smoke_player", { type: "buy_avatar", avatar_id: "1_01" });
-const afterAvatarBuy = manager.adminSnapshot(false);
-if (Number(afterAvatarBuy.total_wallet_chips) !== 9000) throw new Error("buy_avatar should deduct chips from wallet");
-if (Number(afterAvatarBuy.avatar_unlock_count) !== 2) throw new Error("buy_avatar should write avatar unlock");
+const afterAvatarWallet = db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("db_smoke_player") as { chips: number };
+if (afterAvatarWallet.chips !== 9000) throw new Error("buy_avatar should deduct chips from wallet");
+if (countRows("avatar_unlocks", "player_id = 'db_smoke_player'") !== 2) throw new Error("buy_avatar should write avatar unlock");
 if (countRows("wallet_transactions", "reason = 'avatar_purchase' AND amount = -1500") !== 1) throw new Error("avatar purchase should write negative wallet transaction");
 expectThrows("already_unlocked", () => manager.handle("db_smoke_player", { type: "buy_avatar", avatar_id: "1_01" }));
 expectThrows("avatar_not_unlocked", () => manager.handle("db_smoke_player", { type: "select_avatar", avatar_id: "2_01" }));
@@ -619,15 +628,22 @@ statsRoom.table.lastHandResults = [
 statsRoom.table.winners = [{ seat_index: 0, amount: 300 }];
 const recordStats = (targetRoom: typeof statsRoom): void =>
   (manager as unknown as { recordHandResults(room: typeof statsRoom): void }).recordHandResults(targetRoom);
+statsMessagesA.length = 0;
 recordStats(statsRoom);
 let statsA = db.prepare("SELECT * FROM player_statistics WHERE player_id = ?").get("stats_player_a") as { hands_played: number; hands_won: number; chips_won: number; gems_won: number };
 let statsB = db.prepare("SELECT * FROM player_statistics WHERE player_id = ?").get("stats_player_b") as { hands_played: number; hands_won: number; chips_won: number; gems_won: number };
 if (statsA.hands_played !== 1 || statsB.hands_played !== 1) throw new Error("official hand should increment hands_played for every participant");
 if (statsA.hands_won !== 1 || statsB.hands_won !== 0) throw new Error("official hand should increment hands_won only for winners");
 if (statsA.chips_won !== 150 || statsB.chips_won !== 0) throw new Error("chip statistics should accumulate only positive net delta");
+const pushedStatsAfterHand = statsMessagesA.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "profile_snapshot") as
+  | { profile_snapshot?: { statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
+  | undefined;
+if (pushedStatsAfterHand?.profile_snapshot?.statistics?.hands_played !== 1 || pushedStatsAfterHand.profile_snapshot.statistics.hands_won !== 1 || pushedStatsAfterHand.profile_snapshot.statistics.chips_won !== 150) throw new Error("official hand_over should immediately push updated profile statistics");
+statsMessagesA.length = 0;
 recordStats(statsRoom);
 statsA = db.prepare("SELECT * FROM player_statistics WHERE player_id = ?").get("stats_player_a") as typeof statsA;
 if (statsA.hands_played !== 1 || statsA.hands_won !== 1 || statsA.chips_won !== 150) throw new Error("repeated processing of one hand should be idempotent");
+if (statsMessagesA.some((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "profile_snapshot")) throw new Error("duplicate hand statistics processing should not push duplicate profile snapshots");
 if (countRows("hand_statistics_events", "hand_id = '" + statsRoom.id + ":101'") !== 2) throw new Error("official hand should write one statistics event per participant");
 
 statsRoom.table.handId = 102;
