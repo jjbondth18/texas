@@ -15,7 +15,7 @@ const DEFAULT_XP_MAX := XP_PER_LEVEL
 const DEFAULT_TOTAL_CHIPS := 24500
 const DEFAULT_GEMS := 0
 const DEFAULT_TABLE_BUY_IN := 20000
-const SCHEMA_VERSION := 3
+const SCHEMA_VERSION := 4
 const DAILY_LOGIN_CHIPS := 500
 const DAILY_LOGIN_XP := 25
 const DAILY_BONUS_REWARDS := [
@@ -43,6 +43,8 @@ var player_id := DEFAULT_PLAYER_ID
 var name := ""
 var total_xp := DEFAULT_TOTAL_XP
 var level := 1
+var title_id := "new_player"
+var current_title_name := "Rookie"
 var xp_current := 0
 var xp_max := 1
 var avatar := ""
@@ -53,6 +55,10 @@ var balance = CurrencyBalanceScript.new()
 var total_sessions_played := 0
 var total_hands_played := 0
 var total_hands_won := 0
+var hands_played := 0
+var hands_won := 0
+var chips_won := 0
+var gems_won := 0
 var total_profit := 0
 var biggest_pot := 0
 var best_hand_desc := ""
@@ -67,6 +73,8 @@ var daily_bonus_status_synced := false
 var daily_reward_claimed_today := false
 var replay_unlock_cost_gems := REPLAY_UNLOCK_COST_GEMS
 var unlocked_replay_ids: Array[String] = []
+var created_at := ""
+var updated_at := ""
 
 func _init(
 	player_name: String = "",
@@ -85,7 +93,9 @@ func _init(
 	name = player_name
 	var legacy_xp_progress: int = clamp(current_xp, 0, XP_PER_LEVEL - 1)
 	total_xp = int(profile_stats.get("total_xp", max(0, (player_level - 1) * XP_PER_LEVEL + legacy_xp_progress)))
-	level = level_for_total_xp(total_xp)
+	level = int(profile_stats.get("level", level_for_total_xp(total_xp)))
+	title_id = String(profile_stats.get("title_id", "new_player"))
+	current_title_name = String(profile_stats.get("current_title_name", profile_stats.get("title", title_for_level(level))))
 	xp_current = xp_current_for_total_xp(total_xp)
 	xp_max = XP_PER_LEVEL
 	avatar = avatar_path
@@ -106,8 +116,12 @@ func _init(
 	avatar_id = selected_avatar_id
 	balance = CurrencyBalanceScript.new(player_chips, player_gems)
 	total_sessions_played = int(profile_stats.get("total_sessions_played", 0))
-	total_hands_played = int(profile_stats.get("total_hands_played", 0))
-	total_hands_won = int(profile_stats.get("total_hands_won", 0))
+	total_hands_played = int(profile_stats.get("total_hands_played", profile_stats.get("hands_played", 0)))
+	total_hands_won = int(profile_stats.get("total_hands_won", profile_stats.get("hands_won", 0)))
+	hands_played = total_hands_played
+	hands_won = total_hands_won
+	chips_won = int(profile_stats.get("chips_won", 0))
+	gems_won = int(profile_stats.get("gems_won", 0))
 	total_profit = int(profile_stats.get("total_profit", 0))
 	biggest_pot = int(profile_stats.get("biggest_pot", 0))
 	best_hand_desc = String(profile_stats.get("best_hand_desc", ""))
@@ -126,6 +140,8 @@ func _init(
 		var replay_id := str(id).strip_edges()
 		if replay_id != "" and not unlocked_replay_ids.has(replay_id):
 			unlocked_replay_ids.append(replay_id)
+	created_at = String(profile_stats.get("created_at", ""))
+	updated_at = String(profile_stats.get("updated_at", ""))
 
 func xp_text() -> String:
 	return "%d / %d XP" % [xp_current, xp_max]
@@ -138,9 +154,10 @@ func to_lobby_dict() -> Dictionary:
 		"player_name": name,
 		"total_xp": total_xp,
 		"level": level,
+		"title_id": title_id,
 		"xp_text": xp_text(),
-		"current_title_name": title_for_level(level),
-		"title": title_for_level(level),
+		"current_title_name": current_title_name,
+		"title": current_title_name,
 		"chips": balance.chips,
 		"total_chips": balance.chips,
 		"gems": balance.gems,
@@ -151,6 +168,10 @@ func to_lobby_dict() -> Dictionary:
 		"total_sessions_played": total_sessions_played,
 		"total_hands_played": total_hands_played,
 		"total_hands_won": total_hands_won,
+		"hands_played": total_hands_played,
+		"hands_won": total_hands_won,
+		"chips_won": chips_won,
+		"gems_won": gems_won,
 		"total_profit": total_profit,
 		"biggest_pot": biggest_pot,
 		"best_hand_desc": best_hand_desc,
@@ -165,6 +186,8 @@ func to_lobby_dict() -> Dictionary:
 		"daily_reward_claimed_today": daily_reward_claimed_today,
 		"replay_unlock_cost_gems": replay_unlock_cost_gems,
 		"unlocked_replay_ids": unlocked_replay_ids.duplicate(),
+		"created_at": created_at,
+		"updated_at": updated_at,
 	}
 
 func to_dict() -> Dictionary:

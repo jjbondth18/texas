@@ -34,7 +34,51 @@ func save_current_profile(profile: Dictionary) -> void:
 func apply_server_profile_snapshot(profile_snapshot: Dictionary, wallet_snapshot: Dictionary = {}, unlocked_avatar_ids: Array = [], daily_login_awarded: bool = false) -> Dictionary:
 	var profile := get_current_profile()
 	if not profile_snapshot.is_empty():
+		var nested_wallet := Dictionary(profile_snapshot.get("wallet", {}))
+		if not nested_wallet.is_empty():
+			wallet_snapshot = nested_wallet
+		var nested_unlocks := Array(profile_snapshot.get("unlocked_avatar_ids", []))
+		if not nested_unlocks.is_empty():
+			unlocked_avatar_ids = nested_unlocks
 		profile["player_id"] = String(profile_snapshot.get("player_id", profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID)))
+		if profile_snapshot.has("created_at"):
+			profile["created_at"] = str(profile_snapshot.get("created_at", profile.get("created_at", "")))
+		if profile_snapshot.has("updated_at"):
+			profile["updated_at"] = str(profile_snapshot.get("updated_at", profile.get("updated_at", "")))
+		var progression := Dictionary(profile_snapshot.get("progression", {}))
+		if progression.has("total_xp"):
+			profile["total_xp"] = int(progression.get("total_xp", profile.get("total_xp", 0)))
+			profile["xp_current"] = PlayerProfileScript.xp_current_for_total_xp(int(profile["total_xp"]))
+			profile["xp_max"] = PlayerProfileScript.XP_PER_LEVEL
+			profile["xp_text"] = "%d / %d XP" % [int(profile["xp_current"]), PlayerProfileScript.XP_PER_LEVEL]
+		if progression.has("level"):
+			profile["level"] = int(progression.get("level", profile.get("level", PlayerProfileScript.DEFAULT_LEVEL)))
+		if progression.has("title_id"):
+			var server_title_id := str(progression.get("title_id", profile.get("title_id", "new_player")))
+			profile["title_id"] = server_title_id
+			profile["current_title_name"] = server_title_id
+			profile["title"] = server_title_id
+		var statistics := Dictionary(profile_snapshot.get("statistics", {}))
+		if statistics.has("hands_played"):
+			profile["hands_played"] = int(statistics.get("hands_played", profile.get("hands_played", 0)))
+			profile["total_hands_played"] = int(profile["hands_played"])
+		if statistics.has("hands_won"):
+			profile["hands_won"] = int(statistics.get("hands_won", profile.get("hands_won", 0)))
+			profile["total_hands_won"] = int(profile["hands_won"])
+		if statistics.has("chips_won"):
+			profile["chips_won"] = int(statistics.get("chips_won", profile.get("chips_won", 0)))
+		if statistics.has("gems_won"):
+			profile["gems_won"] = int(statistics.get("gems_won", profile.get("gems_won", 0)))
+		var daily_status := Dictionary(profile_snapshot.get("daily_bonus", {}))
+		if not daily_status.is_empty():
+			profile["daily_bonus_claim_count"] = int(daily_status.get("claim_count", profile.get("daily_bonus_claim_count", 0)))
+			profile["daily_bonus_cycle_day"] = int(daily_status.get("cycle_day", daily_status.get("current_day", profile.get("daily_bonus_cycle_day", 1))))
+			profile["daily_bonus_claimed_days_in_cycle"] = int(daily_status.get("claimed_days_in_cycle", profile.get("daily_bonus_claimed_days_in_cycle", 0)))
+			profile["daily_bonus_can_claim_today"] = bool(daily_status.get("can_claim_today", profile.get("daily_bonus_can_claim_today", false)))
+			profile["daily_bonus_status_synced"] = true
+			profile["daily_reward_claimed_today"] = bool(daily_status.get("already_claimed_today", profile.get("daily_reward_claimed_today", false)))
+			if bool(profile["daily_reward_claimed_today"]) and daily_status.has("claim_date"):
+				profile["last_daily_reward_date"] = str(daily_status.get("claim_date", profile.get("last_daily_reward_date", "")))
 		if profile_snapshot.has("daily_bonus_claim_count"):
 			profile["daily_bonus_claim_count"] = int(profile_snapshot.get("daily_bonus_claim_count", profile.get("daily_bonus_claim_count", 0)))
 		if profile_snapshot.has("daily_bonus_cycle_day"):
@@ -53,10 +97,11 @@ func apply_server_profile_snapshot(profile_snapshot: Dictionary, wallet_snapshot
 		if display_name != "":
 			profile["name"] = display_name
 			profile["player_name"] = display_name
-		var avatar_id := _client_avatar_id_for_server_id(String(profile_snapshot.get("avatar_id", PlayerProfileScript.get_avatar_id(profile))))
-		profile["avatar_id"] = avatar_id
-		profile["selected_avatar_id"] = avatar_id
-		profile["avatar"] = AvatarLibraryScript.avatar_path(avatar_id)
+		if profile_snapshot.has("avatar_id"):
+			var avatar_id := _client_avatar_id_for_server_id(String(profile_snapshot.get("avatar_id", PlayerProfileScript.get_avatar_id(profile))))
+			profile["avatar_id"] = avatar_id
+			profile["selected_avatar_id"] = avatar_id
+			profile["avatar"] = AvatarLibraryScript.avatar_path(avatar_id)
 	if not wallet_snapshot.is_empty():
 		profile["total_chips"] = int(wallet_snapshot.get("chips", PlayerProfileScript.get_total_chips(profile)))
 		profile["chips"] = int(profile["total_chips"])
