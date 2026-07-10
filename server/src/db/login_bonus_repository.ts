@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { WalletRepository } from "./wallet_repository.js";
 import type { WalletRecord, WalletTransactionRecord } from "./wallet_repository.js";
+import type { ProfileBootstrapRepository } from "./profile_bootstrap_repository.js";
 
 export interface DailyLoginResult {
   daily_login_awarded: boolean;
@@ -43,10 +44,16 @@ const DAILY_BONUS_REWARDS = [
 ] as const;
 
 export class LoginBonusRepository {
+  private progressionRepository?: ProfileBootstrapRepository;
+
   constructor(
     private readonly db: Database.Database,
     private readonly walletRepository: WalletRepository,
   ) {}
+
+  setProgressionRepository(repository: ProfileBootstrapRepository): void {
+    this.progressionRepository = repository;
+  }
 
   status(playerId: string, now = new Date()): DailyBonusStatus {
     const claimDate = now.toISOString().slice(0, 10);
@@ -97,6 +104,8 @@ export class LoginBonusRepository {
     const transaction = this.db.transaction(() => {
       this.walletRepository.addChips(playerId, reward.chips, { reason: "daily_login_bonus_chips", now: claimedAt });
       if (reward.gems > 0) this.walletRepository.addGems(playerId, reward.gems, { reason: "daily_login_bonus_gems", now: claimedAt });
+      if (!this.progressionRepository) throw new Error("progression_repository_not_configured");
+      this.progressionRepository.addXp(playerId, reward.xp, claimedAt);
       this.db
         .prepare("INSERT INTO daily_login_claims (player_id, claim_date, chips_awarded, claimed_at) VALUES (?, ?, ?, ?)")
         .run(playerId, claimDate, reward.chips, claimedAt);

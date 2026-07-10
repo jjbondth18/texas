@@ -34,6 +34,30 @@ export interface ServerProfileSnapshot {
   updated_at: string;
 }
 
+const XP_PER_LEVEL = 100;
+const TITLE_UNLOCKS = [
+  { level: 1, titleId: "new_player" },
+  { level: 3, titleId: "casual_player" },
+  { level: 5, titleId: "table_regular" },
+  { level: 10, titleId: "sharp_caller" },
+  { level: 15, titleId: "river_hunter" },
+  { level: 20, titleId: "card_shark" },
+  { level: 30, titleId: "high_roller" },
+  { level: 50, titleId: "poker_legend" },
+] as const;
+
+export function levelForTotalXp(totalXp: number): number {
+  return Math.floor(Math.max(0, Math.floor(totalXp)) / XP_PER_LEVEL) + 1;
+}
+
+export function titleIdForLevel(level: number): string {
+  let titleId = "new_player";
+  for (const unlock of TITLE_UNLOCKS) {
+    if (level >= unlock.level) titleId = unlock.titleId;
+  }
+  return titleId;
+}
+
 export class ProfileBootstrapRepository {
   constructor(
     private readonly db: Database.Database,
@@ -63,6 +87,59 @@ export class ProfileBootstrapRepository {
       this.ensureProgression(playerId, now);
       this.ensureStatistics(playerId, now);
     })();
+  }
+
+  addXp(playerId: string, amount: number, now = new Date().toISOString()): PlayerProgressionRecord {
+    const normalized = Math.max(0, Math.floor(amount));
+    const transaction = this.db.transaction(() => {
+      const current = this.ensureProgression(playerId, now);
+      if (normalized <= 0) return current;
+      const totalXp = Number(current.total_xp) + normalized;
+      const level = levelForTotalXp(totalXp);
+      const titleId = titleIdForLevel(level);
+      this.db
+        .prepare("UPDATE player_progression SET total_xp = ?, level = ?, title_id = ?, updated_at = ? WHERE player_id = ?")
+        .run(totalXp, level, titleId, now, playerId);
+      return this.getProgression(playerId)!;
+    });
+    return transaction();
+  }
+
+  recordHandResult(
+    playerId: string,
+    currency: "chips" | "gems",
+    netDelta: number,
+    won: boolean,
+    handId: string,
+    now = new Date().toISOString(),
+  ): boolean {
+    if (handId.trim() === "") throw new Error("hand_id_required");
+    const normalizedDelta = Math.floor(netDelta);
+    const positiveDelta = Math.max(0, normalizedDelta);
+    const transaction = this.db.transaction(() => {
+      this.ensureStatistics(playerId, now);
+      const inserted = this.db
+        .prepare("INSERT OR IGNORE INTO hand_statistics_events (hand_id, player_id, currency, net_delta, won, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+        .run(handId, playerId, currency, normalizedDelta, won ? 1 : 0, now);
+      if (inserted.changes === 0) return false;
+      const chipsWon = currency === "chips" ? positiveDelta : 0;
+      const gemsWon = currency === "gems" ? positiveDelta : 0;
+      this.db
+        .prepare(
+          "UPDATE player_statistics SET hands_played = hands_played + 1, hands_won = hands_won + ?, chips_won = chips_won + ?, gems_won = gems_won + ?, updated_at = ? WHERE player_id = ?",
+        )
+        .run(won ? 1 : 0, chipsWon, gemsWon, now, playerId);
+      return true;
+    });
+    return transaction();
+  }
+
+  getProgression(playerId: string): PlayerProgressionRecord | undefined {
+    return this.db.prepare("SELECT * FROM player_progression WHERE player_id = ?").get(playerId) as PlayerProgressionRecord | undefined;
+  }
+
+  getStatistics(playerId: string): PlayerStatisticsRecord | undefined {
+    return this.db.prepare("SELECT * FROM player_statistics WHERE player_id = ?").get(playerId) as PlayerStatisticsRecord | undefined;
   }
 
   getProfileSnapshot(playerId: string): ServerProfileSnapshot {

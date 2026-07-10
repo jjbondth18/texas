@@ -5,6 +5,7 @@ import { migration003ReplayMetadata } from "./migrations/003_replay_metadata.js"
 import { migration004ReplayUnlocks } from "./migrations/004_replay_unlocks.js";
 import { migration005TableBalances } from "./migrations/005_table_balances.js";
 import { migration006PlayerProfileBootstrap } from "./migrations/006_player_profile_bootstrap.js";
+import { migration007HandStatisticsEvents } from "./migrations/007_hand_statistics_events.js";
 
 interface Migration {
   id: string;
@@ -18,6 +19,7 @@ const migrations: Migration[] = [
   migration004ReplayUnlocks,
   migration005TableBalances,
   migration006PlayerProfileBootstrap,
+  migration007HandStatisticsEvents,
 ];
 
 export function runMigrations(db: Database.Database): void {

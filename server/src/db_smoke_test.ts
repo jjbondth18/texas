@@ -5,6 +5,7 @@ import { RoomManager } from "./room_manager.js";
 import { getDatabase } from "./db/database.js";
 import { initializeSchema } from "./db/schema.js";
 import { config } from "./config.js";
+import { levelForTotalXp, titleIdForLevel } from "./db/profile_bootstrap_repository.js";
 
 process.env.TEXAS_DB_PATH = join(mkdtempSync(join(tmpdir(), "texas-db-smoke-")), "texas_dev.sqlite");
 
@@ -23,7 +24,7 @@ if (Number(firstProfile.total_wallet_chips) !== 10000) throw new Error("hello sh
 if (Number(firstProfile.avatar_unlock_count) !== 1) throw new Error("new player should unlock the default avatar");
 const db = getDatabase();
 initializeSchema(db);
-if (countRows("schema_migrations") < 6) throw new Error("migrations should be recorded and re-runnable");
+if (countRows("schema_migrations") < 7) throw new Error("migrations should be recorded and re-runnable");
 if (countRows("player_identities", "provider = 'local_dev' AND external_id = 'db_smoke_player'") !== 1) throw new Error("hello should write local_dev identity");
 if (countRows("player_progression", "player_id = 'db_smoke_player' AND total_xp = 0 AND level = 1 AND title_id = 'new_player'") !== 1) throw new Error("local_dev hello should bootstrap default progression");
 if (countRows("player_statistics", "player_id = 'db_smoke_player' AND hands_played = 0 AND hands_won = 0 AND chips_won = 0 AND gems_won = 0") !== 1) throw new Error("local_dev hello should bootstrap default statistics");
@@ -32,9 +33,15 @@ if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips'") !== 0
 manager.handle("db_smoke_player", { type: "claim_daily_bonus" });
 const afterDailyClaim = manager.adminSnapshot(false);
 if (Number(afterDailyClaim.total_wallet_chips) !== 10500) throw new Error("claim_daily_bonus should grant day 1 chips");
+const progressionAfterDailyClaim = db.prepare("SELECT total_xp, level, title_id FROM player_progression WHERE player_id = ?").get("db_smoke_player") as { total_xp: number; level: number; title_id: string };
+if (progressionAfterDailyClaim.total_xp !== 25) throw new Error("claim_daily_bonus should persist awarded XP");
+if (progressionAfterDailyClaim.level !== levelForTotalXp(progressionAfterDailyClaim.total_xp)) throw new Error("daily bonus level should match authoritative total XP rule");
+if (progressionAfterDailyClaim.title_id !== titleIdForLevel(progressionAfterDailyClaim.level)) throw new Error("daily bonus title should match authoritative title rule");
 if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips' AND amount = 500") !== 1) throw new Error("daily login claim should write chip wallet transaction");
 manager.handle("db_smoke_player", { type: "claim_daily_bonus" });
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 10500) throw new Error("claim_daily_bonus should not award twice on the same day");
+const progressionAfterRepeatedDailyClaim = db.prepare("SELECT total_xp, level FROM player_progression WHERE player_id = ?").get("db_smoke_player") as { total_xp: number; level: number };
+if (progressionAfterRepeatedDailyClaim.total_xp !== 25 || progressionAfterRepeatedDailyClaim.level !== 1) throw new Error("repeated daily bonus claim should not award XP twice");
 
 const repeatIdentityClient = manager.connect();
 manager.handle(repeatIdentityClient.id, { type: "hello", auth_provider: "local_dev", external_id: "db_smoke_player", name: "DB Smoke Repeat" });
@@ -592,6 +599,85 @@ config.allowMockPurchases = false;
 expectThrows("mock_purchase_disabled", () => manager.handle("mock_purchase_player", { type: "mock_purchase", currency: "chips", amount: 10000, source: "store_mock" }));
 config.allowMockPurchases = true;
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeDisabledTotal) throw new Error("disabled mock purchase should not change wallet");
+
+const statsMessagesA: unknown[] = [];
+const statsWsA = { OPEN: 1, readyState: 1, send: (data: string) => statsMessagesA.push(JSON.parse(data)) };
+const statsClientA = manager.connect(statsWsA as any);
+manager.handle(statsClientA.id, { type: "hello", player_id: "stats_player_a", name: "Stats A" });
+const statsClientB = manager.connect();
+manager.handle(statsClientB.id, { type: "hello", player_id: "stats_player_b", name: "Stats B" });
+const statsRoom = manager.createRoom({ tableType: "public_chip" });
+statsRoom.table.sitDown({ id: "stats_player_a", name: "Stats A", connected: true }, 0, 1000);
+statsRoom.table.sitDown({ id: "stats_player_b", name: "Stats B", connected: true }, 1, 1000);
+statsRoom.officialHandStarted = true;
+statsRoom.table.handId = 101;
+statsRoom.table.phase = "hand_over";
+statsRoom.table.lastHandResults = [
+  { seat_index: 0, player_name: "Stats A", before_chips: 1000, after_chips: 1150, delta: 150, award: 300 },
+  { seat_index: 1, player_name: "Stats B", before_chips: 1000, after_chips: 850, delta: -150, award: 0 },
+];
+statsRoom.table.winners = [{ seat_index: 0, amount: 300 }];
+const recordStats = (targetRoom: typeof statsRoom): void =>
+  (manager as unknown as { recordHandResults(room: typeof statsRoom): void }).recordHandResults(targetRoom);
+recordStats(statsRoom);
+let statsA = db.prepare("SELECT * FROM player_statistics WHERE player_id = ?").get("stats_player_a") as { hands_played: number; hands_won: number; chips_won: number; gems_won: number };
+let statsB = db.prepare("SELECT * FROM player_statistics WHERE player_id = ?").get("stats_player_b") as { hands_played: number; hands_won: number; chips_won: number; gems_won: number };
+if (statsA.hands_played !== 1 || statsB.hands_played !== 1) throw new Error("official hand should increment hands_played for every participant");
+if (statsA.hands_won !== 1 || statsB.hands_won !== 0) throw new Error("official hand should increment hands_won only for winners");
+if (statsA.chips_won !== 150 || statsB.chips_won !== 0) throw new Error("chip statistics should accumulate only positive net delta");
+recordStats(statsRoom);
+statsA = db.prepare("SELECT * FROM player_statistics WHERE player_id = ?").get("stats_player_a") as typeof statsA;
+if (statsA.hands_played !== 1 || statsA.hands_won !== 1 || statsA.chips_won !== 150) throw new Error("repeated processing of one hand should be idempotent");
+if (countRows("hand_statistics_events", "hand_id = '" + statsRoom.id + ":101'") !== 2) throw new Error("official hand should write one statistics event per participant");
+
+statsRoom.table.handId = 102;
+statsRoom.table.lastHandResults = [
+  { seat_index: 0, player_name: "Stats A", before_chips: 1000, after_chips: 1050, delta: 50, award: 100 },
+  { seat_index: 1, player_name: "Stats B", before_chips: 1000, after_chips: 1050, delta: 50, award: 100 },
+];
+statsRoom.table.winners = [{ seat_index: 0, amount: 100 }, { seat_index: 1, amount: 100 }];
+recordStats(statsRoom);
+statsA = db.prepare("SELECT * FROM player_statistics WHERE player_id = ?").get("stats_player_a") as typeof statsA;
+statsB = db.prepare("SELECT * FROM player_statistics WHERE player_id = ?").get("stats_player_b") as typeof statsB;
+if (statsA.hands_played !== 2 || statsB.hands_played !== 2 || statsA.hands_won !== 2 || statsB.hands_won !== 1) throw new Error("split pot winners should each receive hands_won credit");
+if (statsA.chips_won !== 200 || statsB.chips_won !== 50) throw new Error("split pot positive chip deltas should accumulate");
+
+const gemStatsRoom = manager.createRoom({ tableType: "public_gem" });
+gemStatsRoom.table.sitDown({ id: "stats_player_a", name: "Stats A", connected: true }, 0, 100);
+gemStatsRoom.table.sitDown({ id: "stats_player_b", name: "Stats B", connected: true }, 1, 100);
+gemStatsRoom.officialHandStarted = true;
+gemStatsRoom.table.handId = 201;
+gemStatsRoom.table.phase = "hand_over";
+gemStatsRoom.table.lastHandResults = [
+  { seat_index: 0, player_name: "Stats A", before_chips: 100, after_chips: 107, delta: 7, award: 14 },
+  { seat_index: 1, player_name: "Stats B", before_chips: 100, after_chips: 93, delta: -7, award: 0 },
+];
+gemStatsRoom.table.winners = [{ seat_index: 0, amount: 14 }];
+recordStats(gemStatsRoom);
+statsA = db.prepare("SELECT * FROM player_statistics WHERE player_id = ?").get("stats_player_a") as typeof statsA;
+statsB = db.prepare("SELECT * FROM player_statistics WHERE player_id = ?").get("stats_player_b") as typeof statsB;
+if (statsA.gems_won !== 7 || statsB.gems_won !== 0) throw new Error("gem statistics should accumulate only positive net delta");
+
+const eventsBeforeWarmup = countRows("hand_statistics_events");
+const statsBeforeWarmup = { ...statsA };
+const statsWarmupRoom = manager.createRoom();
+statsWarmupRoom.table.sitDown({ id: "stats_player_a", name: "Stats A", connected: true }, 0, 1000);
+statsWarmupRoom.isAiWarmup = true;
+statsWarmupRoom.officialHandStarted = false;
+statsWarmupRoom.table.handId = 301;
+statsWarmupRoom.table.phase = "hand_over";
+statsWarmupRoom.table.lastHandResults = [{ seat_index: 0, player_name: "Stats A", before_chips: 1000, after_chips: 1100, delta: 100, award: 100 }];
+statsWarmupRoom.table.winners = [{ seat_index: 0, amount: 100 }];
+recordStats(statsWarmupRoom);
+statsA = db.prepare("SELECT * FROM player_statistics WHERE player_id = ?").get("stats_player_a") as typeof statsA;
+if (countRows("hand_statistics_events") !== eventsBeforeWarmup || statsA.hands_played !== statsBeforeWarmup.hands_played) throw new Error("AI warm-up should not update authoritative statistics");
+
+statsMessagesA.length = 0;
+manager.handle("stats_player_a", { type: "get_profile" });
+const updatedStatsProfile = statsMessagesA.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "profile_snapshot") as
+  | { profile_snapshot?: { statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
+  | undefined;
+if (updatedStatsProfile?.profile_snapshot?.statistics?.hands_played !== 3 || updatedStatsProfile.profile_snapshot.statistics.hands_won !== 3 || updatedStatsProfile.profile_snapshot.statistics.chips_won !== 200 || updatedStatsProfile.profile_snapshot.statistics.gems_won !== 7) throw new Error("profile refresh should return authoritative updated statistics");
 
 const steamHelloMessages: unknown[] = [];
 const steamWs = { OPEN: 1, readyState: 1, send: (data: string) => steamHelloMessages.push(JSON.parse(data)) };
