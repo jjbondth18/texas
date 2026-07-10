@@ -75,10 +75,10 @@ Godot defaults to the local development server:
 ws://127.0.0.1:8080
 ```
 
-For a VM or VPS test:
+For a VM or VPS test, set a temporary environment variable before launching Godot:
 
 ```text
-ws://SERVER_IP:8080
+TEXAS_SERVER_URL=ws://104.197.125.248:8080
 ```
 
 Future HTTPS deployments should use:
@@ -87,7 +87,13 @@ Future HTTPS deployments should use:
 wss://your-domain
 ```
 
-The Godot client uses the `texas/network/server_url` project setting when present, falling back to `ws://127.0.0.1:8080`.
+The Godot client resolves the server URL in this order:
+
+1. `TEXAS_SERVER_URL`
+2. `texas/network/server_url`
+3. `ws://127.0.0.1:8080`
+
+Do not commit a public server IP as the code default.
 
 ## SQLite Production Warning
 
