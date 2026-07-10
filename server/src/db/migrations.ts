@@ -3,13 +3,14 @@ import { migration001InitialSchema } from "./migrations/001_initial_schema.js";
 import { migration002WalletTransactions } from "./migrations/002_wallet_transactions.js";
 import { migration003ReplayMetadata } from "./migrations/003_replay_metadata.js";
 import { migration004ReplayUnlocks } from "./migrations/004_replay_unlocks.js";
+import { migration005TableBalances } from "./migrations/005_table_balances.js";
 
 interface Migration {
   id: string;
   up(db: Database.Database): void;
 }
 
-const migrations: Migration[] = [migration001InitialSchema, migration002WalletTransactions, migration003ReplayMetadata, migration004ReplayUnlocks];
+const migrations: Migration[] = [migration001InitialSchema, migration002WalletTransactions, migration003ReplayMetadata, migration004ReplayUnlocks, migration005TableBalances];
 
 export function runMigrations(db: Database.Database): void {
   db.exec(`

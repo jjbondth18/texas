@@ -12,6 +12,7 @@ import { IdentityRepository } from "./db/identity_repository.js";
 import { ResultRepository } from "./db/result_repository.js";
 import { WalletRepository } from "./db/wallet_repository.js";
 import { ReplayRepository } from "./db/replay_repository.js";
+import { TableBalanceRepository, type TableBalanceCurrency } from "./db/table_balance_repository.js";
 import { AVATAR_CATALOG, DEFAULT_AVATAR_PRICE_CHIPS, findAvatarCatalogItem } from "./avatar_catalog.js";
 import { config } from "./config.js";
 import { buildEncryptedReplayDelivery, buildHandReplayRecord, generateReplayKey, replayIdFor, type EncryptedReplayDelivery } from "./replay.js";
@@ -115,6 +116,11 @@ export class RoomManager {
   private readonly loginBonus = new LoginBonusRepository(this.db, this.wallets);
   private readonly results = new ResultRepository(this.db);
   private readonly replays = new ReplayRepository(this.db);
+  private readonly tableBalances = new TableBalanceRepository(this.db);
+
+  constructor() {
+    this.recoverOutstandingTableBalances();
+  }
 
   connect(ws?: WebSocket): Client {
     const client: Client = { id: `player_${this.nextPlayerId++}`, name: "Player", avatarId: "default", ws };
@@ -192,7 +198,8 @@ export class RoomManager {
       const room = this.rooms.get(String(message.room_id || ""));
       if (!room) throw new Error("room_not_found");
       if (!room.isPublic) throw new Error("room_not_found");
-      if (this.occupiedSeatCount(room) >= room.maxPlayers) throw new Error("table_full");
+      const decision = this.publicRoomListDecision(room);
+      if (!decision.include) throw new Error(decision.reason === "full" ? "table_full" : "room_not_available");
       this.joinRoom(client, room.id);
       const table = this.tableSnapshot(room);
       this.recordLog(`${client.id} joined public table ${room.id}`);
@@ -943,6 +950,7 @@ export class RoomManager {
       this.recordLog(`sit_down idempotent room_id=${room.id} connection_player_id=${client.id} seat_index=${existingSeat.seatIndex}`);
       return existingSeat.seatIndex;
     }
+    this.ensureRoomCanAcceptSitDown(room);
     if (this.occupiedSeatCount(room) >= room.maxPlayers) throw new Error("table_full");
     const seat = requestedSeatIndex < 0 ? this.firstAvailablePublicSeat(room) : room.table.getSeat(requestedSeatIndex);
     if (!seat || seat.playerId) throw new Error("seat is not available");
@@ -952,18 +960,19 @@ export class RoomManager {
     const currency = roomCurrency(room);
     const walletBalance = currency === "gems" ? (wallet?.gems ?? 0) : (wallet?.chips ?? 0);
     if (!wallet || walletBalance < room.buyIn) throw new Error(currency === "gems" ? "insufficient_gems" : "insufficient_chips");
-    if (currency === "gems") {
-      this.wallets.deductGems(client.id, room.buyIn, { reason: "gem_table_buy_in", relatedRoomId: room.id });
-    } else {
-      this.wallets.deductChips(client.id, room.buyIn, { reason: "table_buy_in", relatedRoomId: room.id });
-    }
-    if (room.hostPlayerId === "") room.hostPlayerId = client.id;
-    room.table.sitDown(toPlayer(client), seatIndex, room.buyIn);
-    if (room.hostInLocalWarmup !== "" && this.realConnectedSeatedCount(room) >= 2) {
-      const hostId = room.hostInLocalWarmup;
-      room.hostInLocalWarmup = "";
-      room.table.addAction({ type: "system", action: "real_player_joined", message: "Real player joined. Return from local AI warm-up to public table." });
-      this.recordLog(`real_player_joined_interrupts_local_warmup room_id=${room.id} host_player_id=${hostId} joined_player_id=${client.id}`);
+    this.deductWalletToTableBalance(client.id, room.id, currency, room.buyIn);
+    try {
+      if (room.hostPlayerId === "") room.hostPlayerId = client.id;
+      room.table.sitDown(toPlayer(client), seatIndex, room.buyIn);
+      if (room.hostInLocalWarmup !== "" && this.realConnectedSeatedCount(room) >= 2) {
+        const hostId = room.hostInLocalWarmup;
+        room.hostInLocalWarmup = "";
+        room.table.addAction({ type: "system", action: "real_player_joined", message: "Real player joined. Return from local AI warm-up to public table." });
+        this.recordLog(`real_player_joined_interrupts_local_warmup room_id=${room.id} host_player_id=${hostId} joined_player_id=${client.id}`);
+      }
+    } catch (error) {
+      this.refundOutstandingTableBalance(client.id, room.id, "refunded_sit_down_failed");
+      throw error;
     }
     const occupiedCount = this.occupiedSeatCount(room);
     const acceptedSeat = room.table.getSeat(seatIndex);
@@ -972,6 +981,11 @@ export class RoomManager {
     );
     this.sendWalletSnapshot(client, room.id);
     return seatIndex;
+  }
+
+  private ensureRoomCanAcceptSitDown(room: Room): void {
+    if (room.sessionComplete || room.table.phase === "session_complete") throw new Error("room_not_available");
+    if (room.table.phase === "hand_over" && room.officialHandStarted) throw new Error("room_not_available");
   }
 
   private firstAvailablePublicSeat(room: Room) {
@@ -1244,8 +1258,13 @@ export class RoomManager {
     this.wallets.ensure(client.id);
     const wallet = this.wallets.get(client.id);
     if (!wallet || wallet.chips < normalized) throw new Error("insufficient_chips");
-    this.wallets.deductChips(client.id, normalized, { reason: "add_table_chips", relatedRoomId: room.id });
-    room.table.addTableChips(client.id, normalized);
+    this.deductWalletToTableBalance(client.id, room.id, "chips", normalized, "add_table_chips");
+    try {
+      room.table.addTableChips(client.id, normalized);
+    } catch (error) {
+      this.refundWalletAndReduceTableBalance(client.id, room.id, "chips", normalized, "refunded_add_table_chips_failed");
+      throw error;
+    }
     this.sendWalletSnapshot(client, room.id);
   }
 
@@ -1253,6 +1272,12 @@ export class RoomManager {
     const seat = room.table.getSeatByPlayer(client.id);
     const settlementKey = `${room.id}:${client.id}`;
     if (!seat) {
+      const recovered = this.refundOutstandingTableBalance(client.id, room.id, this.exitSettlementReason(room));
+      if (recovered > 0) {
+        this.settledPlayerExits.add(settlementKey);
+        this.sendWalletSnapshot(client, room.id);
+        return;
+      }
       if (this.settledPlayerExits.has(settlementKey)) {
         this.sendWalletSnapshot(client, room.id);
         return;
@@ -1273,14 +1298,79 @@ export class RoomManager {
     } else {
       room.table.cashOut(client.id);
     }
-    const wallet = roomCurrency(room) === "gems"
-      ? this.wallets.addGems(client.id, amount, { reason, relatedRoomId: room.id, relatedHandId: room.table.handId > 0 ? String(room.table.handId) : undefined })
-      : this.wallets.refundTableChips(client.id, amount, { reason, relatedRoomId: room.id, relatedHandId: room.table.handId > 0 ? String(room.table.handId) : undefined });
+    const wallet = this.refundWalletAndClearTableBalance(client.id, room.id, roomCurrency(room), amount, reason, room.table.handId > 0 ? String(room.table.handId) : undefined);
     const walletAfter = roomCurrency(room) === "gems" ? wallet.gems : wallet.chips;
     this.recordLog(`Wallet refund: currency=${roomCurrency(room)} reason=${reason} player_id=${client.id} amount=${amount} wallet_after=${walletAfter} room_id=${room.id}`);
     this.sendWalletSnapshot(client, room.id);
     room.clients.delete(client.id);
     client.roomId = undefined;
+  }
+
+  private deductWalletToTableBalance(playerId: string, roomId: string, currency: RoomCurrency, amount: number, chipReason = "table_buy_in"): void {
+    const normalized = Math.max(0, Math.floor(amount));
+    const transaction = this.db.transaction(() => {
+      if (currency === "gems") this.wallets.deductGems(playerId, normalized, { reason: chipReason === "add_table_chips" ? "add_table_chips" : "gem_table_buy_in", relatedRoomId: roomId });
+      else this.wallets.deductChips(playerId, normalized, { reason: chipReason, relatedRoomId: roomId });
+      this.tableBalances.add(roomId, playerId, currency as TableBalanceCurrency, normalized);
+    });
+    transaction();
+  }
+
+  private refundWalletAndClearTableBalance(playerId: string, roomId: string, currency: RoomCurrency, amount: number, reason: string, handId?: string) {
+    const normalized = Math.max(0, Math.floor(amount));
+    const transaction = this.db.transaction(() => {
+      const wallet = currency === "gems"
+        ? this.wallets.addGems(playerId, normalized, { reason, relatedRoomId: roomId, relatedHandId: handId })
+        : this.wallets.refundTableChips(playerId, normalized, { reason, relatedRoomId: roomId, relatedHandId: handId });
+      this.tableBalances.clear(roomId, playerId);
+      return wallet;
+    });
+    return transaction();
+  }
+
+  private refundWalletAndReduceTableBalance(playerId: string, roomId: string, currency: RoomCurrency, amount: number, reason: string): void {
+    const normalized = Math.max(0, Math.floor(amount));
+    if (normalized <= 0) return;
+    const transaction = this.db.transaction(() => {
+      if (currency === "gems") this.wallets.addGems(playerId, normalized, { reason, relatedRoomId: roomId });
+      else this.wallets.refundTableChips(playerId, normalized, { reason, relatedRoomId: roomId });
+      const balance = this.tableBalances.get(roomId, playerId);
+      if (!balance) return;
+      this.tableBalances.set(roomId, playerId, balance.currency, Math.max(0, balance.amount - normalized));
+    });
+    transaction();
+  }
+
+  private refundOutstandingTableBalance(playerId: string, roomId: string, reason: string): number {
+    const balance = this.tableBalances.get(roomId, playerId);
+    const amount = Math.max(0, Math.floor(balance?.amount ?? 0));
+    if (!balance || amount <= 0) return 0;
+    this.refundWalletAndClearTableBalance(playerId, roomId, balance.currency, amount, reason);
+    this.recordLog(`Outstanding table balance refunded: reason=${reason} player_id=${playerId} amount=${amount} room_id=${roomId}`);
+    return amount;
+  }
+
+  private recoverOutstandingTableBalances(): void {
+    const balances = this.tableBalances.allOutstanding();
+    for (const balance of balances) {
+      this.wallets.ensure(balance.player_id);
+      this.refundWalletAndClearTableBalance(balance.player_id, balance.room_id, balance.currency, balance.amount, "server_restart_recovery");
+      this.recordLog(`server_restart_recovery player_id=${balance.player_id} room_id=${balance.room_id} amount=${balance.amount} currency=${balance.currency}`);
+    }
+  }
+
+  private syncRoomTableBalances(room: Room): void {
+    const currency = roomCurrency(room) as TableBalanceCurrency;
+    const seatedPlayerIds = new Set<string>();
+    for (const seat of room.table.seats) {
+      if (!seat.playerId || seat.isAi || seat.warmupAi) continue;
+      seatedPlayerIds.add(seat.playerId);
+      const currentOutstanding = Math.max(0, Math.floor(seat.chips + seat.contribution));
+      this.tableBalances.set(room.id, seat.playerId, currency, currentOutstanding);
+    }
+    for (const balance of this.tableBalances.allForRoom(room.id)) {
+      if (!seatedPlayerIds.has(balance.player_id)) this.tableBalances.clear(room.id, balance.player_id);
+    }
   }
 
   private shouldRefundDisconnectedBeforeOfficialHand(room: Room, client: Client): boolean {
@@ -1359,6 +1449,7 @@ export class RoomManager {
   }
 
   private broadcast(room: Room): void {
+    this.syncRoomTableBalances(room);
     const roomState = this.publicRoomState(room);
     const replayDelivery = room.table.phase === "hand_over" ? this.encryptedReplayDelivery(room) : undefined;
     const snapshot = {
@@ -1515,13 +1606,13 @@ export class RoomManager {
 
   private publicRoomState(room: Room): string {
     if (room.sessionComplete) return "session_complete";
-    if (room.hostInLocalWarmup !== "" && ["waiting", "hand_over"].includes(room.table.phase)) {
+    if (room.hostInLocalWarmup !== "" && !room.officialHandStarted && ["waiting", "hand_over"].includes(room.table.phase)) {
       return this.publicSeatedCount(room) < 2 ? "waiting_for_players" : "waiting_ready";
     }
     if (room.isAiWarmup) return "ai_warmup";
     if (isActionPhase(room.table.phase)) return "playing";
     if (room.table.phase === "showdown") return "hand_result";
-    if (room.table.phase === "hand_over" && room.officialHandStarted && room.handResultTimer) return "hand_result";
+    if (room.table.phase === "hand_over" && room.officialHandStarted) return "hand_result";
     if (room.readyCountdownTimer) return "starting_countdown";
     if (["waiting", "hand_over"].includes(room.table.phase)) return this.publicSeatedCount(room) < 2 ? "waiting_for_players" : "waiting_ready";
     return "playing";

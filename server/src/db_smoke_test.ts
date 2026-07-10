@@ -23,7 +23,7 @@ if (Number(firstProfile.total_wallet_chips) !== 10000) throw new Error("hello sh
 if (Number(firstProfile.avatar_unlock_count) !== 1) throw new Error("new player should unlock the default avatar");
 const db = getDatabase();
 initializeSchema(db);
-if (countRows("schema_migrations") < 4) throw new Error("migrations should be recorded and re-runnable");
+if (countRows("schema_migrations") < 5) throw new Error("migrations should be recorded and re-runnable");
 if (countRows("player_identities", "provider = 'local_dev' AND external_id = 'db_smoke_player'") !== 1) throw new Error("hello should write local_dev identity");
 if (countRows("wallet_transactions", "reason = 'initial_grant' AND amount = 10000") !== 1) throw new Error("initial chips should write wallet transaction");
 if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips'") !== 0) throw new Error("hello should not write daily login wallet transaction");
@@ -59,6 +59,10 @@ manager.handle("db_smoke_player", { type: "sit_down", room_id: room.id, seat_ind
 const afterBuyIn = manager.adminSnapshot(false);
 if (Number(afterBuyIn.total_wallet_chips) !== 4000) throw new Error("sit_down should deduct room buy-in from wallet");
 if (room.table.getSeat(0)?.chips !== 5000) throw new Error("sit_down should put room buy-in table chips on the seat");
+if (countRows("table_balances", "room_id = '" + room.id + "' AND player_id = 'db_smoke_player' AND amount = 5000") !== 1) throw new Error("sit_down should persist outstanding table balance");
+manager.handle("db_smoke_player", { type: "sit_down", room_id: room.id, seat_index: 0 });
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 4000) throw new Error("repeated sit_down should be idempotent and not deduct wallet twice");
+if (countRows("wallet_transactions", "reason = 'table_buy_in' AND related_room_id = '" + room.id + "'") !== 1) throw new Error("repeated sit_down should not write another buy-in transaction");
 const creatorSeatSnapshot = room.table.publicSnapshot().seats[0];
 if (!creatorSeatSnapshot.occupied) throw new Error("authoritative snapshot should mark creator seat occupied");
 if (creatorSeatSnapshot.player_id !== "db_smoke_player") throw new Error("authoritative snapshot should include creator player_id");
@@ -77,6 +81,7 @@ manager.handle("db_smoke_player", { type: "add_table_chips", room_id: room.id, a
 const afterAdd = manager.adminSnapshot(false);
 if (Number(afterAdd.total_wallet_chips) !== 3500) throw new Error("add_table_chips should deduct wallet chips");
 if (room.table.getSeat(0)?.chips !== 5500) throw new Error("add_table_chips should increase table chips");
+if (countRows("table_balances", "room_id = '" + room.id + "' AND player_id = 'db_smoke_player' AND amount = 5500") !== 1) throw new Error("add_table_chips should increase persisted outstanding table balance");
 if (countRows("wallet_transactions", "reason = 'add_table_chips' AND amount = -500") !== 1) throw new Error("add_table_chips should write negative wallet transaction");
 
 expectThrows("insufficient_chips", () => manager.handle("db_smoke_player", { type: "add_table_chips", room_id: room.id, amount: 999999 }));
@@ -86,6 +91,7 @@ manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id });
 const afterCashOut = manager.adminSnapshot(false);
 if (Number(afterCashOut.total_wallet_chips) !== 9000) throw new Error("cash_out should refund remaining table chips");
 if (room.table.getSeat(0)?.playerId !== "") throw new Error("cash_out should clear the seat");
+if (countRows("table_balances", "room_id = '" + room.id + "' AND player_id = 'db_smoke_player'") !== 0) throw new Error("cash_out should clear persisted outstanding table balance");
 if (countRows("wallet_transactions", "reason = 'left_before_official_hand' AND amount = 5500") !== 1) throw new Error("pre-hand cash out should write left_before_official_hand wallet transaction");
 manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id });
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 9000) throw new Error("repeat cash_out should not double refund");
@@ -97,7 +103,22 @@ if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 4000) throw new 
 manager.disconnect("db_smoke_player");
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 9000) throw new Error("pre-hand disconnect should refund the full table stack");
 if (disconnectRoom.table.getSeat(0)?.playerId !== "") throw new Error("pre-hand disconnect should clear the exited seat");
+if (countRows("table_balances", "room_id = '" + disconnectRoom.id + "' AND player_id = 'db_smoke_player'") !== 0) throw new Error("pre-hand disconnect should clear persisted outstanding table balance");
 if (countRows("wallet_transactions", "reason = 'left_before_official_hand' AND amount = 5000") < 1) throw new Error("pre-hand disconnect should write left_before_official_hand wallet transaction");
+
+const restartRecoveryClient = manager.connect();
+manager.handle(restartRecoveryClient.id, { type: "hello", player_id: "restart_recovery_player", name: "Restart Recovery" });
+const restartRecoveryRoom = manager.createRoom();
+manager.handle("restart_recovery_player", { type: "join_room", room_id: restartRecoveryRoom.id });
+manager.handle("restart_recovery_player", { type: "sit_down", room_id: restartRecoveryRoom.id, seat_index: 0 });
+const restartRecoveryWalletAfterBuyIn = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("restart_recovery_player") as { chips: number }).chips;
+if (restartRecoveryWalletAfterBuyIn !== 5000) throw new Error("restart recovery setup should deduct buy-in before simulated restart");
+if (countRows("table_balances", "room_id = '" + restartRecoveryRoom.id + "' AND player_id = 'restart_recovery_player' AND amount = 5000") !== 1) throw new Error("restart recovery setup should persist outstanding table balance");
+new RoomManager();
+const restartRecoveryWalletAfterRecover = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("restart_recovery_player") as { chips: number }).chips;
+if (restartRecoveryWalletAfterRecover !== 10000) throw new Error("server restart recovery should refund outstanding table balance");
+if (countRows("table_balances", "room_id = '" + restartRecoveryRoom.id + "' AND player_id = 'restart_recovery_player'") !== 0) throw new Error("server restart recovery should clear outstanding table balance");
+if (countRows("wallet_transactions", "reason = 'server_restart_recovery' AND player_id = 'restart_recovery_player' AND amount = 5000") !== 1) throw new Error("server restart recovery should write wallet transaction");
 
 const handRoom = manager.createRoom({ isPublic: false });
 manager.handle("db_smoke_player", { type: "join_room", room_id: handRoom.id });
@@ -112,9 +133,12 @@ const beforeHandWalletTotal = Number(manager.adminSnapshot(false).total_wallet_c
 manager.handle("db_smoke_player", { type: "start_hand", room_id: handRoom.id });
 expectThrows("cannot_add_chips_during_hand", () => manager.handle("db_smoke_player", { type: "add_table_chips", room_id: handRoom.id, amount: 100 }));
 const leavingStack = handRoom.table.getSeat(0)?.chips ?? 0;
+const activeHandOutstanding = (handRoom.table.getSeat(0)?.chips ?? 0) + (handRoom.table.getSeat(0)?.contribution ?? 0);
+if (countRows("table_balances", "room_id = '" + handRoom.id + "' AND player_id = 'db_smoke_player' AND amount = " + activeHandOutstanding) !== 1) throw new Error("active hand should sync outstanding table balance as stack plus committed contribution");
 manager.handle("db_smoke_player", { type: "cash_out", room_id: handRoom.id });
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeHandWalletTotal + leavingStack) throw new Error("active hand cash_out should refund only remaining uncommitted stack");
 if (handRoom.table.getSeat(0)?.playerId !== "") throw new Error("active hand cash_out should clear the exited seat after settlement");
+if (countRows("table_balances", "room_id = '" + handRoom.id + "' AND player_id = 'db_smoke_player'") !== 0) throw new Error("active hand cash_out should clear persisted table balance for exited player");
 if (countRows("wallet_transactions", "reason = 'table_cash_out' AND amount = " + leavingStack) !== 1) throw new Error("active hand cash_out should write table_cash_out wallet transaction");
 manager.handle("db_smoke_player", { type: "cash_out", room_id: handRoom.id });
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeHandWalletTotal + leavingStack) throw new Error("repeat active hand cash_out should not double refund");
@@ -165,6 +189,31 @@ const quickNoPlaying = manager.connect();
 manager.handle(quickNoPlaying.id, { type: "hello", player_id: "quick_no_playing", name: "Quick No Playing" });
 manager.handle("quick_no_playing", { type: "quick_join_table", buy_in: 10000, small_blind: 25, big_blind: 50, hand_count: 5, max_players: 6 });
 if (manager.getClient("quick_no_playing")?.roomId === playingRoom.id) throw new Error("quick_join_table should not join a playing table");
+
+const staleHandOverRoom = manager.createRoom({ buyIn: 20000, smallBlind: 50, bigBlind: 100, handCount: 10, maxPlayers: 6 });
+staleHandOverRoom.table.phase = "hand_over";
+staleHandOverRoom.officialHandStarted = true;
+const staleQuickMessages: unknown[] = [];
+const staleQuickWs = { OPEN: 1, readyState: 1, send: (data: string) => staleQuickMessages.push(JSON.parse(data)) };
+const staleQuickClient = manager.connect(staleQuickWs as any);
+manager.handle(staleQuickClient.id, { type: "hello", player_id: "quick_stale_hand_over", name: "Quick Stale Hand Over" });
+manager.handle("quick_stale_hand_over", { type: "quick_join_table", buy_in: 20000, small_blind: 50, big_blind: 100, hand_count: 10, max_players: 6 });
+const staleQuickRoomId = manager.getClient("quick_stale_hand_over")?.roomId || "";
+if (staleQuickRoomId === staleHandOverRoom.id) throw new Error("quick_join_table should not return stale empty hand_over rooms");
+const staleQuickRoom = manager.getRoom(staleQuickRoomId);
+if (!staleQuickRoom || staleQuickRoom.table.phase !== "waiting") throw new Error("quick_join_table should create a clean waiting room when stale hand_over rooms are ignored");
+const staleQuickMatch = staleQuickMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "quick_table_matched") as
+  | { type: string; room_id?: string; table?: { community_cards?: unknown[]; hand_state?: string; room_state?: string } }
+  | undefined;
+if (!staleQuickMatch || staleQuickMatch.room_id !== staleQuickRoomId) throw new Error("quick_join_table should return the newly matched room id");
+if ((staleQuickMatch.table?.community_cards ?? []).length !== 0 || staleQuickMatch.table?.hand_state !== "waiting") throw new Error("quick-created room should not carry stale board or hand state");
+expectThrows("room_not_available", () => manager.handle("quick_stale_hand_over", { type: "join_table", room_id: staleHandOverRoom.id }));
+const staleSitDownWalletBefore = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("quick_stale_hand_over") as { chips: number }).chips;
+expectThrows("room_not_available", () => manager.handle("quick_stale_hand_over", { type: "sit_down", room_id: staleHandOverRoom.id, seat_index: 0 }));
+expectThrows("room_not_available", () => manager.handle("quick_stale_hand_over", { type: "sit_down", room_id: staleHandOverRoom.id, seat_index: 0 }));
+const staleSitDownWalletAfter = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("quick_stale_hand_over") as { chips: number }).chips;
+if (staleSitDownWalletAfter !== staleSitDownWalletBefore) throw new Error("repeated failed stale sit_down should not deduct wallet");
+if (countRows("wallet_transactions", "reason = 'table_buy_in' AND player_id = 'quick_stale_hand_over'") !== 0) throw new Error("failed stale sit_down should not write buy-in transaction");
 
 const quickCreate = manager.connect();
 manager.handle(quickCreate.id, { type: "hello", player_id: "quick_create", name: "Quick Create" });
