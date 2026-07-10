@@ -1505,7 +1505,7 @@ func _on_profile_server_wallet_synced(wallet: Dictionary) -> void:
 	_refresh_profile_views_from_server()
 
 func _on_profile_server_daily_login_awarded(chips: int, xp: int = PlayerProfileScript.DAILY_LOGIN_XP, gems: int = 0) -> void:
-	_player_profile = ProfileServiceScript.new().apply_server_daily_login_xp_award("", xp, 0)
+	_player_profile = ProfileServiceScript.new().get_current_profile()
 	_refresh_profile_views_from_server()
 	_play_reward_sfx({"chips": chips, "xp": xp, "gems": gems}, "daily_bonus:server:%d:%d:%d" % [chips, xp, gems])
 	print("[DailyBonusClient] topbar updated chips=%s gems=%s" % [

@@ -121,6 +121,7 @@ export class RoomManager {
   private readonly tableBalances = new TableBalanceRepository(this.db);
 
   constructor() {
+    this.loginBonus.setProgressionRepository(this.profileBootstrap);
     this.recoverOutstandingTableBalances();
   }
 
@@ -1435,11 +1436,27 @@ export class RoomManager {
     if (room.isAiWarmup) return;
     const key = `${room.id}:${room.table.handId}`;
     if (this.recordedHandResults.has(key)) return;
+    const officialHand = room.officialHandStarted;
+    const currency = roomCurrency(room);
+    const winnerSeats = new Set(room.table.winners.map((winner) => winner.seat_index));
+    this.db.transaction(() => {
+      for (const result of room.table.lastHandResults) {
+        const seat = room.table.getSeat(result.seat_index);
+        if (!seat?.playerId || seat.isAi || seat.warmupAi) continue;
+        this.results.recordHandResult(room.id, room.table.handId, seat.playerId, result.delta, JSON.stringify(result));
+        if (officialHand) {
+          this.profileBootstrap.recordHandResult(seat.playerId, currency, result.delta, winnerSeats.has(result.seat_index), key);
+        }
+      }
+    })();
     this.recordedHandResults.add(key);
-    for (const result of room.table.lastHandResults) {
-      const seat = room.table.getSeat(result.seat_index);
-      if (!seat?.playerId) continue;
-      this.results.recordHandResult(room.id, room.table.handId, seat.playerId, result.delta, JSON.stringify(result));
+    if (officialHand) {
+      for (const result of room.table.lastHandResults) {
+        const seat = room.table.getSeat(result.seat_index);
+        if (!seat?.playerId || seat.isAi || seat.warmupAi) continue;
+        const client = this.clients.get(seat.playerId);
+        if (client) this.send(client, { type: "profile_snapshot", player_id: seat.playerId, room_id: room.id, ...this.profilePayload(seat.playerId) });
+      }
     }
   }
 
