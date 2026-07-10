@@ -295,6 +295,8 @@ func _emit_profile_payload(message: Dictionary) -> void:
 		profile["daily_reward_claimed_today"] = bool(daily_status.get("already_claimed_today", false))
 		if bool(profile.get("daily_reward_claimed_today", false)):
 			profile["last_daily_reward_date"] = str(daily_status.get("claim_date", Time.get_date_string_from_system()))
+	if message.has("is_new_player") and not server_snapshot.has("is_new_player"):
+		profile["is_new_player"] = bool(message.get("is_new_player", false))
 	if not profile.is_empty() or not wallet.is_empty() or not unlocked.is_empty():
 		profile_synced.emit(profile, wallet, unlocked)
 	if not wallet.is_empty():

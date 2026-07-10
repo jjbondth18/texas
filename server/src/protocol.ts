@@ -137,6 +137,7 @@ export interface ServerMessage {
   awarded_gems?: number;
   daily_bonus_day?: number;
   daily_bonus_status?: DailyBonusStatusSnapshot;
+  is_new_player?: boolean;
   warning?: string;
   avatar_catalog?: AvatarCatalogItemSnapshot[];
   tables?: PublicTableSnapshot[];
@@ -193,6 +194,7 @@ export interface WalletSnapshot {
 export interface ServerProfileSnapshot {
   player_id: string;
   display_name: string;
+  is_new_player?: boolean;
   avatar_id: string;
   wallet: {
     chips: number;
