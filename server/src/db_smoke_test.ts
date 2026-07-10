@@ -20,6 +20,10 @@ const helloClient = manager.getClient("db_smoke_player");
 if (!helloClient) throw new Error("hello did not migrate client to requested player_id");
 
 const firstProfile = manager.adminSnapshot(false);
+const firstHello = clientMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
+  | { is_new_player?: boolean; profile_snapshot?: { is_new_player?: boolean } }
+  | undefined;
+if (firstHello?.is_new_player !== true || firstHello.profile_snapshot?.is_new_player !== true) throw new Error("new local_dev hello should mark is_new_player true");
 if (Number(firstProfile.player_count) !== 1) throw new Error("expected one player after hello");
 if (Number(firstProfile.identity_count) !== 1) throw new Error("expected local_dev identity after hello");
 if (Number(firstProfile.total_wallet_chips) !== 10000) throw new Error("hello should not auto-grant daily bonus chips");
@@ -32,7 +36,17 @@ if (countRows("player_progression", "player_id = 'db_smoke_player' AND total_xp 
 if (countRows("player_statistics", "player_id = 'db_smoke_player' AND hands_played = 0 AND hands_won = 0 AND chips_won = 0 AND gems_won = 0") !== 1) throw new Error("local_dev hello should bootstrap default statistics");
 if (countRows("wallet_transactions", "reason = 'initial_grant' AND amount = 10000") !== 1) throw new Error("initial chips should write wallet transaction");
 if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips'") !== 0) throw new Error("hello should not write daily login wallet transaction");
-clientMessages.length = 0;
+const localRepeatMessages: unknown[] = [];
+const localRepeatWs = { OPEN: 1, readyState: 1, send: (data: string) => localRepeatMessages.push(JSON.parse(data)) };
+const localRepeatClient = manager.connect(localRepeatWs as any);
+manager.handle(localRepeatClient.id, { type: "hello", player_id: "db_smoke_player", name: "DB Smoke Again" });
+const localRepeatHello = localRepeatMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
+  | { player_id?: string; is_new_player?: boolean; profile_snapshot?: { is_new_player?: boolean } }
+  | undefined;
+if (localRepeatHello?.player_id !== "db_smoke_player") throw new Error("repeat local_dev hello should reuse player_id");
+if (localRepeatHello.is_new_player !== false || localRepeatHello.profile_snapshot?.is_new_player !== false) throw new Error("repeat local_dev hello should mark is_new_player false");
+if (countRows("wallet_transactions", "player_id = 'db_smoke_player' AND reason = 'initial_grant' AND amount = 10000") !== 1) throw new Error("repeat local_dev hello should not repeat initial grant");
+localRepeatMessages.length = 0;
 manager.handle("db_smoke_player", { type: "claim_daily_bonus" });
 const afterDailyClaim = manager.adminSnapshot(false);
 if (Number(afterDailyClaim.total_wallet_chips) !== 10500) throw new Error("claim_daily_bonus should grant day 1 chips");
@@ -41,7 +55,7 @@ if (progressionAfterDailyClaim.total_xp !== 25) throw new Error("claim_daily_bon
 if (progressionAfterDailyClaim.level !== levelForTotalXp(progressionAfterDailyClaim.total_xp)) throw new Error("daily bonus level should match authoritative total XP rule");
 if (progressionAfterDailyClaim.title_id !== titleIdForLevel(progressionAfterDailyClaim.level)) throw new Error("daily bonus title should match authoritative title rule");
 if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips' AND amount = 500") !== 1) throw new Error("daily login claim should write chip wallet transaction");
-const liveDailyResult = clientMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "daily_bonus_result") as
+const liveDailyResult = localRepeatMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "daily_bonus_result") as
   | { profile_snapshot?: { wallet?: { chips?: number; gems?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; daily_bonus?: { already_claimed_today?: boolean } }; daily_bonus_status?: { already_claimed_today?: boolean } }
   | undefined;
 if (liveDailyResult?.profile_snapshot?.wallet?.chips !== 10500) throw new Error("daily bonus result should include updated profile_snapshot wallet");
@@ -707,9 +721,11 @@ manager.handle(bootstrapSteamClient.id, {
 const steamHello = steamHelloMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
   | {
       player_id?: string;
+      is_new_player?: boolean;
       profile_snapshot?: {
         player_id?: string;
         display_name?: string;
+        is_new_player?: boolean;
         avatar_id?: string;
         wallet?: { chips?: number; gems?: number };
         progression?: { total_xp?: number; level?: number; title_id?: string };
@@ -730,6 +746,7 @@ if (steamHello.profile_snapshot.progression?.total_xp !== 0 || steamHello.profil
 if (steamHello.profile_snapshot.statistics?.hands_played !== 0 || steamHello.profile_snapshot.statistics?.hands_won !== 0 || steamHello.profile_snapshot.statistics?.chips_won !== 0 || steamHello.profile_snapshot.statistics?.gems_won !== 0) throw new Error("new Steam profile_snapshot should include default statistics");
 if (!steamHello.profile_snapshot.unlocked_avatar_ids?.includes("default")) throw new Error("new Steam profile_snapshot should include default avatar unlock");
 if (!steamHello.profile_snapshot.daily_bonus || !steamHello.profile_snapshot.created_at || !steamHello.profile_snapshot.updated_at) throw new Error("profile_snapshot should include daily bonus and timestamps");
+if (steamHello.is_new_player !== true || steamHello.profile_snapshot.is_new_player !== true) throw new Error("new Steam hello should mark is_new_player true");
 
 db.prepare("UPDATE wallets SET chips = 8765 WHERE player_id = ?").run(steamPlayerId);
 db.prepare("UPDATE player_progression SET total_xp = 450, level = 5, title_id = 'table_regular' WHERE player_id = ?").run(steamPlayerId);
@@ -744,9 +761,10 @@ manager.handle(steamRepeatClient.id, {
   name: "Renamed Steam Persona",
 });
 const steamRepeatHello = steamRepeatMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
-  | { player_id?: string; profile_snapshot?: { display_name?: string; wallet?: { chips?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
+  | { player_id?: string; is_new_player?: boolean; profile_snapshot?: { is_new_player?: boolean; display_name?: string; wallet?: { chips?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
   | undefined;
 if (steamRepeatHello?.player_id !== steamPlayerId) throw new Error("same Steam external_id should reuse internal player_id");
+if (steamRepeatHello.is_new_player !== false || steamRepeatHello.profile_snapshot?.is_new_player !== false) throw new Error("repeat Steam hello should mark is_new_player false");
 if (steamRepeatHello.profile_snapshot?.display_name !== "Renamed Steam Persona") throw new Error("Steam persona change should update display_name");
 if (steamRepeatHello.profile_snapshot.wallet?.chips !== 8765) throw new Error("repeat Steam hello should not reset wallet");
 if (steamRepeatHello.profile_snapshot.progression?.total_xp !== 450 || steamRepeatHello.profile_snapshot.progression?.level !== 5 || steamRepeatHello.profile_snapshot.progression?.title_id !== "table_regular") throw new Error("repeat Steam hello should not reset progression");
@@ -782,9 +800,10 @@ manager.handle(legacyClient.id, {
   name: "Legacy Luna",
 });
 const legacyHello = legacyMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
-  | { player_id?: string; profile_snapshot?: { display_name?: string; wallet?: { chips?: number; gems?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
+  | { player_id?: string; is_new_player?: boolean; profile_snapshot?: { is_new_player?: boolean; display_name?: string; wallet?: { chips?: number; gems?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
   | undefined;
 if (legacyHello?.player_id !== "legacy_steam_player") throw new Error("legacy Steam identity should reuse existing internal player_id");
+if (legacyHello.is_new_player !== false || legacyHello.profile_snapshot?.is_new_player !== false) throw new Error("legacy self-healing hello should not mark existing player as new");
 if (legacyHello.profile_snapshot?.display_name !== "Legacy Luna") throw new Error("legacy hello should update display_name");
 if (legacyHello.profile_snapshot.wallet?.chips !== 4321 || legacyHello.profile_snapshot.wallet.gems !== 9) throw new Error("legacy bootstrap must not reset wallet");
 if (legacyHello.profile_snapshot.progression?.total_xp !== 0 || legacyHello.profile_snapshot.progression.level !== 1 || legacyHello.profile_snapshot.progression.title_id !== "new_player") throw new Error("legacy hello should self-heal default progression");

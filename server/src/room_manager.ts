@@ -744,6 +744,7 @@ export class RoomManager {
     }
     const displayName = String(message.player_name || message.name || client.name || client.id).trim() || client.id;
     const requestedAvatarId = normalizeAvatarId(String(message.avatar_id || client.avatarId || "default"));
+    const isNewPlayer = !this.players.find(client.id);
     this.players.upsert(client.id, displayName, "default");
     this.wallets.ensure(client.id);
     this.identities.linkIdentity(client.id, identity.provider, identity.externalId);
@@ -763,7 +764,8 @@ export class RoomManager {
       wallet,
       unlocked_avatar_ids: unlocked,
       daily_bonus_status: dailyStatus,
-      profile_snapshot: this.profileBootstrap.getProfileSnapshot(client.id),
+      is_new_player: isNewPlayer,
+      profile_snapshot: this.profileBootstrap.getProfileSnapshot(client.id, isNewPlayer),
       warning: avatarId !== requestedAvatarId ? `avatar ${requestedAvatarId} is not unlocked; using default` : undefined,
     };
   }

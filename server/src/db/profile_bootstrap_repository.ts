@@ -24,6 +24,7 @@ export interface PlayerStatisticsRecord {
 export interface ServerProfileSnapshot {
   player_id: string;
   display_name: string;
+  is_new_player: boolean;
   avatar_id: string;
   wallet: { chips: number; gems: number };
   progression: { total_xp: number; level: number; title_id: string };
@@ -142,7 +143,7 @@ export class ProfileBootstrapRepository {
     return this.db.prepare("SELECT * FROM player_statistics WHERE player_id = ?").get(playerId) as PlayerStatisticsRecord | undefined;
   }
 
-  getProfileSnapshot(playerId: string): ServerProfileSnapshot {
+  getProfileSnapshot(playerId: string, isNewPlayer = false): ServerProfileSnapshot {
     const player = this.db
       .prepare("SELECT player_id, display_name, avatar_id, created_at, updated_at FROM players WHERE player_id = ?")
       .get(playerId) as { player_id: string; display_name: string; avatar_id: string; created_at: string; updated_at: string } | undefined;
@@ -156,6 +157,7 @@ export class ProfileBootstrapRepository {
     return {
       player_id: player.player_id,
       display_name: player.display_name,
+      is_new_player: isNewPlayer,
       avatar_id: player.avatar_id,
       wallet: { chips: Number(wallet.chips), gems: Number(wallet.gems) },
       progression: {

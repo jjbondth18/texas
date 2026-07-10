@@ -10,6 +10,7 @@ func _init() -> void:
 	var synced := service.apply_server_profile_snapshot({
 		"player_id": "player_server_1",
 		"display_name": "Steam Persona",
+		"is_new_player": true,
 		"avatar_id": "default",
 		"wallet": {"chips": 10000, "gems": 3},
 		"progression": {"total_xp": 450, "level": 5, "title_id": "table_regular"},
@@ -27,6 +28,7 @@ func _init() -> void:
 		"updated_at": "2026-07-10T00:00:00.000Z",
 	})
 	_require(String(synced.get("player_id", "")) == "player_server_1", "server player_id should apply")
+	_require(bool(synced.get("is_new_player", false)), "server is_new_player should apply")
 	_require(PlayerProfileScript.get_player_name(synced) == "Steam Persona", "server display_name should apply")
 	_require(PlayerProfileScript.get_total_chips(synced) == 10000, "server chips should apply")
 	_require(PlayerProfileScript.get_total_gems(synced) == 3, "server gems should apply")
@@ -44,6 +46,7 @@ func _init() -> void:
 	var repeated := service.apply_server_profile_snapshot({
 		"player_id": "player_server_1",
 		"display_name": "Steam Persona",
+		"is_new_player": false,
 		"avatar_id": "default",
 		"wallet": {"chips": 10000, "gems": 3},
 		"progression": {"total_xp": 450, "level": 5, "title_id": "table_regular"},
@@ -61,6 +64,7 @@ func _init() -> void:
 		"updated_at": "2026-07-10T00:00:00.000Z",
 	})
 	_require(PlayerProfileScript.get_total_chips(repeated) == 10000, "repeated snapshot should not add chips")
+	_require(not bool(repeated.get("is_new_player", true)), "repeated snapshot should be able to clear is_new_player")
 	_require(int(repeated.get("total_xp", -1)) == 450, "repeated snapshot should not add XP")
 	_require(int(repeated.get("total_hands_played", -1)) == 12, "repeated snapshot should not add stats")
 	ProfileServiceScript.reset_mock_profile()

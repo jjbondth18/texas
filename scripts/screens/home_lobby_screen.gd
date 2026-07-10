@@ -224,6 +224,7 @@ var server_authoritative_profile := true
 var _profile_ws_client: PokerWsClient
 var _profile_server_connected := false
 var _profile_server_wallet_synced := false
+var _welcome_shown_for_player_id := ""
 var _avatar_catalog: Array = []
 var _avatar_catalog_by_id: Dictionary = {}
 var _server_public_tables: Array = []
@@ -1498,6 +1499,7 @@ func _on_profile_server_profile_synced(profile: Dictionary, wallet: Dictionary, 
 	_player_profile = ProfileServiceScript.new().apply_server_profile(profile, wallet, unlocked_avatar_ids)
 	_profile_server_wallet_synced = true
 	_refresh_profile_views_from_server()
+	_maybe_show_new_player_welcome(profile)
 
 func _on_profile_server_wallet_synced(wallet: Dictionary) -> void:
 	_player_profile = ProfileServiceScript.new().apply_wallet_snapshot(wallet)
@@ -1522,6 +1524,19 @@ func _on_profile_server_daily_bonus_claim_failed(reason: String) -> void:
 	else:
 		_show_toast(_t("daily.claim_failed"), [], 2.4)
 	_refresh_profile_views_from_server()
+
+func _maybe_show_new_player_welcome(server_profile: Dictionary) -> void:
+	if not bool(server_profile.get("is_new_player", false)):
+		return
+	var player_id := String(server_profile.get("player_id", _player_profile.get("player_id", "")))
+	if player_id == "" or _welcome_shown_for_player_id == player_id:
+		return
+	_welcome_shown_for_player_id = player_id
+	var display_name := String(_player_profile.get("player_name", _player_profile.get("name", server_profile.get("display_name", "Player"))))
+	var chips := PlayerProfileScript.get_total_chips(_player_profile)
+	var level := int(_player_profile.get("level", 1))
+	var title := PlayerProfileScript.title_for_level(level)
+	_show_toast("Welcome, %s\nStarting Chips: %s\nLevel %d - %s" % [display_name, _format_number(chips), level, title], [], 4.0)
 
 func _on_avatar_catalog_received(catalog: Array) -> void:
 	_avatar_catalog = catalog.duplicate(true)

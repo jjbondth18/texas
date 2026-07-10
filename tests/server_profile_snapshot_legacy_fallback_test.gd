@@ -22,6 +22,7 @@ func _init() -> void:
 	_require(int(partial.get("total_xp", -1)) == previous_xp, "partial snapshot should preserve XP")
 	_require(int(partial.get("total_hands_played", -1)) == previous_hands, "partial snapshot should preserve stats")
 	_require(PlayerProfileScript.get_total_chips(partial) == 7777, "partial snapshot should preserve wallet")
+	_require(not bool(partial.get("is_new_player", false)), "missing is_new_player should default to false")
 	ProfileServiceScript.reset_mock_profile()
 	_finish("Server profile legacy fallback test passed.")
 
