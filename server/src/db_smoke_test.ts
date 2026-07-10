@@ -23,8 +23,10 @@ if (Number(firstProfile.total_wallet_chips) !== 10000) throw new Error("hello sh
 if (Number(firstProfile.avatar_unlock_count) !== 1) throw new Error("new player should unlock the default avatar");
 const db = getDatabase();
 initializeSchema(db);
-if (countRows("schema_migrations") < 5) throw new Error("migrations should be recorded and re-runnable");
+if (countRows("schema_migrations") < 6) throw new Error("migrations should be recorded and re-runnable");
 if (countRows("player_identities", "provider = 'local_dev' AND external_id = 'db_smoke_player'") !== 1) throw new Error("hello should write local_dev identity");
+if (countRows("player_progression", "player_id = 'db_smoke_player' AND total_xp = 0 AND level = 1 AND title_id = 'new_player'") !== 1) throw new Error("local_dev hello should bootstrap default progression");
+if (countRows("player_statistics", "player_id = 'db_smoke_player' AND hands_played = 0 AND hands_won = 0 AND chips_won = 0 AND gems_won = 0") !== 1) throw new Error("local_dev hello should bootstrap default statistics");
 if (countRows("wallet_transactions", "reason = 'initial_grant' AND amount = 10000") !== 1) throw new Error("initial chips should write wallet transaction");
 if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips'") !== 0) throw new Error("hello should not write daily login wallet transaction");
 manager.handle("db_smoke_player", { type: "claim_daily_bonus" });
@@ -590,6 +592,67 @@ config.allowMockPurchases = false;
 expectThrows("mock_purchase_disabled", () => manager.handle("mock_purchase_player", { type: "mock_purchase", currency: "chips", amount: 10000, source: "store_mock" }));
 config.allowMockPurchases = true;
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeDisabledTotal) throw new Error("disabled mock purchase should not change wallet");
+
+const steamHelloMessages: unknown[] = [];
+const steamWs = { OPEN: 1, readyState: 1, send: (data: string) => steamHelloMessages.push(JSON.parse(data)) };
+const bootstrapSteamClient = manager.connect(steamWs as any);
+manager.handle(bootstrapSteamClient.id, {
+  type: "hello",
+  auth_provider: "steam",
+  external_id: "76561198000000006",
+  name: "Steam Bootstrap",
+});
+const steamHello = steamHelloMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
+  | {
+      player_id?: string;
+      profile_snapshot?: {
+        player_id?: string;
+        display_name?: string;
+        avatar_id?: string;
+        wallet?: { chips?: number; gems?: number };
+        progression?: { total_xp?: number; level?: number; title_id?: string };
+        statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number };
+        unlocked_avatar_ids?: string[];
+        daily_bonus?: { can_claim_today?: boolean };
+        created_at?: string;
+        updated_at?: string;
+      };
+    }
+  | undefined;
+const steamPlayerId = String(steamHello?.player_id || "");
+if (steamPlayerId === "" || steamPlayerId === "76561198000000006") throw new Error("new Steam identity should receive a distinct internal player_id");
+if (steamHello?.profile_snapshot?.player_id !== steamPlayerId) throw new Error("hello should return a unified profile_snapshot");
+if (steamHello.profile_snapshot.display_name !== "Steam Bootstrap" || steamHello.profile_snapshot.avatar_id !== "default") throw new Error("profile_snapshot should include player identity fields");
+if (steamHello.profile_snapshot.wallet?.chips !== 10000 || steamHello.profile_snapshot.wallet?.gems !== 0) throw new Error("new Steam profile_snapshot should include initial wallet");
+if (steamHello.profile_snapshot.progression?.total_xp !== 0 || steamHello.profile_snapshot.progression?.level !== 1 || steamHello.profile_snapshot.progression?.title_id !== "new_player") throw new Error("new Steam profile_snapshot should include default progression");
+if (steamHello.profile_snapshot.statistics?.hands_played !== 0 || steamHello.profile_snapshot.statistics?.hands_won !== 0 || steamHello.profile_snapshot.statistics?.chips_won !== 0 || steamHello.profile_snapshot.statistics?.gems_won !== 0) throw new Error("new Steam profile_snapshot should include default statistics");
+if (!steamHello.profile_snapshot.unlocked_avatar_ids?.includes("default")) throw new Error("new Steam profile_snapshot should include default avatar unlock");
+if (!steamHello.profile_snapshot.daily_bonus || !steamHello.profile_snapshot.created_at || !steamHello.profile_snapshot.updated_at) throw new Error("profile_snapshot should include daily bonus and timestamps");
+
+db.prepare("UPDATE wallets SET chips = 8765 WHERE player_id = ?").run(steamPlayerId);
+db.prepare("UPDATE player_progression SET total_xp = 450, level = 5, title_id = 'table_regular' WHERE player_id = ?").run(steamPlayerId);
+db.prepare("UPDATE player_statistics SET hands_played = 12, hands_won = 4, chips_won = 2300, gems_won = 2 WHERE player_id = ?").run(steamPlayerId);
+const steamRepeatMessages: unknown[] = [];
+const steamRepeatWs = { OPEN: 1, readyState: 1, send: (data: string) => steamRepeatMessages.push(JSON.parse(data)) };
+const steamRepeatClient = manager.connect(steamRepeatWs as any);
+manager.handle(steamRepeatClient.id, {
+  type: "hello",
+  auth_provider: "steam",
+  external_id: "76561198000000006",
+  name: "Renamed Steam Persona",
+});
+const steamRepeatHello = steamRepeatMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
+  | { player_id?: string; profile_snapshot?: { display_name?: string; wallet?: { chips?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
+  | undefined;
+if (steamRepeatHello?.player_id !== steamPlayerId) throw new Error("same Steam external_id should reuse internal player_id");
+if (steamRepeatHello.profile_snapshot?.display_name !== "Renamed Steam Persona") throw new Error("Steam persona change should update display_name");
+if (steamRepeatHello.profile_snapshot.wallet?.chips !== 8765) throw new Error("repeat Steam hello should not reset wallet");
+if (steamRepeatHello.profile_snapshot.progression?.total_xp !== 450 || steamRepeatHello.profile_snapshot.progression?.level !== 5 || steamRepeatHello.profile_snapshot.progression?.title_id !== "table_regular") throw new Error("repeat Steam hello should not reset progression");
+if (steamRepeatHello.profile_snapshot.statistics?.hands_played !== 12 || steamRepeatHello.profile_snapshot.statistics?.hands_won !== 4 || steamRepeatHello.profile_snapshot.statistics?.chips_won !== 2300 || steamRepeatHello.profile_snapshot.statistics?.gems_won !== 2) throw new Error("repeat Steam hello should not reset statistics");
+const steamInitialGrants = db.prepare("SELECT COUNT(*) AS count FROM wallet_transactions WHERE player_id = ? AND reason = 'initial_grant'").get(steamPlayerId) as { count: number };
+if (Number(steamInitialGrants.count) !== 1) throw new Error("repeat Steam hello should not repeat initial wallet grant");
+const steamDefaultUnlocks = db.prepare("SELECT COUNT(*) AS count FROM avatar_unlocks WHERE player_id = ? AND avatar_id = 'default'").get(steamPlayerId) as { count: number };
+if (Number(steamDefaultUnlocks.count) !== 1) throw new Error("repeat Steam hello should not repeat default avatar unlock");
 
 console.log("DB_SMOKE_OK");
 console.log(JSON.stringify({ db_path: process.env.TEXAS_DB_PATH, player_count: manager.adminSnapshot(false).player_count, total_wallet_chips: manager.adminSnapshot(false).total_wallet_chips }, null, 2));

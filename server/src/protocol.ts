@@ -128,6 +128,7 @@ export interface ServerMessage {
   required_chips?: number;
   snapshot?: unknown;
   profile?: PlayerProfileSnapshot;
+  profile_snapshot?: ServerProfileSnapshot;
   wallet?: WalletSnapshot;
   unlocked_avatar_ids?: string[];
   daily_login_awarded?: boolean;
@@ -186,6 +187,31 @@ export interface WalletSnapshot {
   player_id: string;
   chips: number;
   gems: number;
+  updated_at: string;
+}
+
+export interface ServerProfileSnapshot {
+  player_id: string;
+  display_name: string;
+  avatar_id: string;
+  wallet: {
+    chips: number;
+    gems: number;
+  };
+  progression: {
+    total_xp: number;
+    level: number;
+    title_id: string;
+  };
+  statistics: {
+    hands_played: number;
+    hands_won: number;
+    chips_won: number;
+    gems_won: number;
+  };
+  unlocked_avatar_ids: string[];
+  daily_bonus: DailyBonusStatusSnapshot;
+  created_at: string;
   updated_at: string;
 }
 

@@ -13,6 +13,7 @@ import { ResultRepository } from "./db/result_repository.js";
 import { WalletRepository } from "./db/wallet_repository.js";
 import { ReplayRepository } from "./db/replay_repository.js";
 import { TableBalanceRepository, type TableBalanceCurrency } from "./db/table_balance_repository.js";
+import { ProfileBootstrapRepository } from "./db/profile_bootstrap_repository.js";
 import { AVATAR_CATALOG, DEFAULT_AVATAR_PRICE_CHIPS, findAvatarCatalogItem } from "./avatar_catalog.js";
 import { config } from "./config.js";
 import { buildEncryptedReplayDelivery, buildHandReplayRecord, generateReplayKey, replayIdFor, type EncryptedReplayDelivery } from "./replay.js";
@@ -114,6 +115,7 @@ export class RoomManager {
   private readonly wallets = new WalletRepository(this.db);
   private readonly avatars = new AvatarRepository(this.db);
   private readonly loginBonus = new LoginBonusRepository(this.db, this.wallets);
+  private readonly profileBootstrap = new ProfileBootstrapRepository(this.db, this.loginBonus);
   private readonly results = new ResultRepository(this.db);
   private readonly replays = new ReplayRepository(this.db);
   private readonly tableBalances = new TableBalanceRepository(this.db);
@@ -745,6 +747,7 @@ export class RoomManager {
     this.wallets.ensure(client.id);
     this.identities.linkIdentity(client.id, identity.provider, identity.externalId);
     this.avatars.unlockAvatar(client.id, "default");
+    this.profileBootstrap.bootstrapPlayer(client.id);
     const avatarId = this.avatars.hasAvatar(client.id, requestedAvatarId) ? requestedAvatarId : "default";
     const profile = this.players.upsert(client.id, displayName, avatarId);
     const dailyStatus = this.loginBonus.status(client.id);
@@ -759,11 +762,12 @@ export class RoomManager {
       wallet,
       unlocked_avatar_ids: unlocked,
       daily_bonus_status: dailyStatus,
+      profile_snapshot: this.profileBootstrap.getProfileSnapshot(client.id),
       warning: avatarId !== requestedAvatarId ? `avatar ${requestedAvatarId} is not unlocked; using default` : undefined,
     };
   }
 
-  private profilePayload(playerId: string): Pick<ServerMessage, "profile" | "wallet" | "unlocked_avatar_ids" | "daily_bonus_status"> {
+  private profilePayload(playerId: string): Pick<ServerMessage, "profile" | "profile_snapshot" | "wallet" | "unlocked_avatar_ids" | "daily_bonus_status"> {
     const profile = this.players.find(playerId);
     const wallet = this.wallets.get(playerId);
     return {
@@ -771,6 +775,7 @@ export class RoomManager {
       wallet,
       unlocked_avatar_ids: this.avatars.getUnlockedAvatars(playerId),
       daily_bonus_status: this.loginBonus.status(playerId),
+      profile_snapshot: this.profileBootstrap.getProfileSnapshot(playerId),
     };
   }
 
