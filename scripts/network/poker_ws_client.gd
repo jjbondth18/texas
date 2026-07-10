@@ -172,7 +172,7 @@ func _handle_message(message: Dictionary) -> void:
 				player_id = canonical_player_id
 			room_id = str(message.get("room_id", room_id))
 			_emit_profile_payload(message)
-			var is_authenticated_hello := message.has("server_player_id") or message.has("profile") or message.has("wallet") or message.has("unlocked_avatar_ids")
+			var is_authenticated_hello := message.has("server_player_id") or message.has("profile_snapshot") or message.has("profile") or message.has("wallet") or message.has("unlocked_avatar_ids")
 			if is_authenticated_hello or room_id != "":
 				hello_received.emit(player_id, room_id)
 		PokerProtocolScript.PROFILE_SNAPSHOT:
@@ -275,11 +275,18 @@ func _handle_message(message: Dictionary) -> void:
 			server_error.emit(str(message.get("error_code", message.get("error", "Unknown server error"))))
 
 func _emit_profile_payload(message: Dictionary) -> void:
-	var profile := Dictionary(message.get("profile", {})).duplicate(true)
-	var wallet := Dictionary(message.get("wallet", {})).duplicate(true)
-	var unlocked := Array(message.get("unlocked_avatar_ids", []))
-	if message.has("daily_bonus_status"):
-		var daily_status := Dictionary(message.get("daily_bonus_status", {}))
+	var server_snapshot := Dictionary(message.get("profile_snapshot", {})).duplicate(true)
+	var profile := server_snapshot if not server_snapshot.is_empty() else Dictionary(message.get("profile", {})).duplicate(true)
+	var wallet := Dictionary(server_snapshot.get("wallet", {})).duplicate(true) if not server_snapshot.is_empty() else {}
+	if wallet.is_empty():
+		wallet = Dictionary(message.get("wallet", {})).duplicate(true)
+	var unlocked := Array(server_snapshot.get("unlocked_avatar_ids", [])) if not server_snapshot.is_empty() else []
+	if unlocked.is_empty():
+		unlocked = Array(message.get("unlocked_avatar_ids", []))
+	var daily_status := Dictionary(server_snapshot.get("daily_bonus", {})) if not server_snapshot.is_empty() else {}
+	if daily_status.is_empty() and message.has("daily_bonus_status"):
+		daily_status = Dictionary(message.get("daily_bonus_status", {}))
+	if not daily_status.is_empty():
 		profile["daily_bonus_claim_count"] = int(daily_status.get("claim_count", profile.get("daily_bonus_claim_count", 0)))
 		profile["daily_bonus_cycle_day"] = int(daily_status.get("cycle_day", daily_status.get("current_day", profile.get("daily_bonus_cycle_day", 1))))
 		profile["daily_bonus_claimed_days_in_cycle"] = int(daily_status.get("claimed_days_in_cycle", profile.get("daily_bonus_claimed_days_in_cycle", 0)))
