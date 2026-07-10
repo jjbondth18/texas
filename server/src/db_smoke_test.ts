@@ -166,6 +166,25 @@ manager.handle(quickNoPlaying.id, { type: "hello", player_id: "quick_no_playing"
 manager.handle("quick_no_playing", { type: "quick_join_table", buy_in: 10000, small_blind: 25, big_blind: 50, hand_count: 5, max_players: 6 });
 if (manager.getClient("quick_no_playing")?.roomId === playingRoom.id) throw new Error("quick_join_table should not join a playing table");
 
+const staleHandOverRoom = manager.createRoom({ buyIn: 20000, smallBlind: 50, bigBlind: 100, handCount: 10, maxPlayers: 6 });
+staleHandOverRoom.table.phase = "hand_over";
+staleHandOverRoom.officialHandStarted = true;
+const staleQuickMessages: unknown[] = [];
+const staleQuickWs = { OPEN: 1, readyState: 1, send: (data: string) => staleQuickMessages.push(JSON.parse(data)) };
+const staleQuickClient = manager.connect(staleQuickWs as any);
+manager.handle(staleQuickClient.id, { type: "hello", player_id: "quick_stale_hand_over", name: "Quick Stale Hand Over" });
+manager.handle("quick_stale_hand_over", { type: "quick_join_table", buy_in: 20000, small_blind: 50, big_blind: 100, hand_count: 10, max_players: 6 });
+const staleQuickRoomId = manager.getClient("quick_stale_hand_over")?.roomId || "";
+if (staleQuickRoomId === staleHandOverRoom.id) throw new Error("quick_join_table should not return stale empty hand_over rooms");
+const staleQuickRoom = manager.getRoom(staleQuickRoomId);
+if (!staleQuickRoom || staleQuickRoom.table.phase !== "waiting") throw new Error("quick_join_table should create a clean waiting room when stale hand_over rooms are ignored");
+const staleQuickMatch = staleQuickMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "quick_table_matched") as
+  | { type: string; room_id?: string; table?: { community_cards?: unknown[]; hand_state?: string; room_state?: string } }
+  | undefined;
+if (!staleQuickMatch || staleQuickMatch.room_id !== staleQuickRoomId) throw new Error("quick_join_table should return the newly matched room id");
+if ((staleQuickMatch.table?.community_cards ?? []).length !== 0 || staleQuickMatch.table?.hand_state !== "waiting") throw new Error("quick-created room should not carry stale board or hand state");
+expectThrows("room_not_available", () => manager.handle("quick_stale_hand_over", { type: "join_table", room_id: staleHandOverRoom.id }));
+
 const quickCreate = manager.connect();
 manager.handle(quickCreate.id, { type: "hello", player_id: "quick_create", name: "Quick Create" });
 manager.handle("quick_create", { type: "quick_join_table", buy_in: 50000, small_blind: 100, big_blind: 200, hand_count: 5, max_players: 6 });

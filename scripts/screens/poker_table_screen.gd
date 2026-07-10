@@ -4133,12 +4133,12 @@ func _all_cmdline_args() -> Array:
 	return args
 
 func _load_texture(path: String) -> Texture2D:
-	var image := Image.new()
-	var error := image.load(ProjectSettings.globalize_path(path))
-	if error != OK:
-		push_error("Failed to load table background: %s" % path)
+	if path == "":
 		return null
-	return ImageTexture.create_from_image(image)
+	if not ResourceLoader.exists(path):
+		push_error("Failed to load table texture: %s" % path)
+		return null
+	return load(path) as Texture2D
 
 func _capture_and_quit() -> void:
 	await get_tree().process_frame

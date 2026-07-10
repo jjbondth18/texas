@@ -192,7 +192,8 @@ export class RoomManager {
       const room = this.rooms.get(String(message.room_id || ""));
       if (!room) throw new Error("room_not_found");
       if (!room.isPublic) throw new Error("room_not_found");
-      if (this.occupiedSeatCount(room) >= room.maxPlayers) throw new Error("table_full");
+      const decision = this.publicRoomListDecision(room);
+      if (!decision.include) throw new Error(decision.reason === "full" ? "table_full" : "room_not_available");
       this.joinRoom(client, room.id);
       const table = this.tableSnapshot(room);
       this.recordLog(`${client.id} joined public table ${room.id}`);
@@ -1515,13 +1516,13 @@ export class RoomManager {
 
   private publicRoomState(room: Room): string {
     if (room.sessionComplete) return "session_complete";
-    if (room.hostInLocalWarmup !== "" && ["waiting", "hand_over"].includes(room.table.phase)) {
+    if (room.hostInLocalWarmup !== "" && !room.officialHandStarted && ["waiting", "hand_over"].includes(room.table.phase)) {
       return this.publicSeatedCount(room) < 2 ? "waiting_for_players" : "waiting_ready";
     }
     if (room.isAiWarmup) return "ai_warmup";
     if (isActionPhase(room.table.phase)) return "playing";
     if (room.table.phase === "showdown") return "hand_result";
-    if (room.table.phase === "hand_over" && room.officialHandStarted && room.handResultTimer) return "hand_result";
+    if (room.table.phase === "hand_over" && room.officialHandStarted) return "hand_result";
     if (room.readyCountdownTimer) return "starting_countdown";
     if (["waiting", "hand_over"].includes(room.table.phase)) return this.publicSeatedCount(room) < 2 ? "waiting_for_players" : "waiting_ready";
     return "playing";
