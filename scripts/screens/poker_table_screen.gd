@@ -713,7 +713,7 @@ func _on_server_wallet_synced(wallet: Dictionary) -> void:
 
 func _on_server_daily_login_awarded(chips: int) -> void:
 	if chips > 0:
-		var synced_profile := ProfileServiceScript.new().apply_server_profile_snapshot({}, {}, [], true)
+		var synced_profile := ProfileServiceScript.new().get_current_profile()
 		TableLaunchContext.set_player_profile(synced_profile)
 		_append_session_log("Daily bonus +%s chips" % _format_chips(chips))
 

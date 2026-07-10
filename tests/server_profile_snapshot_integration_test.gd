@@ -41,6 +41,28 @@ func _init() -> void:
 	_require(bool(synced.get("daily_bonus_can_claim_today", false)), "server daily claimability should apply")
 	_require(String(synced.get("created_at", "")) == "2026-07-01T00:00:00.000Z", "created_at should apply")
 	_require(String(synced.get("updated_at", "")) == "2026-07-10T00:00:00.000Z", "updated_at should apply")
+	var repeated := service.apply_server_profile_snapshot({
+		"player_id": "player_server_1",
+		"display_name": "Steam Persona",
+		"avatar_id": "default",
+		"wallet": {"chips": 10000, "gems": 3},
+		"progression": {"total_xp": 450, "level": 5, "title_id": "table_regular"},
+		"statistics": {"hands_played": 12, "hands_won": 4, "chips_won": 2300, "gems_won": 2},
+		"unlocked_avatar_ids": ["default"],
+		"daily_bonus": {
+			"claim_count": 5,
+			"cycle_day": 6,
+			"claimed_days_in_cycle": 5,
+			"can_claim_today": true,
+			"already_claimed_today": false,
+			"claim_date": "2026-07-10",
+		},
+		"created_at": "2026-07-01T00:00:00.000Z",
+		"updated_at": "2026-07-10T00:00:00.000Z",
+	})
+	_require(PlayerProfileScript.get_total_chips(repeated) == 10000, "repeated snapshot should not add chips")
+	_require(int(repeated.get("total_xp", -1)) == 450, "repeated snapshot should not add XP")
+	_require(int(repeated.get("total_hands_played", -1)) == 12, "repeated snapshot should not add stats")
 	ProfileServiceScript.reset_mock_profile()
 	_finish("Server profile snapshot integration test passed.")
 
