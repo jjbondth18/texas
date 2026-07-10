@@ -2,8 +2,10 @@ extends RefCounted
 class_name IdentityService
 
 const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
+const SteamIdentityProviderScript := preload("res://scripts/services/steam_identity_provider.gd")
 
 const PROVIDER_LOCAL_DEV := "local_dev"
+const PROVIDER_STEAM := "steam"
 const ARG_DEV_PLAYER_ID := "dev-player-id"
 const ARG_DEV_PLAYER_NAME := "dev-player-name"
 const ARG_DEV_SAVE_SUFFIX := "dev-save-suffix"
@@ -11,9 +13,26 @@ const ENV_DEV_PLAYER_ID := "TEXAS_DEV_PLAYER_ID"
 const ENV_DEV_PLAYER_NAME := "TEXAS_DEV_PLAYER_NAME"
 const ENV_DEV_SAVE_SUFFIX := "TEXAS_DEV_SAVE_SUFFIX"
 
+static var _last_logged_provider := ""
+static var _last_logged_steam_unavailable_reason := ""
+
 
 func get_identity(profile: Dictionary = {}) -> Dictionary:
 	var resolved_profile: Dictionary = apply_dev_overrides_to_profile(profile)
+	if not has_dev_override():
+		var steam_identity: Dictionary = SteamIdentityProviderScript.new().get_identity()
+		if bool(steam_identity.get("available", false)):
+			_log_active_provider(PROVIDER_STEAM)
+			steam_identity.erase("available")
+			steam_identity["save_suffix"] = dev_save_suffix()
+			steam_identity["has_dev_override"] = false
+			return steam_identity
+		_log_steam_unavailable(str(steam_identity.get("reason", "unknown")))
+	_log_active_provider(PROVIDER_LOCAL_DEV)
+	return _local_dev_identity(resolved_profile)
+
+
+func _local_dev_identity(resolved_profile: Dictionary) -> Dictionary:
 	var local_player_id: String = String(resolved_profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID)).strip_edges()
 	if local_player_id == "":
 		local_player_id = PlayerProfileScript.DEFAULT_PLAYER_ID
@@ -28,6 +47,20 @@ func get_identity(profile: Dictionary = {}) -> Dictionary:
 		"save_suffix": dev_save_suffix(),
 		"has_dev_override": has_dev_override(),
 	}
+
+
+func _log_active_provider(provider: String) -> void:
+	if _last_logged_provider == provider:
+		return
+	_last_logged_provider = provider
+	print("[IdentityService] active identity provider: %s" % provider)
+
+
+func _log_steam_unavailable(reason: String) -> void:
+	if _last_logged_steam_unavailable_reason == reason:
+		return
+	_last_logged_steam_unavailable_reason = reason
+	print("[IdentityService] steam unavailable: %s" % reason)
 
 
 func apply_dev_overrides_to_profile(profile: Dictionary) -> Dictionary:
