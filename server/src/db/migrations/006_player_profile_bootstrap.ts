@@ -24,6 +24,14 @@ export const migration006PlayerProfileBootstrap = {
         updated_at TEXT NOT NULL,
         FOREIGN KEY(player_id) REFERENCES players(player_id)
       );
+
+      INSERT OR IGNORE INTO player_progression (player_id, total_xp, level, title_id, created_at, updated_at)
+      SELECT player_id, 0, 1, 'new_player', COALESCE(created_at, datetime('now')), datetime('now')
+      FROM players;
+
+      INSERT OR IGNORE INTO player_statistics (player_id, hands_played, hands_won, chips_won, gems_won, created_at, updated_at)
+      SELECT player_id, 0, 0, 0, 0, COALESCE(created_at, datetime('now')), datetime('now')
+      FROM players;
     `);
   },
 };

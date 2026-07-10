@@ -26,7 +26,7 @@ if (Number(firstProfile.total_wallet_chips) !== 10000) throw new Error("hello sh
 if (Number(firstProfile.avatar_unlock_count) !== 1) throw new Error("new player should unlock the default avatar");
 const db = getDatabase();
 initializeSchema(db);
-if (countRows("schema_migrations") < 7) throw new Error("migrations should be recorded and re-runnable");
+if (countRows("schema_migrations") < 8) throw new Error("migrations should be recorded and re-runnable");
 if (countRows("player_identities", "provider = 'local_dev' AND external_id = 'db_smoke_player'") !== 1) throw new Error("hello should write local_dev identity");
 if (countRows("player_progression", "player_id = 'db_smoke_player' AND total_xp = 0 AND level = 1 AND title_id = 'new_player'") !== 1) throw new Error("local_dev hello should bootstrap default progression");
 if (countRows("player_statistics", "player_id = 'db_smoke_player' AND hands_played = 0 AND hands_won = 0 AND chips_won = 0 AND gems_won = 0") !== 1) throw new Error("local_dev hello should bootstrap default statistics");
@@ -755,6 +755,58 @@ const steamInitialGrants = db.prepare("SELECT COUNT(*) AS count FROM wallet_tran
 if (Number(steamInitialGrants.count) !== 1) throw new Error("repeat Steam hello should not repeat initial wallet grant");
 const steamDefaultUnlocks = db.prepare("SELECT COUNT(*) AS count FROM avatar_unlocks WHERE player_id = ? AND avatar_id = 'default'").get(steamPlayerId) as { count: number };
 if (Number(steamDefaultUnlocks.count) !== 1) throw new Error("repeat Steam hello should not repeat default avatar unlock");
+
+const historicalCreatedAt = new Date().toISOString();
+db.prepare("INSERT INTO players (player_id, display_name, avatar_id, created_at, updated_at) VALUES (?, ?, 'default', ?, ?)").run(
+  "legacy_steam_player",
+  "Legacy Before Bootstrap",
+  historicalCreatedAt,
+  historicalCreatedAt,
+);
+db.prepare("INSERT INTO wallets (player_id, chips, gems, updated_at) VALUES (?, 4321, 9, ?)").run("legacy_steam_player", historicalCreatedAt);
+db.prepare("INSERT INTO player_identities (id, player_id, provider, external_id, created_at) VALUES (?, ?, 'steam', ?, ?)").run(
+  "identity_legacy_steam_player",
+  "legacy_steam_player",
+  "76561198000000007",
+  historicalCreatedAt,
+);
+if (countRows("player_progression", "player_id = 'legacy_steam_player'") !== 0) throw new Error("legacy fixture should start without progression");
+if (countRows("player_statistics", "player_id = 'legacy_steam_player'") !== 0) throw new Error("legacy fixture should start without statistics");
+const legacyMessages: unknown[] = [];
+const legacyWs = { OPEN: 1, readyState: 1, send: (data: string) => legacyMessages.push(JSON.parse(data)) };
+const legacyClient = manager.connect(legacyWs as any);
+manager.handle(legacyClient.id, {
+  type: "hello",
+  auth_provider: "steam",
+  external_id: "76561198000000007",
+  name: "Legacy Luna",
+});
+const legacyHello = legacyMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
+  | { player_id?: string; profile_snapshot?: { display_name?: string; wallet?: { chips?: number; gems?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
+  | undefined;
+if (legacyHello?.player_id !== "legacy_steam_player") throw new Error("legacy Steam identity should reuse existing internal player_id");
+if (legacyHello.profile_snapshot?.display_name !== "Legacy Luna") throw new Error("legacy hello should update display_name");
+if (legacyHello.profile_snapshot.wallet?.chips !== 4321 || legacyHello.profile_snapshot.wallet.gems !== 9) throw new Error("legacy bootstrap must not reset wallet");
+if (legacyHello.profile_snapshot.progression?.total_xp !== 0 || legacyHello.profile_snapshot.progression.level !== 1 || legacyHello.profile_snapshot.progression.title_id !== "new_player") throw new Error("legacy hello should self-heal default progression");
+if (legacyHello.profile_snapshot.statistics?.hands_played !== 0 || legacyHello.profile_snapshot.statistics.hands_won !== 0 || legacyHello.profile_snapshot.statistics.chips_won !== 0 || legacyHello.profile_snapshot.statistics.gems_won !== 0) throw new Error("legacy hello should self-heal default statistics");
+
+db.prepare("UPDATE player_progression SET total_xp = 900, level = 10, title_id = 'sharp_caller' WHERE player_id = ?").run("legacy_steam_player");
+db.prepare("UPDATE player_statistics SET hands_played = 20, hands_won = 8, chips_won = 3456, gems_won = 11 WHERE player_id = ?").run("legacy_steam_player");
+const legacyRepeatMessages: unknown[] = [];
+const legacyRepeatWs = { OPEN: 1, readyState: 1, send: (data: string) => legacyRepeatMessages.push(JSON.parse(data)) };
+const legacyRepeatClient = manager.connect(legacyRepeatWs as any);
+manager.handle(legacyRepeatClient.id, {
+  type: "hello",
+  auth_provider: "steam",
+  external_id: "76561198000000007",
+  name: "Legacy Luna Again",
+});
+const legacyRepeatHello = legacyRepeatMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
+  | { player_id?: string; profile_snapshot?: { progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
+  | undefined;
+if (legacyRepeatHello?.player_id !== "legacy_steam_player") throw new Error("legacy repeat hello should keep same player_id");
+if (legacyRepeatHello.profile_snapshot?.progression?.total_xp !== 900 || legacyRepeatHello.profile_snapshot.progression.level !== 10 || legacyRepeatHello.profile_snapshot.progression.title_id !== "sharp_caller") throw new Error("legacy repeat hello must not reset existing progression");
+if (legacyRepeatHello.profile_snapshot.statistics?.hands_played !== 20 || legacyRepeatHello.profile_snapshot.statistics.hands_won !== 8 || legacyRepeatHello.profile_snapshot.statistics.chips_won !== 3456 || legacyRepeatHello.profile_snapshot.statistics.gems_won !== 11) throw new Error("legacy repeat hello must not reset existing statistics");
 
 console.log("DB_SMOKE_OK");
 console.log(JSON.stringify({ db_path: process.env.TEXAS_DB_PATH, player_count: manager.adminSnapshot(false).player_count, total_wallet_chips: manager.adminSnapshot(false).total_wallet_chips }, null, 2));
