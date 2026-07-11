@@ -6,6 +6,15 @@ import { getDatabase } from "./db/database.js";
 import { initializeSchema } from "./db/schema.js";
 import { config } from "./config.js";
 import { levelForTotalXp, titleIdForLevel } from "./db/profile_bootstrap_repository.js";
+import type { SteamAuthVerifier, SteamAuthVerificationResult } from "./services/steam_auth_verifier.js";
+
+class MockSteamAuthVerifier implements SteamAuthVerifier {
+  constructor(private readonly result: SteamAuthVerificationResult = { valid: false, error_code: "steam_ticket_invalid" }) {}
+
+  verifyTicket(): SteamAuthVerificationResult {
+    return this.result;
+  }
+}
 
 process.env.TEXAS_DB_PATH = join(mkdtempSync(join(tmpdir(), "texas-db-smoke-")), "texas_dev.sqlite");
 
@@ -773,6 +782,75 @@ const steamInitialGrants = db.prepare("SELECT COUNT(*) AS count FROM wallet_tran
 if (Number(steamInitialGrants.count) !== 1) throw new Error("repeat Steam hello should not repeat initial wallet grant");
 const steamDefaultUnlocks = db.prepare("SELECT COUNT(*) AS count FROM avatar_unlocks WHERE player_id = ? AND avatar_id = 'default'").get(steamPlayerId) as { count: number };
 if (Number(steamDefaultUnlocks.count) !== 1) throw new Error("repeat Steam hello should not repeat default avatar unlock");
+
+db.prepare("DELETE FROM table_balances").run();
+const originalSteamAppId = config.steamAppId;
+config.steamAppId = "480";
+const optionalNoTicketMessages: unknown[] = [];
+const optionalNoTicketWs = { OPEN: 1, readyState: 1, send: (data: string) => optionalNoTicketMessages.push(JSON.parse(data)) };
+const optionalNoTicketManager = new RoomManager({ steamAuthMode: "optional", steamAuthVerifier: new MockSteamAuthVerifier() });
+const optionalNoTicketClient = optionalNoTicketManager.connect(optionalNoTicketWs as any);
+optionalNoTicketManager.handle(optionalNoTicketClient.id, { type: "hello", auth_provider: "steam", external_id: "76561198000000008", name: "Optional No Ticket" });
+const optionalNoTicketHello = optionalNoTicketMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
+  | { player_id?: string }
+  | undefined;
+if (!optionalNoTicketHello?.player_id || optionalNoTicketHello.player_id === "76561198000000008") throw new Error("optional Steam auth should allow missing ticket during scaffold");
+
+const optionalValidMessages: unknown[] = [];
+const optionalValidWs = { OPEN: 1, readyState: 1, send: (data: string) => optionalValidMessages.push(JSON.parse(data)) };
+const optionalValidManager = new RoomManager({ steamAuthMode: "optional", steamAuthVerifier: new MockSteamAuthVerifier({ valid: true, steam_id: "76561198000000009", app_id: "480" }) });
+const optionalValidClient = optionalValidManager.connect(optionalValidWs as any);
+optionalValidManager.handle(optionalValidClient.id, {
+  type: "hello",
+  auth_provider: "steam",
+  external_id: "76561198000000009",
+  name: "Optional Valid",
+  steam_auth_ticket: "aabbcc",
+  steam_auth_identity: "texas-server-v1",
+});
+const optionalValidHello = optionalValidMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
+  | { player_id?: string }
+  | undefined;
+if (!optionalValidHello?.player_id || optionalValidHello.player_id === "76561198000000009") throw new Error("valid Steam ticket should authenticate and map to internal player_id");
+if (JSON.stringify(optionalValidMessages).includes("aabbcc")) throw new Error("Steam auth ticket should not be echoed to client responses");
+
+const optionalValidRepeatMessages: unknown[] = [];
+const optionalValidRepeatWs = { OPEN: 1, readyState: 1, send: (data: string) => optionalValidRepeatMessages.push(JSON.parse(data)) };
+const optionalValidRepeatClient = optionalValidManager.connect(optionalValidRepeatWs as any);
+optionalValidManager.handle(optionalValidRepeatClient.id, {
+  type: "hello",
+  auth_provider: "steam",
+  external_id: "76561198000000009",
+  name: "Optional Valid Again",
+  steam_auth_ticket: "ddeeff",
+  steam_auth_identity: "texas-server-v1",
+});
+const optionalValidRepeatHello = optionalValidRepeatMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
+  | { player_id?: string }
+  | undefined;
+if (optionalValidRepeatHello?.player_id !== optionalValidHello.player_id) throw new Error("same verified SteamID should reuse internal player_id");
+
+expectThrows("steam_ticket_required", () => {
+  const requiredManager = new RoomManager({ steamAuthMode: "required", steamAuthVerifier: new MockSteamAuthVerifier() });
+  const requiredClient = requiredManager.connect();
+  requiredManager.handle(requiredClient.id, { type: "hello", auth_provider: "steam", external_id: "76561198000000010", name: "Required Missing" });
+});
+expectThrows("steam_ticket_invalid", () => {
+  const invalidManager = new RoomManager({ steamAuthMode: "required", steamAuthVerifier: new MockSteamAuthVerifier({ valid: false, error_code: "steam_ticket_invalid" }) });
+  const invalidClient = invalidManager.connect();
+  invalidManager.handle(invalidClient.id, { type: "hello", auth_provider: "steam", external_id: "76561198000000010", name: "Invalid Ticket", steam_auth_ticket: "aabbcc" });
+});
+expectThrows("steam_app_mismatch", () => {
+  const appMismatchManager = new RoomManager({ steamAuthMode: "required", steamAuthVerifier: new MockSteamAuthVerifier({ valid: true, steam_id: "76561198000000010", app_id: "999" }) });
+  const appMismatchClient = appMismatchManager.connect();
+  appMismatchManager.handle(appMismatchClient.id, { type: "hello", auth_provider: "steam", external_id: "76561198000000010", name: "App Mismatch", steam_auth_ticket: "aabbcc" });
+});
+expectThrows("steam_identity_mismatch", () => {
+  const identityMismatchManager = new RoomManager({ steamAuthMode: "required", steamAuthVerifier: new MockSteamAuthVerifier({ valid: true, steam_id: "76561198000000011", app_id: "480" }) });
+  const identityMismatchClient = identityMismatchManager.connect();
+  identityMismatchManager.handle(identityMismatchClient.id, { type: "hello", auth_provider: "steam", external_id: "76561198000000010", name: "Identity Mismatch", steam_auth_ticket: "aabbcc" });
+});
+config.steamAppId = originalSteamAppId;
 
 const historicalCreatedAt = new Date().toISOString();
 db.prepare("INSERT INTO players (player_id, display_name, avatar_id, created_at, updated_at) VALUES (?, ?, 'default', ?, ?)").run(

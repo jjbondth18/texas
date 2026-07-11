@@ -81,9 +81,11 @@ func send_hello(player_name: String = "", profile_player_id: String = "", avatar
 	var resolved_external_id: String = external_id if external_id != "" else str(identity.get("external_id", profile_player_id))
 	var resolved_provider: String = auth_provider if auth_provider != "" else str(identity.get("provider", "local_dev"))
 	var resolved_avatar_id: String = avatar_id if avatar_id != "" else str(identity.get("avatar_id", ""))
+	var steam_auth_ticket: String = str(identity.get("steam_auth_ticket", ""))
+	var steam_auth_identity: String = str(identity.get("steam_auth_identity", ""))
 	var compatible_player_id: String = resolved_external_id if has_dev_override or profile_player_id == "" else profile_player_id
 	local_player_id = resolved_external_id
-	return send_message(PokerProtocolScript.hello(resolved_name, compatible_player_id, resolved_avatar_id, resolved_provider, resolved_external_id))
+	return send_message(PokerProtocolScript.hello(resolved_name, compatible_player_id, resolved_avatar_id, resolved_provider, resolved_external_id, steam_auth_ticket, steam_auth_identity))
 
 func create_room() -> int:
 	return send_message(PokerProtocolScript.create_room())

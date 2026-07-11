@@ -62,6 +62,10 @@ export type ErrorCode =
   | "table_full"
   | "invalid_table_config"
   | "invalid_identity_provider"
+  | "steam_ticket_required"
+  | "steam_ticket_invalid"
+  | "steam_app_mismatch"
+  | "steam_identity_mismatch"
   | "mock_purchase_disabled"
   | "not_public_table"
   | "not_host"
@@ -91,6 +95,8 @@ export interface ClientMessage {
   player_id?: string;
   auth_provider?: string;
   external_id?: string;
+  steam_auth_ticket?: string;
+  steam_auth_identity?: string;
   name?: string;
   player_name?: string;
   avatar_id?: string;
