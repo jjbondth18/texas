@@ -15,8 +15,9 @@ import { ReplayRepository } from "./db/replay_repository.js";
 import { TableBalanceRepository, type TableBalanceCurrency } from "./db/table_balance_repository.js";
 import { ProfileBootstrapRepository } from "./db/profile_bootstrap_repository.js";
 import { AVATAR_CATALOG, DEFAULT_AVATAR_PRICE_CHIPS, findAvatarCatalogItem } from "./avatar_catalog.js";
-import { config } from "./config.js";
+import { config, type SteamAuthMode } from "./config.js";
 import { buildEncryptedReplayDelivery, buildHandReplayRecord, generateReplayKey, replayIdFor, type EncryptedReplayDelivery } from "./replay.js";
+import { SteamWebApiAuthVerifier, type SteamAuthVerifier } from "./services/steam_auth_verifier.js";
 
 interface Client {
   id: string;
@@ -119,8 +120,12 @@ export class RoomManager {
   private readonly results = new ResultRepository(this.db);
   private readonly replays = new ReplayRepository(this.db);
   private readonly tableBalances = new TableBalanceRepository(this.db);
+  private readonly steamAuthVerifier: SteamAuthVerifier;
+  private readonly steamAuthMode: SteamAuthMode;
 
-  constructor() {
+  constructor(options: { steamAuthVerifier?: SteamAuthVerifier; steamAuthMode?: SteamAuthMode } = {}) {
+    this.steamAuthVerifier = options.steamAuthVerifier ?? new SteamWebApiAuthVerifier(config.steamWebApiPublisherKey);
+    this.steamAuthMode = options.steamAuthMode ?? config.steamAuthMode;
     this.loginBonus.setProgressionRepository(this.profileBootstrap);
     this.recoverOutstandingTableBalances();
   }
@@ -735,7 +740,7 @@ export class RoomManager {
 
   private handleHello(client: Client, message: ClientMessage): Omit<ServerMessage, "type" | "request_id" | "player_id"> {
     const previousId = client.id;
-    const identity = this.resolveIdentity(message, previousId);
+    const identity = this.resolveIdentity(this.steamAuthenticatedHelloMessage(message), previousId);
     const requestedId = identity.playerId;
     if (requestedId !== previousId) {
       this.clients.delete(previousId);
@@ -1653,6 +1658,26 @@ export class RoomManager {
     if (existing) return { provider, externalId, playerId: existing.player_id };
     const playerId = provider === "local_dev" ? normalizePlayerId(externalId) : `player_${randomUUID()}`;
     return { provider, externalId, playerId };
+  }
+
+  private steamAuthenticatedHelloMessage(message: ClientMessage): ClientMessage {
+    const provider = normalizeIdentityProvider(String(message.auth_provider || "local_dev"));
+    if (provider !== "steam" || this.steamAuthMode === "disabled") return message;
+    const ticket = String(message.steam_auth_ticket || "").trim();
+    if (ticket === "") {
+      if (this.steamAuthMode === "required") throw new Error("steam_ticket_required");
+      this.recordLog("steam_auth_warning provider=steam reason=missing_ticket mode=optional");
+      return message;
+    }
+    const expectedIdentity = String(message.steam_auth_identity || config.steamAuthIdentity || "texas-server-v1");
+    const result = this.steamAuthVerifier.verifyTicket(ticket, config.steamAppId, expectedIdentity);
+    if (!result.valid) throw new Error(result.error_code || "steam_ticket_invalid");
+    if (result.app_id && config.steamAppId !== "" && String(result.app_id) !== String(config.steamAppId)) throw new Error("steam_app_mismatch");
+    const verifiedSteamId = normalizeExternalId(String(result.steam_id || ""));
+    if (verifiedSteamId === "") throw new Error("steam_ticket_invalid");
+    const requestedExternalId = normalizeExternalId(String(message.external_id || ""));
+    if (requestedExternalId !== "" && requestedExternalId !== verifiedSteamId) throw new Error("steam_identity_mismatch");
+    return { ...message, external_id: verifiedSteamId };
   }
 
   private tableConfigFromMessage(message: ClientMessage): Partial<Pick<Room, "tableName" | "tableType" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "actionTimeSeconds" | "maxPlayers" | "isPublic">> {

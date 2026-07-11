@@ -2,6 +2,10 @@ extends RefCounted
 class_name SteamIdentityProvider
 
 const PROVIDER_STEAM := "steam"
+const STEAM_AUTH_IDENTITY := "texas-server-v1"
+
+static var _cached_auth_ticket_hex := ""
+static var _auth_ticket_handle: Variant = null
 
 
 func get_identity() -> Dictionary:
@@ -23,13 +27,18 @@ func get_identity() -> Dictionary:
 	var persona_name: String = _persona_name(steam)
 	if persona_name == "":
 		persona_name = "Steam Player"
-	return {
+	var identity := {
 		"available": true,
 		"provider": PROVIDER_STEAM,
 		"external_id": steam_id,
 		"display_name": persona_name,
 		"avatar_id": "default",
+		"steam_auth_identity": STEAM_AUTH_IDENTITY,
 	}
+	var ticket_hex := _steam_auth_ticket_hex(steam)
+	if ticket_hex != "":
+		identity["steam_auth_ticket"] = ticket_hex
+	return identity
 
 
 func _try_initialize(steam: Object) -> Variant:
@@ -97,6 +106,75 @@ func _persona_name(steam: Object) -> String:
 	elif steam.has_method("get_persona_name"):
 		value = steam.call("get_persona_name")
 	return str(value).strip_edges()
+
+
+func _steam_auth_ticket_hex(steam: Object) -> String:
+	if _cached_auth_ticket_hex != "":
+		return _cached_auth_ticket_hex
+	var ticket: Variant = null
+	if steam.has_method("GetAuthTicketForWebApi"):
+		ticket = steam.call("GetAuthTicketForWebApi", STEAM_AUTH_IDENTITY)
+	elif steam.has_method("getAuthTicketForWebApi"):
+		ticket = steam.call("getAuthTicketForWebApi", STEAM_AUTH_IDENTITY)
+	elif steam.has_method("get_auth_ticket_for_web_api"):
+		ticket = steam.call("get_auth_ticket_for_web_api", STEAM_AUTH_IDENTITY)
+	if ticket == null:
+		return ""
+	if typeof(ticket) == TYPE_DICTIONARY:
+		var data := Dictionary(ticket)
+		_auth_ticket_handle = data.get("auth_ticket_handle", data.get("ticket_handle", _auth_ticket_handle))
+		_cached_auth_ticket_hex = _ticket_variant_to_hex(data.get("ticket", data.get("auth_ticket", "")))
+	else:
+		_auth_ticket_handle = ticket
+	return _cached_auth_ticket_hex
+
+
+func cancel_auth_ticket(steam: Object) -> void:
+	if _auth_ticket_handle == null:
+		return
+	if steam.has_method("cancelAuthTicket"):
+		steam.call("cancelAuthTicket", _auth_ticket_handle)
+	elif steam.has_method("cancel_auth_ticket"):
+		steam.call("cancel_auth_ticket", _auth_ticket_handle)
+	_auth_ticket_handle = null
+	_cached_auth_ticket_hex = ""
+
+
+func _ticket_variant_to_hex(ticket: Variant) -> String:
+	if typeof(ticket) == TYPE_PACKED_BYTE_ARRAY:
+		return _bytes_to_hex(PackedByteArray(ticket))
+	if typeof(ticket) == TYPE_ARRAY:
+		var bytes := PackedByteArray()
+		for value in Array(ticket):
+			bytes.append(int(value) & 0xff)
+		return _bytes_to_hex(bytes)
+	var text := str(ticket).strip_edges()
+	if _is_hex_string(text) or text.find(",") == -1:
+		return text
+	var bytes_from_csv := PackedByteArray()
+	for part in text.split(",", false):
+		bytes_from_csv.append(int(part.strip_edges()) & 0xff)
+	return _bytes_to_hex(bytes_from_csv)
+
+
+func _is_hex_string(text: String) -> bool:
+	if text == "" or text.length() % 2 != 0:
+		return false
+	for index in range(text.length()):
+		var code := text.unicode_at(index)
+		var is_digit := code >= 48 and code <= 57
+		var is_upper_hex := code >= 65 and code <= 70
+		var is_lower_hex := code >= 97 and code <= 102
+		if not (is_digit or is_upper_hex or is_lower_hex):
+			return false
+	return true
+
+
+func _bytes_to_hex(bytes: PackedByteArray) -> String:
+	var output := ""
+	for byte in bytes:
+		output += "%02x" % int(byte)
+	return output
 
 
 func _unavailable(reason: String) -> Dictionary:

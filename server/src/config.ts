@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 export type DatabaseDriver = "sqlite" | "postgres";
+export type SteamAuthMode = "disabled" | "optional" | "required";
 
 export interface ServerConfig {
   nodeEnv: string;
@@ -14,6 +15,10 @@ export interface ServerConfig {
   adminLocalOnly: boolean;
   devShowPrivateCards: boolean;
   allowMockPurchases: boolean;
+  steamAuthMode: SteamAuthMode;
+  steamAppId: string;
+  steamWebApiPublisherKey: string;
+  steamAuthIdentity: string;
 }
 
 loadDotEnv(resolve(process.cwd(), ".env"));
@@ -29,6 +34,10 @@ export const config: ServerConfig = {
   adminLocalOnly: booleanEnv("ADMIN_LOCAL_ONLY", true),
   devShowPrivateCards: (process.env.NODE_ENV || "development") === "production" ? false : booleanEnv("DEV_SHOW_PRIVATE_CARDS", false),
   allowMockPurchases: booleanEnv("ALLOW_MOCK_PURCHASES", (process.env.NODE_ENV || "development") !== "production"),
+  steamAuthMode: steamAuthModeEnv(process.env.STEAM_AUTH_MODE),
+  steamAppId: process.env.STEAM_APP_ID || "",
+  steamWebApiPublisherKey: process.env.STEAM_WEB_API_PUBLISHER_KEY || "",
+  steamAuthIdentity: process.env.STEAM_AUTH_IDENTITY || "texas-server-v1",
 };
 
 export function configWarnings(value: ServerConfig = config): string[] {
@@ -38,6 +47,9 @@ export function configWarnings(value: ServerConfig = config): string[] {
   }
   if (value.nodeEnv === "production" && value.adminEnabled && !value.adminLocalOnly) {
     warnings.push("ADMIN_ENABLED=true with ADMIN_LOCAL_ONLY=false exposes unauthenticated debug pages unless protected by firewall/auth.");
+  }
+  if (value.steamAuthMode !== "disabled" && (value.steamAppId === "" || value.steamWebApiPublisherKey === "")) {
+    warnings.push("STEAM_AUTH_MODE is enabled but STEAM_APP_ID or STEAM_WEB_API_PUBLISHER_KEY is not configured.");
   }
   return warnings;
 }
@@ -53,6 +65,9 @@ export function publicConfigSummary(value: ServerConfig = config): Record<string
     ADMIN_LOCAL_ONLY: value.adminLocalOnly,
     DEV_SHOW_PRIVATE_CARDS: value.devShowPrivateCards,
     ALLOW_MOCK_PURCHASES: value.allowMockPurchases,
+    STEAM_AUTH_MODE: value.steamAuthMode,
+    STEAM_APP_ID: value.steamAppId,
+    STEAM_AUTH_IDENTITY: value.steamAuthIdentity,
   };
 }
 
@@ -70,6 +85,11 @@ function booleanEnv(name: string, fallback: boolean): boolean {
 function databaseDriverEnv(value: string | undefined): DatabaseDriver {
   if (value === "postgres") return "postgres";
   return "sqlite";
+}
+
+function steamAuthModeEnv(value: string | undefined): SteamAuthMode {
+  if (value === "optional" || value === "required") return value;
+  return "disabled";
 }
 
 function loadDotEnv(path: string): void {
