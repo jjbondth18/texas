@@ -176,7 +176,7 @@ func _on_disconnected() -> void:
 	_set_status("Disconnected")
 	_append_event("Disconnected from server.")
 
-func _on_hello_received(player_id: String, room_id: String) -> void:
+func _on_hello_received(player_id: String, room_id: String, _reconnected_to_table: bool = false) -> void:
 	_server_player_id = player_id
 	if room_id != "":
 		_room_id_edit.text = room_id

@@ -125,6 +125,7 @@ export interface ServerMessage {
   player_id?: string;
   server_player_id?: string;
   room_id?: string;
+  reconnected_to_table?: boolean;
   error?: string;
   error_code?: ErrorCode | string;
   ok?: boolean;
@@ -278,6 +279,7 @@ export interface PublicSeatSnapshot {
   folded: boolean;
   all_in: boolean;
   disconnected: boolean;
+  reconnect_grace_remaining_seconds?: number;
   connected: boolean;
   ready: boolean;
   is_ai: boolean;

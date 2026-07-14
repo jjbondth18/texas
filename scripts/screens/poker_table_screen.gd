@@ -670,13 +670,21 @@ func _on_server_disconnected() -> void:
 	_server_setup_done = false
 	_on_server_error("Disconnected from authoritative server.")
 
-func _on_server_hello_received(player_id: String, room_id: String) -> void:
+func _on_server_hello_received(player_id: String, room_id: String, reconnected_to_table: bool = false) -> void:
 	if player_id != "":
 		_server_local_player_id = player_id
 		_append_session_log("Server player id: %s" % player_id)
 	if room_id != "":
 		_server_room_id = room_id
 		_append_session_log("Authoritative room_id: %s" % _server_room_id)
+	if reconnected_to_table:
+		_server_setup_done = true
+		_server_sit_down_requested = false
+		_server_sit_down_pending = false
+		_server_sit_down_failed = false
+		_server_sit_down_error = ""
+		_append_session_log("Reconnected to table. Waiting for authoritative snapshot.")
+		return
 	if _server_room_id != "" and room_id == "" and not _server_join_room_requested:
 		_server_join_room_requested = true
 		_send_server_message(_poker_ws_client.join_room(_server_room_id), "join_room %s" % _server_room_id)
