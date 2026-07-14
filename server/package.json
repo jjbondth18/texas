@@ -10,7 +10,12 @@
     "smoke": "tsx src/smoke_test.ts",
     "db:smoke": "tsx src/db_smoke_test.ts",
     "wallet:exit:smoke": "tsx src/wallet_exit_settlement_smoke_test.ts",
-    "bot": "tsx src/bot.ts"
+    "bot": "tsx src/bot.ts",
+    "ai:challenge:test": "tsx src/ai_challenge_policy_test.ts",
+    "ai:challenge:room": "tsx src/ai_challenge_room_smoke_test.ts",
+    "ai:challenge:lifecycle": "tsx src/ai_challenge_lifecycle_test.ts",
+    "ai:challenge:performance": "tsx src/ai_challenge_performance_test.ts",
+    "ai:challenge:isolation": "tsx src/ai_challenge_isolation_test.ts"
   },
   "dependencies": {
     "@types/better-sqlite3": "^7.6.13",

@@ -45,6 +45,10 @@ static func configure(mode: String = "quick_play", id: String = "mock_table_001"
 	currency = str(setup_config.get("currency", "chips"))
 	uses_practice_chips = is_training
 	affects_account_balance = not is_training
+	if mode == "ai_challenge":
+		table_type = "ai_challenge"
+		uses_practice_chips = true
+		affects_account_balance = false
 	buy_in_deducted_from_wallet = bool(setup_config.get("buy_in_deducted_from_wallet", false))
 	waiting_for_real_players = false
 	is_ai_warmup = false

@@ -1704,7 +1704,11 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 	var currency := str(table_info.get("currency", "gems" if server_table_type in ["public_gem", "private_gem"] else "chips"))
 	var is_private_room := server_table_type in ["private_chip", "private_gem", "private_room", "private_casual"]
 	var launch_mode := "friends_room" if is_private_room else "quick_play"
+	if str(table_info.get("mode", "")) == "ai_challenge" or str(table_info.get("challenge_id", "")) != "":
+		launch_mode = "ai_challenge"
 	var launch_table_type := server_table_type
+	if launch_mode == "ai_challenge":
+		launch_table_type = "ai_challenge"
 	var room_code := str(table_info.get("room_code", ""))
 	if max_hands <= 0:
 		max_hands = 999
@@ -1723,22 +1727,22 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 		"is_training": false,
 		"table_type": launch_table_type,
 		"currency": currency,
-		"uses_practice_chips": false,
-		"affects_account_balance": true,
+		"uses_practice_chips": launch_mode == "ai_challenge",
+		"affects_account_balance": launch_mode != "ai_challenge",
 		"buy_in_deducted_from_wallet": false,
 		"allow_debug_tools": true,
 		"requested_seat_index": requested_seat_index,
 		"ai_player_count": 0,
 		"max_hands": max_hands,
-		"waiting_for_real_players": (not is_private_room) and int(table_info.get("current_players", table_info.get("seated_count", 0))) < 2,
+		"waiting_for_real_players": launch_mode != "ai_challenge" and (not is_private_room) and int(table_info.get("current_players", table_info.get("seated_count", 0))) < 2,
 		"is_ai_warmup": false,
 		"warmup_ai_player_ids": [],
 		"table_session": {
 			"mode": launch_mode,
 			"table_type": launch_table_type,
 			"currency": currency,
-			"uses_practice_chips": false,
-			"affects_account_balance": true,
+			"uses_practice_chips": launch_mode == "ai_challenge",
+			"affects_account_balance": launch_mode != "ai_challenge",
 			"buy_in_deducted_from_wallet": false,
 			"buy_in": buy_in,
 			"starting_chips": buy_in,
@@ -1747,7 +1751,7 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 			"big_blind": big_blind,
 			"max_hands": max_hands,
 			"action_time_seconds": action_time_seconds,
-			"waiting_for_real_players": (not is_private_room) and int(table_info.get("current_players", table_info.get("seated_count", 0))) < 2,
+			"waiting_for_real_players": launch_mode != "ai_challenge" and (not is_private_room) and int(table_info.get("current_players", table_info.get("seated_count", 0))) < 2,
 			"is_ai_warmup": false,
 			"warmup_ai_player_ids": [],
 		},
@@ -2603,7 +2607,7 @@ func _modal_button(label_text: String) -> Button:
 
 func _build_events_panel() -> void:
 	_events_panel = PanelContainer.new()
-	_events_panel.name = "EventsComingSoonPanel"
+	_events_panel.name = "EventsPanel"
 	_events_panel.anchor_left = 0.0
 	_events_panel.anchor_top = 0.22
 	_events_panel.anchor_right = 1.0
@@ -2641,9 +2645,7 @@ func _build_events_panel() -> void:
 	cards.add_theme_constant_override("separation", 18)
 	cards.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.add_child(cards)
-	_add_event_card(cards, _t("events.all_in_survival.title"), _t("events.all_in_survival.desc"))
-	_add_event_card(cards, _t("events.lucky_spin.title"), _t("events.lucky_spin.desc"))
-	_add_event_card(cards, _t("events.weekend_gem_cup.title"), _t("events.weekend_gem_cup.desc"))
+	_add_ai_challenge_card(cards)
 
 	var note := Label.new()
 	note.text = _t("events.note")
@@ -2656,6 +2658,50 @@ func _build_events_panel() -> void:
 		set_state(LobbyState.PLAY_EXPANDED)
 	)
 	column.add_child(back_button)
+
+func _add_ai_challenge_card(parent: HBoxContainer) -> void:
+	var card := PanelContainer.new()
+	card.name = "AIChallengeEventCard"
+	card.custom_minimum_size = Vector2(420, 290)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	card.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.008, 0.010, 0.024, 0.76), Color(1.0, 0.0, 0.5, 0.32), 8, 1))
+	parent.add_child(card)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 20)
+	margin.add_theme_constant_override("margin_right", 20)
+	margin.add_theme_constant_override("margin_top", 18)
+	margin.add_theme_constant_override("margin_bottom", 18)
+	card.add_child(margin)
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 12)
+	margin.add_child(column)
+
+	var title := Label.new()
+	title.text = "AI CHALLENGE"
+	HomeTheme.make_font_settings(title, 22, HomeTheme.PINK)
+	column.add_child(title)
+
+	var body := Label.new()
+	body.text = "Play a heads-up match against a rule-based opponent.\n\nStarting stack: 1,000\nBlinds: 10 / 20\nMaximum hands: 20\nWallet risk: None"
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	HomeTheme.make_font_settings(body, 14, Color(0.84, 0.88, 1.0, 0.94))
+	column.add_child(body)
+
+	var start_button := _modal_button("START CHALLENGE")
+	start_button.pressed.connect(_start_ai_challenge)
+	column.add_child(start_button)
+
+func _start_ai_challenge() -> void:
+	if not server_authoritative_profile or _profile_ws_client == null:
+		_show_toast("AI Challenge needs the authoritative server.", [], 2.2)
+		return
+	_begin_server_table_launch_request("create_ai_challenge", "Starting AI Challenge...", "table_created", "", func(request_id: String) -> void:
+		_profile_ws_client.create_ai_challenge(request_id)
+	)
 
 func _add_event_card(parent: HBoxContainer, title_text: String, body_text: String) -> void:
 	var card := PanelContainer.new()

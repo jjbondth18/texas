@@ -17,6 +17,7 @@ signal avatar_catalog_received(catalog: Array)
 signal table_list_received(tables: Array)
 signal table_created(room_id: String, table_info: Dictionary)
 signal table_joined(room_id: String, table_info: Dictionary)
+signal ai_challenge_result_received(result: Dictionary)
 signal mock_purchase_result_received(ok: bool, currency: String, amount: int, wallet: Dictionary)
 signal replay_unlocked_received(replay_id: String, replay_type: String, price_gems: int, replay_key: String, key_version: int, checksum: String, algorithm: String, already_unlocked: bool, wallet: Dictionary, profile_snapshot: Dictionary)
 signal replay_access_received(access: Dictionary)
@@ -176,6 +177,9 @@ func create_private_table(config: Dictionary = {}) -> int:
 func join_private_table(room_code: String) -> int:
 	return send_message(PokerProtocolScript.join_private_table(room_code))
 
+func create_ai_challenge(request_id: String = "") -> int:
+	return send_message(PokerProtocolScript.create_ai_challenge(request_id))
+
 func _handle_message(message: Dictionary) -> void:
 	message_received.emit(message)
 	var type_value := str(message.get("type", ""))
@@ -224,6 +228,10 @@ func _handle_message(message: Dictionary) -> void:
 			var private_created_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = str(message.get("room_id", private_created_table.get("room_id", room_id)))
 			table_created.emit(room_id, private_created_table)
+		PokerProtocolScript.AI_CHALLENGE_CREATED:
+			var challenge_table := Dictionary(message.get("table", {})).duplicate(true)
+			room_id = str(message.get("room_id", challenge_table.get("room_id", room_id)))
+			table_created.emit(room_id, challenge_table)
 		PokerProtocolScript.QUICK_TABLE_MATCHED:
 			var quick_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = str(message.get("room_id", quick_table.get("room_id", room_id)))
@@ -276,6 +284,8 @@ func _handle_message(message: Dictionary) -> void:
 				room_id,
 				str(message.get("reason", ""))
 			)
+		PokerProtocolScript.AI_CHALLENGE_RESULT:
+			ai_challenge_result_received.emit(Dictionary(message).duplicate(true))
 		PokerProtocolScript.SIT_DOWN_RESULT:
 			var result_player_id := str(message.get("server_player_id", message.get("player_id", player_id)))
 			if result_player_id != "":

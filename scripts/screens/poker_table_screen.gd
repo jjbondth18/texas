@@ -3006,6 +3006,11 @@ func _handle_server_session_complete_state(source_snapshot: Dictionary) -> void:
 	_table_session.current_table_chips = _local_table_chips_from_snapshot(Array(source_snapshot.get("seats", [])))
 	_table_session.session_end_chips = _table_session.current_table_chips
 	_table_session.session_profit = _table_session.session_end_chips - _table_session.session_start_chips
+	if _table_session.mode == "ai_challenge":
+		_table_session.session_end_chips = int(source_snapshot.get("player_final_stack", _table_session.session_end_chips))
+		_table_session.current_table_chips = _table_session.session_end_chips
+		_table_session.session_profit = _table_session.session_end_chips - _table_session.session_start_chips
+		_table_session.end_reason = String(source_snapshot.get("result", "draw")).to_upper()
 	_table_session.is_session_over = true
 	if _table_session.end_reason == "":
 		_table_session.end_reason = "Hands completed"
@@ -3687,6 +3692,30 @@ func _show_session_result_panel() -> void:
 	var is_practice := _table_session.mode == TableSessionScript.MODE_TRAINING or _table_session.uses_practice_chips
 	var profit_color := "#35f5c8" if _table_session.session_profit >= 0 else "#ff4f9a"
 	var reason: String = _table_session.end_reason if _table_session.end_reason != "" else "Session ended"
+	if _table_session.mode == "ai_challenge":
+		var challenge_result := String(snapshot.get("result", reason)).to_upper()
+		var result_color := "#35f5c8" if challenge_result == "VICTORY" else ("#ff4f9a" if challenge_result == "DEFEAT" else "#8fa8ff")
+		_session_result_text.text = "\n".join([
+			"[center][font_size=34][color=%s][b]%s[/b][/color][/font_size][/center]" % [result_color, challenge_result],
+			"[center][color=#8fa8ff]Practice chips only. Results do not affect your account balance.[/color][/center]",
+			"",
+			"[table=2][cell][color=#9aa8d8]Final Stack[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Opponent Stack[/color]\n[b]%s[/b][/cell]" % [
+				_format_chips(int(snapshot.get("player_final_stack", _table_session.session_end_chips))),
+				_format_chips(int(snapshot.get("bot_final_stack", 0))),
+			],
+			"[cell][color=#9aa8d8]Hands Played[/color]\n[b]%d[/b][/cell][cell][color=#9aa8d8]Blinds[/color]\n[b]%d / %d[/b][/cell][/table]" % [
+				int(snapshot.get("hands_played", _table_session.hands_played)),
+				_table_session.small_blind,
+				_table_session.big_blind,
+			],
+			"",
+			"Mode: AI Challenge",
+			"Challenge: rule_bot_v1",
+		])
+		if _session_result_scrim != null:
+			_session_result_scrim.visible = true
+		_session_result_panel.visible = true
+		return
 	var result_lines: Array[String] = [
 		"[center][b]%s hands played[/b][/center]" % _table_session.hand_count_text(),
 		"[center][font_size=30][color=%s][b]%+d[/b][/color][/font_size][/center]" % [profit_color, _table_session.session_profit],
@@ -3788,7 +3817,7 @@ func _apply_session_profit_to_profile() -> void:
 		return
 	if _table_session.mode == TableSessionScript.MODE_TRAINING or _table_session.uses_practice_chips or not _table_session.affects_account_balance:
 		_session_unlocked_avatar_ids.clear()
-		_append_session_log("Training results use practice chips only; account balance and stats were not updated.")
+		_append_session_log("Practice results use table-only chips; account balance and stats were not updated.")
 		return
 	var service := ProfileServiceScript.new()
 	var profile := service.apply_session_result(_table_session.to_dict())
@@ -3856,6 +3885,8 @@ func _session_mode_label() -> String:
 			return "Training"
 		TableSessionScript.MODE_FRIENDS_ROOM:
 			return "Friends Room"
+		"ai_challenge":
+			return "AI Challenge"
 		_:
 			return _table_session.mode.capitalize()
 

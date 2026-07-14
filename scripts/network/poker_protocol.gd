@@ -30,6 +30,7 @@ const CREATE_TABLE := "create_table"
 const JOIN_TABLE := "join_table"
 const CREATE_PRIVATE_TABLE := "create_private_table"
 const JOIN_PRIVATE_TABLE := "join_private_table"
+const CREATE_AI_CHALLENGE := "create_ai_challenge"
 const TABLE_SNAPSHOT := "table_snapshot"
 const PRIVATE_SNAPSHOT := "private_snapshot"
 const SIT_DOWN_RESULT := "sit_down_result"
@@ -43,6 +44,8 @@ const TABLE_CREATED := "table_created"
 const TABLE_JOINED := "table_joined"
 const PRIVATE_TABLE_CREATED := "private_table_created"
 const PRIVATE_TABLE_JOINED := "private_table_joined"
+const AI_CHALLENGE_CREATED := "ai_challenge_created"
+const AI_CHALLENGE_RESULT := "ai_challenge_result"
 const MOCK_PURCHASE_RESULT := "mock_purchase_result"
 const REPLAY_UNLOCKED := "replay_unlocked"
 const REPLAY_ACCESS := "replay_access"
@@ -195,6 +198,12 @@ static func create_private_table(config: Dictionary = {}) -> Dictionary:
 
 static func join_private_table(room_code: String) -> Dictionary:
 	return _message(JOIN_PRIVATE_TABLE, {"room_code": room_code.strip_edges().to_upper()})
+
+static func create_ai_challenge(request_id: String = "") -> Dictionary:
+	var data := {"challenge_id": "rule_bot_v1"}
+	if request_id != "":
+		data["request_id"] = request_id
+	return _message(CREATE_AI_CHALLENGE, data)
 
 static func _message(type_value: String, extra: Dictionary = {}) -> Dictionary:
 	var result := {"type": type_value}

@@ -27,7 +27,8 @@ export type ClientMessageType =
   | "create_table"
   | "join_table"
   | "create_private_table"
-  | "join_private_table";
+  | "join_private_table"
+  | "create_ai_challenge";
 
 export type ServerMessageType =
   | "hello"
@@ -44,6 +45,8 @@ export type ServerMessageType =
   | "table_joined"
   | "private_table_created"
   | "private_table_joined"
+  | "ai_challenge_created"
+  | "ai_challenge_result"
   | "mock_purchase_result"
   | "replay_unlocked"
   | "replay_access"
@@ -137,6 +140,7 @@ export interface ClientMessage {
   key_version?: number;
   algorithm?: string;
   storage_mode?: string;
+  challenge_id?: string;
 }
 
 export interface ServerMessage {
@@ -173,6 +177,11 @@ export interface ServerMessage {
   amount?: number;
   source?: string;
   replay_id?: string;
+  challenge_id?: string;
+  result?: "victory" | "defeat" | "draw";
+  player_final_stack?: number;
+  bot_final_stack?: number;
+  hands_played?: number;
   replay_key?: string;
   key_version?: number;
   checksum?: string;
@@ -305,6 +314,9 @@ export interface PublicTableSnapshot {
   action_timeout_ms?: number;
   action_deadline_at?: string;
   dev_simulated_player_present?: boolean;
+  mode?: "ai_challenge" | string;
+  challenge_id?: string;
+  wallet_impact?: boolean;
   is_public: boolean;
   created_at: string;
   seats?: PublicSeatSnapshot[];
