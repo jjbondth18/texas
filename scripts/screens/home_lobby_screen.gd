@@ -22,6 +22,7 @@ const MAIN_LEFT := 360.0
 const MAIN_RIGHT := 70.0
 const ROOM_BROWSER_COL_WIDTHS := [320, 200, 200, 260, 160]
 const DEFAULT_ACTION_TIME_SECONDS := 60
+const TABLE_LAUNCH_TIMEOUT_SECONDS := 12
 const DEFAULT_QUICK_PUBLIC_TABLE_CONFIG := {
 	"buy_in": 10000,
 	"small_blind": 50,
@@ -96,6 +97,13 @@ var _fade_overlay: ColorRect
 var _launch_transition_label: Label
 var _launch_transition_tween: Tween
 var _is_launching_table := false
+var _table_launch_generation := 0
+var _table_launch_pending := false
+var _table_launch_request_id := ""
+var _table_launch_request_type := ""
+var _table_launch_expected_response := ""
+var _table_launch_pending_room_id := ""
+var _table_launch_deadline_msec := 0
 
 const MockDataProvider := preload("res://scripts/demo/mock_data_provider.gd")
 const ScreenNavigator := preload("res://scripts/app/screen_navigator.gd")
@@ -1293,10 +1301,10 @@ func _start_quick_play_from_setup() -> void:
 		return
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
 		_hide_quick_play_setup()
-		_start_table_launch_transition("Finding server table...", func() -> void:
+		_begin_server_table_launch_request("quick_join_table", "Finding server table...", "table_joined", "", func(request_id: String) -> void:
 			var quick_config: Dictionary = _quick_server_table_config()
 			_log_quick_table_candidates(quick_config)
-			_profile_ws_client.quick_join_table(quick_config)
+			_profile_ws_client.quick_join_table(quick_config, request_id)
 		)
 		return
 	var table_type := "public_gem" if currency == "gems" else "public_chip"
@@ -1492,6 +1500,8 @@ func _on_profile_server_connected() -> void:
 func _on_profile_server_disconnected() -> void:
 	_profile_server_connected = false
 	_profile_server_wallet_synced = false
+	if _table_launch_pending:
+		_cancel_table_launch_request("Connection lost. Please try again.")
 	if current_state == LobbyState.ROOM_BROWSER:
 		_refresh_room_browser_rows()
 
@@ -1548,7 +1558,12 @@ func _on_avatar_catalog_received(catalog: Array) -> void:
 			_avatar_catalog_by_id[avatar_id] = item
 	_refresh_avatar_gallery()
 
-func _on_profile_server_error(message: String) -> void:
+func _on_profile_server_error(message: String, request_id: String = "") -> void:
+	if _table_launch_pending:
+		if request_id != "" and request_id != _table_launch_request_id:
+			return
+		_cancel_table_launch_request(_server_lobby_error_text(message))
+		return
 	if message != "":
 		_show_toast("Server\n%s", [_server_lobby_error_text(message)], 2.8)
 	if not _pending_replay_unlock_record.is_empty() and message in ["insufficient_gems", "replay_access_denied", "replay_not_found", "replay_key_missing", "replay_unlock_failed"]:
@@ -1610,10 +1625,16 @@ func _on_server_table_list_received(tables: Array) -> void:
 	print("[ClientTableList] received count=%d" % _server_public_tables.size())
 	_refresh_room_browser_rows()
 
-func _on_server_table_created(room_id: String, table_info: Dictionary) -> void:
+func _on_server_table_created(room_id: String, table_info: Dictionary, request_id: String = "") -> void:
+	if not _is_current_table_launch_request(request_id, "table_created"):
+		return
+	_clear_table_launch_request()
 	_open_server_table(room_id, table_info, 5)
 
-func _on_server_table_joined(room_id: String, table_info: Dictionary) -> void:
+func _on_server_table_joined(room_id: String, table_info: Dictionary, request_id: String = "") -> void:
+	if not _is_current_table_launch_request(request_id, "table_joined"):
+		return
+	_clear_table_launch_request()
 	_open_server_table(room_id, table_info, -1)
 
 func _open_server_table(room_id: String, table_info: Dictionary, requested_seat_index: int = 0) -> void:
@@ -1873,6 +1894,57 @@ func _open_backend_table(table_context: Dictionary) -> void:
 		return
 	ScreenNavigator.open_poker_table_with_context(get_tree(), table_context)
 
+func _begin_server_table_launch_request(request_type: String, label_text: String, expected_response: String, pending_room_id: String, send_callable: Callable) -> void:
+	if _table_launch_pending or _is_launching_table:
+		return
+	_table_launch_generation += 1
+	var request_id := "table_launch_%d_%d" % [_table_launch_generation, Time.get_ticks_msec()]
+	_table_launch_pending = true
+	_table_launch_request_id = request_id
+	_table_launch_request_type = request_type
+	_table_launch_expected_response = expected_response
+	_table_launch_pending_room_id = pending_room_id
+	_table_launch_deadline_msec = Time.get_ticks_msec() + int(TABLE_LAUNCH_TIMEOUT_SECONDS * 1000)
+	TableLaunchContext.clear_table_session()
+	_start_table_launch_transition(label_text, func() -> void:
+		if not _is_current_table_launch_request(request_id, expected_response):
+			return
+		send_callable.call(request_id)
+	)
+
+func _is_current_table_launch_request(request_id: String, response_type: String = "") -> bool:
+	if not _table_launch_pending:
+		return false
+	if request_id == "" or request_id != _table_launch_request_id:
+		return false
+	if response_type != "" and _table_launch_expected_response != "" and response_type != _table_launch_expected_response:
+		return false
+	return true
+
+func _clear_table_launch_request() -> void:
+	_table_launch_pending = false
+	_table_launch_request_id = ""
+	_table_launch_request_type = ""
+	_table_launch_expected_response = ""
+	_table_launch_pending_room_id = ""
+	_table_launch_deadline_msec = 0
+
+func _cancel_table_launch_request(message: String) -> void:
+	if not _table_launch_pending and not _is_launching_table:
+		return
+	_clear_table_launch_request()
+	TableLaunchContext.clear_table_session()
+	_finish_table_launch_transition()
+	if message != "":
+		_show_toast(message, [], 3.0)
+
+func _update_table_launch_timeout() -> void:
+	if not _table_launch_pending:
+		return
+	if Time.get_ticks_msec() < _table_launch_deadline_msec:
+		return
+	_cancel_table_launch_request("Connection timed out. Please try again.")
+
 func _start_table_launch_transition(label_text: String, launch_callable: Callable) -> void:
 	if _is_launching_table:
 		return
@@ -1922,8 +1994,8 @@ func _join_private_room_by_code() -> void:
 		_show_toast(_t("friends.enter_room_code"))
 		return
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
-		_start_table_launch_transition(_t("friends.joining_private_room"), func() -> void:
-			_profile_ws_client.join_private_table(room_code)
+		_begin_server_table_launch_request("join_private_table", _t("friends.joining_private_room"), "table_joined", room_code, func(request_id: String) -> void:
+			_profile_ws_client.join_private_table(room_code, request_id)
 		)
 		return
 	_start_table_launch_transition(_t("friends.joining_private_room"), func() -> void:
@@ -1947,7 +2019,7 @@ func _confirm_public_table_setup() -> void:
 		return
 	_hide_table_creation_setup_panels()
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
-		_start_table_launch_transition(_t("browser.creating_public_table"), func() -> void:
+		_begin_server_table_launch_request("create_table", _t("browser.creating_public_table"), "table_created", "", func(request_id: String) -> void:
 			_profile_ws_client.create_table("%s's Table" % PlayerProfileScript.get_player_name(_player_profile), {
 				"table_type": "public_chip",
 				"currency": "chip",
@@ -1959,7 +2031,7 @@ func _confirm_public_table_setup() -> void:
 				"max_players": int(_public_table_setup_values.get("max_players", 6)),
 				"allow_quick_join": true,
 				"is_public": true,
-			})
+			}, request_id)
 		)
 		return
 	_reload_player_profile()
@@ -1981,8 +2053,8 @@ func _confirm_private_room_setup() -> void:
 		return
 	_hide_table_creation_setup_panels()
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
-		_start_table_launch_transition(_t("friends.creating_private_room"), func() -> void:
-			_profile_ws_client.create_private_table(_private_room_server_config_from_values())
+		_begin_server_table_launch_request("create_private_table", _t("friends.creating_private_room"), "table_created", "", func(request_id: String) -> void:
+			_profile_ws_client.create_private_table(_private_room_server_config_from_values(), request_id)
 		)
 		return
 	_start_table_launch_transition(_t("friends.creating_private_room"), func() -> void:
@@ -2245,6 +2317,7 @@ func _build_cta_button() -> void:
 	_lobby_ui_root.add_child(_cta_button)
 
 func _process(delta: float) -> void:
+	_update_table_launch_timeout()
 	if not _expanded and _cta_button and _cta_button.visible:
 		_cta_float_time += delta
 		var float_offset := sin(_cta_float_time * 2.2) * 6.0
@@ -2269,8 +2342,8 @@ func _on_join_pressed(room_id: String) -> void:
 		if not _can_afford_public_buy_in(buy_in):
 			_show_toast(_t("table.not_enough_buyin_chips"))
 			return
-		_start_table_launch_transition(_t("browser.joining_server_table"), func() -> void:
-			_profile_ws_client.join_table(room_id)
+		_begin_server_table_launch_request("join_table", _t("browser.joining_server_table"), "table_joined", room_id, func(request_id: String) -> void:
+			_profile_ws_client.join_table(room_id, request_id)
 		)
 		return
 	_start_table_launch_transition(_t("browser.joining_public_table"), func() -> void:

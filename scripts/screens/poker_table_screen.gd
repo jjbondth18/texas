@@ -56,6 +56,7 @@ const SERVER_UI_WARNING_THROTTLE_MS := 1000
 const SHOWDOWN_REVEAL_HOLD_SECONDS := 5.0
 const FOLD_WIN_HOLD_SECONDS := 2.5
 const EXIT_SETTLEMENT_TIMEOUT_SECONDS := 6.0
+const TABLE_BOOT_TIMEOUT_SECONDS := 15
 const DEV_SIMULATED_START_BLOCK_MESSAGE := "Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot."
 
 var snapshot := {}
@@ -178,6 +179,8 @@ var _server_private_snapshot: Dictionary = {}
 var _server_last_error := ""
 var _server_latest_ui_snapshot: Dictionary = {}
 var _server_snapshot_initialized := false
+var _server_boot_deadline_msec := 0
+var _server_boot_completed := false
 var _server_pending_action_events: Array = []
 var _server_pending_event_sequences := {}
 var _server_played_event_sequences := {}
@@ -260,6 +263,7 @@ func _input(event: InputEvent) -> void:
 				_reset_test_table()
 
 func _process(_delta: float) -> void:
+	_update_server_boot_timeout()
 	_update_action_timer_ui()
 
 func _notification(what: int) -> void:
@@ -596,6 +600,8 @@ func _boot_server_authoritative_table() -> void:
 	_server_last_error = ""
 	_server_latest_ui_snapshot = {}
 	_server_snapshot_initialized = false
+	_server_boot_deadline_msec = Time.get_ticks_msec() + int(TABLE_BOOT_TIMEOUT_SECONDS * 1000)
+	_server_boot_completed = false
 	_server_pending_action_events.clear()
 	_server_pending_event_sequences.clear()
 	_server_played_event_sequences.clear()
@@ -652,6 +658,28 @@ func _connect_authoritative_server() -> void:
 		return
 	_append_session_log("Connecting to authoritative server %s" % server_url)
 
+func _mark_server_boot_complete(reason: String) -> void:
+	if _server_boot_completed:
+		return
+	_server_boot_completed = true
+	_server_boot_deadline_msec = 0
+	if reason != "":
+		_append_session_log("Server table boot complete: %s" % reason)
+
+func _update_server_boot_timeout() -> void:
+	if not server_authoritative or _server_boot_completed or _server_boot_deadline_msec <= 0:
+		return
+	if Time.get_ticks_msec() < _server_boot_deadline_msec:
+		return
+	_server_boot_completed = true
+	_server_boot_deadline_msec = 0
+	var message := "Connection timed out. Please try again."
+	_append_session_log("Server table boot timeout. Returning home.")
+	if _poker_ws_client != null and _server_connected and _server_room_id != "" and (_server_sit_down_requested or _server_seat_confirmed):
+		_send_server_message(_poker_ws_client.cash_out(), "cash_out after boot timeout")
+	TableLaunchContext.set_pending_launch_error(message)
+	call_deferred("_complete_return_home")
+
 func _on_server_connected() -> void:
 	_server_connected = true
 	_append_session_log("Connected to authoritative server.")
@@ -678,6 +706,7 @@ func _on_server_hello_received(player_id: String, room_id: String, reconnected_t
 		_server_room_id = room_id
 		_append_session_log("Authoritative room_id: %s" % _server_room_id)
 	if reconnected_to_table:
+		_mark_server_boot_complete("reconnected_to_table")
 		_server_setup_done = true
 		_server_sit_down_requested = false
 		_server_sit_down_pending = false
@@ -803,11 +832,11 @@ func _server_create_table_config() -> Dictionary:
 		"is_public": true,
 	}
 
-func _on_server_table_created(room_id: String, table_info: Dictionary) -> void:
+func _on_server_table_created(room_id: String, table_info: Dictionary, _request_id: String = "") -> void:
 	_apply_server_table_info(room_id, table_info)
 	_try_server_sit_down()
 
-func _on_server_table_joined(room_id: String, table_info: Dictionary) -> void:
+func _on_server_table_joined(room_id: String, table_info: Dictionary, _request_id: String = "") -> void:
 	_apply_server_table_info(room_id, table_info)
 	_try_server_sit_down()
 
@@ -869,6 +898,7 @@ func _on_server_sit_down_result(ok: bool, room_id: String, seat_index: int, play
 	if player_id != "":
 		_server_local_player_id = player_id
 	if ok:
+		_mark_server_boot_complete("sit_down accepted")
 		_server_sit_down_pending = false
 		_server_sit_down_failed = false
 		_server_sit_down_error = ""
@@ -909,6 +939,7 @@ func _server_sit_down_failure_message(reason: String, wallet_chips: int = -1, re
 	return _tf("table.failed_sit_down_reason", {"reason": reason})
 
 func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
+	_mark_server_boot_complete("table snapshot")
 	var apply_start := Time.get_ticks_msec()
 	_server_last_error = ""
 	_server_waiting_for_action_ack = false
@@ -957,6 +988,7 @@ func _update_server_seat_confirmation_from_snapshot(ui_snapshot: Dictionary) -> 
 			print("[AuthoritativeSnapshot] snapshot has no occupied seats")
 
 func _on_server_private_snapshot_received(private_snapshot: Dictionary) -> void:
+	_mark_server_boot_complete("private snapshot")
 	_server_private_snapshot = private_snapshot.duplicate(true)
 	if _server_table_snapshot == null:
 		_server_table_snapshot = ServerTableSnapshotScript.new()
@@ -970,7 +1002,7 @@ func _on_server_private_snapshot_received(private_snapshot: Dictionary) -> void:
 		_handle_server_session_complete_state(snapshot)
 		_warn_if_server_ui_slow("server private snapshot apply", apply_start, SERVER_UI_SLOW_APPLY_WARNING_MS)
 
-func _on_server_error(message: String) -> void:
+func _on_server_error(message: String, _request_id: String = "") -> void:
 	_server_last_error = message
 	_server_waiting_for_action_ack = false
 	if _server_leave_return_pending:
@@ -989,6 +1021,13 @@ func _on_server_error(message: String) -> void:
 		_server_sit_down_failed = true
 		_server_sit_down_error = message
 		_server_local_seat_index = -1
+	if server_authoritative and not _server_boot_completed:
+		_server_boot_completed = true
+		_server_boot_deadline_msec = 0
+		TableLaunchContext.set_pending_launch_error("Connection timed out. Please try again.")
+		_append_session_log("Server table boot failed: %s" % message)
+		call_deferred("_complete_return_home")
+		return
 	_append_session_log("Server error: %s" % message)
 	if _server_table_snapshot != null:
 		_server_latest_ui_snapshot = _server_snapshot_to_ui_snapshot(_server_table_snapshot.to_dict(), _server_private_snapshot)

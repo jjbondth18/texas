@@ -22,11 +22,14 @@ wss.on("connection", (ws) => {
   const client = manager.connect(ws);
   ws.send(JSON.stringify({ type: "hello", player_id: client.id } satisfies ServerMessage));
   ws.on("message", (raw) => {
+    let requestId: string | undefined;
     try {
-      manager.handle(client.id, JSON.parse(raw.toString()) as ClientMessage);
+      const message = JSON.parse(raw.toString()) as ClientMessage;
+      requestId = message.request_id;
+      manager.handle(client.id, message);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      ws.send(JSON.stringify({ type: "error", error: errorMessage, error_code: errorMessage } satisfies ServerMessage));
+      ws.send(JSON.stringify({ type: "error", request_id: requestId, error: errorMessage, error_code: errorMessage } satisfies ServerMessage));
     }
   });
   ws.on("close", () => manager.disconnect(client.id));

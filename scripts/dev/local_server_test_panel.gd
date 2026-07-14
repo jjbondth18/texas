@@ -247,7 +247,7 @@ func _on_private_snapshot_received(snapshot: Dictionary) -> void:
 	_last_private_snapshot = snapshot.duplicate(true)
 	_render_private_snapshot()
 
-func _on_server_error(message: String) -> void:
+func _on_server_error(message: String, _request_id: String = "") -> void:
 	_show_error(message)
 
 func _on_message_received(message: Dictionary) -> void:

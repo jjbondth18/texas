@@ -326,15 +326,16 @@ const staleQuickMessages: unknown[] = [];
 const staleQuickWs = { OPEN: 1, readyState: 1, send: (data: string) => staleQuickMessages.push(JSON.parse(data)) };
 const staleQuickClient = manager.connect(staleQuickWs as any);
 manager.handle(staleQuickClient.id, { type: "hello", player_id: "quick_stale_hand_over", name: "Quick Stale Hand Over" });
-manager.handle("quick_stale_hand_over", { type: "quick_join_table", buy_in: 20000, small_blind: 50, big_blind: 100, hand_count: 10, max_players: 6 });
+manager.handle("quick_stale_hand_over", { type: "quick_join_table", request_id: "quick-timeout-smoke", buy_in: 20000, small_blind: 50, big_blind: 100, hand_count: 10, max_players: 6 });
 const staleQuickRoomId = manager.getClient("quick_stale_hand_over")?.roomId || "";
 if (staleQuickRoomId === staleHandOverRoom.id) throw new Error("quick_join_table should not return stale empty hand_over rooms");
 const staleQuickRoom = manager.getRoom(staleQuickRoomId);
 if (!staleQuickRoom || staleQuickRoom.table.phase !== "waiting") throw new Error("quick_join_table should create a clean waiting room when stale hand_over rooms are ignored");
 const staleQuickMatch = staleQuickMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "quick_table_matched") as
-  | { type: string; room_id?: string; table?: { community_cards?: unknown[]; hand_state?: string; room_state?: string } }
+  | { type: string; request_id?: string; room_id?: string; table?: { community_cards?: unknown[]; hand_state?: string; room_state?: string } }
   | undefined;
 if (!staleQuickMatch || staleQuickMatch.room_id !== staleQuickRoomId) throw new Error("quick_join_table should return the newly matched room id");
+if (staleQuickMatch.request_id !== "quick-timeout-smoke") throw new Error("quick_join_table response should echo request_id");
 if ((staleQuickMatch.table?.community_cards ?? []).length !== 0 || staleQuickMatch.table?.hand_state !== "waiting") throw new Error("quick-created room should not carry stale board or hand state");
 expectThrows("room_not_available", () => manager.handle("quick_stale_hand_over", { type: "join_table", room_id: staleHandOverRoom.id }));
 const staleSitDownWalletBefore = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("quick_stale_hand_over") as { chips: number }).chips;
@@ -382,6 +383,7 @@ manager.handle(privateCreator.id, { type: "hello", player_id: "private_creator",
 privateCreatorMessages.length = 0;
 manager.handle("private_creator", {
   type: "create_private_table",
+  request_id: "private-create-smoke",
   buy_in: 10000,
   small_blind: 50,
   big_blind: 100,
@@ -389,9 +391,10 @@ manager.handle("private_creator", {
   max_players: 6,
 });
 const privateCreated = privateCreatorMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "private_table_created") as
-  | { type: string; room_id?: string; table?: { room_code?: string; is_public?: boolean; table_type?: string; visibility?: string; buy_in?: number; small_blind?: number; big_blind?: number } }
+  | { type: string; request_id?: string; room_id?: string; table?: { room_code?: string; is_public?: boolean; table_type?: string; visibility?: string; buy_in?: number; small_blind?: number; big_blind?: number } }
   | undefined;
 if (!privateCreated?.room_id || !privateCreated.table?.room_code) throw new Error("create_private_table should return a room_id and room_code");
+if (privateCreated.request_id !== "private-create-smoke") throw new Error("create_private_table response should echo request_id");
 if (privateCreated.table.is_public !== false || privateCreated.table.table_type !== "private_chip" || privateCreated.table.visibility !== "private") throw new Error("private table snapshot should be private_chip/private");
 if (!/^[A-Z2-9]{4,6}$/.test(privateCreated.table.room_code)) throw new Error("private room code should be a short shareable code");
 if (Number(privateCreated.table.buy_in) !== 10000 || Number(privateCreated.table.small_blind) !== 50 || Number(privateCreated.table.big_blind) !== 100) throw new Error("private room should preserve selected setup config");
@@ -405,11 +408,12 @@ const privateJoinerMessages: unknown[] = [];
 const privateJoinerWs = { OPEN: 1, readyState: 1, send: (data: string) => privateJoinerMessages.push(JSON.parse(data)) };
 const privateJoiner = manager.connect(privateJoinerWs as any);
 manager.handle(privateJoiner.id, { type: "hello", player_id: "private_joiner", name: "Private Joiner" });
-manager.handle("private_joiner", { type: "join_private_table", room_code: privateCreated.table.room_code });
+manager.handle("private_joiner", { type: "join_private_table", request_id: "private-join-smoke", room_code: privateCreated.table.room_code });
 const privateJoined = privateJoinerMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "private_table_joined") as
-  | { type: string; room_id?: string; table?: { room_code?: string } }
+  | { type: string; request_id?: string; room_id?: string; table?: { room_code?: string } }
   | undefined;
 if (privateJoined?.room_id !== privateCreated.room_id || privateJoined.table?.room_code !== privateCreated.table.room_code) throw new Error("join_private_table should join by room code");
+if (privateJoined.request_id !== "private-join-smoke") throw new Error("join_private_table response should echo request_id");
 manager.handle("private_joiner", { type: "sit_down", room_id: privateCreated.room_id, seat_index: -1 });
 if (privateRoom.table.getSeatByPlayer("private_joiner")?.seatIndex !== 8) throw new Error("private second player should sit at objective seat 8");
 manager.handle("private_creator", { type: "ready", room_id: privateCreated.room_id, ready: true });

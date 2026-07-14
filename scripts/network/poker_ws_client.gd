@@ -15,15 +15,15 @@ signal daily_bonus_awarded(chips: int, xp: int, gems: int)
 signal daily_bonus_claim_failed(reason: String)
 signal avatar_catalog_received(catalog: Array)
 signal table_list_received(tables: Array)
-signal table_created(room_id: String, table_info: Dictionary)
-signal table_joined(room_id: String, table_info: Dictionary)
+signal table_created(room_id: String, table_info: Dictionary, request_id: String)
+signal table_joined(room_id: String, table_info: Dictionary, request_id: String)
 signal mock_purchase_result_received(ok: bool, currency: String, amount: int, wallet: Dictionary)
 signal replay_unlocked_received(replay_id: String, replay_key: String, key_version: int, checksum: String, already_unlocked: bool, wallet: Dictionary)
 signal start_ai_warmup_result_received(ok: bool, room_id: String, reason: String)
 signal sit_down_result_received(ok: bool, room_id: String, seat_index: int, player_id: String, reason: String, wallet_chips: int, required_chips: int)
 signal table_snapshot_received(snapshot: Dictionary)
 signal private_snapshot_received(snapshot: Dictionary)
-signal server_error(message: String)
+signal server_error(message: String, request_id: String)
 signal message_received(message: Dictionary)
 
 var url := NetworkConfigScript.server_url()
@@ -63,7 +63,7 @@ func poll() -> void:
 
 func send_message(message: Dictionary) -> int:
 	if _peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
-		server_error.emit("WebSocket is not connected")
+		server_error.emit("WebSocket is not connected", "")
 		return ERR_UNAVAILABLE
 	return _peer.send_text(PokerProtocolScript.encode(message))
 
@@ -148,21 +148,21 @@ func unlock_replay(replay_id: String) -> int:
 func list_tables() -> int:
 	return send_message(PokerProtocolScript.list_tables())
 
-func quick_join_table(config: Dictionary = {}) -> int:
-	return send_message(PokerProtocolScript.quick_join_table(config))
+func quick_join_table(config: Dictionary = {}, request_id: String = "") -> int:
+	return send_message(PokerProtocolScript.quick_join_table(config, request_id))
 
-func create_table(table_name: String = "", config: Dictionary = {}) -> int:
-	return send_message(PokerProtocolScript.create_table(table_name, config))
+func create_table(table_name: String = "", config: Dictionary = {}, request_id: String = "") -> int:
+	return send_message(PokerProtocolScript.create_table(table_name, config, request_id))
 
-func join_table(target_room_id: String) -> int:
+func join_table(target_room_id: String, request_id: String = "") -> int:
 	room_id = target_room_id
-	return send_message(PokerProtocolScript.join_table(target_room_id))
+	return send_message(PokerProtocolScript.join_table(target_room_id, request_id))
 
-func create_private_table(config: Dictionary = {}) -> int:
-	return send_message(PokerProtocolScript.create_private_table(config))
+func create_private_table(config: Dictionary = {}, request_id: String = "") -> int:
+	return send_message(PokerProtocolScript.create_private_table(config, request_id))
 
-func join_private_table(room_code: String) -> int:
-	return send_message(PokerProtocolScript.join_private_table(room_code))
+func join_private_table(room_code: String, request_id: String = "") -> int:
+	return send_message(PokerProtocolScript.join_private_table(room_code, request_id))
 
 func _handle_message(message: Dictionary) -> void:
 	message_received.emit(message)
@@ -207,23 +207,23 @@ func _handle_message(message: Dictionary) -> void:
 		PokerProtocolScript.TABLE_CREATED:
 			var created_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = str(message.get("room_id", created_table.get("room_id", room_id)))
-			table_created.emit(room_id, created_table)
+			table_created.emit(room_id, created_table, str(message.get("request_id", "")))
 		PokerProtocolScript.PRIVATE_TABLE_CREATED:
 			var private_created_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = str(message.get("room_id", private_created_table.get("room_id", room_id)))
-			table_created.emit(room_id, private_created_table)
+			table_created.emit(room_id, private_created_table, str(message.get("request_id", "")))
 		PokerProtocolScript.QUICK_TABLE_MATCHED:
 			var quick_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = str(message.get("room_id", quick_table.get("room_id", room_id)))
-			table_joined.emit(room_id, quick_table)
+			table_joined.emit(room_id, quick_table, str(message.get("request_id", "")))
 		PokerProtocolScript.TABLE_JOINED:
 			var joined_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = str(message.get("room_id", joined_table.get("room_id", room_id)))
-			table_joined.emit(room_id, joined_table)
+			table_joined.emit(room_id, joined_table, str(message.get("request_id", "")))
 		PokerProtocolScript.PRIVATE_TABLE_JOINED:
 			var private_joined_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = str(message.get("room_id", private_joined_table.get("room_id", room_id)))
-			table_joined.emit(room_id, private_joined_table)
+			table_joined.emit(room_id, private_joined_table, str(message.get("request_id", "")))
 		PokerProtocolScript.MOCK_PURCHASE_RESULT:
 			var purchase_wallet := Dictionary(message.get("wallet", {})).duplicate(true)
 			if not purchase_wallet.is_empty():
@@ -274,7 +274,7 @@ func _handle_message(message: Dictionary) -> void:
 		PokerProtocolScript.PRIVATE_SNAPSHOT:
 			private_snapshot_received.emit(Dictionary(message.get("snapshot", {})).duplicate(true))
 		PokerProtocolScript.ERROR:
-			server_error.emit(str(message.get("error_code", message.get("error", "Unknown server error"))))
+			server_error.emit(str(message.get("error_code", message.get("error", "Unknown server error"))), str(message.get("request_id", "")))
 
 func _emit_profile_payload(message: Dictionary) -> void:
 	var server_snapshot := Dictionary(message.get("profile_snapshot", {})).duplicate(true)

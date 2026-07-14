@@ -144,34 +144,46 @@ static func unlock_replay(replay_id: String) -> Dictionary:
 static func list_tables() -> Dictionary:
 	return _message(LIST_TABLES)
 
-static func quick_join_table(config: Dictionary = {}) -> Dictionary:
+static func quick_join_table(config: Dictionary = {}, request_id: String = "") -> Dictionary:
 	var data := {}
 	for key in config.keys():
 		data[key] = config[key]
+	if request_id != "":
+		data["request_id"] = request_id
 	return _message(QUICK_JOIN_TABLE, data)
 
-static func create_table(table_name: String = "", config: Dictionary = {}) -> Dictionary:
+static func create_table(table_name: String = "", config: Dictionary = {}, request_id: String = "") -> Dictionary:
 	var data := {}
 	if table_name != "":
 		data["table_name"] = table_name
 	for key in config.keys():
 		data[key] = config[key]
+	if request_id != "":
+		data["request_id"] = request_id
 	return _message(CREATE_TABLE, data)
 
-static func join_table(room_id: String) -> Dictionary:
-	return _message(JOIN_TABLE, {"room_id": room_id})
+static func join_table(room_id: String, request_id: String = "") -> Dictionary:
+	var data := {"room_id": room_id}
+	if request_id != "":
+		data["request_id"] = request_id
+	return _message(JOIN_TABLE, data)
 
-static func create_private_table(config: Dictionary = {}) -> Dictionary:
+static func create_private_table(config: Dictionary = {}, request_id: String = "") -> Dictionary:
 	var data := {}
 	for key in config.keys():
 		data[key] = config[key]
 	data["is_public"] = false
 	if not data.has("table_type"):
 		data["table_type"] = "private_chip"
+	if request_id != "":
+		data["request_id"] = request_id
 	return _message(CREATE_PRIVATE_TABLE, data)
 
-static func join_private_table(room_code: String) -> Dictionary:
-	return _message(JOIN_PRIVATE_TABLE, {"room_code": room_code.strip_edges().to_upper()})
+static func join_private_table(room_code: String, request_id: String = "") -> Dictionary:
+	var data := {"room_code": room_code.strip_edges().to_upper()}
+	if request_id != "":
+		data["request_id"] = request_id
+	return _message(JOIN_PRIVATE_TABLE, data)
 
 static func _message(type_value: String, extra: Dictionary = {}) -> Dictionary:
 	var result := {"type": type_value}

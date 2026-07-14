@@ -27,13 +27,15 @@ wss.on("connection", (ws) => {
   send(ws, { type: "hello", player_id: client.id });
 
   ws.on("message", (raw) => {
+    let requestId: string | undefined;
     try {
       const message = JSON.parse(raw.toString()) as ClientMessage;
+      requestId = message.request_id;
       manager.handle(client.id, message);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       manager.recordLog(`error ${client.id}: ${errorMessage}`);
-      send(ws, { type: "error", error: errorMessage, error_code: errorMessage });
+      send(ws, { type: "error", request_id: requestId, error: errorMessage, error_code: errorMessage });
     }
   });
 
