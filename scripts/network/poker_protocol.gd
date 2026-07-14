@@ -199,8 +199,8 @@ static func create_private_table(config: Dictionary = {}) -> Dictionary:
 static func join_private_table(room_code: String) -> Dictionary:
 	return _message(JOIN_PRIVATE_TABLE, {"room_code": room_code.strip_edges().to_upper()})
 
-static func create_ai_challenge(request_id: String = "") -> Dictionary:
-	var data := {"challenge_id": "rule_bot_v1"}
+static func create_ai_challenge(challenge_id: String = "rookie", request_id: String = "") -> Dictionary:
+	var data := {"challenge_id": challenge_id}
 	if request_id != "":
 		data["request_id"] = request_id
 	return _message(CREATE_AI_CHALLENGE, data)

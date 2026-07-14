@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { legalActions } from "./betting_engine.js";
 import { RoomManager } from "./room_manager.js";
+import { CHALLENGE_SESSION_CONFIGS } from "./ai_challenge/ai_challenge_config.js";
 
 class FakeWs {
   OPEN = 1;
@@ -26,7 +27,7 @@ function setupChallenge(): TestSetup {
   const connected = manager.connect(ws as any);
   const playerId = `challenge_lifecycle_${Date.now()}_${nextId++}`;
   manager.handle(connected.id, { type: "hello", player_id: playerId, name: "Lifecycle Tester" });
-  manager.handle(playerId, { type: "create_ai_challenge" });
+  manager.handle(playerId, { type: "create_ai_challenge", challenge_id: "rookie" });
   const roomId = manager.getClient(playerId)?.roomId ?? "";
   manager.handle(playerId, { type: "sit_down", room_id: roomId, seat_index: 5, buy_in: 1000 });
   const room = manager.getRoom(roomId) as any;
@@ -81,6 +82,7 @@ for (const [playerChips, botChips, expected] of [
   assert.equal(room.table.handId, 20, "20th hand should not become hand 21");
   const result = resultMessages(ws).at(-1);
   assert.equal(result?.result, expected, `20-hand result should be ${expected}`);
+  if (expected === "victory") assert.equal(result?.settlement_result, "timeout_victory", "hand-limit win should be timeout_victory");
   assert.equal(result?.hands_played, 20, "hands_played should be exactly 20");
   (manager as any).updatePublicRoomProgress(room);
   (manager as any).broadcast(room);
@@ -110,6 +112,7 @@ for (const [playerChips, botChips, expected] of [
   assert.equal((playerSeat?.chips ?? 0) + (botSeat?.chips ?? 0) + room.table.totalPot(), 2000, "Play Again should reset table chips before posting blinds");
   assert.equal(room.table.totalPot(), 30, "Play Again should immediately post challenge blinds for the new hand");
   assert.equal(resultMessages(ws).length, 1, "Play Again should not resend the old result");
+  assert.equal(room.entryFeeCharged, true, "Play Again should charge a new entry fee");
 }
 
 {
@@ -149,7 +152,7 @@ for (const [playerChips, botChips, expected] of [
   (manager as any).updatePublicRoomProgress(room);
   manager.handle(playerId, { type: "cash_out", room_id: room.id });
   const after = manager.adminSnapshot(false);
-  assert.equal(after.total_wallet_chips, before.total_wallet_chips, "full Challenge lifecycle should not change wallet chips");
+  assert.equal(Number(after.total_wallet_chips), Number(before.total_wallet_chips) + CHALLENGE_SESSION_CONFIGS.rookie.entryFeeChips * 2, "knockout victory should pay 2x entry after fee was already charged");
   assert.equal(after.total_wallet_gems, before.total_wallet_gems, "full Challenge lifecycle should not change gems");
 }
 

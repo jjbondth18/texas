@@ -61,6 +61,15 @@ var pending_refund := 0
 var last_auto_action := ""
 var host_left_message := ""
 var selected_dealer_id := DEFAULT_DEALER_ID
+var challenge_id := ""
+var challenge_difficulty := ""
+var challenge_entry_fee_chips := 0
+var challenge_wallet_payout_chips := 0
+var challenge_net_result_chips := 0
+var challenge_settlement_result := ""
+var challenge_settlement_reason := ""
+var challenge_settlement_reason_text := ""
+var challenge_opponent_final_stack := 0
 
 func configure_from_context(context: Dictionary) -> void:
 	mode = String(context.get("mode", MODE_QUICK_PLAY))
@@ -103,6 +112,9 @@ func configure_from_context(context: Dictionary) -> void:
 	last_auto_action = String(context.get("last_auto_action", ""))
 	host_left_message = String(context.get("host_left_message", ""))
 	selected_dealer_id = _normalized_dealer_id(String(context.get("selected_dealer_id", DEFAULT_DEALER_ID)))
+	challenge_id = String(context.get("challenge_id", ""))
+	challenge_difficulty = String(context.get("difficulty", context.get("challenge_difficulty", "")))
+	challenge_entry_fee_chips = int(context.get("entry_fee_chips", context.get("challenge_entry_fee_chips", 0)))
 
 func can_start_next_hand() -> bool:
 	if is_session_over:
@@ -311,6 +323,15 @@ func to_dict() -> Dictionary:
 		"last_auto_action": last_auto_action,
 		"host_left_message": host_left_message,
 		"selected_dealer_id": selected_dealer_id,
+		"challenge_id": challenge_id,
+		"challenge_difficulty": challenge_difficulty,
+		"challenge_entry_fee_chips": challenge_entry_fee_chips,
+		"challenge_wallet_payout_chips": challenge_wallet_payout_chips,
+		"challenge_net_result_chips": challenge_net_result_chips,
+		"challenge_settlement_result": challenge_settlement_result,
+		"challenge_settlement_reason": challenge_settlement_reason,
+		"challenge_settlement_reason_text": challenge_settlement_reason_text,
+		"challenge_opponent_final_stack": challenge_opponent_final_stack,
 	}
 
 static func from_context(context: Dictionary) -> TableSession:

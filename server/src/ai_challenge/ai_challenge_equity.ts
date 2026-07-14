@@ -1,8 +1,8 @@
 import { createDeck } from "../deck.js";
 import { compareEvaluations, evaluateBestHand } from "../hand_evaluator.js";
 import type { Card } from "../protocol.js";
-import { CHALLENGE_BOT_CONFIG } from "./ai_challenge_config.js";
-import type { MadeAndDrawInfo } from "./ai_challenge_types.js";
+import { CHALLENGE_SESSION_CONFIG } from "./ai_challenge_config.js";
+import type { ChallengeBotTuning, MadeAndDrawInfo } from "./ai_challenge_types.js";
 
 const RANK_VALUE: Record<string, number> = {
   "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9,
@@ -14,6 +14,7 @@ export interface EquityResult {
   samples: number;
   elapsedMs: number;
   timedOut: boolean;
+  source: "disabled" | "monte_carlo";
 }
 
 export function estimatePostflopEquity(params: {
@@ -21,11 +22,18 @@ export function estimatePostflopEquity(params: {
   communityCards: Card[];
   seed: number;
   samples?: number;
+  minimumSamples?: number;
+  maximumSamples?: number;
   timeBudgetMs?: number;
+  tuning?: ChallengeBotTuning;
 }): EquityResult {
-  const requested = params.samples ?? CHALLENGE_BOT_CONFIG.equity.samples;
-  const targetSamples = clampInt(requested, CHALLENGE_BOT_CONFIG.equity.minimumSamples, CHALLENGE_BOT_CONFIG.equity.maximumSamples);
-  const timeBudgetMs = params.timeBudgetMs ?? CHALLENGE_BOT_CONFIG.equity.timeBudgetMs;
+  const tuning = params.tuning;
+  const requested = params.samples ?? tuning?.equitySamples ?? CHALLENGE_SESSION_CONFIG.bot.equitySamples;
+  if (requested <= 0) return { equity: 0.5, samples: 0, elapsedMs: 0, timedOut: false, source: "disabled" };
+  const minimumSamples = params.minimumSamples ?? tuning?.minimumSamples ?? CHALLENGE_SESSION_CONFIG.bot.minimumSamples;
+  const maximumSamples = params.maximumSamples ?? tuning?.maximumSamples ?? CHALLENGE_SESSION_CONFIG.bot.maximumSamples;
+  const targetSamples = clampInt(requested, minimumSamples, maximumSamples);
+  const timeBudgetMs = params.timeBudgetMs ?? tuning?.timeBudgetMs ?? CHALLENGE_SESSION_CONFIG.bot.timeBudgetMs;
   const started = Date.now();
   const usedCodes = new Set([...params.botHoleCards, ...params.communityCards].map((card) => card.code));
   const baseDeck = createDeck().filter((card) => !usedCodes.has(card.code));
@@ -36,7 +44,7 @@ export function estimatePostflopEquity(params: {
   let timedOut = false;
 
   for (let i = 0; i < targetSamples; i += 1) {
-    if (completed >= CHALLENGE_BOT_CONFIG.equity.minimumSamples && Date.now() - started >= timeBudgetMs) {
+    if (completed >= minimumSamples && Date.now() - started >= timeBudgetMs) {
       timedOut = true;
       break;
     }
@@ -63,6 +71,7 @@ export function estimatePostflopEquity(params: {
     samples,
     elapsedMs: Date.now() - started,
     timedOut,
+    source: "monte_carlo",
   };
 }
 

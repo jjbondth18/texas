@@ -71,6 +71,7 @@ export type ErrorCode =
   | "room_not_found"
   | "room_not_available"
   | "table_full"
+  | "invalid_challenge_id"
   | "invalid_table_config"
   | "invalid_identity_provider"
   | "steam_ticket_required"
@@ -199,6 +200,28 @@ export interface ServerMessage {
   is_ai_warmup?: boolean;
   local_warmup?: boolean;
   host_in_local_warmup?: boolean;
+  challenge_catalog?: ChallengeCatalogItemSnapshot[];
+  display_result?: "victory" | "defeat" | "draw";
+  settlement_result?: "knockout_victory" | "timeout_victory" | "defeat" | "draw" | "prestart_cancelled";
+  settlement_reason?: string;
+  settlement_reason_text?: string;
+  difficulty?: string;
+  entry_fee_chips?: number;
+  wallet_payout_chips?: number;
+  net_result_chips?: number;
+  max_hands?: number;
+}
+
+export interface ChallengeCatalogItemSnapshot {
+  challenge_id: string;
+  display_name: string;
+  starting_stack: number;
+  small_blind: number;
+  big_blind: number;
+  max_hands: number;
+  entry_fee_chips: number;
+  timeout_win_profit_chips: number;
+  knockout_win_profit_chips: number;
 }
 
 export interface DailyBonusStatusSnapshot {
@@ -316,6 +339,11 @@ export interface PublicTableSnapshot {
   dev_simulated_player_present?: boolean;
   mode?: "ai_challenge" | string;
   challenge_id?: string;
+  difficulty?: string;
+  challenge_state?: string;
+  entry_fee_chips?: number;
+  timeout_win_profit_chips?: number;
+  knockout_win_profit_chips?: number;
   wallet_impact?: boolean;
   is_public: boolean;
   created_at: string;

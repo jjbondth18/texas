@@ -15,6 +15,7 @@ const allowedPolicyRefs = new Set([
   "server/src/room_manager.ts",
   "server/src/ai_challenge_policy_test.ts",
   "server/src/ai_challenge_performance_test.ts",
+  "server/src/ai_challenge_balance_test.ts",
   "server/src/ai_challenge_isolation_test.ts",
 ]);
 for (const ref of policyRefs) {

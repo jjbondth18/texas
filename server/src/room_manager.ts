@@ -4,9 +4,22 @@ import type { ClientMessage, PrivateSnapshot, PublicTableSnapshot, ServerMessage
 import { applyPlayerAction, legalActions, processAutomaticTurns } from "./betting_engine.js";
 import { settleHand } from "./showdown_engine.js";
 import { TableState, type Player, type Seat } from "./table_state.js";
-import { CHALLENGE_SESSION_CONFIG } from "./ai_challenge/ai_challenge_config.js";
+import {
+  challengeCatalog,
+  challengeConfigById,
+  challengePayout,
+  displayResultForSettlement,
+  isChallengeId,
+  settlementReasonText,
+} from "./ai_challenge/ai_challenge_config.js";
 import { decideChallengeBotAction } from "./ai_challenge/ai_challenge_policy.js";
-import type { ChallengeBotContext, ChallengeBotDecision } from "./ai_challenge/ai_challenge_types.js";
+import type {
+  ChallengeBotContext,
+  ChallengeBotDecision,
+  ChallengeState,
+  ChallengeSettlementReason,
+  ChallengeSettlementResult,
+} from "./ai_challenge/ai_challenge_types.js";
 import { getDatabase } from "./db/database.js";
 import { AvatarRepository } from "./db/avatar_repository.js";
 import { LoginBonusRepository } from "./db/login_bonus_repository.js";
@@ -73,6 +86,13 @@ interface Room {
   challengeSeed: number;
   challengeDecisionIndex: number;
   challengeResultSent: boolean;
+  challengeState: ChallengeState;
+  entryFeeCharged: boolean;
+  entryFeeRefunded: boolean;
+  settlementApplied: boolean;
+  settlementResult: ChallengeSettlementResult | null;
+  settlementReason: ChallengeSettlementReason | null;
+  walletPayoutChips: number;
   challengeBotTimer?: ReturnType<typeof setTimeout>;
   readyCountdownTimer?: ReturnType<typeof setTimeout>;
   readyCountdownToken: number;
@@ -182,12 +202,8 @@ export class RoomManager {
     const room = client.roomId ? this.rooms.get(client.roomId) : undefined;
     if (room) {
       if (room.mode === "ai_challenge") {
-        this.clearChallengeBotTimer(room);
-        room.table.leaveSeat(client.id);
-        room.clients.delete(client.id);
-        client.roomId = undefined;
+        this.handleChallengePlayerLeave(room, client, "disconnect");
         client.ws = undefined;
-        this.recordLog(`ai_challenge_disconnect_cleanup room_id=${room.id} player_id=${client.id}`);
         return;
       }
       if (this.shouldRefundDisconnectedBeforeOfficialHand(room, client)) {
@@ -210,7 +226,7 @@ export class RoomManager {
     if (message.type === "hello") {
       const hello = this.handleHello(client, message);
       this.recordLog(`hello ${client.id} name=${client.name}`);
-      this.send(client, { type: "hello", request_id: message.request_id, player_id: client.id, server_player_id: client.id, ...hello });
+      this.send(client, { type: "hello", request_id: message.request_id, player_id: client.id, server_player_id: client.id, challenge_catalog: challengeCatalog(), ...hello });
       if (hello.reconnected_to_table && hello.room_id) {
         const room = this.rooms.get(hello.room_id);
         if (room) this.broadcast(room);
@@ -256,9 +272,9 @@ export class RoomManager {
       return;
     }
     if (message.type === "create_ai_challenge") {
-      const room = this.createAiChallengeRoom(client);
+      const room = this.createAiChallengeRoom(client, String(message.challenge_id || ""));
       const table = this.tableSnapshot(room);
-      this.send(client, { type: "ai_challenge_created", request_id: message.request_id, room_id: room.id, table, challenge_id: room.challengeId });
+      this.send(client, { type: "ai_challenge_created", request_id: message.request_id, room_id: room.id, table, challenge_id: room.challengeId, wallet: this.wallets.get(client.id), challenge_catalog: challengeCatalog() });
       this.broadcast(room);
       return;
     }
@@ -491,6 +507,13 @@ export class RoomManager {
       challengeSeed: 0,
       challengeDecisionIndex: 0,
       challengeResultSent: false,
+      challengeState: "creating",
+      entryFeeCharged: false,
+      entryFeeRefunded: false,
+      settlementApplied: false,
+      settlementResult: null,
+      settlementReason: null,
+      walletPayoutChips: 0,
       readyCountdownToken: 0,
       handResultToken: 0,
       handResultShownHandId: 0,
@@ -648,28 +671,46 @@ export class RoomManager {
     return room;
   }
 
-  private createAiChallengeRoom(client: Client): Room {
+  private createAiChallengeRoom(client: Client, challengeIdRaw: string): Room {
+    if (!isChallengeId(challengeIdRaw)) throw new Error("invalid_challenge_id");
+    const existing = client.roomId ? this.rooms.get(client.roomId) : undefined;
+    if (existing?.mode === "ai_challenge" && existing.challengeState !== "completed" && existing.challengeState !== "cancelled") return existing;
+    const config = challengeConfigById(challengeIdRaw);
+    this.wallets.ensure(client.id);
+    const wallet = this.wallets.get(client.id);
+    if (!wallet || wallet.chips < config.entryFeeChips) throw new Error("insufficient_chips");
     const room = this.createRoom({
-      tableName: "AI Challenge",
+      tableName: `AI Challenge: ${config.displayName}`,
       tableType: "public_chip",
       visibility: "private",
       isPublic: false,
-      buyIn: CHALLENGE_SESSION_CONFIG.startingStack,
-      smallBlind: CHALLENGE_SESSION_CONFIG.smallBlind,
-      bigBlind: CHALLENGE_SESSION_CONFIG.bigBlind,
-      handCount: CHALLENGE_SESSION_CONFIG.maxHands,
+      buyIn: config.startingStack,
+      smallBlind: config.smallBlind,
+      bigBlind: config.bigBlind,
+      handCount: config.maxHands,
       maxPlayers: 2,
     });
     room.mode = "ai_challenge";
-    room.challengeId = CHALLENGE_SESSION_CONFIG.challengeId;
-    room.walletImpact = CHALLENGE_SESSION_CONFIG.walletImpact;
+    room.challengeId = config.challengeId;
+    room.walletImpact = config.walletImpact;
     room.challengePlayerId = client.id;
     room.challengeBotPlayerId = `challenge_bot_${room.id}`;
     room.challengeSeed = Math.floor(Math.random() * 0x7fffffff);
     room.hostPlayerId = client.id;
-    room.officialHandStarted = true;
-    this.joinRoom(client, room.id);
-    this.recordLog(`ai_challenge_created room_id=${room.id} player_id=${client.id}`);
+    room.officialHandStarted = false;
+    room.challengeState = "creating";
+    try {
+      this.wallets.deductChips(client.id, config.entryFeeChips, { reason: "ai_challenge_entry_fee", relatedRoomId: room.id });
+      room.entryFeeCharged = true;
+      this.joinRoom(client, room.id);
+      room.challengeState = "ready";
+    } catch (error) {
+      this.refundChallengeEntryFee(room, "prestart_failure");
+      this.rooms.delete(room.id);
+      throw error;
+    }
+    this.sendWalletSnapshot(client, room.id);
+    this.recordLog(`ai_challenge_created room_id=${room.id} player_id=${client.id} challenge_id=${config.challengeId} entry_fee=${config.entryFeeChips}`);
     return room;
   }
 
@@ -809,6 +850,7 @@ export class RoomManager {
 
   private tableSnapshot(room: Room): PublicTableSnapshot {
     const roomState = this.publicRoomState(room);
+    const challengeConfig = room.mode === "ai_challenge" ? challengeConfigById(room.challengeId) : undefined;
     return {
       room_id: room.id,
       table_type: room.tableType,
@@ -847,6 +889,11 @@ export class RoomManager {
       dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
       mode: room.mode === "ai_challenge" ? "ai_challenge" : undefined,
       challenge_id: room.challengeId || undefined,
+      difficulty: challengeConfig?.displayName,
+      challenge_state: room.mode === "ai_challenge" ? room.challengeState : undefined,
+      entry_fee_chips: challengeConfig?.entryFeeChips,
+      timeout_win_profit_chips: challengeConfig ? challengePayout(challengeConfig, "timeout_victory").netResultChips : undefined,
+      knockout_win_profit_chips: challengeConfig ? challengePayout(challengeConfig, "knockout_victory").netResultChips : undefined,
       wallet_impact: room.walletImpact,
       is_public: room.isPublic,
       created_at: room.createdAt,
@@ -1104,6 +1151,7 @@ export class RoomManager {
     return {
       ...this.profileBootstrap.getProfileSnapshot(playerId, isNewPlayer),
       replay_economy: REPLAY_ECONOMY_CONFIG,
+      challenge_catalog: challengeCatalog(),
       mock_purchase_allowed: client ? this.canUseMockPurchase(client) : false,
     };
   }
@@ -1457,21 +1505,22 @@ export class RoomManager {
 
   private sitDownAiChallenge(room: Room, client: Client, requestedSeatIndex: number): number {
     if (client.id !== room.challengePlayerId) throw new Error("room_not_available");
+    const config = challengeConfigById(room.challengeId);
     const playerSeatIndex = requestedSeatIndex >= 0 ? requestedSeatIndex : 5;
     const playerSeat = room.table.getSeat(playerSeatIndex);
     if (!playerSeat || playerSeat.playerId) throw new Error("seat is not available");
-    room.table.sitDown(toPlayer(client), playerSeatIndex, CHALLENGE_SESSION_CONFIG.startingStack);
+    room.table.sitDown(toPlayer(client), playerSeatIndex, config.startingStack);
     room.table.setReady(client.id, true);
     const botSeatIndex = playerSeatIndex === 5 ? 8 : 5;
     room.table.sitDown({
       id: room.challengeBotPlayerId,
-      name: "ChallengeRuleBotV1",
+      name: `${config.displayName} Rule Bot`,
       connected: true,
       avatarId: "default",
       isAi: true,
-    }, botSeatIndex, CHALLENGE_SESSION_CONFIG.startingStack);
+    }, botSeatIndex, config.startingStack);
     room.table.setReady(room.challengeBotPlayerId, true);
-    room.table.addAction({ type: "system", action: "ai_challenge", message: "AI Challenge started. Wallet impact: none." });
+    room.table.addAction({ type: "system", action: "ai_challenge", message: `${config.displayName} AI Challenge started. Entry fee paid from wallet; event stacks are table-only.` });
     this.startChallengeHandIfNeeded(room, "challenge_sit_down");
     return playerSeatIndex;
   }
@@ -1737,6 +1786,7 @@ export class RoomManager {
     }
     room.table.startHand(Date.now(), false);
     room.officialHandStarted = true;
+    room.challengeState = "started";
     this.recordLog(`ai_challenge_hand_started room_id=${room.id} reason=${reason} hand_id=${room.table.handId}`);
     this.scheduleChallengeBotIfNeeded(room);
   }
@@ -1752,19 +1802,21 @@ export class RoomManager {
     const bot = room.table.getSeatByPlayer(room.challengeBotPlayerId);
     if (!player || !bot) return true;
     if (player.chips <= 0 || bot.chips <= 0) return true;
-    return room.table.phase === "hand_over" && room.table.handId >= CHALLENGE_SESSION_CONFIG.maxHands;
+    return room.table.phase === "hand_over" && room.table.handId >= challengeConfigById(room.challengeId).maxHands;
   }
 
   private completeChallengeSession(room: Room): void {
     if (room.sessionComplete) return;
     room.sessionComplete = true;
+    room.challengeState = "completed";
     room.table.phase = "session_complete";
     room.table.currentTurnSeat = -1;
     this.clearActionTimer(room);
     this.clearChallengeBotTimer(room);
+    this.applyChallengeSettlement(room, this.challengeSettlementResult(room));
     const payload = this.challengeResultPayload(room);
-    room.table.addAction({ type: "system", action: "ai_challenge_result", message: `AI Challenge complete: ${payload.result}.` });
-    this.recordLog(`ai_challenge_complete room_id=${room.id} result=${payload.result} player_stack=${payload.player_final_stack} bot_stack=${payload.bot_final_stack} hands=${payload.hands_played}`);
+    room.table.addAction({ type: "system", action: "ai_challenge_result", message: `AI Challenge complete: ${payload.display_result}. ${payload.settlement_reason_text}` });
+    this.recordLog(`ai_challenge_complete room_id=${room.id} result=${payload.settlement_result} payout=${payload.wallet_payout_chips} player_stack=${payload.player_final_stack} bot_stack=${payload.bot_final_stack} hands=${payload.hands_played}`);
     this.sendChallengeResult(room);
   }
 
@@ -1789,20 +1841,94 @@ export class RoomManager {
   }
 
   private restartChallengeSession(room: Room): void {
+    const config = challengeConfigById(room.challengeId);
+    const client = this.clients.get(room.challengePlayerId);
+    if (!client) throw new Error("not_seated");
+    this.wallets.ensure(client.id);
+    const wallet = this.wallets.get(client.id);
+    if (!wallet || wallet.chips < config.entryFeeChips) throw new Error("insufficient_chips");
+    this.wallets.deductChips(client.id, config.entryFeeChips, { reason: "ai_challenge_entry_fee", relatedRoomId: room.id });
     room.sessionComplete = false;
-    room.officialHandStarted = true;
+    room.officialHandStarted = false;
+    room.challengeState = "ready";
     room.challengeDecisionIndex = 0;
     room.challengeResultSent = false;
+    room.entryFeeCharged = true;
+    room.entryFeeRefunded = false;
+    room.settlementApplied = false;
+    room.settlementResult = null;
+    room.settlementReason = null;
+    room.walletPayoutChips = 0;
     this.clearChallengeBotTimer(room);
     room.table.resetForNewSession();
     for (const seat of room.table.seats) {
       if (seat.playerId === room.challengePlayerId || seat.playerId === room.challengeBotPlayerId) {
-        seat.chips = CHALLENGE_SESSION_CONFIG.startingStack;
+        seat.chips = config.startingStack;
         seat.ready = true;
         seat.status = "ready";
       }
     }
+    this.sendWalletSnapshot(client, room.id);
     this.startChallengeHandIfNeeded(room, "challenge_restart");
+  }
+
+  private handleChallengePlayerLeave(room: Room, client: Client, source: "cash_out" | "disconnect"): void {
+    if (client.id !== room.challengePlayerId) return;
+    this.clearChallengeBotTimer(room);
+    if (room.challengeState === "creating" || room.challengeState === "ready" || !room.officialHandStarted || room.table.handId <= 0) {
+      this.refundChallengeEntryFee(room, "prestart_failure");
+      room.challengeState = "cancelled";
+      room.sessionComplete = true;
+      room.table.phase = "session_complete";
+    } else if (!room.sessionComplete) {
+      this.applyChallengeSettlement(room, { result: "defeat", reason: "player_left" });
+      room.challengeState = "completed";
+      room.sessionComplete = true;
+      room.table.phase = "session_complete";
+      room.table.currentTurnSeat = -1;
+      this.sendChallengeResult(room);
+    }
+    room.table.leaveSeat(client.id);
+    room.clients.delete(client.id);
+    client.roomId = undefined;
+    this.sendWalletSnapshot(client, room.id);
+    this.recordLog(`ai_challenge_${source}_cleanup room_id=${room.id} player_id=${client.id} state=${room.challengeState}`);
+  }
+
+  private refundChallengeEntryFee(room: Room, reason: ChallengeSettlementReason): void {
+    if (!room.entryFeeCharged || room.entryFeeRefunded) return;
+    const config = challengeConfigById(room.challengeId);
+    this.wallets.addChips(room.challengePlayerId, config.entryFeeChips, { reason: "ai_challenge_entry_refund", relatedRoomId: room.id });
+    room.entryFeeRefunded = true;
+    room.settlementApplied = true;
+    room.settlementResult = "prestart_cancelled";
+    room.settlementReason = reason;
+    room.walletPayoutChips = config.entryFeeChips;
+  }
+
+  private challengeSettlementResult(room: Room): { result: ChallengeSettlementResult; reason: ChallengeSettlementReason } {
+    const player = room.table.getSeatByPlayer(room.challengePlayerId);
+    const bot = room.table.getSeatByPlayer(room.challengeBotPlayerId);
+    const playerStack = Math.max(0, Math.floor(player?.chips ?? 0));
+    const botStack = Math.max(0, Math.floor(bot?.chips ?? 0));
+    if (playerStack <= 0) return { result: "defeat", reason: "player_eliminated" };
+    if (botStack <= 0) return { result: "knockout_victory", reason: "bot_eliminated" };
+    if (playerStack > botStack) return { result: "timeout_victory", reason: "player_ahead_at_hand_limit" };
+    if (playerStack < botStack) return { result: "defeat", reason: "bot_ahead_at_hand_limit" };
+    return { result: "draw", reason: "equal_stacks_at_hand_limit" };
+  }
+
+  private applyChallengeSettlement(room: Room, settlement: { result: ChallengeSettlementResult; reason: ChallengeSettlementReason }): void {
+    if (room.settlementApplied) return;
+    const config = challengeConfigById(room.challengeId);
+    const payout = challengePayout(config, settlement.result);
+    if (payout.walletPayoutChips > 0) {
+      this.wallets.addChips(room.challengePlayerId, payout.walletPayoutChips, { reason: "ai_challenge_payout", relatedRoomId: room.id, relatedHandId: String(room.table.handId) });
+    }
+    room.settlementApplied = true;
+    room.settlementResult = settlement.result;
+    room.settlementReason = settlement.reason;
+    room.walletPayoutChips = payout.walletPayoutChips;
   }
 
   private hasUncontrolledDevSimulatedPlayer(room: Room): boolean {
@@ -1843,10 +1969,7 @@ export class RoomManager {
 
   private cashOut(room: Room, client: Client): void {
     if (room.mode === "ai_challenge") {
-      room.table.leaveSeat(client.id);
-      room.clients.delete(client.id);
-      client.roomId = undefined;
-      this.clearChallengeBotTimer(room);
+      this.handleChallengePlayerLeave(room, client, "cash_out");
       return;
     }
     const seat = room.table.getSeatByPlayer(client.id);
@@ -2083,7 +2206,7 @@ export class RoomManager {
       mode: room.mode === "ai_challenge" ? "ai_challenge" : undefined,
       challenge_id: room.challengeId || undefined,
       wallet_impact: room.walletImpact,
-      ...(room.mode === "ai_challenge" ? this.challengeResultPayload(room) : {}),
+      ...(room.mode === "ai_challenge" && room.sessionComplete ? this.challengeResultPayload(room) : {}),
       seats: this.publicSeatsWithDisconnectGrace(room),
       ...(replayDelivery ? { replay_delivery: replayDelivery } : {}),
       table_info: this.tableSnapshot(room),
@@ -2201,6 +2324,7 @@ export class RoomManager {
       handIndex: room.table.handId,
       decisionIndex: room.challengeDecisionIndex,
       sessionSeed: room.challengeSeed,
+      botTuning: challengeConfigById(room.challengeId).bot,
     };
   }
 
@@ -2217,16 +2341,30 @@ export class RoomManager {
   }
 
   private challengeResultPayload(room: Room) {
+    const config = challengeConfigById(room.challengeId);
     const player = room.table.getSeatByPlayer(room.challengePlayerId);
     const bot = room.table.getSeatByPlayer(room.challengeBotPlayerId);
     const playerStack = Math.max(0, Math.floor(player?.chips ?? 0));
     const botStack = Math.max(0, Math.floor(bot?.chips ?? 0));
-    const result: "victory" | "defeat" | "draw" = playerStack > botStack ? "victory" : playerStack < botStack ? "defeat" : "draw";
+    const settlement = room.settlementResult
+      ? { result: room.settlementResult, reason: room.settlementReason ?? "equal_stacks_at_hand_limit" }
+      : this.challengeSettlementResult(room);
+    const payout = challengePayout(config, settlement.result);
+    const displayResult = displayResultForSettlement(settlement.result);
     return {
-      result,
+      result: displayResult,
+      display_result: displayResult,
+      settlement_result: settlement.result,
+      settlement_reason: settlement.reason,
+      settlement_reason_text: settlementReasonText(settlement.reason),
+      difficulty: config.displayName,
+      entry_fee_chips: config.entryFeeChips,
+      wallet_payout_chips: room.settlementApplied ? room.walletPayoutChips : payout.walletPayoutChips,
+      net_result_chips: (room.settlementApplied ? room.walletPayoutChips : payout.walletPayoutChips) - config.entryFeeChips,
       player_final_stack: playerStack,
       bot_final_stack: botStack,
       hands_played: this.handsPlayed(room),
+      max_hands: config.maxHands,
     };
   }
 
@@ -2238,8 +2376,10 @@ export class RoomManager {
       type: "ai_challenge_result",
       room_id: room.id,
       challenge_id: room.challengeId,
+      wallet: this.wallets.get(room.challengePlayerId),
       ...this.challengeResultPayload(room),
     });
+    this.sendWalletSnapshot(client, room.id);
     room.challengeResultSent = true;
   }
 

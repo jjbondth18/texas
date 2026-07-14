@@ -3010,7 +3010,15 @@ func _handle_server_session_complete_state(source_snapshot: Dictionary) -> void:
 		_table_session.session_end_chips = int(source_snapshot.get("player_final_stack", _table_session.session_end_chips))
 		_table_session.current_table_chips = _table_session.session_end_chips
 		_table_session.session_profit = _table_session.session_end_chips - _table_session.session_start_chips
-		_table_session.end_reason = String(source_snapshot.get("result", "draw")).to_upper()
+		_table_session.end_reason = String(source_snapshot.get("display_result", source_snapshot.get("result", "draw"))).to_upper()
+		_table_session.challenge_difficulty = String(source_snapshot.get("difficulty", _table_session.challenge_difficulty))
+		_table_session.challenge_entry_fee_chips = int(source_snapshot.get("entry_fee_chips", _table_session.challenge_entry_fee_chips))
+		_table_session.challenge_wallet_payout_chips = int(source_snapshot.get("wallet_payout_chips", 0))
+		_table_session.challenge_net_result_chips = int(source_snapshot.get("net_result_chips", _table_session.challenge_wallet_payout_chips - _table_session.challenge_entry_fee_chips))
+		_table_session.challenge_settlement_result = String(source_snapshot.get("settlement_result", ""))
+		_table_session.challenge_settlement_reason = String(source_snapshot.get("settlement_reason", ""))
+		_table_session.challenge_settlement_reason_text = String(source_snapshot.get("settlement_reason_text", ""))
+		_table_session.challenge_opponent_final_stack = int(source_snapshot.get("bot_final_stack", 0))
 	_table_session.is_session_over = true
 	if _table_session.end_reason == "":
 		_table_session.end_reason = "Hands completed"
@@ -3693,24 +3701,34 @@ func _show_session_result_panel() -> void:
 	var profit_color := "#35f5c8" if _table_session.session_profit >= 0 else "#ff4f9a"
 	var reason: String = _table_session.end_reason if _table_session.end_reason != "" else "Session ended"
 	if _table_session.mode == "ai_challenge":
-		var challenge_result := String(snapshot.get("result", reason)).to_upper()
+		var challenge_result := String(_table_session.end_reason if _table_session.end_reason != "" else snapshot.get("display_result", snapshot.get("result", reason))).to_upper()
 		var result_color := "#35f5c8" if challenge_result == "VICTORY" else ("#ff4f9a" if challenge_result == "DEFEAT" else "#8fa8ff")
+		var payout_label := "Refund" if challenge_result == "DRAW" else "Payout"
+		var net_value := _table_session.challenge_net_result_chips
+		var net_text := "%+d Chips" % net_value
 		_session_result_text.text = "\n".join([
 			"[center][font_size=34][color=%s][b]%s[/b][/color][/font_size][/center]" % [result_color, challenge_result],
-			"[center][color=#8fa8ff]Practice chips only. Results do not affect your account balance.[/color][/center]",
+			"[center][color=#8fa8ff]%s[/color][/center]" % _table_session.challenge_settlement_reason_text,
 			"",
-			"[table=2][cell][color=#9aa8d8]Final Stack[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Opponent Stack[/color]\n[b]%s[/b][/cell]" % [
-				_format_chips(int(snapshot.get("player_final_stack", _table_session.session_end_chips))),
-				_format_chips(int(snapshot.get("bot_final_stack", 0))),
+			"[table=2][cell][color=#9aa8d8]Difficulty[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Settlement Reason[/color]\n[b]%s[/b][/cell]" % [
+				_table_session.challenge_difficulty,
+				_table_session.challenge_settlement_reason,
 			],
-			"[cell][color=#9aa8d8]Hands Played[/color]\n[b]%d[/b][/cell][cell][color=#9aa8d8]Blinds[/color]\n[b]%d / %d[/b][/cell][/table]" % [
+			"[cell][color=#9aa8d8]Entry Fee[/color]\n[b]%s Chips[/b][/cell][cell][color=#9aa8d8]%s[/color]\n[b]%s Chips[/b][/cell]" % [
+				_format_chips(_table_session.challenge_entry_fee_chips),
+				payout_label,
+				_format_chips(_table_session.challenge_wallet_payout_chips),
+			],
+			"[cell][color=#9aa8d8]Net Result[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Hands Played[/color]\n[b]%d[/b][/cell]" % [
+				net_text,
 				int(snapshot.get("hands_played", _table_session.hands_played)),
-				_table_session.small_blind,
-				_table_session.big_blind,
+			],
+			"[cell][color=#9aa8d8]Final Event Stack[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Opponent Event Stack[/color]\n[b]%s[/b][/cell][/table]" % [
+				_format_chips(int(snapshot.get("player_final_stack", _table_session.session_end_chips))),
+				_format_chips(_table_session.challenge_opponent_final_stack),
 			],
 			"",
-			"Mode: AI Challenge",
-			"Challenge: rule_bot_v1",
+			"Blinds: %d / %d" % [_table_session.small_blind, _table_session.big_blind],
 		])
 		if _session_result_scrim != null:
 			_session_result_scrim.visible = true

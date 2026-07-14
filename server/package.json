@@ -14,6 +14,8 @@
     "ai:challenge:test": "tsx src/ai_challenge_policy_test.ts",
     "ai:challenge:room": "tsx src/ai_challenge_room_smoke_test.ts",
     "ai:challenge:lifecycle": "tsx src/ai_challenge_lifecycle_test.ts",
+    "ai:challenge:economy": "tsx src/ai_challenge_economy_test.ts",
+    "ai:challenge:balance": "tsx src/ai_challenge_balance_test.ts",
     "ai:challenge:performance": "tsx src/ai_challenge_performance_test.ts",
     "ai:challenge:isolation": "tsx src/ai_challenge_isolation_test.ts"
   },

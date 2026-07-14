@@ -175,6 +175,7 @@ var _cta_hover_tween: Tween
 var _toast_label: Label
 var _toast_tween: Tween
 var _player_profile: Dictionary = {}
+var _challenge_catalog: Array = []
 var _local_backend: LocalMockBackend
 var _settings_service: SettingsService
 var _friends_room_context: Dictionary = {}
@@ -1489,6 +1490,7 @@ func _connect_profile_server() -> void:
 	_profile_ws_client.wallet_synced.connect(_on_profile_server_wallet_synced)
 	_profile_ws_client.daily_bonus_awarded.connect(_on_profile_server_daily_login_awarded)
 	_profile_ws_client.daily_bonus_claim_failed.connect(_on_profile_server_daily_bonus_claim_failed)
+	_profile_ws_client.challenge_catalog_received.connect(_on_challenge_catalog_received)
 	_profile_ws_client.avatar_catalog_received.connect(_on_avatar_catalog_received)
 	_profile_ws_client.table_list_received.connect(_on_server_table_list_received)
 	_profile_ws_client.table_created.connect(_on_server_table_created)
@@ -1524,6 +1526,8 @@ func _on_profile_server_disconnected() -> void:
 		_refresh_room_browser_rows()
 
 func _on_profile_server_profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_ids: Array) -> void:
+	if profile.has("challenge_catalog"):
+		_on_challenge_catalog_received(Array(profile.get("challenge_catalog", [])))
 	_player_profile = ProfileServiceScript.new().apply_server_profile(profile, wallet, unlocked_avatar_ids)
 	_profile_server_wallet_synced = true
 	if _profile_rename_pending:
@@ -1538,6 +1542,19 @@ func _on_profile_server_wallet_synced(wallet: Dictionary) -> void:
 	_player_profile = ProfileServiceScript.new().apply_wallet_snapshot(wallet)
 	_profile_server_wallet_synced = true
 	_refresh_profile_views_from_server()
+
+func _on_challenge_catalog_received(catalog: Array) -> void:
+	_challenge_catalog = catalog.duplicate(true)
+	if _events_panel == null:
+		return
+	var was_visible := _events_panel.visible
+	_lobby_ui_root.remove_child(_events_panel)
+	_events_panel.queue_free()
+	_events_panel = null
+	_build_events_panel()
+	if was_visible:
+		_events_panel.visible = true
+		_events_panel.modulate.a = 1.0
 
 func _on_profile_server_daily_login_awarded(chips: int, xp: int = PlayerProfileScript.DAILY_LOGIN_XP, gems: int = 0) -> void:
 	_player_profile = ProfileServiceScript.new().get_current_profile()
@@ -1709,6 +1726,9 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 	var launch_table_type := server_table_type
 	if launch_mode == "ai_challenge":
 		launch_table_type = "ai_challenge"
+	var challenge_id := str(table_info.get("challenge_id", ""))
+	var challenge_difficulty := str(table_info.get("difficulty", ""))
+	var entry_fee_chips := int(table_info.get("entry_fee_chips", 0))
 	var room_code := str(table_info.get("room_code", ""))
 	if max_hands <= 0:
 		max_hands = 999
@@ -1727,9 +1747,12 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 		"is_training": false,
 		"table_type": launch_table_type,
 		"currency": currency,
+		"challenge_id": challenge_id,
+		"difficulty": challenge_difficulty,
+		"entry_fee_chips": entry_fee_chips,
 		"uses_practice_chips": launch_mode == "ai_challenge",
-		"affects_account_balance": launch_mode != "ai_challenge",
-		"buy_in_deducted_from_wallet": false,
+		"affects_account_balance": true,
+		"buy_in_deducted_from_wallet": launch_mode == "ai_challenge",
 		"allow_debug_tools": true,
 		"requested_seat_index": requested_seat_index,
 		"ai_player_count": 0,
@@ -1741,9 +1764,12 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 			"mode": launch_mode,
 			"table_type": launch_table_type,
 			"currency": currency,
+			"challenge_id": challenge_id,
+			"difficulty": challenge_difficulty,
+			"entry_fee_chips": entry_fee_chips,
 			"uses_practice_chips": launch_mode == "ai_challenge",
-			"affects_account_balance": launch_mode != "ai_challenge",
-			"buy_in_deducted_from_wallet": false,
+			"affects_account_balance": true,
+			"buy_in_deducted_from_wallet": launch_mode == "ai_challenge",
 			"buy_in": buy_in,
 			"starting_chips": buy_in,
 			"current_table_chips": buy_in,
@@ -2645,10 +2671,18 @@ func _build_events_panel() -> void:
 	cards.add_theme_constant_override("separation", 18)
 	cards.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.add_child(cards)
-	_add_ai_challenge_card(cards)
+	if _challenge_catalog.is_empty():
+		_add_ai_challenge_unavailable_card(cards)
+	else:
+		for item in _challenge_catalog:
+			_add_ai_challenge_card(cards, Dictionary(item))
 
 	var note := Label.new()
-	note.text = _t("events.note")
+	note.text = (
+		"Choose a challenge tier. Entry fees and rewards are handled by the authoritative server."
+		if not _challenge_catalog.is_empty()
+		else _t("events.note")
+	)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	HomeTheme.make_font_settings(note, 13, Color(0.72, 0.78, 0.94, 0.92))
 	column.add_child(note)
@@ -2659,10 +2693,11 @@ func _build_events_panel() -> void:
 	)
 	column.add_child(back_button)
 
-func _add_ai_challenge_card(parent: HBoxContainer) -> void:
+func _add_ai_challenge_card(parent: HBoxContainer, challenge: Dictionary) -> void:
 	var card := PanelContainer.new()
-	card.name = "AIChallengeEventCard"
-	card.custom_minimum_size = Vector2(420, 290)
+	var challenge_id := str(challenge.get("challenge_id", "rookie"))
+	card.name = "%sAIChallengeEventCard" % challenge_id.capitalize()
+	card.custom_minimum_size = Vector2(300, 330)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.mouse_filter = Control.MOUSE_FILTER_STOP
 	card.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.008, 0.010, 0.024, 0.76), Color(1.0, 0.0, 0.5, 0.32), 8, 1))
@@ -2676,31 +2711,63 @@ func _add_ai_challenge_card(parent: HBoxContainer) -> void:
 	card.add_child(margin)
 
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 12)
+	column.add_theme_constant_override("separation", 10)
 	margin.add_child(column)
 
 	var title := Label.new()
-	title.text = "AI CHALLENGE"
+	title.text = str(challenge.get("display_name", challenge_id)).to_upper()
 	HomeTheme.make_font_settings(title, 22, HomeTheme.PINK)
 	column.add_child(title)
 
 	var body := Label.new()
-	body.text = "Play a heads-up match against a rule-based opponent.\n\nStarting stack: 1,000\nBlinds: 10 / 20\nMaximum hands: 20\nWallet risk: None"
+	body.text = "Starting Stack: %s\nBlinds: %d / %d\nMaximum Hands: %d\n\nEntry Fee: %s Chips\nHand-Limit Win: %+d Chips\nKnockout Win: %+d Chips" % [
+		_format_number(int(challenge.get("starting_stack", 0))),
+		int(challenge.get("small_blind", 0)),
+		int(challenge.get("big_blind", 0)),
+		int(challenge.get("max_hands", 0)),
+		_format_number(int(challenge.get("entry_fee_chips", 0))),
+		int(challenge.get("timeout_win_profit_chips", 0)),
+		int(challenge.get("knockout_win_profit_chips", 0)),
+	]
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	HomeTheme.make_font_settings(body, 14, Color(0.84, 0.88, 1.0, 0.94))
 	column.add_child(body)
 
 	var start_button := _modal_button("START CHALLENGE")
-	start_button.pressed.connect(_start_ai_challenge)
+	start_button.disabled = _is_launching_table
+	start_button.pressed.connect(func() -> void:
+		_start_ai_challenge(challenge_id)
+	)
 	column.add_child(start_button)
 
-func _start_ai_challenge() -> void:
+func _add_ai_challenge_unavailable_card(parent: HBoxContainer) -> void:
+	var card := PanelContainer.new()
+	card.name = "AIChallengeUnavailableCard"
+	card.custom_minimum_size = Vector2(420, 220)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.008, 0.010, 0.024, 0.76), Color(1.0, 0.0, 0.5, 0.32), 8, 1))
+	parent.add_child(card)
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 20)
+	margin.add_theme_constant_override("margin_right", 20)
+	margin.add_theme_constant_override("margin_top", 18)
+	margin.add_theme_constant_override("margin_bottom", 18)
+	card.add_child(margin)
+	var label := Label.new()
+	label.text = "AI Challenge requires the authoritative server."
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(label, 15, Color(0.84, 0.88, 1.0, 0.94))
+	margin.add_child(label)
+
+func _start_ai_challenge(challenge_id: String) -> void:
 	if not server_authoritative_profile or _profile_ws_client == null:
 		_show_toast("AI Challenge needs the authoritative server.", [], 2.2)
 		return
-	_begin_server_table_launch_request("create_ai_challenge", "Starting AI Challenge...", "table_created", "", func(request_id: String) -> void:
-		_profile_ws_client.create_ai_challenge(request_id)
+	if _is_launching_table:
+		return
+	_start_table_launch_transition("Starting AI Challenge...", func() -> void:
+		_profile_ws_client.create_ai_challenge(challenge_id)
 	)
 
 func _add_event_card(parent: HBoxContainer, title_text: String, body_text: String) -> void:

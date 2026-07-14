@@ -3,15 +3,48 @@ import type { ActionLogEntry, Card, PlayerActionType, Phase } from "../protocol.
 export type ChallengeStreet = "preflop" | "flop" | "turn" | "river";
 export type ChallengeLegalAction = PlayerActionType;
 export type StartingHandTier = "PREMIUM" | "STRONG" | "PLAYABLE" | "MARGINAL" | "TRASH";
+export type ChallengeId = "rookie" | "sharp" | "boss";
+export type ChallengeState = "creating" | "ready" | "started" | "completed" | "cancelled";
+export type ChallengeSettlementResult = "knockout_victory" | "timeout_victory" | "defeat" | "draw" | "prestart_cancelled";
+export type ChallengeDisplayResult = "victory" | "defeat" | "draw";
+export type ChallengeSettlementReason =
+  | "bot_eliminated"
+  | "player_ahead_at_hand_limit"
+  | "player_eliminated"
+  | "bot_ahead_at_hand_limit"
+  | "equal_stacks_at_hand_limit"
+  | "player_left"
+  | "prestart_failure";
+
+export interface ChallengeBotTuning {
+  equitySamples: number;
+  minimumSamples: number;
+  maximumSamples: number;
+  timeBudgetMs: number;
+  decisionErrorRate: number;
+  bluffFrequency: number;
+  semiBluffFrequency: number;
+  slowPlayFrequency: number;
+  raiseStrongFrequency: number;
+  marginalCallTolerance: number;
+  drawEquityBonus: number;
+  allowedBetFractions: number[];
+}
 
 export interface ChallengeSessionConfig {
   mode: "ai_challenge";
-  challengeId: "rule_bot_v1";
+  challengeId: ChallengeId;
+  displayName: string;
   walletImpact: false;
   startingStack: number;
   smallBlind: number;
   bigBlind: number;
   maxHands: number;
+  entryFeeChips: number;
+  timeoutVictoryProfitMultiplier: number;
+  knockoutVictoryProfitMultiplier: number;
+  drawRefundMultiplier: number;
+  bot: ChallengeBotTuning;
   rebuyAllowed: false;
   addChipsAllowed: false;
 }
@@ -33,6 +66,7 @@ export interface ChallengeBotContext {
   handIndex: number;
   decisionIndex: number;
   sessionSeed: number;
+  botTuning?: ChallengeBotTuning;
 }
 
 export interface ChallengeBotDecision {
@@ -44,6 +78,7 @@ export interface ChallengeBotDecision {
   samples?: number;
   elapsedMs?: number;
   timedOut?: boolean;
+  equitySource?: "rule_fallback" | "monte_carlo";
 }
 
 export interface MadeAndDrawInfo {

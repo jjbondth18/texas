@@ -13,6 +13,7 @@ signal wallet_synced(wallet: Dictionary)
 signal daily_login_awarded(chips: int)
 signal daily_bonus_awarded(chips: int, xp: int, gems: int)
 signal daily_bonus_claim_failed(reason: String)
+signal challenge_catalog_received(catalog: Array)
 signal avatar_catalog_received(catalog: Array)
 signal table_list_received(tables: Array)
 signal table_created(room_id: String, table_info: Dictionary)
@@ -177,8 +178,8 @@ func create_private_table(config: Dictionary = {}) -> int:
 func join_private_table(room_code: String) -> int:
 	return send_message(PokerProtocolScript.join_private_table(room_code))
 
-func create_ai_challenge(request_id: String = "") -> int:
-	return send_message(PokerProtocolScript.create_ai_challenge(request_id))
+func create_ai_challenge(challenge_id: String = "rookie", request_id: String = "") -> int:
+	return send_message(PokerProtocolScript.create_ai_challenge(challenge_id, request_id))
 
 func _handle_message(message: Dictionary) -> void:
 	message_received.emit(message)
@@ -189,11 +190,13 @@ func _handle_message(message: Dictionary) -> void:
 			if canonical_player_id != "":
 				player_id = canonical_player_id
 			room_id = str(message.get("room_id", room_id))
+			_emit_challenge_catalog(message)
 			_emit_profile_payload(message)
 			var is_authenticated_hello := message.has("server_player_id") or message.has("profile_snapshot") or message.has("profile") or message.has("wallet") or message.has("unlocked_avatar_ids")
 			if is_authenticated_hello or room_id != "":
 				hello_received.emit(player_id, room_id, bool(message.get("reconnected_to_table", false)))
 		PokerProtocolScript.PROFILE_SNAPSHOT:
+			_emit_challenge_catalog(message)
 			_emit_profile_payload(message)
 		PokerProtocolScript.WALLET_SNAPSHOT:
 			var wallet := Dictionary(message.get("wallet", {})).duplicate(true)
@@ -229,6 +232,7 @@ func _handle_message(message: Dictionary) -> void:
 			room_id = str(message.get("room_id", private_created_table.get("room_id", room_id)))
 			table_created.emit(room_id, private_created_table)
 		PokerProtocolScript.AI_CHALLENGE_CREATED:
+			_emit_challenge_catalog(message)
 			var challenge_table := Dictionary(message.get("table", {})).duplicate(true)
 			room_id = str(message.get("room_id", challenge_table.get("room_id", room_id)))
 			table_created.emit(room_id, challenge_table)
@@ -285,6 +289,9 @@ func _handle_message(message: Dictionary) -> void:
 				str(message.get("reason", ""))
 			)
 		PokerProtocolScript.AI_CHALLENGE_RESULT:
+			var challenge_wallet := Dictionary(message.get("wallet", {})).duplicate(true)
+			if not challenge_wallet.is_empty():
+				wallet_synced.emit(challenge_wallet)
 			ai_challenge_result_received.emit(Dictionary(message).duplicate(true))
 		PokerProtocolScript.SIT_DOWN_RESULT:
 			var result_player_id := str(message.get("server_player_id", message.get("player_id", player_id)))
@@ -309,8 +316,14 @@ func _handle_message(message: Dictionary) -> void:
 		PokerProtocolScript.ERROR:
 			server_error.emit(str(message.get("error_code", message.get("error", "Unknown server error"))))
 
+func _emit_challenge_catalog(message: Dictionary) -> void:
+	if message.has("challenge_catalog"):
+		challenge_catalog_received.emit(Array(message.get("challenge_catalog", [])).duplicate(true))
+
 func _emit_profile_payload(message: Dictionary) -> void:
 	var server_snapshot := Dictionary(message.get("profile_snapshot", {})).duplicate(true)
+	if server_snapshot.has("challenge_catalog"):
+		challenge_catalog_received.emit(Array(server_snapshot.get("challenge_catalog", [])).duplicate(true))
 	var profile := server_snapshot if not server_snapshot.is_empty() else Dictionary(message.get("profile", {})).duplicate(true)
 	var wallet := Dictionary(server_snapshot.get("wallet", {})).duplicate(true) if not server_snapshot.is_empty() else {}
 	if wallet.is_empty():
