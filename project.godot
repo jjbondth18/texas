@@ -33,7 +33,7 @@ renderer/rendering_method.mobile="gl_compatibility"
 
 [steam]
 
-initialization/app_id=0
+initialization/app_id=4969030
 initialization/initialize_on_startup=false
 initialization/embed_callbacks=false
 multiplayer_peer/max_channels=4
