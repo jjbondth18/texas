@@ -7,6 +7,7 @@ import { initializeSchema } from "./db/schema.js";
 import { config } from "./config.js";
 import { levelForTotalXp, titleIdForLevel } from "./db/profile_bootstrap_repository.js";
 import type { SteamAuthVerifier, SteamAuthVerificationResult } from "./services/steam_auth_verifier.js";
+import { settleHand } from "./showdown_engine.js";
 
 class MockSteamAuthVerifier implements SteamAuthVerifier {
   constructor(private readonly result: SteamAuthVerificationResult = { valid: false, error_code: "steam_ticket_invalid" }) {}
@@ -14,6 +15,13 @@ class MockSteamAuthVerifier implements SteamAuthVerifier {
   verifyTicket(): SteamAuthVerificationResult {
     return this.result;
   }
+}
+
+interface DisconnectGraceTestAccess {
+  disconnectGraceRecords: Map<string, { deadlineAtMs: number; token: number }>;
+  handleDisconnectGraceTimeout(roomId: string, playerId: string, token: number): void;
+  recordHandResults(room: unknown): void;
+  broadcast(room: unknown): void;
 }
 
 process.env.TEXAS_DB_PATH = join(mkdtempSync(join(tmpdir(), "texas-db-smoke-")), "texas_dev.sqlite");
@@ -184,6 +192,86 @@ if (countRows("wallet_transactions", "reason = 'table_cash_out' AND amount = " +
 manager.handle("db_smoke_player", { type: "cash_out", room_id: handRoom.id });
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeHandWalletTotal + leavingStack) throw new Error("repeat active hand cash_out should not double refund");
 if (manager.walletAudit("db_smoke_player").unmatchedBuyIns.length !== 0) throw new Error("wallet audit should find no unmatched buy-in after cash outs");
+
+const graceReconnectRoom = manager.createRoom({ isPublic: false });
+seatPlayer("grace_reconnect_a", "Grace Reconnect A", graceReconnectRoom.id, 0, true);
+seatPlayer("grace_reconnect_b", "Grace Reconnect B", graceReconnectRoom.id, 1, true);
+const graceReconnectWalletAfterBuyIn = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("grace_reconnect_a") as { chips: number }).chips;
+manager.handle("grace_reconnect_a", { type: "start_hand", room_id: graceReconnectRoom.id });
+manager.disconnect("grace_reconnect_a");
+const graceReconnectSeat = graceReconnectRoom.table.getSeatByPlayer("grace_reconnect_a");
+if (!graceReconnectSeat || !graceReconnectSeat.disconnected) throw new Error("active hand disconnect should preserve and mark the seat disconnected");
+if ((db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("grace_reconnect_a") as { chips: number }).chips !== graceReconnectWalletAfterBuyIn) throw new Error("active hand disconnect should not immediately refund wallet");
+const graceReconnectBalance = db.prepare("SELECT amount FROM table_balances WHERE room_id = ? AND player_id = ?").get(graceReconnectRoom.id, "grace_reconnect_a") as { amount: number } | undefined;
+if (!graceReconnectBalance || graceReconnectBalance.amount !== graceReconnectSeat.chips + graceReconnectSeat.contribution) throw new Error("active hand disconnect should preserve outstanding table balance");
+const graceReconnectMessages: unknown[] = [];
+const graceReconnectWs = { OPEN: 1, readyState: 1, send: (data: string) => graceReconnectMessages.push(JSON.parse(data)) };
+const graceReconnectClient = manager.connect(graceReconnectWs as any);
+manager.handle(graceReconnectClient.id, { type: "hello", player_id: "grace_reconnect_a", name: "Grace Reconnect A" });
+const graceReconnectHello = graceReconnectMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
+  | { room_id?: string; reconnected_to_table?: boolean }
+  | undefined;
+if (!graceReconnectHello?.reconnected_to_table || graceReconnectHello.room_id !== graceReconnectRoom.id) throw new Error("grace reconnect hello should return reconnected_to_table and original room_id");
+if (!graceReconnectMessages.some((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "table_snapshot")) throw new Error("grace reconnect should immediately return current table snapshot");
+if (!graceReconnectMessages.some((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "private_snapshot")) throw new Error("grace reconnect should immediately return current private snapshot");
+const restoredGraceSeat = graceReconnectRoom.table.getSeatByPlayer("grace_reconnect_a");
+if (!restoredGraceSeat || restoredGraceSeat.disconnected) throw new Error("grace reconnect should restore the disconnected seat");
+if (manager.getClient("grace_reconnect_a")?.roomId !== graceReconnectRoom.id) throw new Error("grace reconnect should bind the client back to the original room");
+if ((db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("grace_reconnect_a") as { chips: number }).chips !== graceReconnectWalletAfterBuyIn) throw new Error("grace reconnect should not deduct another buy-in");
+if (countRows("wallet_transactions", "reason = 'table_buy_in' AND related_room_id = '" + graceReconnectRoom.id + "' AND player_id = 'grace_reconnect_a'") !== 1) throw new Error("grace reconnect should not write another buy-in transaction");
+manager.handle("grace_reconnect_a", { type: "cash_out", room_id: graceReconnectRoom.id });
+const graceReconnectWalletAfterCashOut = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("grace_reconnect_a") as { chips: number }).chips;
+const graceReconnectInternal = manager as unknown as DisconnectGraceTestAccess;
+const staleReconnectRecord = graceReconnectInternal.disconnectGraceRecords.get(graceReconnectRoom.id + ":grace_reconnect_a");
+if (staleReconnectRecord) {
+  staleReconnectRecord.deadlineAtMs = Date.now() - 1;
+  graceReconnectInternal.handleDisconnectGraceTimeout(graceReconnectRoom.id, "grace_reconnect_a", staleReconnectRecord.token);
+}
+if ((db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("grace_reconnect_a") as { chips: number }).chips !== graceReconnectWalletAfterCashOut) throw new Error("cleared grace timeout should not double refund after reconnect cash out");
+
+const graceTimeoutRoom = manager.createRoom({ isPublic: false });
+seatPlayer("grace_timeout_a", "Grace Timeout A", graceTimeoutRoom.id, 0, true);
+seatPlayer("grace_timeout_b", "Grace Timeout B", graceTimeoutRoom.id, 1, true);
+const graceTimeoutWalletAfterBuyIn = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("grace_timeout_a") as { chips: number }).chips;
+manager.handle("grace_timeout_a", { type: "start_hand", room_id: graceTimeoutRoom.id });
+manager.disconnect("grace_timeout_a");
+const graceTimeoutSeat = graceTimeoutRoom.table.getSeatByPlayer("grace_timeout_a");
+if (!graceTimeoutSeat) throw new Error("grace timeout setup should keep disconnected seat");
+const graceTimeoutRemainingStack = graceTimeoutSeat.chips;
+const graceTimeoutAccess = manager as unknown as DisconnectGraceTestAccess;
+const graceTimeoutRecord = graceTimeoutAccess.disconnectGraceRecords.get(graceTimeoutRoom.id + ":grace_timeout_a");
+if (!graceTimeoutRecord) throw new Error("active hand disconnect should create a grace record");
+graceTimeoutRecord.deadlineAtMs = Date.now() - 1;
+graceTimeoutAccess.handleDisconnectGraceTimeout(graceTimeoutRoom.id, "grace_timeout_a", graceTimeoutRecord.token);
+if ((db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("grace_timeout_a") as { chips: number }).chips !== graceTimeoutWalletAfterBuyIn + graceTimeoutRemainingStack) throw new Error("grace expiry after hand over should refund only remaining stack");
+if (graceTimeoutRoom.table.getSeatByPlayer("grace_timeout_a")) throw new Error("grace expiry cash out should clear the disconnected seat");
+if (countRows("table_balances", "room_id = '" + graceTimeoutRoom.id + "' AND player_id = 'grace_timeout_a'") !== 0) throw new Error("grace expiry cash out should clear table balance");
+if (countRows("wallet_transactions", "reason = 'disconnected_grace_expired_cash_out' AND related_room_id = '" + graceTimeoutRoom.id + "' AND player_id = 'grace_timeout_a'") !== 1) throw new Error("grace expiry should write disconnected_grace_expired_cash_out transaction");
+graceTimeoutAccess.handleDisconnectGraceTimeout(graceTimeoutRoom.id, "grace_timeout_a", graceTimeoutRecord.token);
+if ((db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("grace_timeout_a") as { chips: number }).chips !== graceTimeoutWalletAfterBuyIn + graceTimeoutRemainingStack) throw new Error("repeated grace expiry should not double refund");
+
+const gracePendingRoom = manager.createRoom({ isPublic: false });
+seatPlayer("grace_pending_a", "Grace Pending A", gracePendingRoom.id, 0, true);
+seatPlayer("grace_pending_b", "Grace Pending B", gracePendingRoom.id, 1, true);
+seatPlayer("grace_pending_c", "Grace Pending C", gracePendingRoom.id, 2, true);
+const gracePendingWalletAfterBuyIn = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("grace_pending_b") as { chips: number }).chips;
+manager.handle("grace_pending_a", { type: "start_hand", room_id: gracePendingRoom.id });
+manager.disconnect("grace_pending_b");
+const gracePendingSeat = gracePendingRoom.table.getSeatByPlayer("grace_pending_b");
+if (!gracePendingSeat) throw new Error("pending grace setup should keep disconnected seat");
+const gracePendingRemainingStack = gracePendingSeat.chips;
+const gracePendingAccess = manager as unknown as DisconnectGraceTestAccess;
+const gracePendingRecord = gracePendingAccess.disconnectGraceRecords.get(gracePendingRoom.id + ":grace_pending_b");
+if (!gracePendingRecord) throw new Error("non-current active hand disconnect should create a grace record");
+gracePendingRecord.deadlineAtMs = Date.now() - 1;
+gracePendingAccess.handleDisconnectGraceTimeout(gracePendingRoom.id, "grace_pending_b", gracePendingRecord.token);
+if ((db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("grace_pending_b") as { chips: number }).chips !== gracePendingWalletAfterBuyIn) throw new Error("grace expiry during active hand should not refund before hand over");
+if (!gracePendingRoom.table.getSeatByPlayer("grace_pending_b")) throw new Error("expired active hand grace should keep the folded seat until settlement");
+settleHand(gracePendingRoom.table);
+gracePendingAccess.recordHandResults(gracePendingRoom);
+gracePendingAccess.broadcast(gracePendingRoom);
+if ((db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("grace_pending_b") as { chips: number }).chips !== gracePendingWalletAfterBuyIn + gracePendingRemainingStack) throw new Error("expired grace should cash out remaining stack after hand settlement");
+if (gracePendingRoom.table.getSeatByPlayer("grace_pending_b")) throw new Error("expired grace should clear seat after hand settlement cash out");
 
 const poor = manager.connect();
 manager.handle(poor.id, { type: "hello", player_id: "db_smoke_poor", name: "DB Smoke Poor" });

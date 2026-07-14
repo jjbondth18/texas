@@ -7,7 +7,7 @@ const NetworkConfigScript := preload("res://scripts/network/network_config.gd")
 
 signal connected()
 signal disconnected()
-signal hello_received(player_id: String, room_id: String)
+signal hello_received(player_id: String, room_id: String, reconnected_to_table: bool)
 signal profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_ids: Array)
 signal wallet_synced(wallet: Dictionary)
 signal daily_login_awarded(chips: int)
@@ -176,7 +176,7 @@ func _handle_message(message: Dictionary) -> void:
 			_emit_profile_payload(message)
 			var is_authenticated_hello := message.has("server_player_id") or message.has("profile_snapshot") or message.has("profile") or message.has("wallet") or message.has("unlocked_avatar_ids")
 			if is_authenticated_hello or room_id != "":
-				hello_received.emit(player_id, room_id)
+				hello_received.emit(player_id, room_id, bool(message.get("reconnected_to_table", false)))
 		PokerProtocolScript.PROFILE_SNAPSHOT:
 			_emit_profile_payload(message)
 		PokerProtocolScript.WALLET_SNAPSHOT:

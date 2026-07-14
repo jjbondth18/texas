@@ -66,6 +66,16 @@ interface Room {
   createdAt: string;
 }
 
+interface DisconnectGraceRecord {
+  roomId: string;
+  playerId: string;
+  seatIndex: number;
+  deadlineAtMs: number;
+  token: number;
+  pendingCashOutAfterHand: boolean;
+  timeout?: ReturnType<typeof setTimeout>;
+}
+
 const DEFAULT_TABLE_BUY_IN = 5000;
 const DEFAULT_SMALL_BLIND = 25;
 const DEFAULT_BIG_BLIND = 50;
@@ -80,6 +90,8 @@ const ALLOWED_GEM_BLIND_PAIRS = new Set(["1/2", "2/5", "5/10"]);
 const ALLOWED_HAND_COUNTS = new Set([0, 5, 10, 20]);
 const ALLOWED_IDENTITY_PROVIDERS = new Set(["local_dev", "steam"]);
 const ACTION_TIMEOUT_MS = DEFAULT_ACTION_TIME_SECONDS * 1000;
+const DISCONNECT_RECONNECT_GRACE_SECONDS = 90;
+const DISCONNECT_RECONNECT_GRACE_MS = DISCONNECT_RECONNECT_GRACE_SECONDS * 1000;
 const READY_COUNTDOWN_MS = 3000;
 const HAND_RESULT_SHOWDOWN_MS = 5000;
 const HAND_RESULT_FOLD_MS = 2500;
@@ -110,6 +122,8 @@ export class RoomManager {
   private nextRoomId = 1;
   private recordedHandResults = new Set<string>();
   private settledPlayerExits = new Set<string>();
+  private disconnectGraceRecords = new Map<string, DisconnectGraceRecord>();
+  private disconnectGraceToken = 0;
   private readonly db = getDatabase();
   private readonly players = new PlayerRepository(this.db);
   private readonly identities = new IdentityRepository(this.db);
@@ -149,9 +163,9 @@ export class RoomManager {
         client.ws = undefined;
         return;
       }
-      room.table.markDisconnected(playerId);
-      processAutomaticTurns(room.table);
+      this.startDisconnectGrace(room, client);
       this.rescheduleActionTimer(room);
+      this.recordHandResults(room);
       this.updatePublicRoomProgress(room);
       this.broadcast(room);
     }
@@ -164,6 +178,10 @@ export class RoomManager {
       const hello = this.handleHello(client, message);
       this.recordLog(`hello ${client.id} name=${client.name}`);
       this.send(client, { type: "hello", request_id: message.request_id, player_id: client.id, server_player_id: client.id, ...hello });
+      if (hello.reconnected_to_table && hello.room_id) {
+        const room = this.rooms.get(hello.room_id);
+        if (room) this.broadcast(room);
+      }
       return;
     }
     if (message.type === "create_room") {
@@ -355,6 +373,7 @@ export class RoomManager {
         throw new Error(`unsupported message: ${message.type}`);
     }
     this.recordHandResults(room);
+    this.settleExpiredDisconnectGrace(room);
     this.clearSettledExitedSeats(room);
     this.rescheduleActionTimer(room);
     this.updatePublicRoomProgress(room);
@@ -511,6 +530,7 @@ export class RoomManager {
     const room = this.mustRoom(roomId);
     client.roomId = roomId;
     room.clients.add(client.id);
+    this.restoreDisconnectGrace(room, client);
   }
 
   private createPrivateTable(client: Client, message: ClientMessage): Room {
@@ -718,8 +738,181 @@ export class RoomManager {
       dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
       is_public: room.isPublic,
       created_at: room.createdAt,
-      seats: room.table.publicSnapshot().seats,
+      seats: this.publicSeatsWithDisconnectGrace(room),
     };
+  }
+
+  private disconnectGraceKey(roomId: string, playerId: string): string {
+    return `${roomId}:${playerId}`;
+  }
+
+  private publicSeatsWithDisconnectGrace(room: Room) {
+    const now = Date.now();
+    return room.table.publicSnapshot().seats.map((seat) => {
+      if (!seat.player_id) return seat;
+      const record = this.disconnectGraceRecords.get(this.disconnectGraceKey(room.id, seat.player_id));
+      if (!record) return seat;
+      return {
+        ...seat,
+        reconnect_grace_remaining_seconds: Math.max(0, Math.ceil((record.deadlineAtMs - now) / 1000)),
+      };
+    });
+  }
+
+  private startDisconnectGrace(room: Room, client: Client): void {
+    const seat = room.table.getSeatByPlayer(client.id);
+    if (!seat) return;
+    const key = this.disconnectGraceKey(room.id, client.id);
+    const existing = this.disconnectGraceRecords.get(key);
+    if (!existing) {
+      const token = ++this.disconnectGraceToken;
+      const record: DisconnectGraceRecord = {
+        roomId: room.id,
+        playerId: client.id,
+        seatIndex: seat.seatIndex,
+        deadlineAtMs: Date.now() + DISCONNECT_RECONNECT_GRACE_MS,
+        token,
+        pendingCashOutAfterHand: false,
+      };
+      record.timeout = setTimeout(() => this.handleDisconnectGraceTimeout(room.id, client.id, token), DISCONNECT_RECONNECT_GRACE_MS);
+      (record.timeout as { unref?: () => void }).unref?.();
+      this.disconnectGraceRecords.set(key, record);
+      this.recordLog(`disconnect_grace_started room_id=${room.id} player_id=${client.id} seat=${seat.seatIndex} seconds=${DISCONNECT_RECONNECT_GRACE_SECONDS}`);
+    }
+    room.table.markDisconnected(client.id);
+    processAutomaticTurns(room.table);
+  }
+
+  private restoreAnyDisconnectGrace(client: Client): Room | undefined {
+    const record = [...this.disconnectGraceRecords.values()].find((candidate) => candidate.playerId === client.id);
+    if (!record) return undefined;
+    const room = this.rooms.get(record.roomId);
+    if (!room) {
+      this.clearDisconnectGrace(record.roomId, client.id);
+      return undefined;
+    }
+    return this.restoreDisconnectGrace(room, client) ? room : undefined;
+  }
+
+  private restoreDisconnectGrace(room: Room, client: Client): boolean {
+    const record = this.disconnectGraceRecords.get(this.disconnectGraceKey(room.id, client.id));
+    if (!record) return false;
+    const seat = room.table.getSeat(record.seatIndex);
+    if (!seat || seat.playerId !== client.id) {
+      this.clearDisconnectGrace(room.id, client.id);
+      return false;
+    }
+    if (Date.now() > record.deadlineAtMs) {
+      this.handleDisconnectGraceTimeout(room.id, client.id, record.token);
+      return false;
+    }
+    seat.disconnected = false;
+    if (seat.status === "disconnected") seat.status = seat.chips > 0 ? "sitting" : "sit_out";
+    client.roomId = room.id;
+    room.clients.add(client.id);
+    this.clearDisconnectGrace(room.id, client.id);
+    this.recordLog(`disconnect_grace_reconnected room_id=${room.id} player_id=${client.id} seat=${seat.seatIndex}`);
+    return true;
+  }
+
+  private clearDisconnectGrace(roomId: string, playerId: string): void {
+    const key = this.disconnectGraceKey(roomId, playerId);
+    const record = this.disconnectGraceRecords.get(key);
+    if (record?.timeout) clearTimeout(record.timeout);
+    this.disconnectGraceRecords.delete(key);
+  }
+
+  private handleDisconnectGraceTimeout(roomId: string, playerId: string, token: number): void {
+    const record = this.disconnectGraceRecords.get(this.disconnectGraceKey(roomId, playerId));
+    if (!record || record.token !== token) return;
+    const room = this.rooms.get(roomId);
+    if (!room) {
+      this.clearDisconnectGrace(roomId, playerId);
+      return;
+    }
+    record.timeout = undefined;
+    const seat = room.table.getSeat(record.seatIndex);
+    if (!seat || seat.playerId !== playerId) {
+      this.clearDisconnectGrace(roomId, playerId);
+      return;
+    }
+    if (this.isCashOutDuringActiveHand(room)) {
+      this.foldExpiredDisconnectedSeat(room, seat);
+      this.recordHandResults(room);
+      if (this.isCashOutDuringActiveHand(room)) {
+        record.pendingCashOutAfterHand = true;
+        this.recordLog(`disconnect_grace_expired_pending_cash_out room_id=${room.id} player_id=${playerId} seat=${seat.seatIndex}`);
+        this.broadcast(room);
+        return;
+      }
+    }
+    this.cashOutExpiredDisconnectedSeat(room, playerId);
+    this.broadcast(room);
+  }
+
+  private settleExpiredDisconnectGrace(room: Room): void {
+    for (const record of [...this.disconnectGraceRecords.values()]) {
+      if (record.roomId !== room.id) continue;
+      if (Date.now() <= record.deadlineAtMs && !record.pendingCashOutAfterHand) continue;
+      if (this.isCashOutDuringActiveHand(room)) continue;
+      this.cashOutExpiredDisconnectedSeat(room, record.playerId);
+    }
+  }
+
+  private foldExpiredDisconnectedSeat(room: Room, seat: Seat): void {
+    if (seat.status !== "playing" && seat.status !== "all_in") return;
+    seat.status = "folded";
+    seat.ready = false;
+    seat.acted = true;
+    seat.lastAction = "fold";
+    seat.lastActionAmount = 0;
+    room.table.addAction({
+      type: "player_action",
+      seat_id: seat.seatIndex,
+      seat_index: seat.seatIndex,
+      player_name: seat.name,
+      action: "fold",
+      amount: 0,
+      message: `${seat.name} disconnect grace expired and auto-folds.`,
+    });
+    if (room.table.liveSeats().length <= 1) {
+      settleHand(room.table);
+    } else if (room.table.currentTurnSeat === seat.seatIndex) {
+      room.table.currentTurnSeat = room.table.nextActionableSeat(seat.seatIndex);
+      processAutomaticTurns(room.table);
+    }
+  }
+
+  private cashOutExpiredDisconnectedSeat(room: Room, playerId: string): void {
+    const key = this.disconnectGraceKey(room.id, playerId);
+    const record = this.disconnectGraceRecords.get(key);
+    const seat = record ? room.table.getSeat(record.seatIndex) : room.table.getSeatByPlayer(playerId);
+    if (!seat || seat.playerId !== playerId) {
+      this.clearDisconnectGrace(room.id, playerId);
+      return;
+    }
+    const settlementKey = `${room.id}:${playerId}`;
+    if (this.settledPlayerExits.has(settlementKey)) {
+      this.clearDisconnectGrace(room.id, playerId);
+      return;
+    }
+    if (this.isCashOutDuringActiveHand(room)) {
+      if (record) record.pendingCashOutAfterHand = true;
+      return;
+    }
+    const amount = Math.max(0, Math.floor(seat.chips));
+    this.settledPlayerExits.add(settlementKey);
+    room.table.cashOut(playerId);
+    const wallet = this.refundWalletAndClearTableBalance(playerId, room.id, roomCurrency(room), amount, "disconnected_grace_expired_cash_out", room.table.handId > 0 ? String(room.table.handId) : undefined);
+    const walletAfter = roomCurrency(room) === "gems" ? wallet.gems : wallet.chips;
+    const client = this.clients.get(playerId);
+    if (client) {
+      client.roomId = undefined;
+      this.sendWalletSnapshot(client, room.id);
+    }
+    room.clients.delete(playerId);
+    this.clearDisconnectGrace(room.id, playerId);
+    this.recordLog(`disconnect_grace_expired_cash_out room_id=${room.id} player_id=${playerId} amount=${amount} wallet_after=${walletAfter}`);
   }
 
   private occupiedSeatCount(room: Room): number {
@@ -759,12 +952,15 @@ export class RoomManager {
     const profile = this.players.upsert(client.id, displayName, avatarId);
     const dailyStatus = this.loginBonus.status(client.id);
     this.ensureDevBotWallet(client.id);
+    const reconnectedRoom = this.restoreAnyDisconnectGrace(client);
     const wallet = this.wallets.get(client.id)!;
     const unlocked = this.avatars.getUnlockedAvatars(client.id);
     client.name = profile.display_name;
     client.avatarId = profile.avatar_id;
     return {
       server_player_id: client.id,
+      room_id: reconnectedRoom?.id,
+      reconnected_to_table: Boolean(reconnectedRoom),
       profile,
       wallet,
       unlocked_avatar_ids: unlocked,
@@ -1199,6 +1395,7 @@ export class RoomManager {
     room.handResultTimer = undefined;
     room.handResultDeadlineAt = undefined;
     room.handResultShownHandId = room.table.handId;
+    this.settleExpiredDisconnectGrace(room);
     if (this.hasReachedHandLimit(room)) {
       this.completePublicSession(room);
     } else if (this.canStartPublicCountdown(room)) {
@@ -1284,6 +1481,7 @@ export class RoomManager {
   private cashOut(room: Room, client: Client): void {
     const seat = room.table.getSeatByPlayer(client.id);
     const settlementKey = `${room.id}:${client.id}`;
+    this.clearDisconnectGrace(room.id, client.id);
     if (!seat) {
       const recovered = this.refundOutstandingTableBalance(client.id, room.id, this.exitSettlementReason(room));
       if (recovered > 0) {
@@ -1478,9 +1676,10 @@ export class RoomManager {
   }
 
   private broadcast(room: Room): void {
-    this.syncRoomTableBalances(room);
     const roomState = this.publicRoomState(room);
     const replayDelivery = room.table.phase === "hand_over" ? this.encryptedReplayDelivery(room) : undefined;
+    this.settleExpiredDisconnectGrace(room);
+    this.syncRoomTableBalances(room);
     const snapshot = {
       ...room.table.publicSnapshot(),
       table_type: room.tableType,
@@ -1509,6 +1708,7 @@ export class RoomManager {
       action_timeout_ms: this.actionTimeoutMs(room),
       action_deadline_at: room.actionDeadlineAt,
       dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
+      seats: this.publicSeatsWithDisconnectGrace(room),
       ...(replayDelivery ? { replay_delivery: replayDelivery } : {}),
       table_info: this.tableSnapshot(room),
     };
