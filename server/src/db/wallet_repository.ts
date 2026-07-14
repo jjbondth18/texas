@@ -32,7 +32,7 @@ export interface WalletTransactionRecord {
 export class WalletRepository {
   constructor(private readonly db: Database.Database) {}
 
-  ensure(playerId: string, initialChips = 10000, initialGems = 0, now = new Date().toISOString()): WalletRecord {
+  ensure(playerId: string, initialChips = 30000, initialGems = 500, now = new Date().toISOString()): WalletRecord {
     const existing = this.get(playerId);
     if (existing) return existing;
     this.db.transaction(() => {

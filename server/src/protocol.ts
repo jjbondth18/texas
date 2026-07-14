@@ -57,6 +57,7 @@ export type ErrorCode =
   | "replay_access_denied"
   | "replay_key_missing"
   | "replay_unlock_failed"
+  | "invalid_replay_type"
   | "room_not_found"
   | "room_not_available"
   | "table_full"
@@ -117,6 +118,7 @@ export interface ClientMessage {
   source?: string;
   room_code?: string;
   replay_id?: string;
+  replay_type?: "official_human" | "room_replay" | "ai" | "training";
 }
 
 export interface ServerMessage {
@@ -157,6 +159,8 @@ export interface ServerMessage {
   key_version?: number;
   checksum?: string;
   already_unlocked?: boolean;
+  replay_type?: "official_human" | "room_replay" | "ai" | "training";
+  price_gems?: number;
   is_ai_warmup?: boolean;
   local_warmup?: boolean;
   host_in_local_warmup?: boolean;
@@ -220,6 +224,15 @@ export interface ServerProfileSnapshot {
   };
   unlocked_avatar_ids: string[];
   daily_bonus: DailyBonusStatusSnapshot;
+  replay_economy: {
+    currency: "gems";
+    prices: {
+      official_human: number;
+      room_replay: number;
+      ai: number;
+      training: number;
+    };
+  };
   created_at: string;
   updated_at: string;
 }

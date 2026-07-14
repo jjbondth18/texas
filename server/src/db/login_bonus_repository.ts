@@ -34,13 +34,13 @@ export interface DailyBonusStatus {
 }
 
 const DAILY_BONUS_REWARDS = [
-  { day: 1, chips: 500, xp: 25, gems: 0 },
-  { day: 2, chips: 750, xp: 25, gems: 0 },
-  { day: 3, chips: 1000, xp: 25, gems: 0 },
-  { day: 4, chips: 1250, xp: 25, gems: 0 },
-  { day: 5, chips: 1500, xp: 25, gems: 0 },
-  { day: 6, chips: 2000, xp: 25, gems: 0 },
-  { day: 7, chips: 5000, xp: 50, gems: 5 },
+  { day: 1, chips: 1000, xp: 25, gems: 0 },
+  { day: 2, chips: 1250, xp: 25, gems: 0 },
+  { day: 3, chips: 1500, xp: 25, gems: 0 },
+  { day: 4, chips: 2000, xp: 25, gems: 0 },
+  { day: 5, chips: 2500, xp: 25, gems: 0 },
+  { day: 6, chips: 3000, xp: 25, gems: 0 },
+  { day: 7, chips: 6000, xp: 50, gems: 100 },
 ] as const;
 
 export class LoginBonusRepository {

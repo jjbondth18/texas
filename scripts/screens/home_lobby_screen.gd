@@ -23,14 +23,14 @@ const MAIN_RIGHT := 70.0
 const ROOM_BROWSER_COL_WIDTHS := [320, 200, 200, 260, 160]
 const DEFAULT_ACTION_TIME_SECONDS := 60
 const DEFAULT_QUICK_PUBLIC_TABLE_CONFIG := {
-	"buy_in": 10000,
-	"small_blind": 50,
-	"big_blind": 100,
+	"buy_in": 2000,
+	"small_blind": 25,
+	"big_blind": 50,
 	"max_hands": 10,
 	"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 	"max_players": 9,
 }
-const CHIP_BUY_IN_OPTIONS := [5000, 10000, 20000, 50000]
+const CHIP_BUY_IN_OPTIONS := [1000, 2000, 5000, 10000, 20000, 50000]
 const CHIP_BLIND_OPTIONS := [[25, 50], [50, 100], [100, 200]]
 const GEM_BUY_IN_OPTIONS := [20, 50, 100, 200]
 const GEM_BLIND_OPTIONS := [[1, 2], [2, 5], [5, 10]]
@@ -60,6 +60,7 @@ var _replay_detail_vbox: VBoxContainer
 var _replay_list_lock_labels: Dictionary = {}
 var _replay_current_record: Dictionary = {}
 var _replay_current_index_entry: Dictionary = {}
+var _replay_economy_signature := \
 var _pending_replay_unlock_record: Dictionary = {}
 var _pending_replay_unlock_index_entry: Dictionary = {}
 var _replay_playback_timer: Timer
@@ -100,7 +101,7 @@ var _is_launching_table := false
 const MockDataProvider := preload("res://scripts/demo/mock_data_provider.gd")
 const ScreenNavigator := preload("res://scripts/app/screen_navigator.gd")
 const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
-const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
+const ProfileServiceScript := preload(\
 const MusicServiceScript := preload("res://scripts/services/music_service.gd")
 const SfxManagerScript := preload("res://scripts/services/sfx_manager.gd")
 const LocalMockBackendScript := preload("res://scripts/services/local_mock_backend.gd")
@@ -196,24 +197,24 @@ var _quick_gem_buy_in_buttons: Dictionary = {}
 var _quick_gem_blinds_buttons: Dictionary = {}
 var _quick_gem_hand_count_buttons: Dictionary = {}
 var _quick_play_mode := "chip"
-var _selected_quick_buy_in := 20000
+var _selected_quick_buy_in := 2000
 var _selected_quick_small_blind := 25
 var _selected_quick_big_blind := 50
 var _selected_quick_max_hands := 10
 var _public_table_setup_panel: PanelContainer
 var _private_room_setup_panel: PanelContainer
 var _public_table_setup_values := {
-	"buy_in": 10000,
-	"small_blind": 50,
-	"big_blind": 100,
+	"buy_in": 2000,
+	"small_blind": 25,
+	"big_blind": 50,
 	"max_hands": 10,
 	"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 	"max_players": 6,
 }
 var _private_room_setup_values := {
-	"buy_in": 20000,
-	"small_blind": 50,
-	"big_blind": 100,
+	"buy_in": 2000,
+	"small_blind": 25,
+	"big_blind": 50,
 	"max_hands": 10,
 	"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 	"max_players": 6,
@@ -783,7 +784,7 @@ func _render_table_creation_setup_panel(panel: PanelContainer, public_table: boo
 	_add_table_setup_profile_row(column, selected_currency)
 
 	var mode_note := Label.new()
-	var buy_in := int(values.get("buy_in", 10000))
+	var buy_in := int(values.get("buy_in", 2000))
 	var wallet_amount := _wallet_amount_for_currency(selected_currency)
 	var can_afford_buy_in := (not (public_table and gem_selected)) and _can_afford_buy_in_for_currency(buy_in, selected_currency)
 	if public_table:
@@ -874,7 +875,7 @@ func _add_table_setup_mode_switch(parent: VBoxContainer, public_table: bool, sel
 func _apply_table_setup_mode_defaults(values: Dictionary, mode: String) -> void:
 	var buy_options: Array = GEM_BUY_IN_OPTIONS if mode == "gem" else CHIP_BUY_IN_OPTIONS
 	if not buy_options.has(int(values.get("buy_in", 0))):
-		values["buy_in"] = 50 if mode == "gem" else 10000
+		values["buy_in"] = 50 if mode == "gem" else 2000
 	var blind_options: Array = GEM_BLIND_OPTIONS if mode == "gem" else CHIP_BLIND_OPTIONS
 	var valid_blind := false
 	for blind_item in blind_options:
@@ -882,8 +883,8 @@ func _apply_table_setup_mode_defaults(values: Dictionary, mode: String) -> void:
 		if int(pair[0]) == int(values.get("small_blind", 0)) and int(pair[1]) == int(values.get("big_blind", 0)):
 			valid_blind = true
 	if not valid_blind:
-		values["small_blind"] = 2 if mode == "gem" else 50
-		values["big_blind"] = 5 if mode == "gem" else 100
+		values["small_blind"] = 2 if mode == "gem" else 25
+		values["big_blind"] = 5 if mode == "gem" else 50
 
 
 func _add_table_setup_profile_row(parent: VBoxContainer, currency: String = "chips") -> void:
@@ -1592,6 +1593,19 @@ func _refresh_profile_views_from_server() -> void:
 		_render_table_creation_setup_panel(_public_table_setup_panel, true)
 	if _private_room_setup_panel != null and _private_room_setup_panel.visible:
 		_render_table_creation_setup_panel(_private_room_setup_panel, false)
+	_refresh_replay_panel_for_economy_config()
+
+func _refresh_replay_panel_for_economy_config() -> void:
+	var next_signature := JSON.stringify(Dictionary(_player_profile.get("replay_economy", {})))
+	if next_signature == _replay_economy_signature or _replay_panel == null or _lobby_ui_root == null:
+		return
+	var was_visible := current_state == LobbyState.REPLAY and _replay_panel.visible
+	_lobby_ui_root.remove_child(_replay_panel)
+	_replay_panel.queue_free()
+	_build_replay_panel()
+	if was_visible:
+		_replay_panel.visible = true
+		_replay_panel.modulate.a = 1.0
 
 func _show_pending_launch_error() -> void:
 	var message := TableLaunchContext.consume_pending_launch_error()
@@ -1685,17 +1699,7 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 
 func _select_default_quick_buy_in() -> void:
 	var total_chips := _wallet_chips_for_public_chip_setup()
-	var best := 0
-	for option in [5000, 10000, 20000, 50000]:
-		var value: int = int(option)
-		if value <= total_chips and value <= 20000:
-			best = value
-	if best == 0:
-		for option in [5000, 10000, 20000, 50000]:
-			var value: int = int(option)
-			if value <= total_chips:
-				best = max(best, value)
-	_selected_quick_buy_in = best if best > 0 else 5000
+	_selected_quick_buy_in = 1000 if total_chips < 5000 else 2000
 
 
 func _select_quick_buy_in(value: int) -> void:
@@ -1940,7 +1944,7 @@ func _confirm_public_table_setup() -> void:
 	if _public_table_setup_mode == "gem":
 		_show_toast(_t("setup.public_gem_quick_note"))
 		return
-	var buy_in: int = int(_public_table_setup_values.get("buy_in", 10000))
+	var buy_in: int = int(_public_table_setup_values.get("buy_in", 2000))
 	if not _can_afford_public_buy_in(buy_in):
 		_show_toast(_t("table.not_enough_buyin_chips"))
 		_render_table_creation_setup_panel(_public_table_setup_panel, true)
@@ -2014,7 +2018,7 @@ func _public_table_config_from_values(values: Dictionary) -> Dictionary:
 		"table_name": "Public Chip %d/%d" % [small_blind, big_blind],
 		"small_blind": small_blind,
 		"big_blind": big_blind,
-		"buy_in": int(values.get("buy_in", 10000)),
+		"buy_in": int(values.get("buy_in", 2000)),
 		"hand_count": int(values.get("max_hands", 10)),
 		"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 		"max_players": int(values.get("max_players", 6)),
@@ -2265,7 +2269,7 @@ func _on_join_pressed(room_id: String) -> void:
 		_refresh_room_browser_rows()
 		return
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
-		var buy_in: int = int(table_info.get("buy_in", 10000))
+		var buy_in: int = int(table_info.get("buy_in", 2000))
 		if not _can_afford_public_buy_in(buy_in):
 			_show_toast(_t("table.not_enough_buyin_chips"))
 			return
@@ -2293,7 +2297,7 @@ func _join_public_chip_table_after_wallet_check(room_id: String) -> void:
 		_show_toast("This table is no longer available.")
 		_refresh_room_browser_rows()
 		return
-	var buy_in: int = int(table_info.get("buy_in", 10000))
+	var buy_in: int = int(table_info.get("buy_in", 2000))
 	_reload_player_profile()
 	if PlayerProfileScript.get_total_chips(_player_profile) < buy_in:
 		_finish_table_launch_transition()
@@ -3122,6 +3126,7 @@ func _update_friends_room_panel() -> void:
 	_friends_room_ready_label.text = _tf("friends.ready_value", {"status": _t("friends.ready_hint_table") if occupied > 0 else _t("friends.ready_hint_lobby")})
 
 func _build_replay_panel() -> void:
+	_replay_economy_signature = JSON.stringify(Dictionary(_player_profile.get(\
 	_replay_panel = PanelContainer.new()
 	_replay_panel.name = "ReplayPanel"
 	_replay_panel.anchor_left = 0.0
@@ -3184,7 +3189,7 @@ func _build_replay_panel() -> void:
 	list_vbox.add_theme_constant_override("separation", 10)
 	list_scroll.add_child(list_vbox)
 	
-	var replay_view: Dictionary = ReplayServiceScript.new().get_replay_view_model()
+	var replay_view: Dictionary = ReplayServiceScript.new().get_replay_view_model(Dictionary(_player_profile.get("replay_economy", {})))
 	var replay_records: Array = Array(replay_view.get("records", []))
 	_replay_list_lock_labels.clear()
 	
@@ -3248,6 +3253,12 @@ func _build_replay_panel() -> void:
 		lock_label.text = _t("replay.unlocked").to_upper() if unlocked else _t("replay.locked").to_upper()
 		HomeTheme.make_font_settings(lock_label, 10, HomeTheme.CYAN if unlocked else HomeTheme.GOLD)
 		desc_vbox.add_child(lock_label)
+		var economy_label := Label.new()
+		var replay_type := str(hand.get("replay_type", ReplayRepositoryScript.replay_type_for_record(preview_record)))
+		var price_gems := int(hand.get("price_gems", _replay_price_gems(preview_record, hand)))
+		economy_label.text = "%s | %s" % [_replay_type_label(replay_type), "%d Gems" % price_gems if price_gems >= 0 else "Price unavailable"]
+		HomeTheme.make_font_settings(economy_label, 10, HomeTheme.MUTED)
+		desc_vbox.add_child(economy_label)
 		if replay_id != "":
 			_replay_list_lock_labels[replay_id] = lock_label
 		
@@ -3347,6 +3358,7 @@ func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
 	var hand_id: String = str(record.get("hand_id", index_entry.get("replay_id", "Unknown")))
 	var replay_id: String = _replay_id_for_record(record, index_entry)
 	var replay_unlocked: bool = _is_replay_unlocked(record, index_entry)
+	var replay_price_gems := _replay_price_gems(record, index_entry)
 	var results: Dictionary = Dictionary(record.get("results", {}))
 	var players: Array = Array(record.get("players", []))
 	var header := HBoxContainer.new()
@@ -3363,12 +3375,13 @@ func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
 		play_button.pressed.connect(_open_replay_playback.bind(record, index_entry))
 		header.add_child(play_button)
 	else:
-		var unlock_button := _make_replay_primary_button(_tf("replay.unlock_button", {"cost": PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS}), HomeTheme.GOLD)
+		var unlock_button := _make_replay_primary_button(_tf("replay.unlock_button", {"cost": replay_price_gems}) if replay_price_gems >= 0 else _t("replay.unlock_replay"), HomeTheme.GOLD)
+		unlock_button.disabled = replay_price_gems < 0
 		unlock_button.pressed.connect(_unlock_replay_from_detail.bind(record, index_entry))
 		header.add_child(unlock_button)
 
 	var unlock_hint := Label.new()
-	unlock_hint.text = _t("replay.unlock_hint_unlocked") if replay_unlocked else _tf("replay.unlock_hint_locked", {"cost": PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS})
+	unlock_hint.text = _t("replay.unlock_hint_unlocked") if replay_unlocked else (_tf("replay.unlock_hint_locked", {"cost": replay_price_gems}) if replay_price_gems >= 0 else _t("replay.unlock_failed"))
 	unlock_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	HomeTheme.make_font_settings(unlock_hint, 12, HomeTheme.MUTED)
 	_replay_detail_vbox.add_child(unlock_hint)
@@ -3430,29 +3443,57 @@ func _is_official_encrypted_replay(record: Dictionary, index_entry: Dictionary =
 	return ReplayRepositoryScript.is_official_encrypted_record(record) or ReplayRepositoryScript.is_official_encrypted_entry(index_entry)
 
 func _is_replay_unlocked(record: Dictionary, index_entry: Dictionary = {}) -> bool:
-	if _is_official_encrypted_replay(record, index_entry):
-		return ReplayRepositoryScript.has_unlock_cache(record if not record.is_empty() else index_entry)
+	var cache_source := record if not record.is_empty() else index_entry
+	if ReplayRepositoryScript.has_unlock_cache(cache_source):
+		return true
+	var identity := IdentityServiceScript.new().get_identity(_player_profile)
+	if not OS.is_debug_build() or str(identity.get("provider", "")) != "local_dev":
+		return false
 	var replay_id := _replay_id_for_record(record, index_entry)
 	return ProfileServiceScript.new().is_replay_unlocked(replay_id)
 
+func _replay_type(record: Dictionary, index_entry: Dictionary = {}) -> String:
+	var explicit_type := str(record.get("replay_type", index_entry.get("replay_type", "")))
+	if explicit_type != "":
+		return explicit_type
+	return ReplayRepositoryScript.replay_type_for_record(record if not record.is_empty() else index_entry)
+
+func _replay_price_gems(record: Dictionary, index_entry: Dictionary = {}) -> int:
+	return PlayerProfileScript.replay_price_gems(_player_profile, _replay_type(record, index_entry))
+
+func _replay_type_label(replay_type: String) -> String:
+	match replay_type:
+		"official_human":
+			return "Official Human"
+		"room_replay":
+			return "Room Replay"
+		"ai":
+			return "AI Replay"
+		"training":
+			return "Training Replay"
+	return "Replay"
+
 func _unlock_replay_from_detail(record: Dictionary, index_entry: Dictionary) -> void:
 	var replay_id := _replay_id_for_record(record, index_entry)
-	if _is_official_encrypted_replay(record, index_entry):
-		if replay_id == "":
-			_show_toast(_t("replay.unlock_failed"), [], 2.4)
-			return
-		if _profile_ws_client == null or not _profile_server_connected:
-			_show_toast(_t("replay.unlock_failed"), [], 2.4)
-			return
+	var replay_type := _replay_type(record, index_entry)
+	var replay_price_gems := _replay_price_gems(record, index_entry)
+	if replay_id == "" or replay_price_gems < 0:
+		_show_toast(_t("replay.unlock_failed"), [], 2.4)
+		return
+	if _profile_ws_client != null and _profile_server_connected:
 		_pending_replay_unlock_record = record.duplicate(true)
 		_pending_replay_unlock_index_entry = index_entry.duplicate(true)
-		var err := _profile_ws_client.unlock_replay(replay_id)
+		var err := _profile_ws_client.unlock_replay(replay_id, replay_type)
 		if err != OK:
 			_pending_replay_unlock_record = {}
 			_pending_replay_unlock_index_entry = {}
 			_show_toast(_t("replay.unlock_failed"), [], 2.4)
 		return
-	var result: Dictionary = ProfileServiceScript.new().unlock_replay(replay_id, PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS)
+	var identity := IdentityServiceScript.new().get_identity(_player_profile)
+	if not OS.is_debug_build() or str(identity.get("provider", "")) != "local_dev" or replay_type not in ["ai", "training"]:
+		_show_toast(_t("replay.unlock_failed"), [], 2.4)
+		return
+	var result: Dictionary = ProfileServiceScript.new().unlock_replay(replay_id, replay_price_gems)
 	if not bool(result.get("success", false)):
 		if str(result.get("reason", "")) == "not_enough_gems":
 			_show_toast(_t("replay.not_enough_gems"), [], 3.0)
@@ -3460,15 +3501,16 @@ func _unlock_replay_from_detail(record: Dictionary, index_entry: Dictionary) -> 
 			_show_toast(_t("replay.unlock_failed"), [], 2.4)
 		return
 	_player_profile = Dictionary(result.get("profile", ProfileServiceScript.new().get_current_profile()))
+	ReplayRepositoryScript.save_local_unlock_cache(record, replay_type, replay_price_gems, "local_mock")
 	SfxManagerScript.play_gem(self, "replay_unlock:%s" % replay_id)
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
 	_refresh_profile_panel()
 	_update_replay_list_lock_label(replay_id, true)
-	_show_toast(_tf("replay.unlock_success", {"cost": _format_number(PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS)}), [], 2.6)
+	_show_toast(_tf("replay.unlock_success", {"cost": _format_number(replay_price_gems)}), [], 2.6)
 	_render_replay_detail(record, index_entry)
 
-func _on_replay_server_unlocked(replay_id: String, replay_key: String, key_version: int, checksum: String, already_unlocked: bool, wallet: Dictionary) -> void:
+func _on_replay_server_unlocked(replay_id: String, replay_type: String, price_gems: int, replay_key: String, key_version: int, checksum: String, already_unlocked: bool, wallet: Dictionary, profile_snapshot: Dictionary) -> void:
 	if replay_id == "":
 		_show_toast(_t("replay.unlock_failed"), [], 2.4)
 		return
@@ -3486,17 +3528,22 @@ func _on_replay_server_unlocked(replay_id: String, replay_key: String, key_versi
 	if key_version > 0:
 		record["key_version"] = key_version
 		index_entry["key_version"] = key_version
-	var full_record: Dictionary = ReplayRepositoryScript.load_unlocked_encrypted_record(record, replay_key)
-	if full_record.has("error"):
-		_show_toast(_replay_unlock_error_text(str(full_record.get("error", ""))), [], 3.0)
-		return
-	if full_record.is_empty():
+	var full_record: Dictionary = record.duplicate(true)
+	if _is_official_encrypted_replay(record, index_entry):
+		full_record = ReplayRepositoryScript.load_unlocked_encrypted_record(record, replay_key)
+		if full_record.has("error"):
+			_show_toast(_replay_unlock_error_text(str(full_record.get("error", ""))), [], 3.0)
+			return
+		if full_record.is_empty() or not ReplayRepositoryScript.save_unlock_cache(record, replay_key, key_version, checksum):
+			_show_toast(_t("replay.unlock_failed"), [], 2.4)
+			return
+	elif not ReplayRepositoryScript.save_local_unlock_cache(record, replay_type, price_gems):
 		_show_toast(_t("replay.unlock_failed"), [], 2.4)
 		return
-	if not ReplayRepositoryScript.save_unlock_cache(record, replay_key, key_version, checksum):
-		_show_toast(_t("replay.unlock_failed"), [], 2.4)
-		return
-	if not wallet.is_empty():
+	if not profile_snapshot.is_empty():
+		_player_profile = ProfileServiceScript.new().apply_server_profile_snapshot(profile_snapshot, wallet)
+		_refresh_profile_views_from_server()
+	elif not wallet.is_empty():
 		_player_profile = ProfileServiceScript.new().apply_wallet_snapshot(wallet)
 		_refresh_profile_views_from_server()
 	if not already_unlocked:

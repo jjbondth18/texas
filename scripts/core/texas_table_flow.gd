@@ -5,6 +5,7 @@ const CoreDeckScript := preload("res://scripts/core/deck.gd")
 const TableStateScript := preload("res://scripts/data/table_state.gd")
 const TableSeatScript := preload("res://scripts/data/table_seat.gd")
 const HandEvaluatorScript := preload("res://scripts/core/hand_evaluator.gd")
+const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 
 const WAITING := TableStateScript.WAITING
 const HAND_STARTING := TableStateScript.HAND_STARTING
@@ -619,7 +620,7 @@ func _mock_player_seats() -> Array[Dictionary]:
 			"player_id": "player_%03d" % i if has_player else "",
 			"player_name": "Luna0581" if i == 5 else ("Seat %d" % i),
 			"avatar_id": String(avatar_ids.get(i, "")) if has_player else "",
-			"chips": 24500 if i == 5 else 12000 + i * 850,
+			"chips": PlayerProfileScript.DEFAULT_TOTAL_CHIPS if i == 5 else 12000 + i * 850,
 			"current_bet": 0,
 			"hole_cards": [],
 			"status": SITTING if has_player else EMPTY,

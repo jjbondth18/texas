@@ -4,6 +4,7 @@ class_name ReplayRepository
 const REPLAY_DIR := "user://replays"
 const INDEX_PATH := "user://replays/replay_index.json"
 const OFFICIAL_ENCRYPTED_MODE := "official_encrypted"
+const LOCAL_PLAINTEXT_MODE := "local_only_plaintext"
 const ENCRYPTED_ALGORITHM := "AES-256-CBC-HMAC-SHA256"
 
 
@@ -53,6 +54,11 @@ static func save_hand_record(record: Dictionary) -> bool:
 	var clean_record: Dictionary = record.duplicate(true)
 	if str(clean_record.get("ended_at", "")) == "":
 		clean_record["ended_at"] = Time.get_datetime_string_from_system(true)
+	clean_record["replay_type"] = replay_type_for_record(clean_record)
+	clean_record["storage_mode"] = LOCAL_PLAINTEXT_MODE
+	if str(clean_record.get("replay_id", "")).strip_edges() == "":
+		clean_record["replay_id"] = _local_replay_id(clean_record)
+	clean_record["locked"] = not has_unlock_cache(clean_record)
 	var file_path: String = _record_file_path(clean_record)
 	clean_record["file_path"] = file_path
 	var file: FileAccess = FileAccess.open(file_path, FileAccess.WRITE)
@@ -110,15 +116,19 @@ static func has_unlock_cache(record_or_entry: Dictionary) -> bool:
 	if not FileAccess.file_exists(cache_path):
 		return false
 	var cache: Dictionary = _read_json_file(cache_path)
-	return bool(cache.get("unlocked", false)) and str(cache.get("replay_id", "")) == replay_id and str(cache.get("replay_key", "")) != ""
+	if not bool(cache.get("unlocked", false)) or str(cache.get("replay_id", "")) != replay_id:
+		return false
+	if is_official_encrypted_record(record_or_entry) or is_official_encrypted_entry(record_or_entry):
+		return str(cache.get("replay_key", "")) != ""
+	return str(cache.get("authority", "")) in ["server", "local_mock"]
 
 
 static func save_unlock_cache(record_or_entry: Dictionary, replay_key: String, key_version: int, checksum: String) -> bool:
 	var replay_id: String = _safe_file_part(str(record_or_entry.get("replay_id", "")))
 	if replay_id == "" or replay_key == "":
 		return false
-	var replay_dir: String = _replay_dir_for_record(record_or_entry)
-	if replay_dir == "" or not _ensure_dir_path(replay_dir):
+	var cache_path: String = _unlock_cache_path(record_or_entry)
+	if cache_path == "" or not _ensure_dir_path(cache_path.get_base_dir()):
 		return false
 	var cache := {
 		"replay_id": replay_id,
@@ -129,7 +139,36 @@ static func save_unlock_cache(record_or_entry: Dictionary, replay_key: String, k
 		"unlocked_at": Time.get_datetime_string_from_system(true),
 		"authority": "server",
 	}
-	return _write_json_file("%s/unlock.json" % replay_dir, cache)
+	return _write_json_file(cache_path, cache)
+
+
+static func save_local_unlock_cache(record_or_entry: Dictionary, replay_type: String, price_gems: int, authority: String = "server") -> bool:
+	var replay_id: String = _safe_file_part(str(record_or_entry.get("replay_id", "")))
+	var cache_path: String = _unlock_cache_path(record_or_entry)
+	if replay_id == "" or cache_path == "" or not _ensure_dir_path(cache_path.get_base_dir()):
+		return false
+	return _write_json_file(cache_path, {
+		"replay_id": replay_id,
+		"replay_type": replay_type,
+		"price_gems": price_gems,
+		"unlocked": true,
+		"unlocked_at": Time.get_datetime_string_from_system(true),
+		"authority": authority,
+	})
+
+
+static func replay_type_for_record(record: Dictionary) -> String:
+	var explicit_type := str(record.get("replay_type", "")).strip_edges()
+	if explicit_type in ["official_human", "room_replay", "ai", "training"]:
+		return explicit_type
+	var mode := str(record.get("mode", ""))
+	if mode == "training":
+		return "training"
+	if mode == "local_warmup":
+		return "ai"
+	if mode == "private":
+		return "room_replay"
+	return "official_human"
 
 
 static func load_unlocked_encrypted_record(record_or_entry: Dictionary, replay_key: String = "") -> Dictionary:
@@ -221,9 +260,11 @@ static func _index_entry(record: Dictionary, file_path: String) -> Dictionary:
 		"public_preview_path": str(record.get("public_preview_path", "")),
 		"private_blob_path": str(record.get("private_blob_path", "")),
 		"storage_mode": str(record.get("storage_mode", "")),
+		"replay_type": replay_type_for_record(record),
 		"checksum": str(record.get("checksum", "")),
 		"key_version": int(record.get("key_version", 0)),
-		"locked": bool(record.get("locked", false)),
+		"locked": not has_unlock_cache(record),
+		"unlocked": has_unlock_cache(record),
 	}
 
 
@@ -361,10 +402,23 @@ static func _replay_dir_for_record(record_or_entry: Dictionary) -> String:
 
 
 static func _unlock_cache_path(record_or_entry: Dictionary) -> String:
+	if not is_official_encrypted_record(record_or_entry) and not is_official_encrypted_entry(record_or_entry):
+		var replay_id: String = _safe_file_part(str(record_or_entry.get("replay_id", "")))
+		return "%s/unlocks/%s.json" % [REPLAY_DIR, replay_id] if replay_id != "" else ""
 	var replay_dir: String = _replay_dir_for_record(record_or_entry)
 	if replay_dir == "":
 		return ""
 	return "%s/unlock.json" % replay_dir
+
+
+static func _local_replay_id(record: Dictionary) -> String:
+	var fingerprint := "%s|%s|%s|%s" % [
+		str(record.get("mode", "local")),
+		str(record.get("room_id", "")),
+		str(record.get("hand_id", "hand_000000")),
+		str(record.get("ended_at", "")),
+	]
+	return "local_%s" % _sha256_hex(fingerprint).substr(0, 24)
 
 
 static func _sha256_hex(text: String) -> String:

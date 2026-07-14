@@ -2,7 +2,9 @@ extends RefCounted
 
 func run() -> void:
 	var profile_source: String = FileAccess.get_file_as_string("res://scripts/services/profile_service.gd")
-	var player_source: String = FileAccess.get_file_as_string("res://scripts/data/player_profile.gd")
-	assert(player_source.find("unlocked_replay_ids") != -1)
-	assert(profile_source.find("profile[\"unlocked_replay_ids\"] = unlocked") != -1)
-	assert(profile_source.find("save_current_profile(profile)") != -1)
+	var repository_source: String = FileAccess.get_file_as_string("res://scripts/replay/replay_repository.gd")
+	var server_repository_source: String = FileAccess.get_file_as_string("res://server/src/db/replay_repository.ts")
+	assert(repository_source.find("save_local_unlock_cache") != -1)
+	assert(repository_source.find('\"authority\": authority') != -1)
+	assert(server_repository_source.find("recordUnlock") != -1)
+	assert(profile_source.find("func unlock_replay") != -1)

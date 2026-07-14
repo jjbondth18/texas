@@ -104,6 +104,8 @@ func apply_server_profile_snapshot(profile_snapshot: Dictionary, wallet_snapshot
 			profile["avatar"] = AvatarLibraryScript.avatar_path(avatar_id)
 		if profile_snapshot.has("is_new_player"):
 			profile["is_new_player"] = bool(profile_snapshot.get("is_new_player", false))
+		if profile_snapshot.has("replay_economy"):
+			profile["replay_economy"] = Dictionary(profile_snapshot.get("replay_economy", {})).duplicate(true)
 	if not wallet_snapshot.is_empty():
 		profile["total_chips"] = int(wallet_snapshot.get("chips", PlayerProfileScript.get_total_chips(profile)))
 		profile["chips"] = int(profile["total_chips"])
@@ -324,11 +326,13 @@ func is_replay_unlocked(replay_id: String) -> bool:
 	var profile := get_current_profile()
 	return Array(profile.get("unlocked_replay_ids", [])).has(clean_id)
 
-func unlock_replay(replay_id: String, cost_gems: int = PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS) -> Dictionary:
+func unlock_replay(replay_id: String, cost_gems: int) -> Dictionary:
 	var clean_id := replay_id.strip_edges()
 	var profile := get_current_profile()
 	if clean_id == "":
 		return {"success": false, "reason": "missing_replay_id", "profile": profile}
+	if cost_gems < 0:
+		return {"success": false, "reason": "missing_server_price", "profile": profile}
 	var unlocked: Array = Array(profile.get("unlocked_replay_ids", [])).duplicate()
 	if unlocked.has(clean_id):
 		return {"success": true, "reason": "already_unlocked", "profile": profile}

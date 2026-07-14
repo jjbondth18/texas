@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import type { ReplayType } from "../replay_economy.js";
 
 export interface ReplayIndexRecord {
   replay_id: string;
@@ -10,6 +11,7 @@ export interface ReplayIndexRecord {
   created_at: string;
   checksum: string;
   schema_version: number;
+  replay_type: ReplayType;
 }
 
 export interface ReplayParticipantRecord {
@@ -40,7 +42,7 @@ export class ReplayRepository {
   saveReplayIndex(record: ReplayIndexRecord): void {
     this.db
       .prepare(
-        "INSERT OR IGNORE INTO replay_index (replay_id, hand_id, room_id, room_code, table_type, currency, created_at, checksum, schema_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO replay_index (replay_id, hand_id, room_id, room_code, table_type, currency, created_at, checksum, schema_version, replay_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
         record.replay_id,
@@ -52,7 +54,27 @@ export class ReplayRepository {
         record.created_at,
         record.checksum,
         record.schema_version,
+        record.replay_type,
       );
+  }
+
+  ensureLocalReplay(replayId: string, playerId: string, replayType: "ai" | "training", now = new Date().toISOString()): ReplayIndexRecord {
+    this.saveReplayIndex({
+      replay_id: replayId,
+      hand_id: replayId,
+      room_id: `local:${playerId}`,
+      room_code: "",
+      table_type: replayType,
+      currency: "chips",
+      created_at: now,
+      checksum: "",
+      schema_version: 1,
+      replay_type: replayType,
+    });
+    this.saveParticipants(replayId, [{ player_id: playerId, seat_index: -1 }]);
+    const replay = this.getReplayIndex(replayId);
+    if (!replay) throw new Error("replay_unlock_failed");
+    return replay;
   }
 
   saveParticipants(replayId: string, participants: Array<Omit<ReplayParticipantRecord, "replay_id">>): void {

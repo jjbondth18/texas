@@ -61,7 +61,7 @@ func _build_ui() -> void:
 	_player_name_edit = _add_labeled_line_edit(connection_grid, "Player Name", "")
 	_room_id_edit = _add_labeled_line_edit(connection_grid, "Room ID", "")
 	_seat_index_spin = _add_labeled_spin(connection_grid, "Seat", 0, 5, 0)
-	_buy_in_spin = _add_labeled_spin(connection_grid, "Buy In", 1, 1000000, 5000)
+	_buy_in_spin = _add_labeled_spin(connection_grid, "Buy In", 1, 1000000, 2000)
 	_amount_spin = _add_labeled_spin(connection_grid, "Bet/Raise To", 0, 1000000, 100)
 
 	var button_bar := HBoxContainer.new()

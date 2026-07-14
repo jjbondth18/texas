@@ -2,6 +2,10 @@ extends RefCounted
 class_name ReplayRecord
 
 var replay_id := ""
+var replay_type := ""
+var price_gems := -1
+var locked := true
+var unlocked := false
 var file_path := ""
 var played_at := ""
 var mode := ""
@@ -18,6 +22,10 @@ var favorite := false
 
 func _init(data: Dictionary = {}) -> void:
 	replay_id = str(data.get("replay_id", ""))
+	replay_type = str(data.get("replay_type", ""))
+	price_gems = int(data.get("price_gems", -1))
+	locked = bool(data.get("locked", true))
+	unlocked = bool(data.get("unlocked", not locked))
 	file_path = str(data.get("file_path", ""))
 	played_at = str(data.get("played_at", ""))
 	mode = str(data.get("mode", ""))
@@ -39,6 +47,10 @@ func _init(data: Dictionary = {}) -> void:
 func to_dict() -> Dictionary:
 	return {
 		"replay_id": replay_id,
+		"replay_type": replay_type,
+		"price_gems": price_gems,
+		"locked": locked,
+		"unlocked": unlocked,
 		"file_path": file_path,
 		"played_at": played_at,
 		"mode": mode,

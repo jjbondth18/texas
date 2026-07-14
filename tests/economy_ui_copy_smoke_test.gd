@@ -16,7 +16,7 @@ func _initialize() -> void:
 	var daily_texts: String = _collect_text(home.get("_daily_bonus") as Node)
 	_require(daily_texts.find("DAILY BONUS") != -1, "Daily bonus bar must be shown on home entry.")
 	_require(daily_texts.find("CLAIM") != -1, "Daily bonus bar must show a CLAIM action instead of auto-claiming.")
-	_require(daily_texts.find("500 Chips") != -1, "Daily bonus Day 1 must show 500 Chips.")
+	_require(daily_texts.find("1,000 Chips") != -1, "Daily bonus Day 1 must show 1,000 Chips.")
 	_require(toast_label == null or not toast_label.visible, "Daily bonus must not auto-claim on first home entry.")
 
 	home.call("_on_mode_selected", "quick_play")

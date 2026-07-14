@@ -12,22 +12,21 @@ const DEFAULT_TOTAL_XP := 0
 const DEFAULT_LEVEL := 1
 const DEFAULT_XP_CURRENT := 0
 const DEFAULT_XP_MAX := XP_PER_LEVEL
-const DEFAULT_TOTAL_CHIPS := 24500
-const DEFAULT_GEMS := 0
-const DEFAULT_TABLE_BUY_IN := 20000
-const SCHEMA_VERSION := 4
-const DAILY_LOGIN_CHIPS := 500
+const DEFAULT_TOTAL_CHIPS := 30000
+const DEFAULT_GEMS := 500
+const DEFAULT_TABLE_BUY_IN := 2000
+const SCHEMA_VERSION := 5
+const DAILY_LOGIN_CHIPS := 1000
 const DAILY_LOGIN_XP := 25
 const DAILY_BONUS_REWARDS := [
-	{"day": 1, "chips": 500, "xp": 25, "gems": 0},
-	{"day": 2, "chips": 750, "xp": 25, "gems": 0},
-	{"day": 3, "chips": 1000, "xp": 25, "gems": 0},
-	{"day": 4, "chips": 1250, "xp": 25, "gems": 0},
-	{"day": 5, "chips": 1500, "xp": 25, "gems": 0},
-	{"day": 6, "chips": 2000, "xp": 25, "gems": 0},
-	{"day": 7, "chips": 5000, "xp": 50, "gems": 5},
+	{"day": 1, "chips": 1000, "xp": 25, "gems": 0},
+	{"day": 2, "chips": 1250, "xp": 25, "gems": 0},
+	{"day": 3, "chips": 1500, "xp": 25, "gems": 0},
+	{"day": 4, "chips": 2000, "xp": 25, "gems": 0},
+	{"day": 5, "chips": 2500, "xp": 25, "gems": 0},
+	{"day": 6, "chips": 3000, "xp": 25, "gems": 0},
+	{"day": 7, "chips": 6000, "xp": 50, "gems": 100},
 ]
-const REPLAY_UNLOCK_COST_GEMS := 20
 const TITLE_UNLOCKS := [
 	{"level": 1, "title": "Rookie"},
 	{"level": 3, "title": "Casual Player"},
@@ -71,7 +70,7 @@ var daily_bonus_claimed_days_in_cycle := 0
 var daily_bonus_can_claim_today := true
 var daily_bonus_status_synced := false
 var daily_reward_claimed_today := false
-var replay_unlock_cost_gems := REPLAY_UNLOCK_COST_GEMS
+var replay_economy: Dictionary = {}
 var unlocked_replay_ids: Array[String] = []
 var created_at := ""
 var updated_at := ""
@@ -134,7 +133,7 @@ func _init(
 	daily_bonus_can_claim_today = bool(profile_stats.get("daily_bonus_can_claim_today", not bool(profile_stats.get("daily_reward_claimed_today", false))))
 	daily_bonus_status_synced = bool(profile_stats.get("daily_bonus_status_synced", false))
 	daily_reward_claimed_today = bool(profile_stats.get("daily_reward_claimed_today", false))
-	replay_unlock_cost_gems = int(profile_stats.get("replay_unlock_cost_gems", REPLAY_UNLOCK_COST_GEMS))
+	replay_economy = Dictionary(profile_stats.get("replay_economy", {})).duplicate(true)
 	unlocked_replay_ids.clear()
 	for id in Array(profile_stats.get("unlocked_replay_ids", [])):
 		var replay_id := str(id).strip_edges()
@@ -184,7 +183,7 @@ func to_lobby_dict() -> Dictionary:
 		"daily_bonus_can_claim_today": daily_bonus_can_claim_today,
 		"daily_bonus_status_synced": daily_bonus_status_synced,
 		"daily_reward_claimed_today": daily_reward_claimed_today,
-		"replay_unlock_cost_gems": replay_unlock_cost_gems,
+		"replay_economy": replay_economy.duplicate(true),
 		"unlocked_replay_ids": unlocked_replay_ids.duplicate(),
 		"created_at": created_at,
 		"updated_at": updated_at,
@@ -248,6 +247,11 @@ static func get_total_chips(data: Dictionary) -> int:
 
 static func get_total_gems(data: Dictionary) -> int:
 	return int(data.get("gems", DEFAULT_GEMS))
+
+static func replay_price_gems(data: Dictionary, replay_type: String) -> int:
+	var economy := Dictionary(data.get("replay_economy", {}))
+	var prices := Dictionary(economy.get("prices", {}))
+	return int(prices.get(replay_type, -1))
 
 static func get_total_xp(data: Dictionary) -> int:
 	var legacy_xp_progress: int = clamp(int(data.get("xp_current", DEFAULT_XP_CURRENT)), 0, XP_PER_LEVEL - 1)

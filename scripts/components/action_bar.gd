@@ -8,6 +8,7 @@ class_name ActionBar
 signal action_pressed(action: Dictionary)
 
 const LocalizationManagerScript := preload("res://scripts/services/localization_manager.gd")
+const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 
 var actions: Array[Dictionary] = []
 var pot_amount: int = 0
@@ -148,10 +149,10 @@ func set_local_player_info(local: Dictionary, phase: String = "preflop") -> void
 	if local.is_empty():
 		return
 	var is_server_authoritative := bool(local.get("server_authoritative", false))
-	var chips := int(local.get("chips", 24500))
-	var buy_in := int(local.get("buy_in", 20000))
+	var chips := int(local.get("chips", PlayerProfileScript.DEFAULT_TOTAL_CHIPS))
+	var buy_in := int(local.get("buy_in", PlayerProfileScript.DEFAULT_TABLE_BUY_IN))
 	if buy_in <= 0:
-		buy_in = 0 if is_server_authoritative else 20000
+		buy_in = 0 if is_server_authoritative else PlayerProfileScript.DEFAULT_TABLE_BUY_IN
 	var profit := chips - buy_in
 	var win_rate := String(local.get("win_rate", "N/A" if is_server_authoritative else _phase_win_rate(phase)))
 

@@ -87,7 +87,7 @@ static func create_room() -> Dictionary:
 static func join_room(room_id: String) -> Dictionary:
 	return _message(JOIN_ROOM, {"room_id": room_id})
 
-static func sit_down(seat_index: int, buy_in: int = 5000) -> Dictionary:
+static func sit_down(seat_index: int, buy_in: int = 2000) -> Dictionary:
 	return _message(SIT_DOWN, {"seat_index": seat_index, "buy_in": buy_in})
 
 static func leave_seat() -> Dictionary:
@@ -138,8 +138,8 @@ static func select_avatar(avatar_id: String) -> Dictionary:
 static func mock_purchase(currency: String, amount: int, source: String = "store_mock") -> Dictionary:
 	return _message(MOCK_PURCHASE, {"currency": currency, "amount": amount, "source": source})
 
-static func unlock_replay(replay_id: String) -> Dictionary:
-	return _message(UNLOCK_REPLAY, {"replay_id": replay_id})
+static func unlock_replay(replay_id: String, replay_type: String) -> Dictionary:
+	return _message(UNLOCK_REPLAY, {"replay_id": replay_id, "replay_type": replay_type})
 
 static func list_tables() -> Dictionary:
 	return _message(LIST_TABLES)

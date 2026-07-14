@@ -18,6 +18,14 @@ import { AVATAR_CATALOG, DEFAULT_AVATAR_PRICE_CHIPS, findAvatarCatalogItem } fro
 import { config, type SteamAuthMode } from "./config.js";
 import { buildEncryptedReplayDelivery, buildHandReplayRecord, generateReplayKey, replayIdFor, type EncryptedReplayDelivery } from "./replay.js";
 import { SteamWebApiAuthVerifier, type SteamAuthVerifier } from "./services/steam_auth_verifier.js";
+import {
+  REPLAY_ECONOMY_CONFIG,
+  isReplayType,
+  replayTypeForOfficialTable,
+  replayUnlockCost,
+  replayUnlockReason,
+  type ReplayType,
+} from "./replay_economy.js";
 
 interface Client {
   id: string;
@@ -76,14 +84,14 @@ interface DisconnectGraceRecord {
   timeout?: ReturnType<typeof setTimeout>;
 }
 
-const DEFAULT_TABLE_BUY_IN = 5000;
+const DEFAULT_TABLE_BUY_IN = 2000;
 const DEFAULT_SMALL_BLIND = 25;
 const DEFAULT_BIG_BLIND = 50;
 const DEFAULT_HAND_COUNT = 10;
 const DEFAULT_ACTION_TIME_SECONDS = 60;
 const DEFAULT_MAX_PLAYERS = 6;
 const DEV_BOT_MIN_WALLET_CHIPS = 50000;
-const ALLOWED_BUY_INS = new Set([5000, 10000, 20000, 50000]);
+const ALLOWED_BUY_INS = new Set([1000, 2000, 5000, 10000, 20000, 50000]);
 const ALLOWED_BLIND_PAIRS = new Set(["25/50", "50/100", "100/200"]);
 const ALLOWED_GEM_BUY_INS = new Set([20, 50, 100, 200]);
 const ALLOWED_GEM_BLIND_PAIRS = new Set(["1/2", "2/5", "5/10"]);
@@ -99,7 +107,7 @@ const TABLE_SEAT_JOIN_ORDER_9P = [5, 8, 2, 6, 4, 9, 1, 7, 3];
 const PUBLIC_SEAT_JOIN_ORDER = TABLE_SEAT_JOIN_ORDER_9P;
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const DEV_SIMULATED_START_BLOCK_REASON = "Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot.";
-const REPLAY_UNLOCK_COST_GEMS = 5;
+
 const DEALER_IDS = [
   "dealer_01_dog",
   "dealer_02_bear",
@@ -205,7 +213,9 @@ export class RoomManager {
       return;
     }
     if (message.type === "create_table") {
-      const room = this.createRoom(this.tableConfigFromMessage(message));
+      const tableConfig = this.tableConfigFromMessage(message);
+      this.ensureCanAffordTableConfig(client, tableConfig);
+      const room = this.createRoom(tableConfig);
       room.hostPlayerId = client.id;
       this.joinRoom(client, room.id);
       const table = this.tableSnapshot(room);
@@ -226,6 +236,7 @@ export class RoomManager {
       if (!room.isPublic) throw new Error("room_not_found");
       const decision = this.publicRoomListDecision(room);
       if (!decision.include) throw new Error(decision.reason === "full" ? "table_full" : "room_not_available");
+      this.ensureCanAffordRoom(client, room);
       this.joinRoom(client, room.id);
       const table = this.tableSnapshot(room);
       this.recordLog(`${client.id} joined public table ${room.id}`);
@@ -535,6 +546,7 @@ export class RoomManager {
 
   private createPrivateTable(client: Client, message: ClientMessage): Room {
     const tableConfig = this.tableConfigFromMessage({ ...message, is_public: false });
+    this.ensureCanAffordTableConfig(client, tableConfig);
     const roomCode = this.generateRoomCode();
     const room = this.createRoom({
       ...tableConfig,
@@ -597,7 +609,6 @@ export class RoomManager {
 
   private ensureCanAffordTableConfig(client: Client, tableConfig: Partial<Pick<Room, "tableType" | "buyIn">>): void {
     const currency = String(tableConfig.tableType || "").endsWith("_gem") ? "gems" : "chips";
-    if (currency !== "gems") return;
     const buyIn = Math.floor(numberOr(tableConfig.buyIn, DEFAULT_TABLE_BUY_IN));
     this.wallets.ensure(client.id);
     const wallet = this.wallets.get(client.id);
@@ -966,7 +977,7 @@ export class RoomManager {
       unlocked_avatar_ids: unlocked,
       daily_bonus_status: dailyStatus,
       is_new_player: isNewPlayer,
-      profile_snapshot: this.profileBootstrap.getProfileSnapshot(client.id, isNewPlayer),
+      profile_snapshot: this.authoritativeProfileSnapshot(client.id, isNewPlayer),
       warning: avatarId !== requestedAvatarId ? `avatar ${requestedAvatarId} is not unlocked; using default` : undefined,
     };
   }
@@ -979,7 +990,14 @@ export class RoomManager {
       wallet,
       unlocked_avatar_ids: this.avatars.getUnlockedAvatars(playerId),
       daily_bonus_status: this.loginBonus.status(playerId),
-      profile_snapshot: this.profileBootstrap.getProfileSnapshot(playerId),
+      profile_snapshot: this.authoritativeProfileSnapshot(playerId),
+    };
+  }
+
+  private authoritativeProfileSnapshot(playerId: string, isNewPlayer = false) {
+    return {
+      ...this.profileBootstrap.getProfileSnapshot(playerId, isNewPlayer),
+      replay_economy: REPLAY_ECONOMY_CONFIG,
     };
   }
 
@@ -1061,29 +1079,40 @@ export class RoomManager {
     const replayId = String(message.replay_id || "").trim();
     if (replayId === "") throw new Error("replay_not_found");
     const result = this.db.transaction(() => {
-      const replay = this.replays.getReplayIndex(replayId);
-      if (!replay) throw new Error("replay_not_found");
+      const requestedType = String(message.replay_type || "").trim();
+      let replay = this.replays.getReplayIndex(replayId);
+      if (!replay) {
+        if (requestedType !== "ai" && requestedType !== "training") throw new Error("replay_not_found");
+        replay = this.replays.ensureLocalReplay(replayId, client.id, requestedType);
+      }
+      const replayType = String(replay.replay_type || "official_human");
+      if (!isReplayType(replayType)) throw new Error("invalid_replay_type");
+      if (requestedType !== "" && (!isReplayType(requestedType) || requestedType !== replayType)) throw new Error("invalid_replay_type");
       if (!this.replays.isParticipant(replayId, client.id)) throw new Error("replay_access_denied");
+      const requiresKey = replayType === "official_human" || replayType === "room_replay";
       const key = this.replays.getReplayKey(replayId);
-      if (!key) throw new Error("replay_key_missing");
+      if (requiresKey && !key) throw new Error("replay_key_missing");
+      const priceGems = replayUnlockCost(replayType);
       const existing = this.replays.getUnlock(replayId, client.id);
       if (existing) {
         return {
           replay,
           key,
+          replayType,
+          priceGems,
           wallet: this.wallets.get(client.id) ?? this.wallets.ensure(client.id),
           alreadyUnlocked: true,
         };
       }
       const wallet = this.wallets.get(client.id) ?? this.wallets.ensure(client.id);
-      if (wallet.gems < REPLAY_UNLOCK_COST_GEMS) throw new Error("insufficient_gems");
-      const updatedWallet = this.wallets.deductGems(client.id, REPLAY_UNLOCK_COST_GEMS, {
-        reason: "replay_unlock",
+      if (wallet.gems < priceGems) throw new Error("insufficient_gems");
+      const updatedWallet = this.wallets.deductGems(client.id, priceGems, {
+        reason: replayUnlockReason(replayType),
         relatedRoomId: replay.room_id,
         relatedHandId: replay.hand_id,
       });
-      this.replays.recordUnlock(replayId, client.id, REPLAY_UNLOCK_COST_GEMS, "gems");
-      return { replay, key, wallet: updatedWallet, alreadyUnlocked: false };
+      this.replays.recordUnlock(replayId, client.id, priceGems, "gems");
+      return { replay, key, replayType, priceGems, wallet: updatedWallet, alreadyUnlocked: false };
     })();
     this.send(client, {
       type: "replay_unlocked",
@@ -1091,11 +1120,14 @@ export class RoomManager {
       player_id: client.id,
       server_player_id: client.id,
       replay_id: replayId,
-      replay_key: result.key.key_material,
-      key_version: result.key.key_version,
+      replay_key: result.key?.key_material,
+      key_version: result.key?.key_version,
       checksum: result.replay.checksum,
       already_unlocked: result.alreadyUnlocked,
+      replay_type: result.replayType,
+      price_gems: result.priceGems,
       wallet: result.wallet,
+      profile_snapshot: this.authoritativeProfileSnapshot(client.id),
     });
     this.send(client, { type: "wallet_snapshot", request_id: message.request_id, player_id: client.id, wallet: result.wallet });
   }
@@ -1749,6 +1781,7 @@ export class RoomManager {
       created_at: createdAt,
       checksum: delivery.checksum,
       schema_version: delivery.metadata.schema_version,
+      replay_type: replayTypeForOfficialTable(room.tableType, room.visibility),
     });
     this.replays.saveParticipants(
       replayId,

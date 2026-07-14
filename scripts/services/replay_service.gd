@@ -5,12 +5,19 @@ const ReplayRecordScript := preload("res://scripts/data/replay_record.gd")
 const ReplayViewModelScript := preload("res://scripts/app/replay_view_model.gd")
 const ReplayRepositoryScript := preload("res://scripts/replay/replay_repository.gd")
 
-func get_replay_view_model() -> Dictionary:
+func get_replay_view_model(replay_economy: Dictionary = {}) -> Dictionary:
 	var records: Array = []
+	var prices := Dictionary(replay_economy.get("prices", {}))
 	for entry_item in ReplayRepositoryScript.load_index_entries():
 		var entry: Dictionary = Dictionary(entry_item)
+		var replay_type := ReplayRepositoryScript.replay_type_for_record(entry)
+		var unlocked := ReplayRepositoryScript.has_unlock_cache(entry)
 		records.append(ReplayRecordScript.new({
-			"replay_id": str(entry.get("hand_id", "")),
+			"replay_id": str(entry.get("replay_id", entry.get("hand_id", ""))),
+			"replay_type": replay_type,
+			"price_gems": int(prices.get(replay_type, -1)),
+			"locked": not unlocked,
+			"unlocked": unlocked,
 			"file_path": str(entry.get("file_path", "")),
 			"played_at": str(entry.get("ended_at", "")),
 			"mode": _mode_label(str(entry.get("mode", ""))),

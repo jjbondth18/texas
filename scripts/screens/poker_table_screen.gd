@@ -35,7 +35,7 @@ const ReplayRepositoryScript := preload("res://scripts/replay/replay_repository.
 const LocalizationManagerScript := preload("res://scripts/services/localization_manager.gd")
 
 const DESIGN_SIZE := Vector2(2560, 1000)
-const SERVER_DEFAULT_BUY_IN := 5000
+const SERVER_DEFAULT_BUY_IN := 2000
 const DEFAULT_ACTION_TIME_SECONDS := 60
 const CLIENT_BUILD_ID := "sitdown-ack-v1"
 const TABLE_BACKGROUND_PATH := "res://assets/poker_table/backgrounds/table_neon_v1.png"
@@ -739,7 +739,7 @@ func _try_server_sit_down() -> void:
 	if buy_in <= 0:
 		buy_in = PlayerProfileScript.table_buy_in(ProfileServiceScript.new().get_current_profile())
 	if buy_in <= 0:
-		buy_in = 5000
+		buy_in = SERVER_DEFAULT_BUY_IN
 	var authoritative_wallet_chips := PlayerProfileScript.get_total_chips(ProfileServiceScript.new().get_current_profile())
 	var local_profile_chips := PlayerProfileScript.get_total_chips(TableLaunchContext.get_player_profile())
 	var displayed_wallet_chips := authoritative_wallet_chips
@@ -787,9 +787,9 @@ func _server_create_table_config() -> Dictionary:
 		hand_count = 0
 	var buy_in := TableLaunchContext.buy_in
 	var wallet_chips := PlayerProfileScript.get_total_chips(ProfileServiceScript.new().get_current_profile())
-	if not [5000, 10000, 20000, 50000].has(buy_in) or buy_in > wallet_chips:
-		buy_in = 5000
-		for option in [5000, 10000, 20000, 50000]:
+	if not [1000, 2000, 5000, 10000, 20000, 50000].has(buy_in) or buy_in > wallet_chips:
+		buy_in = SERVER_DEFAULT_BUY_IN
+		for option in [1000, 2000, 5000, 10000, 20000, 50000]:
 			var value := int(option)
 			if value <= wallet_chips:
 				buy_in = value

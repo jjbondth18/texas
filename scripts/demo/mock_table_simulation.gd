@@ -2,6 +2,7 @@ extends RefCounted
 class_name MockTableSimulation
 
 const HandLifecycleScript := preload("res://scripts/core/hand_lifecycle.gd")
+const PlayerProfileScript := preload("res://scripts/data/player_profile.gd")
 
 const LOCAL_SEAT_INDEX := 5
 const TABLE_SEAT_JOIN_ORDER_9P := [5, 8, 2, 6, 4, 9, 1, 7, 3]
@@ -231,7 +232,7 @@ static func _mock_table_seats() -> Array[Dictionary]:
 			"seat_index": i,
 			"player_id": "player_%03d" % i,
 			"player_name": "Luna0581" if i == LOCAL_SEAT_INDEX else ("XProGamer_Texas_999" if i == 4 else "Seat %d" % i),
-			"chips": 24500 if i == LOCAL_SEAT_INDEX else 12000 + i * 850,
+			"chips": PlayerProfileScript.DEFAULT_TOTAL_CHIPS if i == LOCAL_SEAT_INDEX else 12000 + i * 850,
 			"status": "empty" if i == 8 else "active",
 			"is_local": i == LOCAL_SEAT_INDEX,
 		})

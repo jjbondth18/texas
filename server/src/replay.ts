@@ -1,6 +1,7 @@
 import type { ActionLogEntry, Card } from "./protocol.js";
 import type { TableState } from "./table_state.js";
 import { createCipheriv, createHash, createHmac, randomBytes } from "node:crypto";
+import { replayTypeForOfficialTable, type ReplayType } from "./replay_economy.js";
 
 export interface ReplayRoomMeta {
   roomCode?: string;
@@ -34,6 +35,7 @@ export interface ReplayMetadata {
   schema_version: number;
   storage_mode: "official_encrypted";
   locked: boolean;
+  replay_type: ReplayType;
 }
 
 export interface ReplayPublicPreview {
@@ -49,6 +51,7 @@ export interface ReplayPublicPreview {
   players: Array<{ player_id: string; player_name: string; seat_index: number; ending_stack: number; final_status: string }>;
   community_cards: unknown;
   results: unknown;
+  replay_type: ReplayType;
 }
 
 export interface EncryptedReplayDelivery {
@@ -214,6 +217,7 @@ function deriveReplaySubkey(rootKey: Buffer, label: string): Buffer {
 function buildReplayMetadata(record: Record<string, unknown>, checksum: string): ReplayMetadata {
   const players = Array.isArray(record.players) ? (record.players as Array<Record<string, unknown>>) : [];
   const results = asRecord(record.results);
+  const replayType = replayTypeFromRecord(record);
   return {
     replay_id: String(record.replay_id || replayIdFromRecord(record)),
     hand_id: String(record.hand_id || ""),
@@ -236,6 +240,7 @@ function buildReplayMetadata(record: Record<string, unknown>, checksum: string):
     schema_version: Number(record.replay_version || 1),
     storage_mode: "official_encrypted",
     locked: true,
+    replay_type: replayType,
   };
 }
 
@@ -260,7 +265,13 @@ function buildPublicPreview(record: Record<string, unknown>): ReplayPublicPrevie
     })),
     community_cards: record.community_cards ?? {},
     results: record.results ?? {},
+    replay_type: replayTypeFromRecord(record),
   };
+}
+
+function replayTypeFromRecord(record: Record<string, unknown>): ReplayType {
+  const mode = String(record.mode || "public");
+  return replayTypeForOfficialTable(String(record.table_type || ""), mode === "private" ? "private" : "public");
 }
 
 function replayIdFromRecord(record: Record<string, unknown>): string {

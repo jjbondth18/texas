@@ -18,7 +18,7 @@ signal table_list_received(tables: Array)
 signal table_created(room_id: String, table_info: Dictionary)
 signal table_joined(room_id: String, table_info: Dictionary)
 signal mock_purchase_result_received(ok: bool, currency: String, amount: int, wallet: Dictionary)
-signal replay_unlocked_received(replay_id: String, replay_key: String, key_version: int, checksum: String, already_unlocked: bool, wallet: Dictionary)
+signal replay_unlocked_received(replay_id: String, replay_type: String, price_gems: int, replay_key: String, key_version: int, checksum: String, already_unlocked: bool, wallet: Dictionary, profile_snapshot: Dictionary)
 signal start_ai_warmup_result_received(ok: bool, room_id: String, reason: String)
 signal sit_down_result_received(ok: bool, room_id: String, seat_index: int, player_id: String, reason: String, wallet_chips: int, required_chips: int)
 signal table_snapshot_received(snapshot: Dictionary)
@@ -94,7 +94,7 @@ func join_room(target_room_id: String) -> int:
 	room_id = target_room_id
 	return send_message(PokerProtocolScript.join_room(target_room_id))
 
-func sit_down(seat_index: int, buy_in: int = 5000) -> int:
+func sit_down(seat_index: int, buy_in: int = 2000) -> int:
 	return send_message(PokerProtocolScript.sit_down(seat_index, buy_in))
 
 func leave_seat() -> int:
@@ -142,8 +142,8 @@ func select_avatar(avatar_id: String) -> int:
 func mock_purchase(currency: String, amount: int) -> int:
 	return send_message(PokerProtocolScript.mock_purchase(currency, amount))
 
-func unlock_replay(replay_id: String) -> int:
-	return send_message(PokerProtocolScript.unlock_replay(replay_id))
+func unlock_replay(replay_id: String, replay_type: String) -> int:
+	return send_message(PokerProtocolScript.unlock_replay(replay_id, replay_type))
 
 func list_tables() -> int:
 	return send_message(PokerProtocolScript.list_tables())
@@ -236,15 +236,21 @@ func _handle_message(message: Dictionary) -> void:
 			)
 		PokerProtocolScript.REPLAY_UNLOCKED:
 			var unlock_wallet := Dictionary(message.get("wallet", {})).duplicate(true)
+			var unlock_profile := Dictionary(message.get("profile_snapshot", {})).duplicate(true)
+			if not unlock_profile.is_empty():
+				_emit_profile_payload(message)
 			if not unlock_wallet.is_empty():
 				wallet_synced.emit(unlock_wallet)
 			replay_unlocked_received.emit(
 				str(message.get("replay_id", "")),
+				str(message.get("replay_type", "")),
+				int(message.get("price_gems", -1)),
 				str(message.get("replay_key", "")),
 				int(message.get("key_version", 0)),
 				str(message.get("checksum", "")),
 				bool(message.get("already_unlocked", false)),
-				unlock_wallet
+				unlock_wallet,
+				unlock_profile
 			)
 		PokerProtocolScript.START_AI_WARMUP_RESULT:
 			room_id = str(message.get("room_id", room_id))

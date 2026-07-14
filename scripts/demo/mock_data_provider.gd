@@ -67,7 +67,7 @@ static func _mock_player_profile():
 		PlayerProfileScript.DEFAULT_LEVEL,
 		PlayerProfileScript.DEFAULT_XP_CURRENT,
 		PlayerProfileScript.DEFAULT_XP_MAX,
-		24500,
+		PlayerProfileScript.DEFAULT_TOTAL_CHIPS,
 		PlayerProfileScript.DEFAULT_GEMS,
 		LOCAL_AVATAR_PATH,
 		PlayerProfileScript.DEFAULT_PLAYER_ID,
