@@ -77,9 +77,11 @@ func send_hello(player_name: String = "", profile_player_id: String = "", avatar
 	}
 	var identity: Dictionary = IdentityServiceScript.new().get_identity(profile_hint)
 	var has_dev_override: bool = bool(identity.get("has_dev_override", false))
-	var resolved_name: String = str(identity.get("display_name", player_name)) if has_dev_override or player_name == "" else player_name
 	var resolved_external_id: String = external_id if external_id != "" else str(identity.get("external_id", profile_player_id))
 	var resolved_provider: String = auth_provider if auth_provider != "" else str(identity.get("provider", "local_dev"))
+	var resolved_name: String = player_name
+	if resolved_provider == "steam" or has_dev_override or resolved_name == "":
+		resolved_name = str(identity.get("display_name", player_name))
 	var resolved_avatar_id: String = avatar_id if avatar_id != "" else str(identity.get("avatar_id", ""))
 	var steam_auth_ticket: String = str(identity.get("steam_auth_ticket", ""))
 	var steam_auth_identity: String = str(identity.get("steam_auth_identity", ""))
@@ -126,6 +128,9 @@ func add_table_chips(amount: int) -> int:
 
 func get_profile() -> int:
 	return send_message(PokerProtocolScript.get_profile())
+
+func rename_display_name(display_name: String) -> int:
+	return send_message(PokerProtocolScript.rename_display_name(display_name))
 
 func get_avatar_catalog() -> int:
 	return send_message(PokerProtocolScript.get_avatar_catalog())

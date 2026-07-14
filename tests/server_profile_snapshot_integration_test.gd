@@ -9,7 +9,10 @@ func _init() -> void:
 	var service := ProfileServiceScript.new()
 	var synced := service.apply_server_profile_snapshot({
 		"player_id": "player_server_1",
-		"display_name": "Steam Persona",
+		"display_name": "Game Display",
+		"steam_persona_name": "Steam Persona",
+		"steam_id": "76561198000000001",
+		"display_name_updated_at": "2026-07-09T00:00:00.000Z",
 		"is_new_player": true,
 		"avatar_id": "default",
 		"wallet": {"chips": 10000, "gems": 3},
@@ -29,7 +32,10 @@ func _init() -> void:
 	})
 	_require(String(synced.get("player_id", "")) == "player_server_1", "server player_id should apply")
 	_require(bool(synced.get("is_new_player", false)), "server is_new_player should apply")
-	_require(PlayerProfileScript.get_player_name(synced) == "Steam Persona", "server display_name should apply")
+	_require(PlayerProfileScript.get_player_name(synced) == "Game Display", "server display_name should apply")
+	_require(String(synced.get("steam_persona_name", "")) == "Steam Persona", "Steam persona should be stored separately")
+	_require(String(synced.get("steam_id", "")) == "76561198000000001", "SteamID should apply")
+	_require(String(synced.get("display_name_updated_at", "")) == "2026-07-09T00:00:00.000Z", "rename timestamp should apply")
 	_require(PlayerProfileScript.get_total_chips(synced) == 10000, "server chips should apply")
 	_require(PlayerProfileScript.get_total_gems(synced) == 3, "server gems should apply")
 	_require(int(synced.get("total_xp", -1)) == 450, "server XP should apply")
@@ -45,7 +51,9 @@ func _init() -> void:
 	_require(String(synced.get("updated_at", "")) == "2026-07-10T00:00:00.000Z", "updated_at should apply")
 	var repeated := service.apply_server_profile_snapshot({
 		"player_id": "player_server_1",
-		"display_name": "Steam Persona",
+		"display_name": "Game Display",
+		"steam_persona_name": "Changed Steam Persona",
+		"steam_id": "76561198000000001",
 		"is_new_player": false,
 		"avatar_id": "default",
 		"wallet": {"chips": 10000, "gems": 3},
@@ -67,6 +75,8 @@ func _init() -> void:
 	_require(not bool(repeated.get("is_new_player", true)), "repeated snapshot should be able to clear is_new_player")
 	_require(int(repeated.get("total_xp", -1)) == 450, "repeated snapshot should not add XP")
 	_require(int(repeated.get("total_hands_played", -1)) == 12, "repeated snapshot should not add stats")
+	_require(PlayerProfileScript.get_player_name(repeated) == "Game Display", "Steam persona refresh should not replace display name")
+	_require(String(repeated.get("steam_persona_name", "")) == "Changed Steam Persona", "repeated snapshot should refresh Steam persona")
 	ProfileServiceScript.reset_mock_profile()
 	_finish("Server profile snapshot integration test passed.")
 

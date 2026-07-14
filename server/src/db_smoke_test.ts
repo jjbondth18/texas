@@ -10,9 +10,33 @@ import { LoginBonusRepository } from "./db/login_bonus_repository.js";
 import { WalletRepository } from "./db/wallet_repository.js";
 import type { SteamAuthVerifier, SteamAuthVerificationResult } from "./services/steam_auth_verifier.js";
 import { settleHand } from "./showdown_engine.js";
+import Database from "better-sqlite3";
+import { migration010PlayerDisplayName } from "./db/migrations/010_player_display_name.js";
 
 const STARTER_CHIPS = 30000;
 const STARTER_GEMS = 500;
+
+const nicknameMigrationDb = new Database(":memory:");
+nicknameMigrationDb.exec(`
+  CREATE TABLE players (
+    player_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    avatar_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_login_at TEXT
+  );
+  INSERT INTO players (player_id, display_name, avatar_id, created_at, updated_at)
+  VALUES ('historical_player', 'Historical Name', 'default', '2026-01-01', '2026-01-01');
+`);
+migration010PlayerDisplayName.up(nicknameMigrationDb);
+migration010PlayerDisplayName.up(nicknameMigrationDb);
+const migratedNickname = nicknameMigrationDb
+  .prepare("SELECT display_name, steam_persona_name, display_name_updated_at FROM players WHERE player_id = 'historical_player'")
+  .get() as { display_name: string; steam_persona_name: string; display_name_updated_at: string | null };
+if (migratedNickname.display_name !== "Historical Name" || migratedNickname.steam_persona_name !== "Historical Name") throw new Error("nickname migration should backfill persona without changing display_name");
+if (migratedNickname.display_name_updated_at !== null) throw new Error("nickname migration should preserve a free first rename");
+nicknameMigrationDb.close();
 const DEFAULT_BUY_IN = 2000;
 
 class MockSteamAuthVerifier implements SteamAuthVerifier {
@@ -893,6 +917,8 @@ const steamHello = steamHelloMessages.find((message) => typeof message === "obje
       profile_snapshot?: {
         player_id?: string;
         display_name?: string;
+        steam_persona_name?: string;
+        steam_id?: string;
         is_new_player?: boolean;
         avatar_id?: string;
         wallet?: { chips?: number; gems?: number };
@@ -909,6 +935,7 @@ const steamPlayerId = String(steamHello?.player_id || "");
 if (steamPlayerId === "" || steamPlayerId === "76561198000000006") throw new Error("new Steam identity should receive a distinct internal player_id");
 if (steamHello?.profile_snapshot?.player_id !== steamPlayerId) throw new Error("hello should return a unified profile_snapshot");
 if (steamHello.profile_snapshot.display_name !== "Steam Bootstrap" || steamHello.profile_snapshot.avatar_id !== "default") throw new Error("profile_snapshot should include player identity fields");
+if (steamHello.profile_snapshot.steam_persona_name !== "Steam Bootstrap" || steamHello.profile_snapshot.steam_id !== "76561198000000006") throw new Error("new Steam profile should separate Steam identity fields");
 if (steamHello.profile_snapshot.wallet?.chips !== STARTER_CHIPS || steamHello.profile_snapshot.wallet?.gems !== STARTER_GEMS) throw new Error("new Steam profile_snapshot should include initial wallet");
 if (steamHello.profile_snapshot.progression?.total_xp !== 0 || steamHello.profile_snapshot.progression?.level !== 1 || steamHello.profile_snapshot.progression?.title_id !== "new_player") throw new Error("new Steam profile_snapshot should include default progression");
 if (steamHello.profile_snapshot.statistics?.hands_played !== 0 || steamHello.profile_snapshot.statistics?.hands_won !== 0 || steamHello.profile_snapshot.statistics?.chips_won !== 0 || steamHello.profile_snapshot.statistics?.gems_won !== 0) throw new Error("new Steam profile_snapshot should include default statistics");
@@ -929,11 +956,12 @@ manager.handle(steamRepeatClient.id, {
   name: "Renamed Steam Persona",
 });
 const steamRepeatHello = steamRepeatMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
-  | { player_id?: string; is_new_player?: boolean; profile_snapshot?: { is_new_player?: boolean; display_name?: string; wallet?: { chips?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
+  | { player_id?: string; is_new_player?: boolean; profile_snapshot?: { is_new_player?: boolean; display_name?: string; steam_persona_name?: string; steam_id?: string; wallet?: { chips?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
   | undefined;
 if (steamRepeatHello?.player_id !== steamPlayerId) throw new Error("same Steam external_id should reuse internal player_id");
 if (steamRepeatHello.is_new_player !== false || steamRepeatHello.profile_snapshot?.is_new_player !== false) throw new Error("repeat Steam hello should mark is_new_player false");
-if (steamRepeatHello.profile_snapshot?.display_name !== "Renamed Steam Persona") throw new Error("Steam persona change should update display_name");
+if (steamRepeatHello.profile_snapshot?.display_name !== "Steam Bootstrap") throw new Error("Steam persona change must not overwrite game display_name");
+if (steamRepeatHello.profile_snapshot.steam_persona_name !== "Renamed Steam Persona" || steamRepeatHello.profile_snapshot.steam_id !== "76561198000000006") throw new Error("Steam persona change should update only Steam profile data");
 if (steamRepeatHello.profile_snapshot.wallet?.chips !== 8765) throw new Error("repeat Steam hello should not reset wallet");
 if (steamRepeatHello.profile_snapshot.progression?.total_xp !== 450 || steamRepeatHello.profile_snapshot.progression?.level !== 5 || steamRepeatHello.profile_snapshot.progression?.title_id !== "table_regular") throw new Error("repeat Steam hello should not reset progression");
 if (steamRepeatHello.profile_snapshot.statistics?.hands_played !== 12 || steamRepeatHello.profile_snapshot.statistics?.hands_won !== 4 || steamRepeatHello.profile_snapshot.statistics?.chips_won !== 2300 || steamRepeatHello.profile_snapshot.statistics?.gems_won !== 2) throw new Error("repeat Steam hello should not reset statistics");
@@ -942,6 +970,26 @@ const steamInitialGemGrants = db.prepare("SELECT COUNT(*) AS count FROM wallet_t
 if (Number(steamInitialChipGrants.count) !== 1 || Number(steamInitialGemGrants.count) !== 1) throw new Error("repeat Steam hello should not repeat initial wallet grant");
 const steamDefaultUnlocks = db.prepare("SELECT COUNT(*) AS count FROM avatar_unlocks WHERE player_id = ? AND avatar_id = 'default'").get(steamPlayerId) as { count: number };
 if (Number(steamDefaultUnlocks.count) !== 1) throw new Error("repeat Steam hello should not repeat default avatar unlock");
+
+expectThrows("display_name_reserved", () => manager.handle(steamPlayerId, { type: "rename_display_name", display_name: "  Admin  " }));
+expectThrows("invalid_display_name", () => manager.handle(steamPlayerId, { type: "rename_display_name", display_name: "ab" }));
+steamRepeatMessages.length = 0;
+manager.handle(steamPlayerId, { type: "rename_display_name", display_name: "  River   Reader  " });
+const renamedSteamProfile = steamRepeatMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "profile_snapshot") as
+  | { profile_snapshot?: { player_id?: string; display_name?: string; steam_persona_name?: string; steam_id?: string; display_name_updated_at?: string | null } }
+  | undefined;
+if (renamedSteamProfile?.profile_snapshot?.display_name !== "River Reader") throw new Error("first display name rename should trim and collapse whitespace");
+if (!renamedSteamProfile.profile_snapshot.display_name_updated_at) throw new Error("first display name rename should set cooldown timestamp");
+if (renamedSteamProfile.profile_snapshot.steam_persona_name !== "Renamed Steam Persona") throw new Error("display name rename must not change Steam persona");
+if (renamedSteamProfile.profile_snapshot.player_id !== steamPlayerId || renamedSteamProfile.profile_snapshot.steam_id !== "76561198000000006") throw new Error("display name rename must not change player identity");
+expectThrows("display_name_cooldown", () => manager.handle(steamPlayerId, { type: "rename_display_name", display_name: "Second Rename" }));
+db.prepare("UPDATE players SET display_name_updated_at = ? WHERE player_id = ?").run("2026-01-01T00:00:00.000Z", steamPlayerId);
+steamRepeatMessages.length = 0;
+manager.handle(steamPlayerId, { type: "rename_display_name", display_name: "After Cooldown" });
+const afterCooldownProfile = steamRepeatMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "profile_snapshot") as
+  | { profile_snapshot?: { display_name?: string; steam_persona_name?: string } }
+  | undefined;
+if (afterCooldownProfile?.profile_snapshot?.display_name !== "After Cooldown" || afterCooldownProfile.profile_snapshot.steam_persona_name !== "Renamed Steam Persona") throw new Error("rename should succeed after cooldown without changing Steam persona");
 
 db.prepare("DELETE FROM table_balances").run();
 const originalSteamAppId = config.steamAppId;
@@ -1038,11 +1086,12 @@ manager.handle(legacyClient.id, {
   name: "Legacy Luna",
 });
 const legacyHello = legacyMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
-  | { player_id?: string; is_new_player?: boolean; profile_snapshot?: { is_new_player?: boolean; display_name?: string; wallet?: { chips?: number; gems?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
+  | { player_id?: string; is_new_player?: boolean; profile_snapshot?: { is_new_player?: boolean; display_name?: string; steam_persona_name?: string; steam_id?: string; wallet?: { chips?: number; gems?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
   | undefined;
 if (legacyHello?.player_id !== "legacy_steam_player") throw new Error("legacy Steam identity should reuse existing internal player_id");
 if (legacyHello.is_new_player !== false || legacyHello.profile_snapshot?.is_new_player !== false) throw new Error("legacy self-healing hello should not mark existing player as new");
-if (legacyHello.profile_snapshot?.display_name !== "Legacy Luna") throw new Error("legacy hello should update display_name");
+if (legacyHello.profile_snapshot?.display_name !== "Legacy Before Bootstrap") throw new Error("legacy Steam hello must preserve historical display_name");
+if (legacyHello.profile_snapshot.steam_persona_name !== "Legacy Luna" || legacyHello.profile_snapshot.steam_id !== "76561198000000007") throw new Error("legacy Steam hello should sync persona and preserve identity mapping");
 if (legacyHello.profile_snapshot.wallet?.chips !== 4321 || legacyHello.profile_snapshot.wallet.gems !== 9) throw new Error("legacy bootstrap must not reset wallet");
 if (legacyHello.profile_snapshot.progression?.total_xp !== 0 || legacyHello.profile_snapshot.progression.level !== 1 || legacyHello.profile_snapshot.progression.title_id !== "new_player") throw new Error("legacy hello should self-heal default progression");
 if (legacyHello.profile_snapshot.statistics?.hands_played !== 0 || legacyHello.profile_snapshot.statistics.hands_won !== 0 || legacyHello.profile_snapshot.statistics.chips_won !== 0 || legacyHello.profile_snapshot.statistics.gems_won !== 0) throw new Error("legacy hello should self-heal default statistics");

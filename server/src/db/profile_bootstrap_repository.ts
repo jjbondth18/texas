@@ -24,6 +24,9 @@ export interface PlayerStatisticsRecord {
 export interface ServerProfileSnapshot {
   player_id: string;
   display_name: string;
+  steam_persona_name: string;
+  steam_id: string;
+  display_name_updated_at: string | null;
   is_new_player: boolean;
   avatar_id: string;
   wallet: { chips: number; gems: number };
@@ -145,8 +148,8 @@ export class ProfileBootstrapRepository {
 
   getProfileSnapshot(playerId: string, isNewPlayer = false): ServerProfileSnapshot {
     const player = this.db
-      .prepare("SELECT player_id, display_name, avatar_id, created_at, updated_at FROM players WHERE player_id = ?")
-      .get(playerId) as { player_id: string; display_name: string; avatar_id: string; created_at: string; updated_at: string } | undefined;
+      .prepare("SELECT player_id, display_name, steam_persona_name, display_name_updated_at, avatar_id, created_at, updated_at FROM players WHERE player_id = ?")
+      .get(playerId) as { player_id: string; display_name: string; steam_persona_name: string | null; display_name_updated_at: string | null; avatar_id: string; created_at: string; updated_at: string } | undefined;
     const wallet = this.db.prepare("SELECT chips, gems FROM wallets WHERE player_id = ?").get(playerId) as { chips: number; gems: number } | undefined;
     const progression = this.db.prepare("SELECT * FROM player_progression WHERE player_id = ?").get(playerId) as PlayerProgressionRecord | undefined;
     const statistics = this.db.prepare("SELECT * FROM player_statistics WHERE player_id = ?").get(playerId) as PlayerStatisticsRecord | undefined;
@@ -154,9 +157,15 @@ export class ProfileBootstrapRepository {
     const avatars = this.db
       .prepare("SELECT avatar_id FROM avatar_unlocks WHERE player_id = ? ORDER BY avatar_id")
       .all(playerId) as Array<{ avatar_id: string }>;
+    const steamIdentity = this.db
+      .prepare("SELECT external_id FROM player_identities WHERE player_id = ? AND provider = 'steam' LIMIT 1")
+      .get(playerId) as { external_id: string } | undefined;
     return {
       player_id: player.player_id,
       display_name: player.display_name,
+      steam_persona_name: player.steam_persona_name || "",
+      steam_id: steamIdentity?.external_id || "",
+      display_name_updated_at: player.display_name_updated_at,
       is_new_player: isNewPlayer,
       avatar_id: player.avatar_id,
       wallet: { chips: Number(wallet.chips), gems: Number(wallet.gems) },

@@ -15,6 +15,7 @@ const DEV_SIMULATE_REAL_JOIN := "dev_simulate_real_join"
 const PLAYER_ACTION := "player_action"
 const ADD_TABLE_CHIPS := "add_table_chips"
 const GET_PROFILE := "get_profile"
+const RENAME_DISPLAY_NAME := "rename_display_name"
 const GET_AVATAR_CATALOG := "get_avatar_catalog"
 const CLAIM_DAILY_BONUS := "claim_daily_bonus"
 const BUY_AVATAR := "buy_avatar"
@@ -122,6 +123,9 @@ static func add_table_chips(amount: int) -> Dictionary:
 
 static func get_profile() -> Dictionary:
 	return _message(GET_PROFILE)
+
+static func rename_display_name(display_name: String) -> Dictionary:
+	return _message(RENAME_DISPLAY_NAME, {"display_name": display_name})
 
 static func get_avatar_catalog() -> Dictionary:
 	return _message(GET_AVATAR_CATALOG)

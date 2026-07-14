@@ -13,6 +13,7 @@ export type ClientMessageType =
   | "add_table_chips"
   | "player_action"
   | "get_profile"
+  | "rename_display_name"
   | "get_avatar_catalog"
   | "claim_daily_bonus"
   | "buy_avatar"
@@ -67,6 +68,10 @@ export type ErrorCode =
   | "steam_ticket_invalid"
   | "steam_app_mismatch"
   | "steam_identity_mismatch"
+  | "invalid_display_name"
+  | "display_name_reserved"
+  | "display_name_prohibited"
+  | "display_name_cooldown"
   | "mock_purchase_disabled"
   | "not_public_table"
   | "not_host"
@@ -100,6 +105,7 @@ export interface ClientMessage {
   steam_auth_identity?: string;
   name?: string;
   player_name?: string;
+  display_name?: string;
   avatar_id?: string;
   seat_index?: number;
   buy_in?: number;
@@ -189,6 +195,8 @@ export interface AvatarCatalogItemSnapshot {
 export interface PlayerProfileSnapshot {
   player_id: string;
   display_name: string;
+  steam_persona_name: string | null;
+  display_name_updated_at: string | null;
   avatar_id: string;
   created_at: string;
   updated_at: string;
@@ -205,6 +213,9 @@ export interface WalletSnapshot {
 export interface ServerProfileSnapshot {
   player_id: string;
   display_name: string;
+  steam_persona_name: string;
+  steam_id: string;
+  display_name_updated_at: string | null;
   is_new_player?: boolean;
   avatar_id: string;
   wallet: {

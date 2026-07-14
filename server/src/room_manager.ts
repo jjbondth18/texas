@@ -253,6 +253,18 @@ export class RoomManager {
       this.send(client, { type: "profile_snapshot", request_id: message.request_id, ...this.profilePayload(client.id) });
       return;
     }
+    if (message.type === "rename_display_name") {
+      const profile = this.players.renameDisplayName(client.id, String(message.display_name || ""));
+      client.name = profile.display_name;
+      const room = client.roomId ? this.rooms.get(client.roomId) : undefined;
+      const seat = room?.table.seats.find((candidate) => candidate.playerId === client.id);
+      if (room && seat) {
+        seat.name = profile.display_name;
+        this.broadcast(room);
+      }
+      this.send(client, { type: "profile_snapshot", request_id: message.request_id, ...this.profilePayload(client.id) });
+      return;
+    }
     if (message.type === "claim_daily_bonus") {
       this.claimDailyBonus(client, message.request_id);
       return;
@@ -951,16 +963,18 @@ export class RoomManager {
       client.id = requestedId;
       this.clients.set(client.id, client);
     }
-    const displayName = String(message.player_name || message.name || client.name || client.id).trim() || client.id;
+    const existingProfile = this.players.find(client.id);
+    const fallbackIdentityName = identity.provider === "steam" ? existingProfile?.steam_persona_name || existingProfile?.display_name : existingProfile?.display_name;
+    const displayName = String(message.player_name || message.name || fallbackIdentityName || client.name || client.id).trim() || client.id;
     const requestedAvatarId = normalizeAvatarId(String(message.avatar_id || client.avatarId || "default"));
-    const isNewPlayer = !this.players.find(client.id);
-    this.players.upsert(client.id, displayName, "default");
+    const isNewPlayer = !existingProfile;
+    this.players.upsert(client.id, displayName, "default", identity.provider);
     this.wallets.ensure(client.id);
     this.identities.linkIdentity(client.id, identity.provider, identity.externalId);
     this.avatars.unlockAvatar(client.id, "default");
     this.profileBootstrap.bootstrapPlayer(client.id);
     const avatarId = this.avatars.hasAvatar(client.id, requestedAvatarId) ? requestedAvatarId : "default";
-    const profile = this.players.upsert(client.id, displayName, avatarId);
+    const profile = this.players.upsert(client.id, displayName, avatarId, identity.provider);
     const dailyStatus = this.loginBonus.status(client.id);
     this.ensureDevBotWallet(client.id);
     const reconnectedRoom = this.restoreAnyDisconnectGrace(client);

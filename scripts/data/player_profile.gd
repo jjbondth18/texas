@@ -15,7 +15,7 @@ const DEFAULT_XP_MAX := XP_PER_LEVEL
 const DEFAULT_TOTAL_CHIPS := 30000
 const DEFAULT_GEMS := 500
 const DEFAULT_TABLE_BUY_IN := 2000
-const SCHEMA_VERSION := 5
+const SCHEMA_VERSION := 6
 const DAILY_LOGIN_CHIPS := 1000
 const DAILY_LOGIN_XP := 25
 const DAILY_BONUS_REWARDS := [
@@ -40,6 +40,9 @@ const TITLE_UNLOCKS := [
 
 var player_id := DEFAULT_PLAYER_ID
 var name := ""
+var steam_persona_name := ""
+var steam_id := ""
+var display_name_updated_at := ""
 var total_xp := DEFAULT_TOTAL_XP
 var level := 1
 var title_id := "new_player"
@@ -90,6 +93,9 @@ func _init(
 	profile_stats: Dictionary = {}
 ) -> void:
 	name = player_name
+	steam_persona_name = String(profile_stats.get("steam_persona_name", ""))
+	steam_id = String(profile_stats.get("steam_id", ""))
+	display_name_updated_at = String(profile_stats.get("display_name_updated_at", ""))
 	var legacy_xp_progress: int = clamp(current_xp, 0, XP_PER_LEVEL - 1)
 	total_xp = int(profile_stats.get("total_xp", max(0, (player_level - 1) * XP_PER_LEVEL + legacy_xp_progress)))
 	level = int(profile_stats.get("level", level_for_total_xp(total_xp)))
@@ -151,6 +157,10 @@ func to_lobby_dict() -> Dictionary:
 		"player_id": player_id,
 		"name": name,
 		"player_name": name,
+		"display_name": name,
+		"steam_persona_name": steam_persona_name,
+		"steam_id": steam_id,
+		"display_name_updated_at": display_name_updated_at,
 		"total_xp": total_xp,
 		"level": level,
 		"title_id": title_id,

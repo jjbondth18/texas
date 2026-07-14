@@ -41,6 +41,13 @@ func apply_server_profile_snapshot(profile_snapshot: Dictionary, wallet_snapshot
 		if not nested_unlocks.is_empty():
 			unlocked_avatar_ids = nested_unlocks
 		profile["player_id"] = String(profile_snapshot.get("player_id", profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID)))
+		if profile_snapshot.has("steam_persona_name"):
+			profile["steam_persona_name"] = str(profile_snapshot.get("steam_persona_name", profile.get("steam_persona_name", "")))
+		if profile_snapshot.has("steam_id"):
+			profile["steam_id"] = str(profile_snapshot.get("steam_id", profile.get("steam_id", "")))
+		if profile_snapshot.has("display_name_updated_at"):
+			var rename_timestamp = profile_snapshot.get("display_name_updated_at")
+			profile["display_name_updated_at"] = "" if rename_timestamp == null else str(rename_timestamp)
 		if profile_snapshot.has("created_at"):
 			profile["created_at"] = str(profile_snapshot.get("created_at", profile.get("created_at", "")))
 		if profile_snapshot.has("updated_at"):
@@ -97,6 +104,7 @@ func apply_server_profile_snapshot(profile_snapshot: Dictionary, wallet_snapshot
 		if display_name != "":
 			profile["name"] = display_name
 			profile["player_name"] = display_name
+			profile["display_name"] = display_name
 		if profile_snapshot.has("avatar_id"):
 			var avatar_id := _client_avatar_id_for_server_id(String(profile_snapshot.get("avatar_id", PlayerProfileScript.get_avatar_id(profile))))
 			profile["avatar_id"] = avatar_id
