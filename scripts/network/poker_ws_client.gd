@@ -154,6 +154,9 @@ func unlock_replay(replay_id: String, replay_type: String, checksum: String = ""
 func get_replay_access(replay_id: String, replay_type: String, checksum: String = "", key_version: int = 0, algorithm: String = "", storage_mode: String = "") -> int:
 	return send_message(PokerProtocolScript.get_replay_access(replay_id, replay_type, checksum, key_version, algorithm, storage_mode))
 
+func import_legacy_replay_entitlement(replay_id: String, replay_type: String, checksum: String = "", key_version: int = 0, algorithm: String = "", storage_mode: String = "") -> int:
+	return send_message(PokerProtocolScript.import_legacy_replay_entitlement(replay_id, replay_type, checksum, key_version, algorithm, storage_mode))
+
 func list_tables() -> int:
 	return send_message(PokerProtocolScript.list_tables())
 
@@ -235,6 +238,8 @@ func _handle_message(message: Dictionary) -> void:
 			table_joined.emit(room_id, private_joined_table)
 		PokerProtocolScript.MOCK_PURCHASE_RESULT:
 			var purchase_wallet := Dictionary(message.get("wallet", {})).duplicate(true)
+			if message.has("profile_snapshot"):
+				_emit_profile_payload(message)
 			if not purchase_wallet.is_empty():
 				wallet_synced.emit(purchase_wallet)
 			mock_purchase_result_received.emit(

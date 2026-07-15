@@ -11,6 +11,102 @@ const UNLOCK_RULE_AVATARS := {
 	"big_pot_5000": "10_03",
 	"profitable_session": "8_01",
 }
+const AVATAR_IDS := [
+	"1_01",
+	"1_02",
+	"1_03",
+	"1_04",
+	"1_05",
+	"1_06",
+	"1_07",
+	"10_01",
+	"10_02",
+	"10_03",
+	"10_04",
+	"10_05",
+	"10_06",
+	"10_07",
+	"11_01",
+	"11_02",
+	"11_03",
+	"11_04",
+	"11_05",
+	"11_06",
+	"11_07",
+	"11_08",
+	"12_01",
+	"12_02",
+	"12_03",
+	"12_04",
+	"12_05",
+	"12_06",
+	"12_07",
+	"12_08",
+	"13_01",
+	"13_02",
+	"13_03",
+	"13_04",
+	"13_05",
+	"13_06",
+	"13_07",
+	"13_08",
+	"2_01",
+	"2_04",
+	"2_05",
+	"2_06",
+	"2_07",
+	"2_08",
+	"3_01",
+	"3_02",
+	"3_03",
+	"3_04",
+	"3_05",
+	"3_06",
+	"3_08",
+	"4_01",
+	"4_04",
+	"4_05",
+	"4_06",
+	"4_07",
+	"4_08",
+	"5_01",
+	"5_02",
+	"5_04",
+	"5_05",
+	"5_06",
+	"5_07",
+	"5_08",
+	"6_01",
+	"6_02",
+	"6_03",
+	"6_04",
+	"6_05",
+	"6_06",
+	"6_07",
+	"6_08",
+	"7_01",
+	"7_02",
+	"7_03",
+	"7_04",
+	"7_05",
+	"7_06",
+	"7_07",
+	"7_08",
+	"8_01",
+	"8_02",
+	"8_03",
+	"8_04",
+	"8_05",
+	"8_06",
+	"8_07",
+	"8_08",
+	"9_02",
+	"9_03",
+	"9_04",
+	"9_05",
+	"9_06",
+	"9_07",
+]
 const DISPLAY_NAME_OVERRIDES := {
 	"1_01": "Neon Phantom",
 	"1_02": "Cyber Dealer",
@@ -49,23 +145,23 @@ static var _texture_cache: Dictionary = {}
 static func load_all_avatars() -> Array[String]:
 	if not _avatar_ids.is_empty():
 		return _avatar_ids.duplicate()
-	var dir: DirAccess = DirAccess.open(AVATAR_ROOT)
-	if dir == null:
-		push_warning("[AvatarLibrary] Avatar directory not found: %s" % AVATAR_ROOT)
-		return []
-	dir.list_dir_begin()
-	while true:
-		var file_name: String = dir.get_next()
-		if file_name == "":
-			break
-		if dir.current_is_dir():
-			continue
-		if file_name.get_extension().to_lower() != "png":
-			continue
-		_avatar_ids.append(file_name.get_basename())
-	dir.list_dir_end()
-	_avatar_ids.sort()
+	for avatar_id in AVATAR_IDS:
+		_avatar_ids.append(String(avatar_id))
 	return _avatar_ids.duplicate()
+
+
+static func avatar_catalog() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for avatar_id in load_all_avatars():
+		result.append({
+			"avatar_id": avatar_id,
+			"display_name": display_name_for_avatar_id(avatar_id),
+			"resource_path": avatar_path(avatar_id),
+			"currency": "chips",
+			"price_chips": price_chips_for_avatar_id(avatar_id),
+			"default_unlocked": DEFAULT_UNLOCKED_CANDIDATES.has(avatar_id),
+		})
+	return result
 
 
 static func get_avatar_by_id(avatar_id: String) -> Texture2D:
@@ -80,7 +176,7 @@ static func get_avatar_by_id(avatar_id: String) -> Texture2D:
 	if not ResourceLoader.exists(path):
 		push_warning("[AvatarLibrary] Missing avatar asset: %s" % path)
 		return null
-	var texture: Texture2D = load(path) as Texture2D
+	var texture: Texture2D = ResourceLoader.load(path) as Texture2D
 	_texture_cache[resolved_id] = texture
 	return texture
 

@@ -864,9 +864,10 @@ if (Number(afterMockPurchase.total_wallet_gems) !== Number(beforeMockPurchase.to
 if (countRows("wallet_transactions", "reason = 'store_mock_purchase' AND currency = 'chips' AND amount = 50000") !== 1) throw new Error("mock chip purchase should write wallet transaction");
 if (countRows("wallet_transactions", "reason = 'store_mock_purchase' AND currency = 'gems' AND amount = 500") !== 1) throw new Error("mock gem purchase should write wallet transaction");
 const purchaseResult = mockPurchaseMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "mock_purchase_result") as
-  | { type: string; ok?: boolean; currency?: string; amount?: number; wallet?: { chips?: number; gems?: number } }
+  | { type: string; ok?: boolean; currency?: string; amount?: number; wallet?: { chips?: number; gems?: number }; profile_snapshot?: { wallet?: { chips?: number; gems?: number } } }
   | undefined;
 if (!purchaseResult || purchaseResult.ok !== true || purchaseResult.currency !== "chips" || Number(purchaseResult.wallet?.chips) < 50000) throw new Error("mock purchase should return result with synced wallet");
+if (purchaseResult.profile_snapshot?.wallet?.chips !== purchaseResult.wallet?.chips) throw new Error("mock purchase should return refreshed profile snapshot wallet");
 const affordableRoom = manager.createRoom({ buyIn: 20000, smallBlind: 50, bigBlind: 100, handCount: 10 });
 manager.handle("mock_purchase_player", { type: "join_room", room_id: affordableRoom.id });
 manager.handle("mock_purchase_player", { type: "sit_down", room_id: affordableRoom.id, seat_index: 0 });
@@ -876,6 +877,20 @@ config.allowMockPurchases = false;
 expectThrows("mock_purchase_disabled", () => manager.handle("mock_purchase_player", { type: "mock_purchase", currency: "chips", amount: 10000, source: "store_mock" }));
 config.allowMockPurchases = true;
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeDisabledTotal) throw new Error("disabled mock purchase should not change wallet");
+const originalMockAllowlist = config.mockPurchaseAllowedSteamIds;
+config.mockPurchaseAllowedSteamIds = ["steam_mock_allowed"];
+const deniedSteamMock = manager.connect();
+manager.handle(deniedSteamMock.id, { type: "hello", auth_provider: "steam", external_id: "steam_mock_denied", name: "Denied Mock" });
+expectThrows("mock_purchase_not_allowed", () => manager.handle(deniedSteamMock.id, { type: "mock_purchase", currency: "gems", amount: 50, source: "store_mock" }));
+const allowedSteamMockMessages: unknown[] = [];
+const allowedSteamMockWs = { OPEN: 1, readyState: 1, send: (data: string) => allowedSteamMockMessages.push(JSON.parse(data)) };
+const allowedSteamMock = manager.connect(allowedSteamMockWs as any);
+manager.handle(allowedSteamMock.id, { type: "hello", auth_provider: "steam", external_id: "steam_mock_allowed", name: "Allowed Mock" });
+const allowedSteamMockId = String((allowedSteamMockMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as { player_id?: string } | undefined)?.player_id || "");
+const beforeAllowedSteamGems = manager.adminSnapshot(false).total_wallet_gems;
+manager.handle(allowedSteamMockId, { type: "mock_purchase", currency: "gems", amount: 50, source: "store_mock" });
+if (Number(manager.adminSnapshot(false).total_wallet_gems) !== Number(beforeAllowedSteamGems) + 50) throw new Error("allowlisted Steam mock purchase should add gems");
+config.mockPurchaseAllowedSteamIds = originalMockAllowlist;
 
 const statsMessagesA: unknown[] = [];
 const statsWsA = { OPEN: 1, readyState: 1, send: (data: string) => statsMessagesA.push(JSON.parse(data)) };

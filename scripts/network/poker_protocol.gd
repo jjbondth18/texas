@@ -23,6 +23,7 @@ const SELECT_AVATAR := "select_avatar"
 const MOCK_PURCHASE := "mock_purchase"
 const UNLOCK_REPLAY := "unlock_replay"
 const GET_REPLAY_ACCESS := "get_replay_access"
+const IMPORT_LEGACY_REPLAY_ENTITLEMENT := "import_legacy_replay_entitlement"
 const LIST_TABLES := "list_tables"
 const QUICK_JOIN_TABLE := "quick_join_table"
 const CREATE_TABLE := "create_table"
@@ -149,6 +150,9 @@ static func unlock_replay(replay_id: String, replay_type: String, checksum: Stri
 
 static func get_replay_access(replay_id: String, replay_type: String, checksum: String = "", key_version: int = 0, algorithm: String = "", storage_mode: String = "") -> Dictionary:
 	return _message(GET_REPLAY_ACCESS, _replay_identity_payload(replay_id, replay_type, checksum, key_version, algorithm, storage_mode))
+
+static func import_legacy_replay_entitlement(replay_id: String, replay_type: String, checksum: String = "", key_version: int = 0, algorithm: String = "", storage_mode: String = "") -> Dictionary:
+	return _message(IMPORT_LEGACY_REPLAY_ENTITLEMENT, _replay_identity_payload(replay_id, replay_type, checksum, key_version, algorithm, storage_mode))
 
 static func _replay_identity_payload(replay_id: String, replay_type: String, checksum: String, key_version: int, algorithm: String, storage_mode: String) -> Dictionary:
 	return {

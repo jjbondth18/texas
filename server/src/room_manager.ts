@@ -31,6 +31,8 @@ interface Client {
   id: string;
   name: string;
   avatarId: string;
+  authProvider?: string;
+  externalId?: string;
   ws?: WebSocket;
   roomId?: string;
   devSimulated?: boolean;
@@ -293,7 +295,19 @@ export class RoomManager {
       const amount = numberOr(message.amount, 0);
       const wallet = this.mockPurchase(client, currency, amount);
       this.recordLog(`${client.id} mock_purchase currency=${currency} amount=${amount}`);
-      this.send(client, { type: "mock_purchase_result", request_id: message.request_id, ok: true, player_id: client.id, server_player_id: client.id, currency, amount, source: "store_mock", wallet, wallet_chips: wallet.chips });
+      this.send(client, {
+        type: "mock_purchase_result",
+        request_id: message.request_id,
+        ok: true,
+        player_id: client.id,
+        server_player_id: client.id,
+        currency,
+        amount,
+        source: "store_mock",
+        wallet,
+        wallet_chips: wallet.chips,
+        profile_snapshot: this.authoritativeProfileSnapshot(client.id),
+      });
       this.send(client, { type: "wallet_snapshot", request_id: message.request_id, player_id: client.id, wallet });
       return;
     }
@@ -303,6 +317,10 @@ export class RoomManager {
     }
     if (message.type === "get_replay_access") {
       this.getReplayAccess(client, message);
+      return;
+    }
+    if (message.type === "import_legacy_replay_entitlement") {
+      this.importLegacyReplayEntitlement(client, message);
       return;
     }
     const roomId = message.room_id || client.roomId;
@@ -974,6 +992,8 @@ export class RoomManager {
     const displayName = String(message.player_name || message.name || fallbackIdentityName || client.name || client.id).trim() || client.id;
     const requestedAvatarId = normalizeAvatarId(String(message.avatar_id || client.avatarId || "default"));
     const isNewPlayer = !existingProfile;
+    client.authProvider = identity.provider;
+    client.externalId = identity.externalId;
     this.players.upsert(client.id, displayName, "default", identity.provider);
     this.wallets.ensure(client.id);
     this.identities.linkIdentity(client.id, identity.provider, identity.externalId);
@@ -1215,6 +1235,37 @@ export class RoomManager {
     });
   }
 
+  private importLegacyReplayEntitlement(client: Client, message: ClientMessage): void {
+    if (!this.canImportLegacyReplay(client)) throw new Error("legacy_replay_import_disabled");
+    const replayId = String(message.replay_id || "").trim();
+    if (replayId === "") throw new Error("replay_not_found");
+    const replay = this.replays.getReplayIndex(replayId);
+    if (!replay) throw new Error("replay_not_found");
+    if (!this.replays.isParticipant(replayId, client.id)) throw new Error("replay_access_denied");
+    const key = this.replays.getReplayKey(replayId);
+    if (!key) throw new Error("replay_key_missing");
+    const replayType = String(replay.replay_type || "official_human");
+    if (!isReplayType(replayType)) throw new Error("invalid_replay_type");
+    this.validateReplayClientIdentity(message, replay, key.key_version);
+    this.replays.recordUnlock(replayId, client.id, 0, "gems", "legacy_replay_entitlement_import");
+    this.recordLog(`legacy_replay_entitlement_import player_id=${client.id} replay_id=${replayId}`);
+    this.send(client, {
+      type: "replay_access",
+      request_id: message.request_id,
+      replay_id: replayId,
+      replay_type: replayType,
+      checksum: replay.checksum,
+      key_version: key?.key_version ?? 0,
+      unlocked: true,
+      price_gems: replayUnlockCost(replayType),
+      supported: true,
+      legacy_reason: "",
+      algorithm: replay.algorithm || REPLAY_ENCRYPTION_ALGORITHM,
+      storage_mode: "official_encrypted",
+      integrity_status: replay.integrity_status,
+    });
+  }
+
   private validateReplayClientIdentity(message: ClientMessage, replay: ReplayIndexRecord, keyVersion: number): void {
     if (String(message.checksum || "").trim() !== replay.checksum) throw new Error("replay_checksum_mismatch");
     if (Number(message.key_version || 0) !== keyVersion) throw new Error("replay_key_version_mismatch");
@@ -1241,7 +1292,7 @@ export class RoomManager {
   }
 
   private mockPurchase(client: Client, currency: "chips" | "gems", amount: number) {
-    if (!config.allowMockPurchases) throw new Error("mock_purchase_disabled");
+    if (!this.canUseMockPurchase(client)) throw new Error(config.allowMockPurchases ? "mock_purchase_not_allowed" : "mock_purchase_disabled");
     const normalized = Math.floor(amount);
     if (normalized <= 0) throw new Error("invalid_amount");
     this.wallets.ensure(client.id);
@@ -1249,6 +1300,20 @@ export class RoomManager {
       return this.wallets.addGems(client.id, normalized, { reason: "store_mock_purchase" });
     }
     return this.wallets.addChips(client.id, normalized, { reason: "store_mock_purchase" });
+  }
+
+  private canUseMockPurchase(client: Client): boolean {
+    if (!config.allowMockPurchases) return false;
+    if (client.authProvider === "local_dev") return true;
+    if (client.authProvider !== "steam") return false;
+    const steamId = String(client.externalId || "");
+    return steamId !== "" && config.mockPurchaseAllowedSteamIds.includes(steamId);
+  }
+
+  private canImportLegacyReplay(client: Client): boolean {
+    if (client.authProvider !== "steam") return false;
+    const steamId = String(client.externalId || "");
+    return steamId !== "" && config.legacyReplayImportAllowedSteamIds.includes(steamId);
   }
 
   private devSimulateRealJoin(room: Room, hostClient: Client, playerNameRaw: string): void {

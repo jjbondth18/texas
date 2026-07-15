@@ -60,6 +60,7 @@ var _replay_detail_vbox: VBoxContainer
 var _replay_list_lock_labels: Dictionary = {}
 var _replay_access_by_id: Dictionary = {}
 var _replay_access_pending: Dictionary = {}
+var _legacy_replay_import_pending: Dictionary = {}
 var _replay_current_record: Dictionary = {}
 var _replay_current_index_entry: Dictionary = {}
 var _replay_economy_signature := ""
@@ -181,6 +182,9 @@ var _profile_avatar_rect: TextureRect
 var _profile_name_label: Label
 var _profile_level_label: Label
 var _profile_avatar_name_label: Label
+var _profile_identity_label: Label
+var _profile_rename_button: Button
+var _profile_rename_hint_label: Label
 var _profile_stats_labels: Dictionary = {}
 var _profile_avatar_grid: GridContainer
 var _profile_avatar_buttons: Dictionary = {}
@@ -228,6 +232,7 @@ var server_authoritative_profile := true
 var _profile_ws_client: PokerWsClient
 var _profile_server_connected := false
 var _profile_server_wallet_synced := false
+var _profile_rename_pending := false
 var _welcome_shown_for_player_id := ""
 var _avatar_catalog: Array = []
 var _avatar_catalog_by_id: Dictionary = {}
@@ -1489,6 +1494,7 @@ func _on_profile_server_connected() -> void:
 	_profile_server_wallet_synced = false
 	_replay_access_by_id.clear()
 	_replay_access_pending.clear()
+	_legacy_replay_import_pending.clear()
 	var player_id := str(_player_profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID))
 	var player_name := PlayerProfileScript.get_player_name(_player_profile)
 	_profile_ws_client.send_hello(player_name, player_id, _server_avatar_id_for_client(PlayerProfileScript.get_avatar_id(_player_profile)))
@@ -1500,12 +1506,16 @@ func _on_profile_server_disconnected() -> void:
 	_profile_server_connected = false
 	_profile_server_wallet_synced = false
 	_replay_access_pending.clear()
+	_legacy_replay_import_pending.clear()
 	if current_state == LobbyState.ROOM_BROWSER:
 		_refresh_room_browser_rows()
 
 func _on_profile_server_profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_ids: Array) -> void:
 	_player_profile = ProfileServiceScript.new().apply_server_profile(profile, wallet, unlocked_avatar_ids)
 	_profile_server_wallet_synced = true
+	if _profile_rename_pending:
+		_profile_rename_pending = false
+		_show_toast("Display name updated.", [], 2.0)
 	_refresh_profile_views_from_server()
 	_maybe_show_new_player_welcome(profile)
 	_request_replay_access_for_entries()
@@ -1560,11 +1570,15 @@ func _on_avatar_catalog_received(catalog: Array) -> void:
 func _on_profile_server_error(message: String) -> void:
 	if message != "":
 		_show_toast("Server\n%s", [_server_lobby_error_text(message)], 2.8)
+	if message in ["invalid_display_name", "display_name_reserved", "display_name_prohibited", "display_name_cooldown"]:
+		_profile_rename_pending = false
+		_refresh_profile_panel()
 	if not _pending_replay_unlock_record.is_empty() and message in ["insufficient_gems", "replay_access_denied", "replay_not_found", "replay_key_missing", "replay_unlock_failed", "replay_checksum_mismatch", "replay_key_version_mismatch", "replay_unsupported", "invalid_replay_type"]:
 		_pending_replay_unlock_record = {}
 		_pending_replay_unlock_index_entry = {}
 	if message in ["replay_access_denied", "replay_not_found", "replay_checksum_mismatch", "replay_key_version_mismatch", "replay_unsupported"]:
 		_replay_access_pending.clear()
+		_legacy_replay_import_pending.clear()
 	if _is_launching_table:
 		_finish_table_launch_transition()
 
@@ -1592,6 +1606,16 @@ func _server_lobby_error_text(message: String) -> String:
 			return "Replay checksum mismatch."
 		"replay_key_version_mismatch", "replay_unsupported":
 			return "Legacy replay is unsupported."
+		"legacy_replay_import_disabled":
+			return "Legacy replay restore is not enabled for this account."
+		"mock_purchase_not_allowed":
+			return "Test purchases are not enabled for this account."
+		"invalid_display_name":
+			return "Display name must be 3-16 characters."
+		"display_name_reserved", "display_name_prohibited":
+			return "That display name is not available."
+		"display_name_cooldown":
+			return "Rename cooldown is still active."
 		"invalid_replay_type":
 			return _t("replay.unlock_failed")
 		_:
@@ -3464,7 +3488,9 @@ func _is_replay_unlocked(record: Dictionary, index_entry: Dictionary = {}) -> bo
 	if _is_official_encrypted_replay(record, index_entry):
 		var replay_id := _replay_id_for_record(record, index_entry)
 		var access: Dictionary = Dictionary(_replay_access_by_id.get(replay_id, {}))
-		return bool(access.get("supported", false)) and bool(access.get("unlocked", false)) and ReplayRepositoryScript.has_unlock_cache(cache_source)
+		if not access.is_empty() and not bool(access.get("supported", false)):
+			return false
+		return ReplayRepositoryScript.has_unlock_cache(cache_source)
 	if ReplayRepositoryScript.has_unlock_cache(cache_source):
 		return true
 	var identity := IdentityServiceScript.new().get_identity(_player_profile)
@@ -3658,22 +3684,52 @@ func _on_replay_access_received(access: Dictionary) -> void:
 	if replay_id == "":
 		return
 	_replay_access_pending.erase(replay_id)
+	_legacy_replay_import_pending.erase(replay_id)
 	_replay_access_by_id[replay_id] = access.duplicate(true)
 	var unlocked := bool(access.get("supported", false)) and bool(access.get("unlocked", false))
 	var cache_source: Dictionary = _replay_cache_source_for_id(replay_id)
-	_update_replay_list_lock_label(replay_id, unlocked and ReplayRepositoryScript.has_unlock_cache(cache_source))
+	var has_local_cache := ReplayRepositoryScript.has_unlock_cache(cache_source)
+	var official_cache := ReplayRepositoryScript.is_official_encrypted_record(cache_source) or ReplayRepositoryScript.is_official_encrypted_entry(cache_source)
+	if official_cache and has_local_cache and bool(access.get("supported", false)) and not bool(access.get("unlocked", false)):
+		_request_legacy_replay_entitlement_import(replay_id, cache_source)
+	_update_replay_list_lock_label(replay_id, (unlocked or bool(access.get("supported", false))) and has_local_cache)
 	if not _replay_current_record.is_empty() and _replay_id_for_record(_replay_current_record, _replay_current_index_entry) == replay_id:
 		_render_replay_detail(_replay_current_record, _replay_current_index_entry)
 
 
 func _replay_access_label(replay_id: String, unlocked: bool) -> String:
 	var access: Dictionary = Dictionary(_replay_access_by_id.get(replay_id, {}))
+	var cache_source: Dictionary = _replay_cache_source_for_id(replay_id)
+	var has_local_cache := ReplayRepositoryScript.has_unlock_cache(cache_source)
+	var official_cache := ReplayRepositoryScript.is_official_encrypted_record(cache_source) or ReplayRepositoryScript.is_official_encrypted_entry(cache_source)
 	if not access.is_empty() and not bool(access.get("supported", false)):
 		var reason := str(access.get("legacy_reason", ""))
-		return "COLLISION / CORRUPTED" if reason in ["checksum_mismatch", "collision", "corrupted"] else "LEGACY / UNSUPPORTED"
+		return "CORRUPTED / COLLISION" if reason in ["checksum_mismatch", "key_version_mismatch", "algorithm_mismatch", "collision", "corrupted"] else "LEGACY UNSUPPORTED"
+	if official_cache and has_local_cache and not bool(access.get("unlocked", false)):
+		return "LEGACY UNLOCKED"
 	if not access.is_empty() and bool(access.get("unlocked", false)) and not unlocked:
 		return "UNLOCKED / RESTORE"
 	return _t("replay.unlocked").to_upper() if unlocked else _t("replay.locked").to_upper()
+
+
+func _request_legacy_replay_entitlement_import(replay_id: String, cache_source: Dictionary) -> void:
+	if _profile_ws_client == null or not _profile_server_connected:
+		return
+	if replay_id == "" or _legacy_replay_import_pending.has(replay_id):
+		return
+	if not ReplayRepositoryScript.has_unlock_cache(cache_source):
+		return
+	_legacy_replay_import_pending[replay_id] = true
+	var err := _profile_ws_client.import_legacy_replay_entitlement(
+		replay_id,
+		_replay_type(cache_source, cache_source),
+		str(cache_source.get("checksum", "")),
+		int(cache_source.get("key_version", 0)),
+		str(cache_source.get("algorithm", "")),
+		str(cache_source.get("storage_mode", ""))
+	)
+	if err != OK:
+		_legacy_replay_import_pending.erase(replay_id)
 
 
 func _replay_cache_source_for_id(replay_id: String) -> Dictionary:
@@ -5294,6 +5350,33 @@ func _build_profile_panel() -> void:
 	HomeTheme.make_font_settings(_profile_avatar_name_label, 13, HomeTheme.CYAN)
 	_profile_avatar_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	c_vbox.add_child(_profile_avatar_name_label)
+
+	_profile_identity_label = Label.new()
+	_profile_identity_label.name = "ProfileIdentityLabel"
+	_profile_identity_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_profile_identity_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(_profile_identity_label, 11, HomeTheme.MUTED)
+	c_vbox.add_child(_profile_identity_label)
+
+	_profile_rename_button = Button.new()
+	_profile_rename_button.name = "ProfileEditNameButton"
+	_profile_rename_button.text = "EDIT NAME"
+	_profile_rename_button.custom_minimum_size = Vector2(160, 34)
+	_profile_rename_button.focus_mode = Control.FOCUS_NONE
+	_profile_rename_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_profile_rename_button.add_theme_font_size_override("font_size", 12)
+	_profile_rename_button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.70), Color(0.55, 0.42, 0.95, 0.45), 16))
+	_profile_rename_button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.035, 0.04, 0.085, 0.86), Color(0.78, 0.58, 1.0, 0.65), 16))
+	_profile_rename_button.add_theme_stylebox_override("disabled", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.42), Color(0.36, 0.34, 0.52, 0.28), 16))
+	_profile_rename_button.pressed.connect(_open_rename_display_name_dialog)
+	c_vbox.add_child(_profile_rename_button)
+
+	_profile_rename_hint_label = Label.new()
+	_profile_rename_hint_label.name = "ProfileRenameHintLabel"
+	_profile_rename_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_profile_rename_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(_profile_rename_hint_label, 10, HomeTheme.MUTED)
+	c_vbox.add_child(_profile_rename_hint_label)
 	
 	body_hbox.add_child(card_info)
 	
@@ -5424,6 +5507,7 @@ func _refresh_profile_panel() -> void:
 		_player_profile = ProfileServiceScript.new().get_current_profile()
 	if _profile_name_label != null:
 		_profile_name_label.text = PlayerProfileScript.get_player_name(_player_profile)
+	_refresh_profile_identity_ui()
 	if _profile_level_label != null:
 		var total_xp: int = PlayerProfileScript.get_total_xp(_player_profile)
 		var level: int = PlayerProfileScript.level_for_total_xp(total_xp)
@@ -5455,6 +5539,118 @@ func _refresh_profile_panel() -> void:
 	var best_hand := str(_player_profile.get("best_hand_desc", ""))
 	_set_profile_stat("best_hand_desc", best_hand if best_hand != "" else "-")
 	_refresh_avatar_gallery()
+
+
+func _refresh_profile_identity_ui() -> void:
+	if _profile_identity_label != null:
+		var steam_persona := str(_player_profile.get("steam_persona_name", "")).strip_edges()
+		var player_id := str(_player_profile.get("player_id", "")).strip_edges()
+		var lines: Array[String] = []
+		if steam_persona != "":
+			lines.append("Steam Persona: %s" % steam_persona)
+		if player_id != "":
+			lines.append("Player ID: %s" % player_id)
+		_profile_identity_label.text = "\n".join(lines)
+	if _profile_rename_button == null or _profile_rename_hint_label == null:
+		return
+	var cooldown_days := _rename_cooldown_days_remaining()
+	var server_available := _profile_server_connected and _profile_ws_client != null
+	_profile_rename_button.visible = true
+	_profile_rename_button.disabled = _profile_rename_pending or not server_available or cooldown_days > 0
+	_profile_rename_button.mouse_default_cursor_shape = Control.CURSOR_ARROW if _profile_rename_button.disabled else Control.CURSOR_POINTING_HAND
+	if cooldown_days > 0:
+		_profile_rename_button.text = "EDIT NAME - %d DAYS" % cooldown_days
+		_profile_rename_hint_label.text = "Next rename available: %s" % _rename_available_date_label()
+	elif not server_available:
+		_profile_rename_button.text = "EDIT NAME"
+		_profile_rename_hint_label.text = "Server connection required to rename."
+	elif _profile_rename_pending:
+		_profile_rename_button.text = "EDIT NAME..."
+		_profile_rename_hint_label.text = "Updating display name..."
+	else:
+		_profile_rename_button.text = "EDIT NAME"
+		_profile_rename_hint_label.text = "First rename is free. Later renames have a 30-day cooldown." if str(_player_profile.get("display_name_updated_at", "")).strip_edges() == "" else "30-day rename cooldown."
+
+
+func _rename_cooldown_days_remaining() -> int:
+	var available_at := _rename_available_unix()
+	if available_at <= 0.0:
+		return 0
+	var remaining := available_at - Time.get_unix_time_from_system()
+	if remaining <= 0.0:
+		return 0
+	return int(ceil(remaining / 86400.0))
+
+
+func _rename_available_date_label() -> String:
+	var available_at := _rename_available_unix()
+	if available_at <= 0.0:
+		return "-"
+	var date := Time.get_datetime_dict_from_unix_time(int(available_at))
+	return "%04d-%02d-%02d" % [int(date.get("year", 0)), int(date.get("month", 0)), int(date.get("day", 0))]
+
+
+func _rename_available_unix() -> float:
+	var updated_at := str(_player_profile.get("display_name_updated_at", "")).strip_edges()
+	if updated_at == "":
+		return 0.0
+	var normalized := updated_at.substr(0, min(updated_at.length(), 19)).replace("T", " ")
+	var updated_unix := Time.get_unix_time_from_datetime_string(normalized)
+	if updated_unix <= 0:
+		return 0.0
+	return float(updated_unix) + 30.0 * 86400.0
+
+
+func _open_rename_display_name_dialog() -> void:
+	if _profile_rename_pending or _profile_ws_client == null or not _profile_server_connected or _rename_cooldown_days_remaining() > 0:
+		return
+	var dialog := ConfirmationDialog.new()
+	dialog.title = "Edit Name"
+	dialog.exclusive = true
+	dialog.min_size = Vector2i(420, 220)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 8)
+	dialog.add_child(content)
+	var rules := Label.new()
+	rules.text = "Game Display Name\n3-16 characters. Reserved/system names are not allowed."
+	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(rules, 12, HomeTheme.MUTED)
+	content.add_child(rules)
+	var input := LineEdit.new()
+	input.text = PlayerProfileScript.get_player_name(_player_profile)
+	input.max_length = 16
+	input.placeholder_text = "New nickname"
+	content.add_child(input)
+	var counter := Label.new()
+	HomeTheme.make_font_settings(counter, 11, HomeTheme.MUTED)
+	content.add_child(counter)
+	var update_counter := func(_value: String = "") -> void:
+		counter.text = "%d / 16" % input.text.strip_edges().length()
+	update_counter.call()
+	input.text_changed.connect(update_counter)
+	dialog.confirmed.connect(_confirm_rename_display_name.bind(input, dialog))
+	_lobby_ui_root.add_child(dialog)
+	dialog.popup_centered()
+	input.grab_focus()
+
+
+func _confirm_rename_display_name(input: LineEdit, dialog: ConfirmationDialog) -> void:
+	var new_name := input.text.strip_edges()
+	if new_name.length() < 3 or new_name.length() > 16:
+		_show_toast("Display name must be 3-16 characters.", [], 2.4)
+		return
+	if _profile_ws_client == null or not _profile_server_connected:
+		_show_toast("Server connection required to rename.", [], 2.4)
+		return
+	_profile_rename_pending = true
+	_refresh_profile_identity_ui()
+	var err := _profile_ws_client.rename_display_name(new_name)
+	if err != OK:
+		_profile_rename_pending = false
+		_refresh_profile_identity_ui()
+		_show_toast("Rename request failed.", [], 2.4)
+	if dialog != null:
+		dialog.queue_free()
 
 func _set_profile_stat(stat_id: String, value: String) -> void:
 	var label: Label = _profile_stats_labels.get(stat_id) as Label

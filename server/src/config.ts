@@ -15,6 +15,8 @@ export interface ServerConfig {
   adminLocalOnly: boolean;
   devShowPrivateCards: boolean;
   allowMockPurchases: boolean;
+  mockPurchaseAllowedSteamIds: string[];
+  legacyReplayImportAllowedSteamIds: string[];
   steamAuthMode: SteamAuthMode;
   steamAppId: string;
   steamWebApiPublisherKey: string;
@@ -34,6 +36,8 @@ export const config: ServerConfig = {
   adminLocalOnly: booleanEnv("ADMIN_LOCAL_ONLY", true),
   devShowPrivateCards: (process.env.NODE_ENV || "development") === "production" ? false : booleanEnv("DEV_SHOW_PRIVATE_CARDS", false),
   allowMockPurchases: booleanEnv("ALLOW_MOCK_PURCHASES", (process.env.NODE_ENV || "development") !== "production"),
+  mockPurchaseAllowedSteamIds: stringListEnv("MOCK_PURCHASE_ALLOWED_STEAM_IDS"),
+  legacyReplayImportAllowedSteamIds: stringListEnv("LEGACY_REPLAY_IMPORT_ALLOWED_STEAM_IDS"),
   steamAuthMode: steamAuthModeEnv(process.env.STEAM_AUTH_MODE),
   steamAppId: process.env.STEAM_APP_ID || "",
   steamWebApiPublisherKey: process.env.STEAM_WEB_API_PUBLISHER_KEY || "",
@@ -65,6 +69,8 @@ export function publicConfigSummary(value: ServerConfig = config): Record<string
     ADMIN_LOCAL_ONLY: value.adminLocalOnly,
     DEV_SHOW_PRIVATE_CARDS: value.devShowPrivateCards,
     ALLOW_MOCK_PURCHASES: value.allowMockPurchases,
+    MOCK_PURCHASE_ALLOWED_STEAM_IDS_COUNT: value.mockPurchaseAllowedSteamIds.length,
+    LEGACY_REPLAY_IMPORT_ALLOWED_STEAM_IDS_COUNT: value.legacyReplayImportAllowedSteamIds.length,
     STEAM_AUTH_MODE: value.steamAuthMode,
     STEAM_APP_ID: value.steamAppId,
     STEAM_AUTH_IDENTITY: value.steamAuthIdentity,
@@ -80,6 +86,15 @@ function booleanEnv(name: string, fallback: boolean): boolean {
   const value = process.env[name];
   if (value === undefined || value === "") return fallback;
   return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+function stringListEnv(name: string): string[] {
+  const value = process.env[name];
+  if (value === undefined || value.trim() === "") return [];
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "");
 }
 
 function databaseDriverEnv(value: string | undefined): DatabaseDriver {
