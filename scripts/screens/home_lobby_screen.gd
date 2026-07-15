@@ -62,7 +62,7 @@ var _replay_access_by_id: Dictionary = {}
 var _replay_access_pending: Dictionary = {}
 var _replay_current_record: Dictionary = {}
 var _replay_current_index_entry: Dictionary = {}
-var _replay_economy_signature := \
+var _replay_economy_signature := ""
 var _pending_replay_unlock_record: Dictionary = {}
 var _pending_replay_unlock_index_entry: Dictionary = {}
 var _replay_playback_timer: Timer
@@ -103,9 +103,10 @@ var _is_launching_table := false
 const MockDataProvider := preload("res://scripts/demo/mock_data_provider.gd")
 const ScreenNavigator := preload("res://scripts/app/screen_navigator.gd")
 const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
-const ProfileServiceScript := preload(\
+const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
 const MusicServiceScript := preload("res://scripts/services/music_service.gd")
 const SfxManagerScript := preload("res://scripts/services/sfx_manager.gd")
+const IdentityServiceScript := preload("res://scripts/services/identity_service.gd")
 const LocalMockBackendScript := preload("res://scripts/services/local_mock_backend.gd")
 const StoreMockServiceScript := preload("res://scripts/services/store_mock_service.gd")
 const ReplayServiceScript := preload("res://scripts/services/replay_service.gd")
@@ -3141,7 +3142,7 @@ func _update_friends_room_panel() -> void:
 	_friends_room_ready_label.text = _tf("friends.ready_value", {"status": _t("friends.ready_hint_table") if occupied > 0 else _t("friends.ready_hint_lobby")})
 
 func _build_replay_panel() -> void:
-	_replay_economy_signature = JSON.stringify(Dictionary(_player_profile.get(\
+	_replay_economy_signature = JSON.stringify(Dictionary(_player_profile.get("replay_economy", {})))
 	_replay_panel = PanelContainer.new()
 	_replay_panel.name = "ReplayPanel"
 	_replay_panel.anchor_left = 0.0
