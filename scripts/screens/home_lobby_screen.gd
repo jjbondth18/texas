@@ -23,15 +23,17 @@ const MAIN_RIGHT := 70.0
 const ROOM_BROWSER_COL_WIDTHS := [320, 200, 200, 260, 160]
 const DEFAULT_ACTION_TIME_SECONDS := 60
 const TABLE_LAUNCH_TIMEOUT_SECONDS := 12
+const DISPLAY_NAME_MIN_LENGTH := 3
+const DISPLAY_NAME_MAX_LENGTH := 16
 const DEFAULT_QUICK_PUBLIC_TABLE_CONFIG := {
-	"buy_in": 10000,
-	"small_blind": 50,
-	"big_blind": 100,
+	"buy_in": 2000,
+	"small_blind": 25,
+	"big_blind": 50,
 	"max_hands": 10,
 	"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 	"max_players": 9,
 }
-const CHIP_BUY_IN_OPTIONS := [5000, 10000, 20000, 50000]
+const CHIP_BUY_IN_OPTIONS := [1000, 2000, 5000, 10000, 20000, 50000]
 const CHIP_BLIND_OPTIONS := [[25, 50], [50, 100], [100, 200]]
 const GEM_BUY_IN_OPTIONS := [20, 50, 100, 200]
 const GEM_BLIND_OPTIONS := [[1, 2], [2, 5], [5, 10]]
@@ -59,8 +61,11 @@ var _replay_list_panel: PanelContainer
 var _replay_equity_box: PanelContainer
 var _replay_detail_vbox: VBoxContainer
 var _replay_list_lock_labels: Dictionary = {}
+var _replay_access_by_id: Dictionary = {}
+var _replay_access_pending: Dictionary = {}
 var _replay_current_record: Dictionary = {}
 var _replay_current_index_entry: Dictionary = {}
+var _replay_economy_signature := ""
 var _pending_replay_unlock_record: Dictionary = {}
 var _pending_replay_unlock_index_entry: Dictionary = {}
 var _replay_playback_timer: Timer
@@ -109,6 +114,7 @@ const MockDataProvider := preload("res://scripts/demo/mock_data_provider.gd")
 const ScreenNavigator := preload("res://scripts/app/screen_navigator.gd")
 const TableLaunchContext := preload("res://scripts/app/table_launch_context.gd")
 const ProfileServiceScript := preload("res://scripts/services/profile_service.gd")
+const IdentityServiceScript := preload("res://scripts/services/identity_service.gd")
 const MusicServiceScript := preload("res://scripts/services/music_service.gd")
 const SfxManagerScript := preload("res://scripts/services/sfx_manager.gd")
 const LocalMockBackendScript := preload("res://scripts/services/local_mock_backend.gd")
@@ -182,7 +188,10 @@ var _friends_room_ready_label: Label
 var _friends_room_code_input: LineEdit
 var _room_browser_list_vbox: VBoxContainer
 var _profile_avatar_rect: TextureRect
+var _profile_game_name_caption: Label
 var _profile_name_label: Label
+var _profile_identity_label: Label
+var _profile_edit_name_button: Button
 var _profile_level_label: Label
 var _profile_avatar_name_label: Label
 var _profile_stats_labels: Dictionary = {}
@@ -204,24 +213,24 @@ var _quick_gem_buy_in_buttons: Dictionary = {}
 var _quick_gem_blinds_buttons: Dictionary = {}
 var _quick_gem_hand_count_buttons: Dictionary = {}
 var _quick_play_mode := "chip"
-var _selected_quick_buy_in := 20000
+var _selected_quick_buy_in := 2000
 var _selected_quick_small_blind := 25
 var _selected_quick_big_blind := 50
 var _selected_quick_max_hands := 10
 var _public_table_setup_panel: PanelContainer
 var _private_room_setup_panel: PanelContainer
 var _public_table_setup_values := {
-	"buy_in": 10000,
-	"small_blind": 50,
-	"big_blind": 100,
+	"buy_in": 2000,
+	"small_blind": 25,
+	"big_blind": 50,
 	"max_hands": 10,
 	"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 	"max_players": 6,
 }
 var _private_room_setup_values := {
-	"buy_in": 20000,
-	"small_blind": 50,
-	"big_blind": 100,
+	"buy_in": 2000,
+	"small_blind": 25,
+	"big_blind": 50,
 	"max_hands": 10,
 	"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 	"max_players": 6,
@@ -232,6 +241,16 @@ var server_authoritative_profile := true
 var _profile_ws_client: PokerWsClient
 var _profile_server_connected := false
 var _profile_server_wallet_synced := false
+var _rename_name_panel: PanelContainer
+var _rename_current_name_label: Label
+var _rename_name_input: LineEdit
+var _rename_character_count_label: Label
+var _rename_status_label: Label
+var _rename_cancel_button: Button
+var _rename_confirm_button: Button
+var _rename_request_pending := false
+var _rename_request_generation := 0
+var _rename_request_id := ""
 var _welcome_shown_for_player_id := ""
 var _avatar_catalog: Array = []
 var _avatar_catalog_by_id: Dictionary = {}
@@ -298,6 +317,8 @@ func _ready() -> void:
 func set_state(new_state: LobbyState, animated: bool = true) -> void:
 	current_state = new_state
 	_ensure_home_bgm_active()
+	if _rename_name_panel != null and new_state != LobbyState.PROFILE:
+		_rename_name_panel.visible = false
 	if _quick_play_setup_panel != null and new_state != LobbyState.PLAY_EXPANDED:
 		_quick_play_setup_panel.visible = false
 	if new_state == LobbyState.PROFILE:
@@ -791,7 +812,7 @@ func _render_table_creation_setup_panel(panel: PanelContainer, public_table: boo
 	_add_table_setup_profile_row(column, selected_currency)
 
 	var mode_note := Label.new()
-	var buy_in := int(values.get("buy_in", 10000))
+	var buy_in := int(values.get("buy_in", 2000))
 	var wallet_amount := _wallet_amount_for_currency(selected_currency)
 	var can_afford_buy_in := (not (public_table and gem_selected)) and _can_afford_buy_in_for_currency(buy_in, selected_currency)
 	if public_table:
@@ -882,7 +903,7 @@ func _add_table_setup_mode_switch(parent: VBoxContainer, public_table: bool, sel
 func _apply_table_setup_mode_defaults(values: Dictionary, mode: String) -> void:
 	var buy_options: Array = GEM_BUY_IN_OPTIONS if mode == "gem" else CHIP_BUY_IN_OPTIONS
 	if not buy_options.has(int(values.get("buy_in", 0))):
-		values["buy_in"] = 50 if mode == "gem" else 10000
+		values["buy_in"] = 50 if mode == "gem" else 2000
 	var blind_options: Array = GEM_BLIND_OPTIONS if mode == "gem" else CHIP_BLIND_OPTIONS
 	var valid_blind := false
 	for blind_item in blind_options:
@@ -890,8 +911,8 @@ func _apply_table_setup_mode_defaults(values: Dictionary, mode: String) -> void:
 		if int(pair[0]) == int(values.get("small_blind", 0)) and int(pair[1]) == int(values.get("big_blind", 0)):
 			valid_blind = true
 	if not valid_blind:
-		values["small_blind"] = 2 if mode == "gem" else 50
-		values["big_blind"] = 5 if mode == "gem" else 100
+		values["small_blind"] = 2 if mode == "gem" else 25
+		values["big_blind"] = 5 if mode == "gem" else 50
 
 
 func _add_table_setup_profile_row(parent: VBoxContainer, currency: String = "chips") -> void:
@@ -1472,6 +1493,8 @@ func _connect_profile_server() -> void:
 	_profile_ws_client.connected.connect(_on_profile_server_connected)
 	_profile_ws_client.disconnected.connect(_on_profile_server_disconnected)
 	_profile_ws_client.profile_synced.connect(_on_profile_server_profile_synced)
+	_profile_ws_client.display_name_renamed.connect(_on_display_name_renamed)
+	_profile_ws_client.display_name_rename_failed.connect(_on_display_name_rename_failed)
 	_profile_ws_client.wallet_synced.connect(_on_profile_server_wallet_synced)
 	_profile_ws_client.daily_bonus_awarded.connect(_on_profile_server_daily_login_awarded)
 	_profile_ws_client.daily_bonus_claim_failed.connect(_on_profile_server_daily_bonus_claim_failed)
@@ -1481,6 +1504,7 @@ func _connect_profile_server() -> void:
 	_profile_ws_client.table_joined.connect(_on_server_table_joined)
 	_profile_ws_client.mock_purchase_result_received.connect(_on_server_mock_purchase_result)
 	_profile_ws_client.replay_unlocked_received.connect(_on_replay_server_unlocked)
+	_profile_ws_client.replay_access_received.connect(_on_replay_access_received)
 	_profile_ws_client.server_error.connect(_on_profile_server_error)
 	var err := _profile_ws_client.connect_to_server(NetworkConfigScript.server_url())
 	if err != OK:
@@ -1490,6 +1514,8 @@ func _connect_profile_server() -> void:
 func _on_profile_server_connected() -> void:
 	_profile_server_connected = true
 	_profile_server_wallet_synced = false
+	_replay_access_by_id.clear()
+	_replay_access_pending.clear()
 	var player_id := str(_player_profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID))
 	var player_name := PlayerProfileScript.get_player_name(_player_profile)
 	_profile_ws_client.send_hello(player_name, player_id, _server_avatar_id_for_client(PlayerProfileScript.get_avatar_id(_player_profile)))
@@ -1500,6 +1526,10 @@ func _on_profile_server_connected() -> void:
 func _on_profile_server_disconnected() -> void:
 	_profile_server_connected = false
 	_profile_server_wallet_synced = false
+	_set_rename_request_pending(false)
+	_rename_request_id = ""
+	_replay_access_pending.clear()
+	_refresh_profile_panel()
 	if _table_launch_pending:
 		_cancel_table_launch_request("Connection lost. Please try again.")
 	if current_state == LobbyState.ROOM_BROWSER:
@@ -1510,6 +1540,7 @@ func _on_profile_server_profile_synced(profile: Dictionary, wallet: Dictionary, 
 	_profile_server_wallet_synced = true
 	_refresh_profile_views_from_server()
 	_maybe_show_new_player_welcome(profile)
+	_request_replay_access_for_entries()
 
 func _on_profile_server_wallet_synced(wallet: Dictionary) -> void:
 	_player_profile = ProfileServiceScript.new().apply_wallet_snapshot(wallet)
@@ -1559,6 +1590,8 @@ func _on_avatar_catalog_received(catalog: Array) -> void:
 	_refresh_avatar_gallery()
 
 func _on_profile_server_error(message: String, request_id: String = "") -> void:
+	if request_id.begins_with("rename_display_name:"):
+		return
 	if _table_launch_pending:
 		if request_id != "" and request_id != _table_launch_request_id:
 			return
@@ -1566,15 +1599,19 @@ func _on_profile_server_error(message: String, request_id: String = "") -> void:
 		return
 	if message != "":
 		_show_toast("Server\n%s", [_server_lobby_error_text(message)], 2.8)
-	if not _pending_replay_unlock_record.is_empty() and message in ["insufficient_gems", "replay_access_denied", "replay_not_found", "replay_key_missing", "replay_unlock_failed"]:
+	if not _pending_replay_unlock_record.is_empty() and message in ["insufficient_gems", "replay_access_denied", "replay_not_found", "replay_key_missing", "replay_unlock_failed", "replay_checksum_mismatch", "replay_key_version_mismatch", "replay_unsupported", "invalid_replay_type"]:
 		_pending_replay_unlock_record = {}
 		_pending_replay_unlock_index_entry = {}
+	if message in ["replay_access_denied", "replay_not_found", "replay_checksum_mismatch", "replay_key_version_mismatch", "replay_unsupported"]:
+		_replay_access_pending.clear()
 	if _is_launching_table:
 		_finish_table_launch_transition()
 
 func _server_lobby_error_text(message: String) -> String:
 	match message:
 		"room_not_found":
+			return _t("server_error.room_not_found")
+		"invalid_room_code":
 			return _t("server_error.room_not_found")
 		"table_full":
 			return _t("server_error.table_full")
@@ -1592,6 +1629,12 @@ func _server_lobby_error_text(message: String) -> String:
 			return _t("replay.unlock_failed")
 		"replay_unlock_failed":
 			return _t("replay.unlock_failed")
+		"replay_checksum_mismatch":
+			return "Replay checksum mismatch."
+		"replay_key_version_mismatch", "replay_unsupported":
+			return "Legacy replay is unsupported."
+		"invalid_replay_type":
+			return _t("replay.unlock_failed")
 		_:
 			return message
 
@@ -1607,6 +1650,19 @@ func _refresh_profile_views_from_server() -> void:
 		_render_table_creation_setup_panel(_public_table_setup_panel, true)
 	if _private_room_setup_panel != null and _private_room_setup_panel.visible:
 		_render_table_creation_setup_panel(_private_room_setup_panel, false)
+	_refresh_replay_panel_for_economy_config()
+
+func _refresh_replay_panel_for_economy_config() -> void:
+	var next_signature := JSON.stringify(Dictionary(_player_profile.get("replay_economy", {})))
+	if next_signature == _replay_economy_signature or _replay_panel == null or _lobby_ui_root == null:
+		return
+	var was_visible := current_state == LobbyState.REPLAY and _replay_panel.visible
+	_lobby_ui_root.remove_child(_replay_panel)
+	_replay_panel.queue_free()
+	_build_replay_panel()
+	if was_visible:
+		_replay_panel.visible = true
+		_replay_panel.modulate.a = 1.0
 
 func _show_pending_launch_error() -> void:
 	var message := TableLaunchContext.consume_pending_launch_error()
@@ -1706,17 +1762,7 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 
 func _select_default_quick_buy_in() -> void:
 	var total_chips := _wallet_chips_for_public_chip_setup()
-	var best := 0
-	for option in [5000, 10000, 20000, 50000]:
-		var value: int = int(option)
-		if value <= total_chips and value <= 20000:
-			best = value
-	if best == 0:
-		for option in [5000, 10000, 20000, 50000]:
-			var value: int = int(option)
-			if value <= total_chips:
-				best = max(best, value)
-	_selected_quick_buy_in = best if best > 0 else 5000
+	_selected_quick_buy_in = 1000 if total_chips < 5000 else 2000
 
 
 func _select_quick_buy_in(value: int) -> void:
@@ -2012,7 +2058,7 @@ func _confirm_public_table_setup() -> void:
 	if _public_table_setup_mode == "gem":
 		_show_toast(_t("setup.public_gem_quick_note"))
 		return
-	var buy_in: int = int(_public_table_setup_values.get("buy_in", 10000))
+	var buy_in: int = int(_public_table_setup_values.get("buy_in", 2000))
 	if not _can_afford_public_buy_in(buy_in):
 		_show_toast(_t("table.not_enough_buyin_chips"))
 		_render_table_creation_setup_panel(_public_table_setup_panel, true)
@@ -2086,7 +2132,7 @@ func _public_table_config_from_values(values: Dictionary) -> Dictionary:
 		"table_name": "Public Chip %d/%d" % [small_blind, big_blind],
 		"small_blind": small_blind,
 		"big_blind": big_blind,
-		"buy_in": int(values.get("buy_in", 10000)),
+		"buy_in": int(values.get("buy_in", 2000)),
 		"hand_count": int(values.get("max_hands", 10)),
 		"action_time_seconds": DEFAULT_ACTION_TIME_SECONDS,
 		"max_players": int(values.get("max_players", 6)),
@@ -2338,7 +2384,7 @@ func _on_join_pressed(room_id: String) -> void:
 		_refresh_room_browser_rows()
 		return
 	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
-		var buy_in: int = int(table_info.get("buy_in", 10000))
+		var buy_in: int = int(table_info.get("buy_in", 2000))
 		if not _can_afford_public_buy_in(buy_in):
 			_show_toast(_t("table.not_enough_buyin_chips"))
 			return
@@ -2366,7 +2412,7 @@ func _join_public_chip_table_after_wallet_check(room_id: String) -> void:
 		_show_toast("This table is no longer available.")
 		_refresh_room_browser_rows()
 		return
-	var buy_in: int = int(table_info.get("buy_in", 10000))
+	var buy_in: int = int(table_info.get("buy_in", 2000))
 	_reload_player_profile()
 	if PlayerProfileScript.get_total_chips(_player_profile) < buy_in:
 		_finish_table_launch_transition()
@@ -3195,6 +3241,7 @@ func _update_friends_room_panel() -> void:
 	_friends_room_ready_label.text = _tf("friends.ready_value", {"status": _t("friends.ready_hint_table") if occupied > 0 else _t("friends.ready_hint_lobby")})
 
 func _build_replay_panel() -> void:
+	_replay_economy_signature = JSON.stringify(Dictionary(_player_profile.get("replay_economy", {})))
 	_replay_panel = PanelContainer.new()
 	_replay_panel.name = "ReplayPanel"
 	_replay_panel.anchor_left = 0.0
@@ -3257,7 +3304,7 @@ func _build_replay_panel() -> void:
 	list_vbox.add_theme_constant_override("separation", 10)
 	list_scroll.add_child(list_vbox)
 	
-	var replay_view: Dictionary = ReplayServiceScript.new().get_replay_view_model()
+	var replay_view: Dictionary = ReplayServiceScript.new().get_replay_view_model(Dictionary(_player_profile.get("replay_economy", {})))
 	var replay_records: Array = Array(replay_view.get("records", []))
 	_replay_list_lock_labels.clear()
 	
@@ -3275,6 +3322,7 @@ func _build_replay_panel() -> void:
 		var hand: Dictionary = Dictionary(hand_item)
 		var preview_record: Dictionary = _load_replay_record_preview(hand)
 		var replay_id: String = _replay_id_for_record(preview_record, hand)
+		_request_replay_access(preview_record, hand)
 		var unlocked: bool = _is_replay_unlocked(preview_record, hand)
 		var item := PanelContainer.new()
 		item.custom_minimum_size = Vector2(0, 112)
@@ -3318,9 +3366,15 @@ func _build_replay_panel() -> void:
 		desc_vbox.add_child(item_played_at)
 
 		var lock_label := Label.new()
-		lock_label.text = _t("replay.unlocked").to_upper() if unlocked else _t("replay.locked").to_upper()
+		lock_label.text = _replay_access_label(replay_id, unlocked)
 		HomeTheme.make_font_settings(lock_label, 10, HomeTheme.CYAN if unlocked else HomeTheme.GOLD)
 		desc_vbox.add_child(lock_label)
+		var economy_label := Label.new()
+		var replay_type := str(hand.get("replay_type", ReplayRepositoryScript.replay_type_for_record(preview_record)))
+		var price_gems := int(hand.get("price_gems", _replay_price_gems(preview_record, hand)))
+		economy_label.text = "%s | %s" % [_replay_type_label(replay_type), "%d Gems" % price_gems if price_gems >= 0 else "Price unavailable"]
+		HomeTheme.make_font_settings(economy_label, 10, HomeTheme.MUTED)
+		desc_vbox.add_child(economy_label)
 		if replay_id != "":
 			_replay_list_lock_labels[replay_id] = lock_label
 		
@@ -3420,6 +3474,7 @@ func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
 	var hand_id: String = str(record.get("hand_id", index_entry.get("replay_id", "Unknown")))
 	var replay_id: String = _replay_id_for_record(record, index_entry)
 	var replay_unlocked: bool = _is_replay_unlocked(record, index_entry)
+	var replay_price_gems := _replay_price_gems(record, index_entry)
 	var results: Dictionary = Dictionary(record.get("results", {}))
 	var players: Array = Array(record.get("players", []))
 	var header := HBoxContainer.new()
@@ -3436,12 +3491,13 @@ func _render_replay_detail(record: Dictionary, index_entry: Dictionary) -> void:
 		play_button.pressed.connect(_open_replay_playback.bind(record, index_entry))
 		header.add_child(play_button)
 	else:
-		var unlock_button := _make_replay_primary_button(_tf("replay.unlock_button", {"cost": PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS}), HomeTheme.GOLD)
+		var unlock_button := _make_replay_primary_button(_tf("replay.unlock_button", {"cost": replay_price_gems}) if replay_price_gems >= 0 else _t("replay.unlock_replay"), HomeTheme.GOLD)
+		unlock_button.disabled = replay_price_gems < 0
 		unlock_button.pressed.connect(_unlock_replay_from_detail.bind(record, index_entry))
 		header.add_child(unlock_button)
 
 	var unlock_hint := Label.new()
-	unlock_hint.text = _t("replay.unlock_hint_unlocked") if replay_unlocked else _tf("replay.unlock_hint_locked", {"cost": PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS})
+	unlock_hint.text = _t("replay.unlock_hint_unlocked") if replay_unlocked else (_tf("replay.unlock_hint_locked", {"cost": replay_price_gems}) if replay_price_gems >= 0 else _t("replay.unlock_failed"))
 	unlock_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	HomeTheme.make_font_settings(unlock_hint, 12, HomeTheme.MUTED)
 	_replay_detail_vbox.add_child(unlock_hint)
@@ -3503,29 +3559,75 @@ func _is_official_encrypted_replay(record: Dictionary, index_entry: Dictionary =
 	return ReplayRepositoryScript.is_official_encrypted_record(record) or ReplayRepositoryScript.is_official_encrypted_entry(index_entry)
 
 func _is_replay_unlocked(record: Dictionary, index_entry: Dictionary = {}) -> bool:
+	var cache_source := record if not record.is_empty() else index_entry
 	if _is_official_encrypted_replay(record, index_entry):
-		return ReplayRepositoryScript.has_unlock_cache(record if not record.is_empty() else index_entry)
+		var replay_id := _replay_id_for_record(record, index_entry)
+		var access: Dictionary = Dictionary(_replay_access_by_id.get(replay_id, {}))
+		return bool(access.get("supported", false)) and bool(access.get("unlocked", false)) and ReplayRepositoryScript.has_unlock_cache(cache_source)
+	if ReplayRepositoryScript.has_unlock_cache(cache_source):
+		return true
+	var identity := IdentityServiceScript.new().get_identity(_player_profile)
+	if not OS.is_debug_build() or str(identity.get("provider", "")) != "local_dev":
+		return false
 	var replay_id := _replay_id_for_record(record, index_entry)
 	return ProfileServiceScript.new().is_replay_unlocked(replay_id)
 
+func _replay_type(record: Dictionary, index_entry: Dictionary = {}) -> String:
+	var explicit_type := str(record.get("replay_type", index_entry.get("replay_type", "")))
+	if explicit_type != "":
+		return explicit_type
+	return ReplayRepositoryScript.replay_type_for_record(record if not record.is_empty() else index_entry)
+
+func _replay_price_gems(record: Dictionary, index_entry: Dictionary = {}) -> int:
+	return PlayerProfileScript.replay_price_gems(_player_profile, _replay_type(record, index_entry))
+
+func _replay_type_label(replay_type: String) -> String:
+	match replay_type:
+		"official_human":
+			return "Official Human"
+		"room_replay":
+			return "Room Replay"
+		"ai":
+			return "AI Replay"
+		"training":
+			return "Training Replay"
+	return "Replay"
+
 func _unlock_replay_from_detail(record: Dictionary, index_entry: Dictionary) -> void:
 	var replay_id := _replay_id_for_record(record, index_entry)
+	var replay_type := _replay_type(record, index_entry)
+	var replay_price_gems := _replay_price_gems(record, index_entry)
+	if replay_id == "" or replay_price_gems < 0:
+		_show_toast(_t("replay.unlock_failed"), [], 2.4)
+		return
 	if _is_official_encrypted_replay(record, index_entry):
-		if replay_id == "":
-			_show_toast(_t("replay.unlock_failed"), [], 2.4)
+		var access: Dictionary = Dictionary(_replay_access_by_id.get(replay_id, {}))
+		if not access.is_empty() and not bool(access.get("supported", false)):
+			_show_toast("Legacy replay is unsupported.", [], 2.8)
 			return
-		if _profile_ws_client == null or not _profile_server_connected:
-			_show_toast(_t("replay.unlock_failed"), [], 2.4)
-			return
+	if _profile_ws_client != null and _profile_server_connected:
 		_pending_replay_unlock_record = record.duplicate(true)
 		_pending_replay_unlock_index_entry = index_entry.duplicate(true)
-		var err := _profile_ws_client.unlock_replay(replay_id)
+		var source := record if not record.is_empty() else index_entry
+		var err := _profile_ws_client.unlock_replay(
+			replay_id,
+			replay_type,
+			str(source.get("checksum", "")),
+			int(source.get("key_version", 0)),
+			str(source.get("algorithm", "")),
+			str(source.get("storage_mode", ""))
+		)
 		if err != OK:
 			_pending_replay_unlock_record = {}
 			_pending_replay_unlock_index_entry = {}
 			_show_toast(_t("replay.unlock_failed"), [], 2.4)
+			return
 		return
-	var result: Dictionary = ProfileServiceScript.new().unlock_replay(replay_id, PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS)
+	var identity := IdentityServiceScript.new().get_identity(_player_profile)
+	if not OS.is_debug_build() or str(identity.get("provider", "")) != "local_dev" or replay_type not in ["ai", "training"]:
+		_show_toast(_t("replay.unlock_failed"), [], 2.4)
+		return
+	var result: Dictionary = ProfileServiceScript.new().unlock_replay(replay_id, replay_price_gems)
 	if not bool(result.get("success", false)):
 		if str(result.get("reason", "")) == "not_enough_gems":
 			_show_toast(_t("replay.not_enough_gems"), [], 3.0)
@@ -3533,15 +3635,16 @@ func _unlock_replay_from_detail(record: Dictionary, index_entry: Dictionary) -> 
 			_show_toast(_t("replay.unlock_failed"), [], 2.4)
 		return
 	_player_profile = Dictionary(result.get("profile", ProfileServiceScript.new().get_current_profile()))
+	ReplayRepositoryScript.save_local_unlock_cache(record, replay_type, replay_price_gems, "local_mock")
 	SfxManagerScript.play_gem(self, "replay_unlock:%s" % replay_id)
 	if _top_bar != null:
 		_top_bar.configure(_player_profile)
 	_refresh_profile_panel()
 	_update_replay_list_lock_label(replay_id, true)
-	_show_toast(_tf("replay.unlock_success", {"cost": _format_number(PlayerProfileScript.REPLAY_UNLOCK_COST_GEMS)}), [], 2.6)
+	_show_toast(_tf("replay.unlock_success", {"cost": _format_number(replay_price_gems)}), [], 2.6)
 	_render_replay_detail(record, index_entry)
 
-func _on_replay_server_unlocked(replay_id: String, replay_key: String, key_version: int, checksum: String, already_unlocked: bool, wallet: Dictionary) -> void:
+func _on_replay_server_unlocked(replay_id: String, replay_type: String, price_gems: int, replay_key: String, key_version: int, checksum: String, algorithm: String, already_unlocked: bool, wallet: Dictionary, profile_snapshot: Dictionary) -> void:
 	if replay_id == "":
 		_show_toast(_t("replay.unlock_failed"), [], 2.4)
 		return
@@ -3559,21 +3662,38 @@ func _on_replay_server_unlocked(replay_id: String, replay_key: String, key_versi
 	if key_version > 0:
 		record["key_version"] = key_version
 		index_entry["key_version"] = key_version
-	var full_record: Dictionary = ReplayRepositoryScript.load_unlocked_encrypted_record(record, replay_key)
-	if full_record.has("error"):
-		_show_toast(_replay_unlock_error_text(str(full_record.get("error", ""))), [], 3.0)
-		return
-	if full_record.is_empty():
+	if algorithm != "":
+		record["algorithm"] = algorithm
+		index_entry["algorithm"] = algorithm
+	var full_record: Dictionary = record.duplicate(true)
+	if _is_official_encrypted_replay(record, index_entry):
+		full_record = ReplayRepositoryScript.load_unlocked_encrypted_record(record, replay_key)
+		if full_record.has("error"):
+			_show_toast(_replay_unlock_error_text(str(full_record.get("error", ""))), [], 3.0)
+			return
+		if full_record.is_empty() or not ReplayRepositoryScript.save_unlock_cache(record, replay_key, key_version, checksum):
+			_show_toast(_t("replay.unlock_failed"), [], 2.4)
+			return
+	elif not ReplayRepositoryScript.save_local_unlock_cache(record, replay_type, price_gems):
 		_show_toast(_t("replay.unlock_failed"), [], 2.4)
 		return
-	if not ReplayRepositoryScript.save_unlock_cache(record, replay_key, key_version, checksum):
-		_show_toast(_t("replay.unlock_failed"), [], 2.4)
-		return
-	if not wallet.is_empty():
+	if not profile_snapshot.is_empty():
+		_player_profile = ProfileServiceScript.new().apply_server_profile_snapshot(profile_snapshot, wallet)
+		_refresh_profile_views_from_server()
+	elif not wallet.is_empty():
 		_player_profile = ProfileServiceScript.new().apply_wallet_snapshot(wallet)
 		_refresh_profile_views_from_server()
 	if not already_unlocked:
 		SfxManagerScript.play_gem(self, "replay_unlock:%s" % replay_id)
+	_replay_access_by_id[replay_id] = {
+		"replay_id": replay_id,
+		"replay_type": replay_type,
+		"checksum": checksum,
+		"key_version": key_version,
+		"algorithm": algorithm,
+		"unlocked": true,
+		"supported": true,
+	}
 	_update_replay_list_lock_label(replay_id, true)
 	_pending_replay_unlock_record = {}
 	_pending_replay_unlock_index_entry = {}
@@ -3599,8 +3719,71 @@ func _update_replay_list_lock_label(replay_id: String, unlocked: bool) -> void:
 	var label: Label = _replay_list_lock_labels.get(replay_id, null) as Label
 	if label == null:
 		return
-	label.text = _t("replay.unlocked").to_upper() if unlocked else _t("replay.locked").to_upper()
+	label.text = _replay_access_label(replay_id, unlocked)
 	HomeTheme.make_font_settings(label, 10, HomeTheme.CYAN if unlocked else HomeTheme.GOLD)
+
+
+func _request_replay_access_for_entries() -> void:
+	if _profile_ws_client == null or not _profile_server_connected:
+		return
+	for item in ReplayRepositoryScript.load_index_entries():
+		var entry := Dictionary(item)
+		var record := _load_replay_record_preview(entry)
+		_request_replay_access(record, entry)
+
+
+func _request_replay_access(record: Dictionary, index_entry: Dictionary = {}) -> void:
+	if _profile_ws_client == null or not _profile_server_connected:
+		return
+	var replay_id := _replay_id_for_record(record, index_entry)
+	if replay_id == "" or _replay_access_pending.has(replay_id) or _replay_access_by_id.has(replay_id):
+		return
+	var source := record if not record.is_empty() else index_entry
+	var replay_type := _replay_type(record, index_entry)
+	_replay_access_pending[replay_id] = true
+	var err := _profile_ws_client.get_replay_access(
+		replay_id,
+		replay_type,
+		str(source.get("checksum", "")),
+		int(source.get("key_version", 0)),
+		str(source.get("algorithm", "")),
+		str(source.get("storage_mode", ""))
+	)
+	if err != OK:
+		_replay_access_pending.erase(replay_id)
+
+
+func _on_replay_access_received(access: Dictionary) -> void:
+	var replay_id := str(access.get("replay_id", ""))
+	if replay_id == "":
+		return
+	_replay_access_pending.erase(replay_id)
+	_replay_access_by_id[replay_id] = access.duplicate(true)
+	var unlocked := bool(access.get("supported", false)) and bool(access.get("unlocked", false))
+	var cache_source: Dictionary = _replay_cache_source_for_id(replay_id)
+	_update_replay_list_lock_label(replay_id, unlocked and ReplayRepositoryScript.has_unlock_cache(cache_source))
+	if not _replay_current_record.is_empty() and _replay_id_for_record(_replay_current_record, _replay_current_index_entry) == replay_id:
+		_render_replay_detail(_replay_current_record, _replay_current_index_entry)
+
+
+func _replay_access_label(replay_id: String, unlocked: bool) -> String:
+	var access: Dictionary = Dictionary(_replay_access_by_id.get(replay_id, {}))
+	if not access.is_empty() and not bool(access.get("supported", false)):
+		var reason := str(access.get("legacy_reason", ""))
+		return "COLLISION / CORRUPTED" if reason in ["checksum_mismatch", "collision", "corrupted"] else "LEGACY / UNSUPPORTED"
+	if not access.is_empty() and bool(access.get("unlocked", false)) and not unlocked:
+		return "UNLOCKED / RESTORE"
+	return _t("replay.unlocked").to_upper() if unlocked else _t("replay.locked").to_upper()
+
+
+func _replay_cache_source_for_id(replay_id: String) -> Dictionary:
+	if not _replay_current_record.is_empty() and _replay_id_for_record(_replay_current_record, _replay_current_index_entry) == replay_id:
+		return _replay_current_record
+	for item in ReplayRepositoryScript.load_index_entries():
+		var entry := Dictionary(item)
+		if str(entry.get("replay_id", "")) == replay_id:
+			return entry
+	return {}
 
 
 func _open_replay_playback(record: Dictionary, index_entry: Dictionary) -> void:
@@ -5194,11 +5377,32 @@ func _build_profile_panel() -> void:
 	_profile_avatar_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	avatar_frame.add_child(_profile_avatar_rect)
 
+	_profile_game_name_caption = Label.new()
+	_profile_game_name_caption.name = "ProfileGameDisplayNameCaption"
+	_profile_game_name_caption.text = "GAME DISPLAY NAME"
+	HomeTheme.make_font_settings(_profile_game_name_caption, 11, HomeTheme.MUTED)
+	_profile_game_name_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	c_vbox.add_child(_profile_game_name_caption)
+
 	_profile_name_label = Label.new()
 	_profile_name_label.name = "ProfileNameLabel"
 	HomeTheme.make_font_settings(_profile_name_label, 22, Color(1, 1, 1, 0.95))
 	_profile_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	c_vbox.add_child(_profile_name_label)
+
+	_profile_identity_label = Label.new()
+	_profile_identity_label.name = "ProfileSecondaryIdentityLabel"
+	HomeTheme.make_font_settings(_profile_identity_label, 11, Color(0.66, 0.70, 0.84, 0.92))
+	_profile_identity_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_profile_identity_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	c_vbox.add_child(_profile_identity_label)
+
+	_profile_edit_name_button = _modal_button("EDIT NAME")
+	_profile_edit_name_button.name = "EditDisplayNameButton"
+	_profile_edit_name_button.custom_minimum_size = Vector2(146, 36)
+	_profile_edit_name_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_profile_edit_name_button.pressed.connect(_show_rename_name_panel)
+	c_vbox.add_child(_profile_edit_name_button)
 
 	_profile_level_label = Label.new()
 	_profile_level_label.name = "ProfileLevelLabel"
@@ -5294,7 +5498,172 @@ func _build_profile_panel() -> void:
 		})
 		HomeTheme.make_font_settings(a_lbl, 12, Color(0.72, 0.76, 0.92))
 		r_vbox.add_child(a_lbl)
+	_build_rename_name_panel()
 	_refresh_profile_panel()
+
+func _build_rename_name_panel() -> void:
+	if _rename_name_panel != null:
+		return
+	_rename_name_panel = _create_home_modal("RenameDisplayNamePanel", Vector2(540, 410))
+	var column := _modal_column(_rename_name_panel)
+	var title := Label.new()
+	title.text = "EDIT GAME DISPLAY NAME"
+	HomeTheme.make_font_settings(title, 21, Color(1, 1, 1, 0.96))
+	column.add_child(title)
+	_rename_current_name_label = Label.new()
+	HomeTheme.make_font_settings(_rename_current_name_label, 13, HomeTheme.MUTED)
+	column.add_child(_rename_current_name_label)
+	var input_title := Label.new()
+	input_title.text = "NEW NICKNAME"
+	HomeTheme.make_font_settings(input_title, 12, HomeTheme.PURPLE)
+	column.add_child(input_title)
+	_rename_name_input = LineEdit.new()
+	_rename_name_input.name = "DisplayNameInput"
+	_rename_name_input.placeholder_text = "Enter 3-16 characters"
+	_rename_name_input.max_length = 32
+	_rename_name_input.custom_minimum_size = Vector2(0, 42)
+	_rename_name_input.text_changed.connect(_on_rename_name_text_changed)
+	column.add_child(_rename_name_input)
+	_rename_character_count_label = Label.new()
+	_rename_character_count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	HomeTheme.make_font_settings(_rename_character_count_label, 11, HomeTheme.MUTED)
+	column.add_child(_rename_character_count_label)
+	var rules := Label.new()
+	rules.text = "3-16 characters. Spaces are allowed. Reserved names and control characters are not allowed."
+	rules.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(rules, 12, Color(0.74, 0.78, 0.90, 0.94))
+	column.add_child(rules)
+	_rename_status_label = Label.new()
+	_rename_status_label.name = "DisplayNameRenameStatus"
+	_rename_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	HomeTheme.make_font_settings(_rename_status_label, 12, HomeTheme.CYAN)
+	column.add_child(_rename_status_label)
+	column.add_child(_modal_spacer())
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_END
+	actions.add_theme_constant_override("separation", 10)
+	column.add_child(actions)
+	_rename_cancel_button = _modal_button(_t("common.cancel").to_upper())
+	_rename_cancel_button.name = "CancelDisplayNameRenameButton"
+	_rename_cancel_button.pressed.connect(_hide_rename_name_panel)
+	actions.add_child(_rename_cancel_button)
+	_rename_confirm_button = _modal_button(_t("common.confirm").to_upper())
+	_rename_confirm_button.name = "ConfirmDisplayNameRenameButton"
+	_rename_confirm_button.pressed.connect(_submit_display_name_rename)
+	actions.add_child(_rename_confirm_button)
+
+func _show_rename_name_panel() -> void:
+	if not server_authoritative_profile or not _profile_server_connected or _profile_ws_client == null:
+		_show_toast("Nickname editing is temporarily unavailable.", [], 2.6)
+		return
+	var current_name := PlayerProfileScript.get_player_name(_player_profile)
+	_rename_current_name_label.text = "Current display name: %s" % current_name
+	_rename_name_input.text = current_name
+	_rename_name_input.caret_column = current_name.length()
+	_rename_status_label.text = _display_name_rename_availability_text()
+	_set_rename_request_pending(false)
+	_update_rename_confirm_state()
+	_rename_name_panel.visible = true
+	_rename_name_input.grab_focus()
+
+func _hide_rename_name_panel() -> void:
+	if _rename_request_pending:
+		return
+	if _rename_name_panel != null:
+		_rename_name_panel.visible = false
+
+func _on_rename_name_text_changed(_new_text: String) -> void:
+	if _rename_status_label != null and not _rename_request_pending:
+		_rename_status_label.text = _display_name_rename_availability_text()
+	_update_rename_confirm_state()
+
+func _update_rename_confirm_state() -> void:
+	if _rename_name_input == null:
+		return
+	var length := _rename_name_input.text.strip_edges().length()
+	if _rename_character_count_label != null:
+		_rename_character_count_label.text = "%d / %d" % [length, DISPLAY_NAME_MAX_LENGTH]
+	if _rename_confirm_button != null:
+		_rename_confirm_button.disabled = (
+			_rename_request_pending
+			or not _profile_server_connected
+			or length < DISPLAY_NAME_MIN_LENGTH
+			or length > DISPLAY_NAME_MAX_LENGTH
+		)
+
+func _display_name_rename_availability_text() -> String:
+	if str(_player_profile.get("display_name_updated_at", "")) == "":
+		return "First rename is free."
+	return "A 30-day cooldown applies after each rename. The server confirms availability."
+
+func _submit_display_name_rename() -> void:
+	if _rename_request_pending or _rename_name_input == null:
+		return
+	if not server_authoritative_profile or not _profile_server_connected or _profile_ws_client == null:
+		_rename_status_label.text = "Nickname editing is temporarily unavailable."
+		return
+	var candidate := _rename_name_input.text.strip_edges()
+	var length := candidate.length()
+	if length < DISPLAY_NAME_MIN_LENGTH or length > DISPLAY_NAME_MAX_LENGTH:
+		_update_rename_confirm_state()
+		return
+	_rename_request_generation += 1
+	_rename_request_id = "rename_display_name:%d" % _rename_request_generation
+	_set_rename_request_pending(true)
+	_rename_status_label.text = "Saving nickname..."
+	var err := _profile_ws_client.rename_display_name(candidate, _rename_request_id)
+	if err != OK:
+		_set_rename_request_pending(false)
+		_rename_request_id = ""
+		_rename_status_label.text = "Nickname editing is temporarily unavailable."
+
+func _set_rename_request_pending(pending: bool) -> void:
+	_rename_request_pending = pending
+	if _rename_cancel_button != null:
+		_rename_cancel_button.disabled = pending
+	_update_rename_confirm_state()
+
+func _on_display_name_renamed(display_name: String, _updated_at: String, _snapshot: Dictionary, request_id: String) -> void:
+	if request_id == "" or request_id != _rename_request_id:
+		return
+	_set_rename_request_pending(false)
+	_rename_request_id = ""
+	if _rename_name_panel != null:
+		_rename_name_panel.visible = false
+	_refresh_profile_views_from_server()
+	_show_toast("Display name updated to %s." % display_name, [], 2.6)
+
+func _on_display_name_rename_failed(error_code: String, next_rename_at: String, cooldown_remaining_seconds: int, request_id: String) -> void:
+	if request_id == "" or request_id != _rename_request_id:
+		return
+	_set_rename_request_pending(false)
+	_rename_request_id = ""
+	var message := _display_name_rename_error_text(error_code, next_rename_at, cooldown_remaining_seconds)
+	if _rename_status_label != null:
+		_rename_status_label.text = message
+	_show_toast(message, [], 2.8)
+
+func _display_name_rename_error_text(error_code: String, next_rename_at: String, cooldown_remaining_seconds: int) -> String:
+	match error_code:
+		"display_name_too_short":
+			return "Display name must be at least 3 characters."
+		"display_name_too_long":
+			return "Display name must be 16 characters or fewer."
+		"display_name_reserved":
+			return "That display name is reserved."
+		"display_name_control_characters":
+			return "Control characters are not allowed."
+		"rename_cooldown_active":
+			if cooldown_remaining_seconds > 0:
+				var days := maxi(1, int(ceil(float(cooldown_remaining_seconds) / 86400.0)))
+				return "You can rename again in %d day%s." % [days, "" if days == 1 else "s"]
+			if next_rename_at != "":
+				return "You can rename again after %s." % next_rename_at
+			return "You can rename again after the 30-day cooldown."
+		"invalid_display_name":
+			return "Please enter a valid display name."
+		_:
+			return "Nickname editing is temporarily unavailable."
 
 func _make_profile_stat_tile(parent: Container, title_text: String) -> Label:
 	var tile := PanelContainer.new()
@@ -5341,6 +5710,17 @@ func _refresh_profile_panel() -> void:
 		_player_profile = ProfileServiceScript.new().get_current_profile()
 	if _profile_name_label != null:
 		_profile_name_label.text = PlayerProfileScript.get_player_name(_player_profile)
+	if _profile_identity_label != null:
+		var steam_persona := str(_player_profile.get("steam_persona_name", "")).strip_edges()
+		if steam_persona == "":
+			steam_persona = "Not linked"
+		_profile_identity_label.text = "Steam Persona Name: %s\nPlayer ID: %s" % [
+			steam_persona,
+			str(_player_profile.get("player_id", PlayerProfileScript.DEFAULT_PLAYER_ID)),
+		]
+	if _profile_edit_name_button != null:
+		_profile_edit_name_button.visible = server_authoritative_profile and _profile_server_connected
+		_profile_edit_name_button.disabled = _rename_request_pending
 	if _profile_level_label != null:
 		var total_xp: int = PlayerProfileScript.get_total_xp(_player_profile)
 		var level: int = PlayerProfileScript.level_for_total_xp(total_xp)

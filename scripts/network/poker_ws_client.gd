@@ -9,6 +9,8 @@ signal connected()
 signal disconnected()
 signal hello_received(player_id: String, room_id: String, reconnected_to_table: bool)
 signal profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_ids: Array)
+signal display_name_renamed(display_name: String, display_name_updated_at: String, profile_snapshot: Dictionary, request_id: String)
+signal display_name_rename_failed(error_code: String, next_rename_at: String, cooldown_remaining_seconds: int, request_id: String)
 signal wallet_synced(wallet: Dictionary)
 signal daily_login_awarded(chips: int)
 signal daily_bonus_awarded(chips: int, xp: int, gems: int)
@@ -18,7 +20,8 @@ signal table_list_received(tables: Array)
 signal table_created(room_id: String, table_info: Dictionary, request_id: String)
 signal table_joined(room_id: String, table_info: Dictionary, request_id: String)
 signal mock_purchase_result_received(ok: bool, currency: String, amount: int, wallet: Dictionary)
-signal replay_unlocked_received(replay_id: String, replay_key: String, key_version: int, checksum: String, already_unlocked: bool, wallet: Dictionary)
+signal replay_unlocked_received(replay_id: String, replay_type: String, price_gems: int, replay_key: String, key_version: int, checksum: String, algorithm: String, already_unlocked: bool, wallet: Dictionary, profile_snapshot: Dictionary)
+signal replay_access_received(access: Dictionary)
 signal start_ai_warmup_result_received(ok: bool, room_id: String, reason: String)
 signal sit_down_result_received(ok: bool, room_id: String, seat_index: int, player_id: String, reason: String, wallet_chips: int, required_chips: int)
 signal table_snapshot_received(snapshot: Dictionary)
@@ -34,6 +37,7 @@ var auto_poll := true
 
 var _peer := WebSocketPeer.new()
 var _was_connected := false
+var _pending_display_name_request_id := ""
 
 func connect_to_server(target_url: String = url) -> int:
 	url = target_url
@@ -59,6 +63,7 @@ func poll() -> void:
 		_handle_message(PokerProtocolScript.decode(payload))
 	if _was_connected and state == WebSocketPeer.STATE_CLOSED:
 		_was_connected = false
+		_pending_display_name_request_id = ""
 		disconnected.emit()
 
 func send_message(message: Dictionary) -> int:
@@ -77,9 +82,11 @@ func send_hello(player_name: String = "", profile_player_id: String = "", avatar
 	}
 	var identity: Dictionary = IdentityServiceScript.new().get_identity(profile_hint)
 	var has_dev_override: bool = bool(identity.get("has_dev_override", false))
-	var resolved_name: String = str(identity.get("display_name", player_name)) if has_dev_override or player_name == "" else player_name
 	var resolved_external_id: String = external_id if external_id != "" else str(identity.get("external_id", profile_player_id))
 	var resolved_provider: String = auth_provider if auth_provider != "" else str(identity.get("provider", "local_dev"))
+	var resolved_name: String = player_name
+	if resolved_provider == "steam" or has_dev_override or resolved_name == "":
+		resolved_name = str(identity.get("display_name", player_name))
 	var resolved_avatar_id: String = avatar_id if avatar_id != "" else str(identity.get("avatar_id", ""))
 	var steam_auth_ticket: String = str(identity.get("steam_auth_ticket", ""))
 	var steam_auth_identity: String = str(identity.get("steam_auth_identity", ""))
@@ -94,7 +101,7 @@ func join_room(target_room_id: String) -> int:
 	room_id = target_room_id
 	return send_message(PokerProtocolScript.join_room(target_room_id))
 
-func sit_down(seat_index: int, buy_in: int = 5000) -> int:
+func sit_down(seat_index: int, buy_in: int = 2000) -> int:
 	return send_message(PokerProtocolScript.sit_down(seat_index, buy_in))
 
 func leave_seat() -> int:
@@ -127,6 +134,12 @@ func add_table_chips(amount: int) -> int:
 func get_profile() -> int:
 	return send_message(PokerProtocolScript.get_profile())
 
+func rename_display_name(display_name: String, request_id: String = "") -> int:
+	var err := send_message(PokerProtocolScript.rename_display_name(display_name, request_id))
+	if err == OK:
+		_pending_display_name_request_id = request_id
+	return err
+
 func get_avatar_catalog() -> int:
 	return send_message(PokerProtocolScript.get_avatar_catalog())
 
@@ -142,8 +155,11 @@ func select_avatar(avatar_id: String) -> int:
 func mock_purchase(currency: String, amount: int) -> int:
 	return send_message(PokerProtocolScript.mock_purchase(currency, amount))
 
-func unlock_replay(replay_id: String) -> int:
-	return send_message(PokerProtocolScript.unlock_replay(replay_id))
+func unlock_replay(replay_id: String, replay_type: String, checksum: String = "", key_version: int = 0, algorithm: String = "", storage_mode: String = "") -> int:
+	return send_message(PokerProtocolScript.unlock_replay(replay_id, replay_type, checksum, key_version, algorithm, storage_mode))
+
+func get_replay_access(replay_id: String, replay_type: String, checksum: String = "", key_version: int = 0, algorithm: String = "", storage_mode: String = "") -> int:
+	return send_message(PokerProtocolScript.get_replay_access(replay_id, replay_type, checksum, key_version, algorithm, storage_mode))
 
 func list_tables() -> int:
 	return send_message(PokerProtocolScript.list_tables())
@@ -179,6 +195,18 @@ func _handle_message(message: Dictionary) -> void:
 				hello_received.emit(player_id, room_id, bool(message.get("reconnected_to_table", false)))
 		PokerProtocolScript.PROFILE_SNAPSHOT:
 			_emit_profile_payload(message)
+		PokerProtocolScript.DISPLAY_NAME_RENAMED:
+			var rename_request_id := str(message.get("request_id", ""))
+			if _pending_display_name_request_id == "" or rename_request_id != _pending_display_name_request_id:
+				return
+			_emit_profile_payload(message)
+			display_name_renamed.emit(
+				str(message.get("display_name", "")),
+				str(message.get("display_name_updated_at", "")),
+				Dictionary(message.get("profile_snapshot", {})).duplicate(true),
+				rename_request_id
+			)
+			_pending_display_name_request_id = ""
 		PokerProtocolScript.WALLET_SNAPSHOT:
 			var wallet := Dictionary(message.get("wallet", {})).duplicate(true)
 			if not wallet.is_empty():
@@ -236,16 +264,25 @@ func _handle_message(message: Dictionary) -> void:
 			)
 		PokerProtocolScript.REPLAY_UNLOCKED:
 			var unlock_wallet := Dictionary(message.get("wallet", {})).duplicate(true)
+			var unlock_profile := Dictionary(message.get("profile_snapshot", {})).duplicate(true)
+			if not unlock_profile.is_empty():
+				_emit_profile_payload(message)
 			if not unlock_wallet.is_empty():
 				wallet_synced.emit(unlock_wallet)
 			replay_unlocked_received.emit(
 				str(message.get("replay_id", "")),
+				str(message.get("replay_type", "")),
+				int(message.get("price_gems", -1)),
 				str(message.get("replay_key", "")),
 				int(message.get("key_version", 0)),
 				str(message.get("checksum", "")),
+				str(message.get("algorithm", "")),
 				bool(message.get("already_unlocked", false)),
-				unlock_wallet
+				unlock_wallet,
+				unlock_profile
 			)
+		PokerProtocolScript.REPLAY_ACCESS:
+			replay_access_received.emit(message.duplicate(true))
 		PokerProtocolScript.START_AI_WARMUP_RESULT:
 			room_id = str(message.get("room_id", room_id))
 			start_ai_warmup_result_received.emit(
@@ -274,7 +311,19 @@ func _handle_message(message: Dictionary) -> void:
 		PokerProtocolScript.PRIVATE_SNAPSHOT:
 			private_snapshot_received.emit(Dictionary(message.get("snapshot", {})).duplicate(true))
 		PokerProtocolScript.ERROR:
-			server_error.emit(str(message.get("error_code", message.get("error", "Unknown server error"))), str(message.get("request_id", "")))
+			var error_code := str(message.get("error_code", message.get("error", "Unknown server error")))
+			var request_id := str(message.get("request_id", ""))
+			if request_id.begins_with("rename_display_name:"):
+				if _pending_display_name_request_id == "" or request_id != _pending_display_name_request_id:
+					return
+				display_name_rename_failed.emit(
+					error_code,
+					str(message.get("next_rename_at", "")),
+					int(message.get("cooldown_remaining_seconds", 0)),
+					request_id
+				)
+				_pending_display_name_request_id = ""
+			server_error.emit(error_code, request_id)
 
 func _emit_profile_payload(message: Dictionary) -> void:
 	var server_snapshot := Dictionary(message.get("profile_snapshot", {})).duplicate(true)

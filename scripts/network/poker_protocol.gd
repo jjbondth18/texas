@@ -15,12 +15,14 @@ const DEV_SIMULATE_REAL_JOIN := "dev_simulate_real_join"
 const PLAYER_ACTION := "player_action"
 const ADD_TABLE_CHIPS := "add_table_chips"
 const GET_PROFILE := "get_profile"
+const RENAME_DISPLAY_NAME := "rename_display_name"
 const GET_AVATAR_CATALOG := "get_avatar_catalog"
 const CLAIM_DAILY_BONUS := "claim_daily_bonus"
 const BUY_AVATAR := "buy_avatar"
 const SELECT_AVATAR := "select_avatar"
 const MOCK_PURCHASE := "mock_purchase"
 const UNLOCK_REPLAY := "unlock_replay"
+const GET_REPLAY_ACCESS := "get_replay_access"
 const LIST_TABLES := "list_tables"
 const QUICK_JOIN_TABLE := "quick_join_table"
 const CREATE_TABLE := "create_table"
@@ -31,6 +33,7 @@ const TABLE_SNAPSHOT := "table_snapshot"
 const PRIVATE_SNAPSHOT := "private_snapshot"
 const SIT_DOWN_RESULT := "sit_down_result"
 const PROFILE_SNAPSHOT := "profile_snapshot"
+const DISPLAY_NAME_RENAMED := "display_name_renamed"
 const WALLET_SNAPSHOT := "wallet_snapshot"
 const DAILY_BONUS_RESULT := "daily_bonus_result"
 const AVATAR_CATALOG := "avatar_catalog"
@@ -42,6 +45,7 @@ const PRIVATE_TABLE_CREATED := "private_table_created"
 const PRIVATE_TABLE_JOINED := "private_table_joined"
 const MOCK_PURCHASE_RESULT := "mock_purchase_result"
 const REPLAY_UNLOCKED := "replay_unlocked"
+const REPLAY_ACCESS := "replay_access"
 const START_AI_WARMUP_RESULT := "start_ai_warmup_result"
 const ERROR := "error"
 
@@ -87,7 +91,7 @@ static func create_room() -> Dictionary:
 static func join_room(room_id: String) -> Dictionary:
 	return _message(JOIN_ROOM, {"room_id": room_id})
 
-static func sit_down(seat_index: int, buy_in: int = 5000) -> Dictionary:
+static func sit_down(seat_index: int, buy_in: int = 2000) -> Dictionary:
 	return _message(SIT_DOWN, {"seat_index": seat_index, "buy_in": buy_in})
 
 static func leave_seat() -> Dictionary:
@@ -123,6 +127,12 @@ static func add_table_chips(amount: int) -> Dictionary:
 static func get_profile() -> Dictionary:
 	return _message(GET_PROFILE)
 
+static func rename_display_name(display_name: String, request_id: String = "") -> Dictionary:
+	var data := {"display_name": display_name}
+	if request_id != "":
+		data["request_id"] = request_id
+	return _message(RENAME_DISPLAY_NAME, data)
+
 static func get_avatar_catalog() -> Dictionary:
 	return _message(GET_AVATAR_CATALOG)
 
@@ -138,8 +148,21 @@ static func select_avatar(avatar_id: String) -> Dictionary:
 static func mock_purchase(currency: String, amount: int, source: String = "store_mock") -> Dictionary:
 	return _message(MOCK_PURCHASE, {"currency": currency, "amount": amount, "source": source})
 
-static func unlock_replay(replay_id: String) -> Dictionary:
-	return _message(UNLOCK_REPLAY, {"replay_id": replay_id})
+static func unlock_replay(replay_id: String, replay_type: String, checksum: String = "", key_version: int = 0, algorithm: String = "", storage_mode: String = "") -> Dictionary:
+	return _message(UNLOCK_REPLAY, _replay_identity_payload(replay_id, replay_type, checksum, key_version, algorithm, storage_mode))
+
+static func get_replay_access(replay_id: String, replay_type: String, checksum: String = "", key_version: int = 0, algorithm: String = "", storage_mode: String = "") -> Dictionary:
+	return _message(GET_REPLAY_ACCESS, _replay_identity_payload(replay_id, replay_type, checksum, key_version, algorithm, storage_mode))
+
+static func _replay_identity_payload(replay_id: String, replay_type: String, checksum: String, key_version: int, algorithm: String, storage_mode: String) -> Dictionary:
+	return {
+		"replay_id": replay_id,
+		"replay_type": replay_type,
+		"checksum": checksum,
+		"key_version": key_version,
+		"algorithm": algorithm,
+		"storage_mode": storage_mode,
+	}
 
 static func list_tables() -> Dictionary:
 	return _message(LIST_TABLES)

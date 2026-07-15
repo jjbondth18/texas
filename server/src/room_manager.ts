@@ -11,13 +11,21 @@ import { PlayerRepository } from "./db/player_repository.js";
 import { IdentityRepository } from "./db/identity_repository.js";
 import { ResultRepository } from "./db/result_repository.js";
 import { WalletRepository } from "./db/wallet_repository.js";
-import { ReplayRepository } from "./db/replay_repository.js";
+import { ReplayRepository, type ReplayIndexRecord } from "./db/replay_repository.js";
 import { TableBalanceRepository, type TableBalanceCurrency } from "./db/table_balance_repository.js";
 import { ProfileBootstrapRepository } from "./db/profile_bootstrap_repository.js";
 import { AVATAR_CATALOG, DEFAULT_AVATAR_PRICE_CHIPS, findAvatarCatalogItem } from "./avatar_catalog.js";
 import { config, type SteamAuthMode } from "./config.js";
-import { buildEncryptedReplayDelivery, buildHandReplayRecord, generateReplayKey, replayIdFor, type EncryptedReplayDelivery } from "./replay.js";
+import { buildEncryptedReplayDelivery, buildHandReplayRecord, generateReplayKey, replayIdFor, REPLAY_ENCRYPTION_ALGORITHM, type EncryptedReplayDelivery } from "./replay.js";
 import { SteamWebApiAuthVerifier, type SteamAuthVerifier } from "./services/steam_auth_verifier.js";
+import {
+  REPLAY_ECONOMY_CONFIG,
+  isReplayType,
+  replayTypeForOfficialTable,
+  replayUnlockCost,
+  replayUnlockReason,
+  type ReplayType,
+} from "./replay_economy.js";
 
 interface Client {
   id: string;
@@ -30,11 +38,13 @@ interface Client {
 
 type RoomTableType = "public_chip" | "public_gem" | "private_chip" | "private_gem";
 type RoomCurrency = "chips" | "gems";
+type RoomLifecycleState = "waiting" | "waiting_ready" | "playing" | "hand_over" | "session_complete" | "closing" | "closed";
 
 interface Room {
   id: string;
   table: TableState;
   clients: Set<string>;
+  hadClients: boolean;
   tableType: RoomTableType;
   visibility: "public" | "private";
   roomCode: string;
@@ -52,6 +62,7 @@ interface Room {
   hostPlayerId: string;
   officialHandStarted: boolean;
   sessionComplete: boolean;
+  lifecycleState: RoomLifecycleState;
   readyCountdownTimer?: ReturnType<typeof setTimeout>;
   readyCountdownToken: number;
   readyCountdownDeadlineAt?: string;
@@ -64,6 +75,10 @@ interface Room {
   actionDeadlineAt?: string;
   replayDeliveries: Map<number, EncryptedReplayDelivery>;
   createdAt: string;
+  lastActivityAt: string;
+  emptySince?: string;
+  sessionCompletedAt?: string;
+  closedAt?: string;
 }
 
 interface DisconnectGraceRecord {
@@ -83,7 +98,7 @@ const DEFAULT_HAND_COUNT = 10;
 const DEFAULT_ACTION_TIME_SECONDS = 60;
 const DEFAULT_MAX_PLAYERS = 6;
 const DEV_BOT_MIN_WALLET_CHIPS = 50000;
-const ALLOWED_BUY_INS = new Set([5000, 10000, 20000, 50000]);
+const ALLOWED_BUY_INS = new Set([1000, 2000, 5000, 10000, 20000, 50000]);
 const ALLOWED_BLIND_PAIRS = new Set(["25/50", "50/100", "100/200"]);
 const ALLOWED_GEM_BUY_INS = new Set([20, 50, 100, 200]);
 const ALLOWED_GEM_BLIND_PAIRS = new Set(["1/2", "2/5", "5/10"]);
@@ -92,6 +107,12 @@ const ALLOWED_IDENTITY_PROVIDERS = new Set(["local_dev", "steam"]);
 const ACTION_TIMEOUT_MS = DEFAULT_ACTION_TIME_SECONDS * 1000;
 const DISCONNECT_RECONNECT_GRACE_SECONDS = 90;
 const DISCONNECT_RECONNECT_GRACE_MS = DISCONNECT_RECONNECT_GRACE_SECONDS * 1000;
+const ROOM_EMPTY_TTL_SECONDS = 60;
+const ROOM_EMPTY_TTL_MS = ROOM_EMPTY_TTL_SECONDS * 1000;
+const ROOM_WAITING_TTL_SECONDS = 300;
+const ROOM_WAITING_TTL_MS = ROOM_WAITING_TTL_SECONDS * 1000;
+const ROOM_CLEANUP_SCAN_SECONDS = 15;
+const ROOM_CLEANUP_SCAN_MS = ROOM_CLEANUP_SCAN_SECONDS * 1000;
 const READY_COUNTDOWN_MS = 3000;
 const HAND_RESULT_SHOWDOWN_MS = 5000;
 const HAND_RESULT_FOLD_MS = 2500;
@@ -99,7 +120,6 @@ const TABLE_SEAT_JOIN_ORDER_9P = [5, 8, 2, 6, 4, 9, 1, 7, 3];
 const PUBLIC_SEAT_JOIN_ORDER = TABLE_SEAT_JOIN_ORDER_9P;
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const DEV_SIMULATED_START_BLOCK_REASON = "Dev simulated player cannot play a real public hand. Use a second client or enable DEV controllable bot.";
-const REPLAY_UNLOCK_COST_GEMS = 5;
 const DEALER_IDS = [
   "dealer_01_dog",
   "dealer_02_bear",
@@ -136,12 +156,17 @@ export class RoomManager {
   private readonly tableBalances = new TableBalanceRepository(this.db);
   private readonly steamAuthVerifier: SteamAuthVerifier;
   private readonly steamAuthMode: SteamAuthMode;
+  private readonly replayIdFactory: () => string;
+  private readonly roomCleanupTimer: ReturnType<typeof setInterval>;
 
-  constructor(options: { steamAuthVerifier?: SteamAuthVerifier; steamAuthMode?: SteamAuthMode } = {}) {
+  constructor(options: { steamAuthVerifier?: SteamAuthVerifier; steamAuthMode?: SteamAuthMode; replayIdFactory?: () => string } = {}) {
     this.steamAuthVerifier = options.steamAuthVerifier ?? new SteamWebApiAuthVerifier(config.steamWebApiPublisherKey);
     this.steamAuthMode = options.steamAuthMode ?? config.steamAuthMode;
+    this.replayIdFactory = options.replayIdFactory ?? (() => replayIdFor());
     this.loginBonus.setProgressionRepository(this.profileBootstrap);
     this.recoverOutstandingTableBalances();
+    this.roomCleanupTimer = setInterval(() => this.cleanupRooms(), ROOM_CLEANUP_SCAN_MS);
+    (this.roomCleanupTimer as { unref?: () => void }).unref?.();
   }
 
   connect(ws?: WebSocket): Client {
@@ -160,6 +185,7 @@ export class RoomManager {
       if (this.shouldRefundDisconnectedBeforeOfficialHand(room, client)) {
         this.cashOut(room, client);
         this.broadcast(room);
+        this.cleanupRooms();
         client.ws = undefined;
         return;
       }
@@ -167,6 +193,7 @@ export class RoomManager {
       this.rescheduleActionTimer(room);
       this.recordHandResults(room);
       this.updatePublicRoomProgress(room);
+      this.markRoomActivity(room);
       this.broadcast(room);
     }
     client.ws = undefined;
@@ -205,7 +232,9 @@ export class RoomManager {
       return;
     }
     if (message.type === "create_table") {
-      const room = this.createRoom(this.tableConfigFromMessage(message));
+      const tableConfig = this.tableConfigFromMessage(message);
+      this.ensureCanAffordTableConfig(client, tableConfig);
+      const room = this.createRoom(tableConfig);
       room.hostPlayerId = client.id;
       this.joinRoom(client, room.id);
       const table = this.tableSnapshot(room);
@@ -226,6 +255,7 @@ export class RoomManager {
       if (!room.isPublic) throw new Error("room_not_found");
       const decision = this.publicRoomListDecision(room);
       if (!decision.include) throw new Error(decision.reason === "full" ? "table_full" : "room_not_available");
+      this.ensureCanAffordRoom(client, room);
       this.joinRoom(client, room.id);
       const table = this.tableSnapshot(room);
       this.recordLog(`${client.id} joined public table ${room.id}`);
@@ -240,6 +270,25 @@ export class RoomManager {
     }
     if (message.type === "get_profile") {
       this.send(client, { type: "profile_snapshot", request_id: message.request_id, ...this.profilePayload(client.id) });
+      return;
+    }
+    if (message.type === "rename_display_name") {
+      const profile = this.players.renameDisplayName(client.id, String(message.display_name || ""));
+      client.name = profile.display_name;
+      const room = client.roomId ? this.rooms.get(client.roomId) : undefined;
+      const seat = room?.table.seats.find((candidate) => candidate.playerId === client.id);
+      if (room && seat) {
+        seat.name = profile.display_name;
+        this.markRoomActivity(room);
+        this.broadcast(room);
+      }
+      this.send(client, {
+        type: "display_name_renamed",
+        request_id: message.request_id,
+        display_name: profile.display_name,
+        display_name_updated_at: profile.display_name_updated_at,
+        ...this.profilePayload(client.id),
+      });
       return;
     }
     if (message.type === "claim_daily_bonus") {
@@ -274,6 +323,10 @@ export class RoomManager {
     }
     if (message.type === "unlock_replay") {
       this.unlockReplay(client, message);
+      return;
+    }
+    if (message.type === "get_replay_access") {
+      this.getReplayAccess(client, message);
       return;
     }
     const roomId = message.room_id || client.roomId;
@@ -377,7 +430,9 @@ export class RoomManager {
     this.clearSettledExitedSeats(room);
     this.rescheduleActionTimer(room);
     this.updatePublicRoomProgress(room);
+    this.markRoomActivity(room);
     this.broadcast(room);
+    this.cleanupRooms();
   }
 
   createRoom(options: Partial<Pick<Room, "tableName" | "dealerId" | "smallBlind" | "bigBlind" | "buyIn" | "handCount" | "actionTimeSeconds" | "maxPlayers" | "isPublic" | "tableType" | "visibility" | "roomCode">> = {}): Room {
@@ -386,10 +441,12 @@ export class RoomManager {
     table.smallBlind = options.smallBlind ?? DEFAULT_SMALL_BLIND;
     table.bigBlind = options.bigBlind ?? DEFAULT_BIG_BLIND;
     const isPublic = options.isPublic ?? true;
+    const now = new Date().toISOString();
     const room: Room = {
       id,
       table,
       clients: new Set(),
+      hadClients: false,
       tableType: options.tableType ?? (isPublic ? "public_chip" : "private_chip"),
       visibility: options.visibility ?? (isPublic ? "public" : "private"),
       roomCode: options.roomCode ?? "",
@@ -407,12 +464,15 @@ export class RoomManager {
       hostPlayerId: "",
       officialHandStarted: false,
       sessionComplete: false,
+      lifecycleState: "waiting",
       readyCountdownToken: 0,
       handResultToken: 0,
       handResultShownHandId: 0,
       actionTimerToken: 0,
       replayDeliveries: new Map(),
-      createdAt: new Date().toISOString(),
+      createdAt: now,
+      lastActivityAt: now,
+      emptySince: now,
     };
     this.rooms.set(id, room);
     return room;
@@ -528,13 +588,17 @@ export class RoomManager {
 
   private joinRoom(client: Client, roomId: string): void {
     const room = this.mustRoom(roomId);
+    this.ensureRoomOpen(room);
     client.roomId = roomId;
     room.clients.add(client.id);
+    room.hadClients = true;
     this.restoreDisconnectGrace(room, client);
+    this.markRoomActivity(room);
   }
 
   private createPrivateTable(client: Client, message: ClientMessage): Room {
     const tableConfig = this.tableConfigFromMessage({ ...message, is_public: false });
+    this.ensureCanAffordTableConfig(client, tableConfig);
     const roomCode = this.generateRoomCode();
     const room = this.createRoom({
       ...tableConfig,
@@ -552,9 +616,10 @@ export class RoomManager {
 
   private joinPrivateTable(client: Client, roomCodeRaw: string): Room {
     const roomCode = normalizeRoomCode(roomCodeRaw);
-    if (roomCode === "") throw new Error("room_not_found");
+    if (roomCode === "") throw new Error("invalid_room_code");
     const room = [...this.rooms.values()].find((candidate) => !candidate.isPublic && candidate.roomCode === roomCode);
-    if (!room) throw new Error("room_not_found");
+    if (!room) throw new Error("invalid_room_code");
+    this.ensureRoomOpen(room);
     if (room.sessionComplete || this.publicRoomState(room) === "session_complete") throw new Error("room_not_available");
     if (this.occupiedSeatCount(room) >= room.maxPlayers) throw new Error("table_full");
     this.ensureCanAffordRoom(client, room);
@@ -597,7 +662,6 @@ export class RoomManager {
 
   private ensureCanAffordTableConfig(client: Client, tableConfig: Partial<Pick<Room, "tableType" | "buyIn">>): void {
     const currency = String(tableConfig.tableType || "").endsWith("_gem") ? "gems" : "chips";
-    if (currency !== "gems") return;
     const buyIn = Math.floor(numberOr(tableConfig.buyIn, DEFAULT_TABLE_BUY_IN));
     this.wallets.ensure(client.id);
     const wallet = this.wallets.get(client.id);
@@ -636,6 +700,7 @@ export class RoomManager {
   }
 
   private logQuickJoinDiagnostics(clientId: string, tableConfig: Partial<Pick<Room, "tableType" | "smallBlind" | "bigBlind" | "buyIn" | "handCount">>): void {
+    this.cleanupRooms();
     const header = `[QuickMatch] request from player=${clientId} table_type=${tableConfig.tableType} currency=${tableConfig.tableType?.endsWith("_gem") ? "gems" : "chips"} selected buy_in=${tableConfig.buyIn} small_blind=${tableConfig.smallBlind} big_blind=${tableConfig.bigBlind} hand_count=${tableConfig.handCount}`;
     console.log(header);
     this.recordLog(header);
@@ -653,6 +718,7 @@ export class RoomManager {
   }
 
   private publicTables(requestingPlayerId = ""): PublicTableSnapshot[] {
+    this.cleanupRooms();
     const entries = [...this.rooms.values()].map((room) => ({ room, decision: this.publicRoomListDecision(room) }));
     if (requestingPlayerId !== "") this.logTableListDiagnostics(requestingPlayerId, entries);
     return entries.filter((entry) => entry.decision.include).map((entry) => this.tableSnapshot(entry.room));
@@ -663,10 +729,14 @@ export class RoomManager {
   }
 
   private publicRoomListDecision(room: Room): { include: boolean; reason: string } {
+    this.updateRoomLifecycle(room);
     const roomState = this.publicRoomState(room);
     const currentPlayers = this.publicSeatedCount(room);
     const occupiedSeats = this.occupiedSeatCount(room);
     const hostWarming = room.hostInLocalWarmup !== "";
+    const cleanupReason = this.roomCleanupReason(room, Date.now());
+    if (cleanupReason !== "") return { include: false, reason: cleanupReason };
+    if (room.lifecycleState === "closing" || room.lifecycleState === "closed") return { include: false, reason: "closed" };
     if (!room.isPublic || room.visibility !== "public") return { include: false, reason: "private_room" };
     if (room.tableType !== "public_chip" && room.tableType !== "public_gem") return { include: false, reason: "not_public_table" };
     if (room.sessionComplete || roomState === "session_complete") return { include: false, reason: "session_complete" };
@@ -759,6 +829,124 @@ export class RoomManager {
     });
   }
 
+  private markRoomActivity(room: Room, nowMs = Date.now()): void {
+    if (room.lifecycleState === "closing" || room.lifecycleState === "closed") return;
+    room.lastActivityAt = new Date(nowMs).toISOString();
+    this.updateRoomLifecycle(room, nowMs);
+  }
+
+  private updateRoomLifecycle(room: Room, nowMs = Date.now()): void {
+    if (room.lifecycleState === "closing" || room.lifecycleState === "closed") return;
+    const hasGrace = this.roomHasDisconnectGrace(room);
+    const hasSeatedPlayers = this.occupiedSeatCount(room) > 0;
+    if (!hasSeatedPlayers && !hasGrace) room.emptySince ??= new Date(nowMs).toISOString();
+    else room.emptySince = undefined;
+
+    if (room.sessionComplete || room.table.phase === "session_complete") {
+      room.sessionComplete = true;
+      room.sessionCompletedAt ??= new Date(nowMs).toISOString();
+      room.lifecycleState = "session_complete";
+      return;
+    }
+    if (isActionPhase(room.table.phase) || room.table.phase === "showdown" || room.isAiWarmup) {
+      room.lifecycleState = "playing";
+      return;
+    }
+    if (room.table.phase === "hand_over" && room.officialHandStarted) {
+      room.lifecycleState = "hand_over";
+      return;
+    }
+    room.lifecycleState = this.publicReadyCandidates(room).length >= 2 ? "waiting_ready" : "waiting";
+  }
+
+  private cleanupRooms(nowMs = Date.now()): void {
+    for (const room of [...this.rooms.values()]) {
+      this.settleExpiredDisconnectGrace(room);
+      this.updateRoomLifecycle(room, nowMs);
+      const reason = this.roomCleanupReason(room, nowMs);
+      if (reason !== "") this.closeRoom(room, reason, nowMs);
+    }
+  }
+
+  private roomCleanupReason(room: Room, nowMs: number): string {
+    if (room.lifecycleState === "closing" || room.lifecycleState === "closed") return "";
+    if (this.roomHasDisconnectGrace(room)) return "";
+    const seatedPlayers = this.occupiedSeatCount(room);
+    const connectedClients = this.connectedRoomClientCount(room);
+    if (room.sessionComplete && seatedPlayers === 0) return "session_complete_empty";
+    if (!room.isPublic && room.hadClients && seatedPlayers === 0 && connectedClients === 0) return "private_empty";
+    const emptySinceMs = room.emptySince ? Date.parse(room.emptySince) : Number.NaN;
+    const emptyMs = Number.isFinite(emptySinceMs) ? nowMs - emptySinceMs : 0;
+    if (seatedPlayers === 0 && connectedClients === 0 && room.officialHandStarted && emptyMs >= ROOM_EMPTY_TTL_MS) return "empty_room";
+    if (room.table.phase === "hand_over" && room.officialHandStarted && emptyMs >= ROOM_EMPTY_TTL_MS) return "stale_hand_over_empty";
+    const waitingWithoutSeats = seatedPlayers === 0 && ["waiting", "hand_over"].includes(room.table.phase) && !room.officialHandStarted;
+    if (waitingWithoutSeats && emptyMs >= ROOM_WAITING_TTL_MS) return "waiting_ttl_expired";
+    return "";
+  }
+
+  private closeRoom(room: Room, reason: string, nowMs = Date.now()): void {
+    if (room.lifecycleState === "closed" || room.lifecycleState === "closing") return;
+    if (this.roomHasDisconnectGrace(room)) return;
+    room.lifecycleState = "closing";
+    room.closedAt = new Date(nowMs).toISOString();
+    this.clearReadyCountdown(room);
+    this.clearHandResultTimer(room);
+    this.clearActionTimer(room);
+    for (const seat of [...room.table.seats]) {
+      if (!seat.playerId || seat.isAi || seat.warmupAi) continue;
+      const client = this.clients.get(seat.playerId);
+      if (client?.roomId === room.id) client.roomId = undefined;
+      const amount = Math.max(0, Math.floor(seat.chips));
+      if (amount > 0) {
+        this.refundWalletAndClearTableBalance(seat.playerId, room.id, roomCurrency(room), amount, "room_cleanup_cash_out", room.table.handId > 0 ? String(room.table.handId) : undefined);
+      } else {
+        this.tableBalances.clear(room.id, seat.playerId);
+      }
+      room.table.cashOut(seat.playerId);
+    }
+    for (const balance of this.tableBalances.allForRoom(room.id)) {
+      if (balance.amount <= 0) {
+        this.tableBalances.clear(room.id, balance.player_id);
+        continue;
+      }
+      this.wallets.ensure(balance.player_id);
+      this.refundWalletAndClearTableBalance(balance.player_id, room.id, balance.currency, balance.amount, "room_cleanup_recovery");
+    }
+    for (const clientId of room.clients) {
+      const client = this.clients.get(clientId);
+      if (client?.roomId === room.id) client.roomId = undefined;
+    }
+    room.clients.clear();
+    room.roomCode = "";
+    room.lifecycleState = "closed";
+    this.rooms.delete(room.id);
+    this.recordLog(`room_closed room_id=${room.id} reason=${reason}`);
+  }
+
+  private roomHasDisconnectGrace(room: Room): boolean {
+    return [...this.disconnectGraceRecords.values()].some((record) => record.roomId === room.id);
+  }
+
+  private connectedRoomClientCount(room: Room): number {
+    let count = 0;
+    for (const clientId of room.clients) {
+      const client = this.clients.get(clientId);
+      if (client?.roomId === room.id) count += 1;
+    }
+    return count;
+  }
+
+  private ensureRoomOpen(room: Room): void {
+    this.updateRoomLifecycle(room);
+    const cleanupReason = this.roomCleanupReason(room, Date.now());
+    if (cleanupReason !== "") {
+      this.closeRoom(room, cleanupReason);
+      throw new Error("room_not_found");
+    }
+    if (room.lifecycleState === "closing" || room.lifecycleState === "closed") throw new Error("room_not_found");
+    if (room.lifecycleState === "session_complete") throw new Error("room_not_available");
+  }
+
   private startDisconnectGrace(room: Room, client: Client): void {
     const seat = room.table.getSeatByPlayer(client.id);
     if (!seat) return;
@@ -812,6 +1000,7 @@ export class RoomManager {
     room.clients.add(client.id);
     this.clearDisconnectGrace(room.id, client.id);
     this.recordLog(`disconnect_grace_reconnected room_id=${room.id} player_id=${client.id} seat=${seat.seatIndex}`);
+    this.markRoomActivity(room);
     return true;
   }
 
@@ -848,6 +1037,7 @@ export class RoomManager {
     }
     this.cashOutExpiredDisconnectedSeat(room, playerId);
     this.broadcast(room);
+    this.cleanupRooms();
   }
 
   private settleExpiredDisconnectGrace(room: Room): void {
@@ -913,6 +1103,7 @@ export class RoomManager {
     room.clients.delete(playerId);
     this.clearDisconnectGrace(room.id, playerId);
     this.recordLog(`disconnect_grace_expired_cash_out room_id=${room.id} player_id=${playerId} amount=${amount} wallet_after=${walletAfter}`);
+    this.markRoomActivity(room);
   }
 
   private occupiedSeatCount(room: Room): number {
@@ -940,16 +1131,18 @@ export class RoomManager {
       client.id = requestedId;
       this.clients.set(client.id, client);
     }
-    const displayName = String(message.player_name || message.name || client.name || client.id).trim() || client.id;
+    const existingProfile = this.players.find(client.id);
+    const fallbackIdentityName = identity.provider === "steam" ? existingProfile?.steam_persona_name || existingProfile?.display_name : existingProfile?.display_name;
+    const displayName = String(message.player_name || message.name || fallbackIdentityName || client.name || client.id).trim() || client.id;
     const requestedAvatarId = normalizeAvatarId(String(message.avatar_id || client.avatarId || "default"));
-    const isNewPlayer = !this.players.find(client.id);
-    this.players.upsert(client.id, displayName, "default");
+    const isNewPlayer = !existingProfile;
+    this.players.upsert(client.id, displayName, "default", identity.provider);
     this.wallets.ensure(client.id);
     this.identities.linkIdentity(client.id, identity.provider, identity.externalId);
     this.avatars.unlockAvatar(client.id, "default");
     this.profileBootstrap.bootstrapPlayer(client.id);
     const avatarId = this.avatars.hasAvatar(client.id, requestedAvatarId) ? requestedAvatarId : "default";
-    const profile = this.players.upsert(client.id, displayName, avatarId);
+    const profile = this.players.upsert(client.id, displayName, avatarId, identity.provider);
     const dailyStatus = this.loginBonus.status(client.id);
     this.ensureDevBotWallet(client.id);
     const reconnectedRoom = this.restoreAnyDisconnectGrace(client);
@@ -966,7 +1159,7 @@ export class RoomManager {
       unlocked_avatar_ids: unlocked,
       daily_bonus_status: dailyStatus,
       is_new_player: isNewPlayer,
-      profile_snapshot: this.profileBootstrap.getProfileSnapshot(client.id, isNewPlayer),
+      profile_snapshot: this.authoritativeProfileSnapshot(client.id, isNewPlayer),
       warning: avatarId !== requestedAvatarId ? `avatar ${requestedAvatarId} is not unlocked; using default` : undefined,
     };
   }
@@ -979,7 +1172,14 @@ export class RoomManager {
       wallet,
       unlocked_avatar_ids: this.avatars.getUnlockedAvatars(playerId),
       daily_bonus_status: this.loginBonus.status(playerId),
-      profile_snapshot: this.profileBootstrap.getProfileSnapshot(playerId),
+      profile_snapshot: this.authoritativeProfileSnapshot(playerId),
+    };
+  }
+
+  private authoritativeProfileSnapshot(playerId: string, isNewPlayer = false) {
+    return {
+      ...this.profileBootstrap.getProfileSnapshot(playerId, isNewPlayer),
+      replay_economy: REPLAY_ECONOMY_CONFIG,
     };
   }
 
@@ -1061,29 +1261,41 @@ export class RoomManager {
     const replayId = String(message.replay_id || "").trim();
     if (replayId === "") throw new Error("replay_not_found");
     const result = this.db.transaction(() => {
-      const replay = this.replays.getReplayIndex(replayId);
-      if (!replay) throw new Error("replay_not_found");
+      const requestedType = String(message.replay_type || "").trim();
+      let replay = this.replays.getReplayIndex(replayId);
+      if (!replay) {
+        if (requestedType !== "ai" && requestedType !== "training") throw new Error("replay_not_found");
+        replay = this.replays.ensureLocalReplay(replayId, client.id, requestedType);
+      }
+      const replayType = String(replay.replay_type || "official_human");
+      if (!isReplayType(replayType)) throw new Error("invalid_replay_type");
+      if (requestedType !== "" && (!isReplayType(requestedType) || requestedType !== replayType)) throw new Error("invalid_replay_type");
       if (!this.replays.isParticipant(replayId, client.id)) throw new Error("replay_access_denied");
+      const requiresKey = replayType === "official_human" || replayType === "room_replay";
       const key = this.replays.getReplayKey(replayId);
-      if (!key) throw new Error("replay_key_missing");
+      if (requiresKey && !key) throw new Error("replay_key_missing");
+      if (requiresKey) this.validateReplayClientIdentity(message, replay, key?.key_version ?? 0);
+      const priceGems = replayUnlockCost(replayType);
       const existing = this.replays.getUnlock(replayId, client.id);
       if (existing) {
         return {
           replay,
           key,
+          replayType,
+          priceGems,
           wallet: this.wallets.get(client.id) ?? this.wallets.ensure(client.id),
           alreadyUnlocked: true,
         };
       }
       const wallet = this.wallets.get(client.id) ?? this.wallets.ensure(client.id);
-      if (wallet.gems < REPLAY_UNLOCK_COST_GEMS) throw new Error("insufficient_gems");
-      const updatedWallet = this.wallets.deductGems(client.id, REPLAY_UNLOCK_COST_GEMS, {
-        reason: "replay_unlock",
+      if (wallet.gems < priceGems) throw new Error("insufficient_gems");
+      const updatedWallet = this.wallets.deductGems(client.id, priceGems, {
+        reason: replayUnlockReason(replayType),
         relatedRoomId: replay.room_id,
         relatedHandId: replay.hand_id,
       });
-      this.replays.recordUnlock(replayId, client.id, REPLAY_UNLOCK_COST_GEMS, "gems");
-      return { replay, key, wallet: updatedWallet, alreadyUnlocked: false };
+      this.replays.recordUnlock(replayId, client.id, priceGems, "gems");
+      return { replay, key, replayType, priceGems, wallet: updatedWallet, alreadyUnlocked: false };
     })();
     this.send(client, {
       type: "replay_unlocked",
@@ -1091,13 +1303,87 @@ export class RoomManager {
       player_id: client.id,
       server_player_id: client.id,
       replay_id: replayId,
-      replay_key: result.key.key_material,
-      key_version: result.key.key_version,
+      replay_key: result.key?.key_material,
+      key_version: result.key?.key_version,
       checksum: result.replay.checksum,
+      algorithm: result.replay.algorithm || REPLAY_ENCRYPTION_ALGORITHM,
       already_unlocked: result.alreadyUnlocked,
+      replay_type: result.replayType,
+      price_gems: result.priceGems,
       wallet: result.wallet,
+      profile_snapshot: this.authoritativeProfileSnapshot(client.id),
     });
     this.send(client, { type: "wallet_snapshot", request_id: message.request_id, player_id: client.id, wallet: result.wallet });
+  }
+
+  private getReplayAccess(client: Client, message: ClientMessage): void {
+    const replayId = String(message.replay_id || "").trim();
+    if (replayId === "") throw new Error("replay_not_found");
+    const requestedType = String(message.replay_type || "").trim();
+    let replay = this.replays.getReplayIndex(replayId);
+    if (!replay && (requestedType === "ai" || requestedType === "training")) {
+      replay = this.replays.ensureLocalReplay(replayId, client.id, requestedType);
+    }
+    if (!replay) {
+      this.send(client, {
+        type: "replay_access",
+        request_id: message.request_id,
+        replay_id: replayId,
+        replay_type: isReplayType(requestedType) ? requestedType : "official_human",
+        unlocked: false,
+        price_gems: isReplayType(requestedType) ? replayUnlockCost(requestedType) : replayUnlockCost("official_human"),
+        supported: false,
+        legacy_reason: "replay_not_found",
+      });
+      return;
+    }
+    if (!this.replays.isParticipant(replayId, client.id)) throw new Error("replay_access_denied");
+    const replayType = String(replay.replay_type || "official_human");
+    if (!isReplayType(replayType)) throw new Error("invalid_replay_type");
+    const key = this.replays.getReplayKey(replayId);
+    const requiresKey = replayType === "official_human" || replayType === "room_replay";
+    let supported = replay.integrity_status !== "collision" && replay.integrity_status !== "corrupted";
+    let legacyReason = supported ? "" : replay.integrity_status;
+    const requestedChecksum = String(message.checksum || "").trim();
+    if (requiresKey && requestedChecksum !== replay.checksum) {
+      supported = false;
+      legacyReason = requestedChecksum === "" ? "missing_checksum" : "checksum_mismatch";
+    }
+    const requestedKeyVersion = Number(message.key_version || 0);
+    if (requiresKey && (!key || requestedKeyVersion !== key.key_version)) {
+      supported = false;
+      legacyReason = !key ? "replay_key_missing" : "key_version_mismatch";
+    }
+    const requestedAlgorithm = String(message.algorithm || "").trim();
+    const algorithm = replay.algorithm || REPLAY_ENCRYPTION_ALGORITHM;
+    if (requiresKey && requestedAlgorithm !== algorithm) {
+      supported = false;
+      legacyReason = requestedAlgorithm === "" ? "missing_algorithm" : "algorithm_mismatch";
+    }
+    this.send(client, {
+      type: "replay_access",
+      request_id: message.request_id,
+      replay_id: replayId,
+      replay_type: replayType,
+      checksum: replay.checksum,
+      key_version: key?.key_version ?? 0,
+      unlocked: supported && this.replays.isUnlocked(replayId, client.id),
+      price_gems: replayUnlockCost(replayType),
+      supported,
+      legacy_reason: legacyReason,
+      algorithm,
+      storage_mode: requiresKey ? "official_encrypted" : "local_only_plaintext",
+      integrity_status: replay.integrity_status,
+    });
+  }
+
+  private validateReplayClientIdentity(message: ClientMessage, replay: ReplayIndexRecord, keyVersion: number): void {
+    if (String(message.checksum || "").trim() !== replay.checksum) throw new Error("replay_checksum_mismatch");
+    if (Number(message.key_version || 0) !== keyVersion) throw new Error("replay_key_version_mismatch");
+    const algorithm = replay.algorithm || REPLAY_ENCRYPTION_ALGORITHM;
+    if (String(message.algorithm || "").trim() !== algorithm) throw new Error("replay_unsupported");
+    if (String(message.storage_mode || "").trim() !== "official_encrypted") throw new Error("replay_unsupported");
+    if (replay.integrity_status === "collision" || replay.integrity_status === "corrupted") throw new Error("replay_unsupported");
   }
 
   private markHostStartedLocalWarmup(room: Room, client: Client): void {
@@ -1193,6 +1479,7 @@ export class RoomManager {
   }
 
   private ensureRoomCanAcceptSitDown(room: Room): void {
+    this.ensureRoomOpen(room);
     if (room.sessionComplete || room.table.phase === "session_complete") throw new Error("room_not_available");
     if (room.table.phase === "hand_over" && room.officialHandStarted) throw new Error("room_not_available");
   }
@@ -1294,6 +1581,7 @@ export class RoomManager {
       this.clearReadyCountdown(room);
       this.clearHandResultTimer(room);
       this.clearActionTimer(room);
+      this.updateRoomLifecycle(room);
       return;
     }
     if (isActionPhase(room.table.phase)) {
@@ -1350,6 +1638,7 @@ export class RoomManager {
       this.recordHandResults(room);
       this.rescheduleActionTimer(room);
     }
+    this.markRoomActivity(room);
     this.broadcast(room);
   }
 
@@ -1364,6 +1653,7 @@ export class RoomManager {
     room.officialHandStarted = true;
     processAutomaticTurns(room.table);
     this.recordLog(`chip_hand_started room_id=${room.id} reason=${reason} hand_id=${room.table.handId}`);
+    this.markRoomActivity(room);
     return true;
   }
 
@@ -1409,12 +1699,16 @@ export class RoomManager {
     } else {
       this.clearReadyCountdown(room);
     }
+    this.markRoomActivity(room);
     this.broadcast(room);
+    this.cleanupRooms();
   }
 
   private completePublicSession(room: Room): void {
     if (room.sessionComplete) return;
     room.sessionComplete = true;
+    room.sessionCompletedAt = new Date().toISOString();
+    room.lifecycleState = "session_complete";
     room.table.phase = "session_complete";
     room.table.currentTurnSeat = -1;
     this.clearReadyCountdown(room);
@@ -1426,6 +1720,7 @@ export class RoomManager {
       message: `Session complete. ${this.handsPlayed(room)}/${room.handCount} hands played.`,
     });
     this.recordLog(`session_complete room_id=${room.id} hands_played=${this.handsPlayed(room)} max_hands=${room.handCount}`);
+    this.updateRoomLifecycle(room);
   }
 
   private restartPublicSession(room: Room, client: Client): void {
@@ -1433,6 +1728,8 @@ export class RoomManager {
     if (!room.sessionComplete) throw new Error("not_session_complete");
     if (!room.table.getSeatByPlayer(client.id)) throw new Error("not_seated");
     room.sessionComplete = false;
+    room.sessionCompletedAt = undefined;
+    room.closedAt = undefined;
     room.officialHandStarted = false;
     room.handResultShownHandId = 0;
     room.hostInLocalWarmup = "";
@@ -1441,6 +1738,7 @@ export class RoomManager {
     this.clearHandResultTimer(room);
     this.clearActionTimer(room);
     room.table.resetForNewSession();
+    this.markRoomActivity(room);
   }
 
   private hasUncontrolledDevSimulatedPlayer(room: Room): boolean {
@@ -1515,6 +1813,7 @@ export class RoomManager {
     this.sendWalletSnapshot(client, room.id);
     room.clients.delete(client.id);
     client.roomId = undefined;
+    this.markRoomActivity(room);
   }
 
   private deductWalletToTableBalance(playerId: string, roomId: string, currency: RoomCurrency, amount: number, chipReason = "table_buy_in"): void {
@@ -1723,11 +2022,11 @@ export class RoomManager {
     }
   }
 
-  private encryptedReplayDelivery(room: Room): EncryptedReplayDelivery {
+  private encryptedReplayDelivery(room: Room): EncryptedReplayDelivery | undefined {
     const cached = room.replayDeliveries.get(room.table.handId);
     if (cached) return cached;
-    const replayId = replayIdFor(room.table);
-    const keyMaterial = this.replays.getReplayKey(replayId)?.key_material ?? generateReplayKey();
+    const replayId = this.replayIdFactory();
+    const keyMaterial = generateReplayKey();
     const record = buildHandReplayRecord(room.table, {
       roomCode: room.roomCode,
       mode: room.visibility === "private" ? "private" : "public",
@@ -1739,24 +2038,32 @@ export class RoomManager {
     record.replay_id = replayId;
     const delivery = buildEncryptedReplayDelivery(record, keyMaterial);
     const createdAt = delivery.metadata.created_at;
-    this.replays.saveReplayIndex({
-      replay_id: replayId,
-      hand_id: delivery.metadata.hand_id,
-      room_id: room.id,
-      room_code: room.roomCode,
-      table_type: room.tableType,
-      currency: roomCurrency(room),
-      created_at: createdAt,
-      checksum: delivery.checksum,
-      schema_version: delivery.metadata.schema_version,
-    });
-    this.replays.saveParticipants(
-      replayId,
-      room.table.seats
-        .filter((seat) => seat.playerId !== "")
-        .map((seat) => ({ player_id: seat.playerId, seat_index: seat.seatIndex })),
-    );
-    this.replays.saveReplayKey({ replay_id: replayId, key_material: keyMaterial, key_version: delivery.key_version, created_at: createdAt });
+    try {
+      this.replays.createOfficialReplay(
+        {
+          replay_id: replayId,
+          hand_id: delivery.metadata.hand_id,
+          room_id: room.id,
+          room_code: room.roomCode,
+          table_type: room.tableType,
+          currency: roomCurrency(room),
+          created_at: createdAt,
+          checksum: delivery.checksum,
+          schema_version: delivery.metadata.schema_version,
+          replay_type: replayTypeForOfficialTable(room.tableType, room.visibility),
+          algorithm: delivery.algorithm,
+          integrity_status: "valid",
+        },
+        { replay_id: replayId, key_material: keyMaterial, key_version: delivery.key_version, created_at: createdAt },
+        room.table.seats
+          .filter((seat) => seat.playerId !== "")
+          .map((seat) => ({ player_id: seat.playerId, seat_index: seat.seatIndex })),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown_error";
+      console.error(`[ReplaySecurity] replay persistence failed replay_id=${replayId} error=${message}`);
+      return undefined;
+    }
     room.replayDeliveries.set(room.table.handId, delivery);
     return delivery;
   }
@@ -1834,6 +2141,8 @@ export class RoomManager {
   }
 
   private publicRoomState(room: Room): string {
+    this.updateRoomLifecycle(room);
+    if (room.lifecycleState === "closing" || room.lifecycleState === "closed") return "closed";
     if (room.sessionComplete) return "session_complete";
     if (room.hostInLocalWarmup !== "" && !room.officialHandStarted && ["waiting", "hand_over"].includes(room.table.phase)) {
       return this.publicSeatedCount(room) < 2 ? "waiting_for_players" : "waiting_ready";

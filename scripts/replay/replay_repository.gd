@@ -3,7 +3,9 @@ class_name ReplayRepository
 
 const REPLAY_DIR := "user://replays"
 const INDEX_PATH := "user://replays/replay_index.json"
+const QUARANTINE_DIR := "user://replays_quarantine"
 const OFFICIAL_ENCRYPTED_MODE := "official_encrypted"
+const LOCAL_PLAINTEXT_MODE := "local_only_plaintext"
 const ENCRYPTED_ALGORITHM := "AES-256-CBC-HMAC-SHA256"
 
 
@@ -15,32 +17,58 @@ static func save_encrypted_delivery(delivery: Dictionary) -> bool:
 	if replay_id == "":
 		push_warning("Encrypted replay save skipped: missing replay_id.")
 		return false
-	var replay_dir: String = "%s/%s" % [REPLAY_DIR, replay_id]
-	if not _ensure_dir_path(replay_dir):
-		push_warning("Encrypted replay save skipped: could not create %s." % replay_dir)
-		return false
 	var metadata: Dictionary = Dictionary(delivery.get("metadata", {})).duplicate(true)
 	var public_preview: Dictionary = Dictionary(delivery.get("public_preview", {})).duplicate(true)
 	var encrypted_blob: String = str(delivery.get("encrypted_private_blob", ""))
 	if metadata.is_empty() or encrypted_blob == "":
 		push_warning("Encrypted replay save skipped: incomplete delivery for %s." % replay_id)
 		return false
-	metadata["replay_id"] = str(metadata.get("replay_id", replay_id))
+	if str(metadata.get("replay_id", replay_id)) != replay_id:
+		push_warning("Encrypted replay save skipped: replay_id mismatch.")
+		return false
+	metadata["replay_id"] = replay_id
 	metadata["storage_mode"] = str(metadata.get("storage_mode", "official_encrypted"))
+	metadata["replay_type"] = replay_type_for_record(metadata)
 	metadata["locked"] = bool(metadata.get("locked", true))
 	metadata["checksum"] = str(delivery.get("checksum", metadata.get("checksum", "")))
 	metadata["key_version"] = int(delivery.get("key_version", metadata.get("key_version", 1)))
+	metadata["algorithm"] = str(delivery.get("algorithm", metadata.get("algorithm", "")))
+	metadata["integrity_status"] = "valid"
+	if metadata["storage_mode"] != OFFICIAL_ENCRYPTED_MODE or metadata["checksum"] == "" or metadata["key_version"] <= 0 or metadata["algorithm"] != ENCRYPTED_ALGORITHM:
+		push_warning("Encrypted replay save skipped: invalid delivery identity for %s." % replay_id)
+		return false
+	if _sha256_hex(encrypted_blob) != metadata["checksum"]:
+		push_warning("Encrypted replay save skipped: private blob checksum mismatch for %s." % replay_id)
+		return false
+	var replay_dir: String = "%s/%s" % [REPLAY_DIR, replay_id]
 	var metadata_path: String = "%s/metadata.json" % replay_dir
+	if FileAccess.file_exists(metadata_path):
+		var existing_metadata: Dictionary = _read_json_file(metadata_path)
+		var existing_private_path: String = "%s/private.enc" % replay_dir
+		var existing_blob: String = _read_text_file(existing_private_path)
+		_normalize_legacy_official_identity(existing_metadata, existing_blob)
+		var identity_conflict: bool = _official_identity_conflicts(existing_metadata, metadata)
+		var local_blob_corrupt: bool = existing_blob == "" or _sha256_hex(existing_blob) != str(existing_metadata.get("checksum", ""))
+		if identity_conflict or local_blob_corrupt:
+			var status := "collision" if identity_conflict else "corrupted"
+			_write_quarantined_delivery(replay_id, metadata, public_preview, encrypted_blob, status)
+			push_warning("Replay ID collision detected. Existing replay preserved.")
+			return false
+		return true
+	if not _ensure_dir_path(replay_dir):
+		push_warning("Encrypted replay save skipped: could not create %s." % replay_dir)
+		return false
 	var preview_path: String = "%s/public_preview.json" % replay_dir
 	var private_path: String = "%s/private.enc" % replay_dir
 	metadata["file_path"] = metadata_path
 	metadata["public_preview_path"] = preview_path
 	metadata["private_blob_path"] = private_path
-	if not _write_json_file(metadata_path, metadata):
+	if not _write_text_file(private_path, encrypted_blob):
 		return false
 	if not _write_json_file(preview_path, public_preview):
 		return false
-	if not _write_text_file(private_path, encrypted_blob):
+	# metadata.json is the completion marker; write it only after both payload files exist.
+	if not _write_json_file(metadata_path, metadata):
 		return false
 	_update_index(metadata, metadata_path)
 	return true
@@ -53,6 +81,11 @@ static func save_hand_record(record: Dictionary) -> bool:
 	var clean_record: Dictionary = record.duplicate(true)
 	if str(clean_record.get("ended_at", "")) == "":
 		clean_record["ended_at"] = Time.get_datetime_string_from_system(true)
+	clean_record["replay_type"] = replay_type_for_record(clean_record)
+	clean_record["storage_mode"] = LOCAL_PLAINTEXT_MODE
+	if str(clean_record.get("replay_id", "")).strip_edges() == "":
+		clean_record["replay_id"] = _local_replay_id(clean_record)
+	clean_record["locked"] = not has_unlock_cache(clean_record)
 	var file_path: String = _record_file_path(clean_record)
 	clean_record["file_path"] = file_path
 	var file: FileAccess = FileAccess.open(file_path, FileAccess.WRITE)
@@ -110,15 +143,34 @@ static func has_unlock_cache(record_or_entry: Dictionary) -> bool:
 	if not FileAccess.file_exists(cache_path):
 		return false
 	var cache: Dictionary = _read_json_file(cache_path)
-	return bool(cache.get("unlocked", false)) and str(cache.get("replay_id", "")) == replay_id and str(cache.get("replay_key", "")) != ""
+	if not bool(cache.get("unlocked", false)) or str(cache.get("replay_id", "")) != replay_id:
+		return false
+	if is_official_encrypted_record(record_or_entry) or is_official_encrypted_entry(record_or_entry):
+		if str(cache.get("replay_key", "")) == "":
+			return false
+		var expected_checksum: String = str(record_or_entry.get("checksum", ""))
+		var cached_checksum: String = str(cache.get("checksum", ""))
+		if expected_checksum != "" and cached_checksum != expected_checksum:
+			return false
+		var expected_key_version: int = int(record_or_entry.get("key_version", 0))
+		if expected_key_version > 0 and int(cache.get("key_version", 0)) != expected_key_version:
+			return false
+		if str(cache.get("replay_type", "")) != replay_type_for_record(record_or_entry):
+			return false
+		if str(cache.get("storage_mode", "")) != OFFICIAL_ENCRYPTED_MODE:
+			return false
+		if str(cache.get("algorithm", "")) != str(record_or_entry.get("algorithm", ENCRYPTED_ALGORITHM)):
+			return false
+		return true
+	return str(cache.get("authority", "")) in ["server", "local_mock"]
 
 
 static func save_unlock_cache(record_or_entry: Dictionary, replay_key: String, key_version: int, checksum: String) -> bool:
 	var replay_id: String = _safe_file_part(str(record_or_entry.get("replay_id", "")))
 	if replay_id == "" or replay_key == "":
 		return false
-	var replay_dir: String = _replay_dir_for_record(record_or_entry)
-	if replay_dir == "" or not _ensure_dir_path(replay_dir):
+	var cache_path: String = _unlock_cache_path(record_or_entry)
+	if cache_path == "" or not _ensure_dir_path(cache_path.get_base_dir()):
 		return false
 	var cache := {
 		"replay_id": replay_id,
@@ -126,10 +178,57 @@ static func save_unlock_cache(record_or_entry: Dictionary, replay_key: String, k
 		"replay_key": replay_key,
 		"key_version": key_version,
 		"checksum": checksum,
+		"replay_type": replay_type_for_record(record_or_entry),
+		"storage_mode": OFFICIAL_ENCRYPTED_MODE,
+		"algorithm": str(record_or_entry.get("algorithm", ENCRYPTED_ALGORITHM)),
 		"unlocked_at": Time.get_datetime_string_from_system(true),
 		"authority": "server",
 	}
-	return _write_json_file("%s/unlock.json" % replay_dir, cache)
+	return _write_json_file(cache_path, cache)
+
+
+static func save_local_unlock_cache(record_or_entry: Dictionary, replay_type: String, price_gems: int, authority: String = "server") -> bool:
+	var replay_id: String = _safe_file_part(str(record_or_entry.get("replay_id", "")))
+	var cache_path: String = _unlock_cache_path(record_or_entry)
+	if replay_id == "" or cache_path == "" or not _ensure_dir_path(cache_path.get_base_dir()):
+		return false
+	return _write_json_file(cache_path, {
+		"replay_id": replay_id,
+		"replay_type": replay_type,
+		"price_gems": price_gems,
+		"unlocked": true,
+		"unlocked_at": Time.get_datetime_string_from_system(true),
+		"authority": authority,
+	})
+
+
+static func replay_type_for_record(record: Dictionary) -> String:
+	var explicit_type := str(record.get("replay_type", "")).strip_edges()
+	if explicit_type in ["official_human", "room_replay", "ai", "training"]:
+		return explicit_type
+	var mode := str(record.get("mode", ""))
+	if mode == "training":
+		return "training"
+	if mode == "local_warmup":
+		return "ai"
+	if mode == "private":
+		return "room_replay"
+	return "official_human"
+
+
+static func replay_integrity_state(record_or_entry: Dictionary, server_access: Dictionary = {}) -> Dictionary:
+	if not is_official_encrypted_record(record_or_entry) and not is_official_encrypted_entry(record_or_entry):
+		return {"status": "valid", "supported": true, "legacy_reason": ""}
+	var local_status := str(record_or_entry.get("integrity_status", "legacy"))
+	if local_status in ["collision", "corrupted"]:
+		return {"status": local_status, "supported": false, "legacy_reason": local_status}
+	if server_access.is_empty():
+		return {"status": "pending", "supported": false, "legacy_reason": "authority_pending"}
+	if not bool(server_access.get("supported", false)):
+		var reason := str(server_access.get("legacy_reason", "replay_not_found"))
+		var status := "collision" if reason == "checksum_mismatch" else ("corrupted" if reason in ["key_version_mismatch", "algorithm_mismatch"] else "legacy")
+		return {"status": status, "supported": false, "legacy_reason": reason}
+	return {"status": "valid", "supported": true, "legacy_reason": ""}
 
 
 static func load_unlocked_encrypted_record(record_or_entry: Dictionary, replay_key: String = "") -> Dictionary:
@@ -167,13 +266,15 @@ static func _load_encrypted_preview_record(metadata: Dictionary, metadata_path: 
 		preview_path = "%s/public_preview.json" % metadata_path.get_base_dir()
 	var preview: Dictionary = _read_json_file(preview_path)
 	var merged: Dictionary = metadata.duplicate(true)
+	var private_path: String = "%s/private.enc" % metadata_path.get_base_dir()
+	_normalize_legacy_official_identity(merged, _read_text_file(private_path))
 	for key in preview.keys():
 		if not merged.has(key):
 			merged[key] = preview[key]
 	merged["file_path"] = metadata_path
 	merged["public_preview_path"] = preview_path
 	if not merged.has("private_blob_path"):
-		merged["private_blob_path"] = "%s/private.enc" % metadata_path.get_base_dir()
+		merged["private_blob_path"] = private_path
 	merged["locked"] = not has_unlock_cache(merged)
 	return merged
 
@@ -184,7 +285,7 @@ static func _update_index(record: Dictionary, file_path: String) -> void:
 	var next_index: Array = []
 	for item in index:
 		var existing: Dictionary = Dictionary(item)
-		if str(existing.get("hand_id", "")) == str(entry.get("hand_id", "")) and str(existing.get("room_id", "")) == str(entry.get("room_id", "")):
+		if str(existing.get("replay_id", "")) == str(entry.get("replay_id", "")):
 			continue
 		next_index.append(existing)
 	next_index.push_front(entry)
@@ -221,9 +322,13 @@ static func _index_entry(record: Dictionary, file_path: String) -> Dictionary:
 		"public_preview_path": str(record.get("public_preview_path", "")),
 		"private_blob_path": str(record.get("private_blob_path", "")),
 		"storage_mode": str(record.get("storage_mode", "")),
+		"replay_type": replay_type_for_record(record),
 		"checksum": str(record.get("checksum", "")),
 		"key_version": int(record.get("key_version", 0)),
-		"locked": bool(record.get("locked", false)),
+		"algorithm": str(record.get("algorithm", "")),
+		"integrity_status": str(record.get("integrity_status", "valid")),
+		"locked": not has_unlock_cache(record),
+		"unlocked": has_unlock_cache(record),
 	}
 
 
@@ -326,6 +431,39 @@ static func _write_text_file(path: String, text: String) -> bool:
 	return true
 
 
+static func _official_identity_conflicts(existing: Dictionary, incoming: Dictionary) -> bool:
+	for key in ["replay_id", "checksum", "key_version", "replay_type", "storage_mode", "algorithm"]:
+		if str(existing.get(key, "")) != str(incoming.get(key, "")):
+			return true
+	return false
+
+
+static func _normalize_legacy_official_identity(metadata: Dictionary, encrypted_blob: String) -> void:
+	metadata["storage_mode"] = str(metadata.get("storage_mode", OFFICIAL_ENCRYPTED_MODE))
+	metadata["replay_type"] = replay_type_for_record(metadata)
+	metadata["key_version"] = int(metadata.get("key_version", 1))
+	if str(metadata.get("algorithm", "")) == "" and encrypted_blob != "":
+		var parsed: Variant = JSON.parse_string(encrypted_blob)
+		if parsed is Dictionary:
+			metadata["algorithm"] = str(Dictionary(parsed).get("algorithm", ""))
+	metadata["integrity_status"] = str(metadata.get("integrity_status", "legacy"))
+
+
+static func _write_quarantined_delivery(replay_id: String, metadata: Dictionary, public_preview: Dictionary, encrypted_blob: String, integrity_status: String) -> void:
+	var checksum_prefix: String = str(metadata.get("checksum", "unknown")).substr(0, 12)
+	var quarantine_dir: String = "%s/%s_%s" % [QUARANTINE_DIR, replay_id, _safe_file_part(checksum_prefix)]
+	if not _ensure_dir_path(quarantine_dir):
+		push_warning("Replay quarantine failed: could not create %s." % quarantine_dir)
+		return
+	var quarantined_metadata: Dictionary = metadata.duplicate(true)
+	quarantined_metadata["integrity_status"] = integrity_status
+	quarantined_metadata["supported"] = false
+	quarantined_metadata["legacy_reason"] = integrity_status
+	_write_json_file("%s/metadata.json" % quarantine_dir, quarantined_metadata)
+	_write_json_file("%s/public_preview.json" % quarantine_dir, public_preview)
+	_write_text_file("%s/private.enc" % quarantine_dir, encrypted_blob)
+
+
 static func _read_json_file(path: String) -> Dictionary:
 	if path == "" or not FileAccess.file_exists(path):
 		return {}
@@ -361,10 +499,23 @@ static func _replay_dir_for_record(record_or_entry: Dictionary) -> String:
 
 
 static func _unlock_cache_path(record_or_entry: Dictionary) -> String:
+	if not is_official_encrypted_record(record_or_entry) and not is_official_encrypted_entry(record_or_entry):
+		var replay_id: String = _safe_file_part(str(record_or_entry.get("replay_id", "")))
+		return "%s/unlocks/%s.json" % [REPLAY_DIR, replay_id] if replay_id != "" else ""
 	var replay_dir: String = _replay_dir_for_record(record_or_entry)
 	if replay_dir == "":
 		return ""
 	return "%s/unlock.json" % replay_dir
+
+
+static func _local_replay_id(record: Dictionary) -> String:
+	var fingerprint := "%s|%s|%s|%s" % [
+		str(record.get("mode", "local")),
+		str(record.get("room_id", "")),
+		str(record.get("hand_id", "hand_000000")),
+		str(record.get("ended_at", "")),
+	]
+	return "local_%s" % _sha256_hex(fingerprint).substr(0, 24)
 
 
 static func _sha256_hex(text: String) -> String:

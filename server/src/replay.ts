@@ -1,6 +1,9 @@
 import type { ActionLogEntry, Card } from "./protocol.js";
 import type { TableState } from "./table_state.js";
-import { createCipheriv, createHash, createHmac, randomBytes } from "node:crypto";
+import { createCipheriv, createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
+import { replayTypeForOfficialTable, type ReplayType } from "./replay_economy.js";
+
+export const REPLAY_ENCRYPTION_ALGORITHM = "AES-256-CBC-HMAC-SHA256" as const;
 
 export interface ReplayRoomMeta {
   roomCode?: string;
@@ -34,6 +37,7 @@ export interface ReplayMetadata {
   schema_version: number;
   storage_mode: "official_encrypted";
   locked: boolean;
+  replay_type: ReplayType;
 }
 
 export interface ReplayPublicPreview {
@@ -49,6 +53,7 @@ export interface ReplayPublicPreview {
   players: Array<{ player_id: string; player_name: string; seat_index: number; ending_stack: number; final_status: string }>;
   community_cards: unknown;
   results: unknown;
+  replay_type: ReplayType;
 }
 
 export interface EncryptedReplayDelivery {
@@ -58,7 +63,7 @@ export interface EncryptedReplayDelivery {
   encrypted_private_blob: string;
   checksum: string;
   key_version: number;
-  algorithm: "AES-256-CBC-HMAC-SHA256";
+  algorithm: typeof REPLAY_ENCRYPTION_ALGORITHM;
 }
 
 function cardCode(card: Card): string {
@@ -161,8 +166,8 @@ export function buildHandReplayRecord(table: TableState, meta: ReplayRoomMeta): 
   };
 }
 
-export function replayIdFor(table: TableState): string {
-  return `${table.roomId}_hand_${String(table.handId).padStart(6, "0")}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+export function replayIdFor(_table?: TableState): string {
+  return `replay_${randomUUID()}`;
 }
 
 export function generateReplayKey(): string {
@@ -183,7 +188,7 @@ export function buildEncryptedReplayDelivery(record: Record<string, unknown>, ke
     encrypted_private_blob: encryptedPrivateBlob,
     checksum,
     key_version: 1,
-    algorithm: "AES-256-CBC-HMAC-SHA256",
+    algorithm: REPLAY_ENCRYPTION_ALGORITHM,
   };
 }
 
@@ -200,7 +205,7 @@ function encryptReplayRecord(record: Record<string, unknown>, keyMaterial: strin
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const mac = createHmac("sha256", macKey).update(Buffer.concat([iv, ciphertext])).digest();
   return JSON.stringify({
-    algorithm: "AES-256-CBC-HMAC-SHA256",
+    algorithm: REPLAY_ENCRYPTION_ALGORITHM,
     iv: iv.toString("base64"),
     ciphertext: ciphertext.toString("base64"),
     mac: mac.toString("base64"),
@@ -214,6 +219,7 @@ function deriveReplaySubkey(rootKey: Buffer, label: string): Buffer {
 function buildReplayMetadata(record: Record<string, unknown>, checksum: string): ReplayMetadata {
   const players = Array.isArray(record.players) ? (record.players as Array<Record<string, unknown>>) : [];
   const results = asRecord(record.results);
+  const replayType = replayTypeFromRecord(record);
   return {
     replay_id: String(record.replay_id || replayIdFromRecord(record)),
     hand_id: String(record.hand_id || ""),
@@ -236,6 +242,7 @@ function buildReplayMetadata(record: Record<string, unknown>, checksum: string):
     schema_version: Number(record.replay_version || 1),
     storage_mode: "official_encrypted",
     locked: true,
+    replay_type: replayType,
   };
 }
 
@@ -260,13 +267,19 @@ function buildPublicPreview(record: Record<string, unknown>): ReplayPublicPrevie
     })),
     community_cards: record.community_cards ?? {},
     results: record.results ?? {},
+    replay_type: replayTypeFromRecord(record),
   };
 }
 
+function replayTypeFromRecord(record: Record<string, unknown>): ReplayType {
+  const mode = String(record.mode || "public");
+  return replayTypeForOfficialTable(String(record.table_type || ""), mode === "private" ? "private" : "public");
+}
+
 function replayIdFromRecord(record: Record<string, unknown>): string {
-  const roomId = String(record.room_id || "room");
-  const handId = String(record.hand_id || "hand_000000");
-  return `${roomId}_${handId}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const replayId = String(record.replay_id || "").trim();
+  if (replayId !== "") return replayId;
+  return replayIdFor();
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

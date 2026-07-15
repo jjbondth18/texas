@@ -13,12 +13,14 @@ export type ClientMessageType =
   | "add_table_chips"
   | "player_action"
   | "get_profile"
+  | "rename_display_name"
   | "get_avatar_catalog"
   | "claim_daily_bonus"
   | "buy_avatar"
   | "select_avatar"
   | "mock_purchase"
   | "unlock_replay"
+  | "get_replay_access"
   | "list_tables"
   | "quick_join_table"
   | "create_table"
@@ -32,6 +34,7 @@ export type ServerMessageType =
   | "table_snapshot"
   | "private_snapshot"
   | "profile_snapshot"
+  | "display_name_renamed"
   | "wallet_snapshot"
   | "daily_bonus_result"
   | "avatar_catalog"
@@ -43,6 +46,7 @@ export type ServerMessageType =
   | "private_table_joined"
   | "mock_purchase_result"
   | "replay_unlocked"
+  | "replay_access"
   | "start_ai_warmup_result"
   | "error";
 export type ErrorCode =
@@ -57,6 +61,10 @@ export type ErrorCode =
   | "replay_access_denied"
   | "replay_key_missing"
   | "replay_unlock_failed"
+  | "replay_checksum_mismatch"
+  | "replay_key_version_mismatch"
+  | "replay_unsupported"
+  | "invalid_replay_type"
   | "room_not_found"
   | "room_not_available"
   | "table_full"
@@ -66,6 +74,12 @@ export type ErrorCode =
   | "steam_ticket_invalid"
   | "steam_app_mismatch"
   | "steam_identity_mismatch"
+  | "invalid_display_name"
+  | "display_name_too_short"
+  | "display_name_too_long"
+  | "display_name_reserved"
+  | "display_name_control_characters"
+  | "rename_cooldown_active"
   | "mock_purchase_disabled"
   | "not_public_table"
   | "not_host"
@@ -99,6 +113,7 @@ export interface ClientMessage {
   steam_auth_identity?: string;
   name?: string;
   player_name?: string;
+  display_name?: string;
   avatar_id?: string;
   seat_index?: number;
   buy_in?: number;
@@ -117,6 +132,11 @@ export interface ClientMessage {
   source?: string;
   room_code?: string;
   replay_id?: string;
+  replay_type?: "official_human" | "room_replay" | "ai" | "training";
+  checksum?: string;
+  key_version?: number;
+  algorithm?: string;
+  storage_mode?: string;
 }
 
 export interface ServerMessage {
@@ -128,6 +148,8 @@ export interface ServerMessage {
   reconnected_to_table?: boolean;
   error?: string;
   error_code?: ErrorCode | string;
+  next_rename_at?: string;
+  cooldown_remaining_seconds?: number;
   ok?: boolean;
   seat_index?: number;
   reason?: string;
@@ -136,6 +158,8 @@ export interface ServerMessage {
   snapshot?: unknown;
   profile?: PlayerProfileSnapshot;
   profile_snapshot?: ServerProfileSnapshot;
+  display_name?: string;
+  display_name_updated_at?: string | null;
   wallet?: WalletSnapshot;
   unlocked_avatar_ids?: string[];
   daily_login_awarded?: boolean;
@@ -157,6 +181,14 @@ export interface ServerMessage {
   key_version?: number;
   checksum?: string;
   already_unlocked?: boolean;
+  replay_type?: "official_human" | "room_replay" | "ai" | "training";
+  price_gems?: number;
+  unlocked?: boolean;
+  supported?: boolean;
+  legacy_reason?: string;
+  algorithm?: string;
+  storage_mode?: string;
+  integrity_status?: string;
   is_ai_warmup?: boolean;
   local_warmup?: boolean;
   host_in_local_warmup?: boolean;
@@ -185,6 +217,8 @@ export interface AvatarCatalogItemSnapshot {
 export interface PlayerProfileSnapshot {
   player_id: string;
   display_name: string;
+  steam_persona_name: string | null;
+  display_name_updated_at: string | null;
   avatar_id: string;
   created_at: string;
   updated_at: string;
@@ -201,6 +235,9 @@ export interface WalletSnapshot {
 export interface ServerProfileSnapshot {
   player_id: string;
   display_name: string;
+  steam_persona_name: string;
+  steam_id: string;
+  display_name_updated_at: string | null;
   is_new_player?: boolean;
   avatar_id: string;
   wallet: {
@@ -220,6 +257,15 @@ export interface ServerProfileSnapshot {
   };
   unlocked_avatar_ids: string[];
   daily_bonus: DailyBonusStatusSnapshot;
+  replay_economy: {
+    currency: "gems";
+    prices: {
+      official_human: number;
+      room_replay: number;
+      ai: number;
+      training: number;
+    };
+  };
   created_at: string;
   updated_at: string;
 }

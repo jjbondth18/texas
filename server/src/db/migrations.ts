@@ -7,6 +7,9 @@ import { migration005TableBalances } from "./migrations/005_table_balances.js";
 import { migration006PlayerProfileBootstrap } from "./migrations/006_player_profile_bootstrap.js";
 import { migration007HandStatisticsEvents } from "./migrations/007_hand_statistics_events.js";
 import { migration008PlayerProfileBackfill } from "./migrations/008_player_profile_backfill.js";
+import { migration009ReplayEconomy } from "./migrations/009_replay_economy.js";
+import { migration010PlayerDisplayName } from "./migrations/010_player_display_name.js";
+import { migration011ReplayIdentityIntegrity } from "./migrations/011_replay_identity_integrity.js";
 
 interface Migration {
   id: string;
@@ -22,6 +25,9 @@ const migrations: Migration[] = [
   migration006PlayerProfileBootstrap,
   migration007HandStatisticsEvents,
   migration008PlayerProfileBackfill,
+  migration009ReplayEconomy,
+  migration010PlayerDisplayName,
+  migration011ReplayIdentityIntegrity,
 ];
 
 export function runMigrations(db: Database.Database): void {

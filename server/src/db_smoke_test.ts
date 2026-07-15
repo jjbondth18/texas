@@ -5,9 +5,41 @@ import { RoomManager } from "./room_manager.js";
 import { getDatabase } from "./db/database.js";
 import { initializeSchema } from "./db/schema.js";
 import { config } from "./config.js";
-import { levelForTotalXp, titleIdForLevel } from "./db/profile_bootstrap_repository.js";
+import { LoginBonusRepository } from "./db/login_bonus_repository.js";
+import { ProfileBootstrapRepository, levelForTotalXp, titleIdForLevel } from "./db/profile_bootstrap_repository.js";
+import { WalletRepository } from "./db/wallet_repository.js";
 import type { SteamAuthVerifier, SteamAuthVerificationResult } from "./services/steam_auth_verifier.js";
 import { settleHand } from "./showdown_engine.js";
+import Database from "better-sqlite3";
+import { migration010PlayerDisplayName } from "./db/migrations/010_player_display_name.js";
+import { ReplayRepository } from "./db/replay_repository.js";
+import { replayIdFor } from "./replay.js";
+import { TableState } from "./table_state.js";
+
+const STARTER_CHIPS = 30000;
+const STARTER_GEMS = 500;
+
+const nicknameMigrationDb = new Database(":memory:");
+nicknameMigrationDb.exec(`
+  CREATE TABLE players (
+    player_id TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    avatar_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    last_login_at TEXT
+  );
+  INSERT INTO players (player_id, display_name, avatar_id, created_at, updated_at)
+  VALUES ('historical_player', 'Historical Name', 'default', '2026-01-01', '2026-01-01');
+`);
+migration010PlayerDisplayName.up(nicknameMigrationDb);
+migration010PlayerDisplayName.up(nicknameMigrationDb);
+const migratedNickname = nicknameMigrationDb
+  .prepare("SELECT display_name, steam_persona_name, display_name_updated_at FROM players WHERE player_id = 'historical_player'")
+  .get() as { display_name: string; steam_persona_name: string; display_name_updated_at: string | null };
+if (migratedNickname.display_name !== "Historical Name" || migratedNickname.steam_persona_name !== "Historical Name") throw new Error("nickname migration should backfill persona without changing display_name");
+if (migratedNickname.display_name_updated_at !== null) throw new Error("nickname migration should preserve a free first rename");
+nicknameMigrationDb.close();
 
 class MockSteamAuthVerifier implements SteamAuthVerifier {
   constructor(private readonly result: SteamAuthVerificationResult = { valid: false, error_code: "steam_ticket_invalid" }) {}
@@ -20,6 +52,7 @@ class MockSteamAuthVerifier implements SteamAuthVerifier {
 interface DisconnectGraceTestAccess {
   disconnectGraceRecords: Map<string, { deadlineAtMs: number; token: number }>;
   handleDisconnectGraceTimeout(roomId: string, playerId: string, token: number): void;
+  cleanupRooms(nowMs?: number): void;
   recordHandResults(room: unknown): void;
   broadcast(room: unknown): void;
 }
@@ -43,7 +76,8 @@ const firstHello = clientMessages.find((message) => typeof message === "object" 
 if (firstHello?.is_new_player !== true || firstHello.profile_snapshot?.is_new_player !== true) throw new Error("new local_dev hello should mark is_new_player true");
 if (Number(firstProfile.player_count) !== 1) throw new Error("expected one player after hello");
 if (Number(firstProfile.identity_count) !== 1) throw new Error("expected local_dev identity after hello");
-if (Number(firstProfile.total_wallet_chips) !== 10000) throw new Error("hello should not auto-grant daily bonus chips");
+if (Number(firstProfile.total_wallet_chips) !== STARTER_CHIPS) throw new Error("hello should grant starter chips but not auto-claim daily bonus");
+if (Number(firstProfile.total_wallet_gems) !== STARTER_GEMS) throw new Error("hello should grant starter gems for new players");
 if (Number(firstProfile.avatar_unlock_count) !== 1) throw new Error("new player should unlock the default avatar");
 const db = getDatabase();
 initializeSchema(db);
@@ -51,7 +85,8 @@ if (countRows("schema_migrations") < 8) throw new Error("migrations should be re
 if (countRows("player_identities", "provider = 'local_dev' AND external_id = 'db_smoke_player'") !== 1) throw new Error("hello should write local_dev identity");
 if (countRows("player_progression", "player_id = 'db_smoke_player' AND total_xp = 0 AND level = 1 AND title_id = 'new_player'") !== 1) throw new Error("local_dev hello should bootstrap default progression");
 if (countRows("player_statistics", "player_id = 'db_smoke_player' AND hands_played = 0 AND hands_won = 0 AND chips_won = 0 AND gems_won = 0") !== 1) throw new Error("local_dev hello should bootstrap default statistics");
-if (countRows("wallet_transactions", "reason = 'initial_grant' AND amount = 10000") !== 1) throw new Error("initial chips should write wallet transaction");
+if (countRows("wallet_transactions", "reason = 'initial_grant' AND currency = 'chips' AND amount = " + STARTER_CHIPS) !== 1) throw new Error("initial chips should write wallet transaction");
+if (countRows("wallet_transactions", "reason = 'initial_grant' AND currency = 'gems' AND amount = " + STARTER_GEMS) !== 1) throw new Error("initial gems should write wallet transaction");
 if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips'") !== 0) throw new Error("hello should not write daily login wallet transaction");
 const localRepeatMessages: unknown[] = [];
 const localRepeatWs = { OPEN: 1, readyState: 1, send: (data: string) => localRepeatMessages.push(JSON.parse(data)) };
@@ -62,24 +97,25 @@ const localRepeatHello = localRepeatMessages.find((message) => typeof message ==
   | undefined;
 if (localRepeatHello?.player_id !== "db_smoke_player") throw new Error("repeat local_dev hello should reuse player_id");
 if (localRepeatHello.is_new_player !== false || localRepeatHello.profile_snapshot?.is_new_player !== false) throw new Error("repeat local_dev hello should mark is_new_player false");
-if (countRows("wallet_transactions", "player_id = 'db_smoke_player' AND reason = 'initial_grant' AND amount = 10000") !== 1) throw new Error("repeat local_dev hello should not repeat initial grant");
+if (countRows("wallet_transactions", "player_id = 'db_smoke_player' AND reason = 'initial_grant' AND currency = 'chips' AND amount = " + STARTER_CHIPS) !== 1) throw new Error("repeat local_dev hello should not repeat initial chip grant");
+if (countRows("wallet_transactions", "player_id = 'db_smoke_player' AND reason = 'initial_grant' AND currency = 'gems' AND amount = " + STARTER_GEMS) !== 1) throw new Error("repeat local_dev hello should not repeat initial gem grant");
 localRepeatMessages.length = 0;
 manager.handle("db_smoke_player", { type: "claim_daily_bonus" });
 const afterDailyClaim = manager.adminSnapshot(false);
-if (Number(afterDailyClaim.total_wallet_chips) !== 10500) throw new Error("claim_daily_bonus should grant day 1 chips");
+if (Number(afterDailyClaim.total_wallet_chips) !== STARTER_CHIPS + 1000) throw new Error("claim_daily_bonus should grant day 1 chips");
 const progressionAfterDailyClaim = db.prepare("SELECT total_xp, level, title_id FROM player_progression WHERE player_id = ?").get("db_smoke_player") as { total_xp: number; level: number; title_id: string };
 if (progressionAfterDailyClaim.total_xp !== 25) throw new Error("claim_daily_bonus should persist awarded XP");
 if (progressionAfterDailyClaim.level !== levelForTotalXp(progressionAfterDailyClaim.total_xp)) throw new Error("daily bonus level should match authoritative total XP rule");
 if (progressionAfterDailyClaim.title_id !== titleIdForLevel(progressionAfterDailyClaim.level)) throw new Error("daily bonus title should match authoritative title rule");
-if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips' AND amount = 500") !== 1) throw new Error("daily login claim should write chip wallet transaction");
+if (countRows("wallet_transactions", "reason = 'daily_login_bonus_chips' AND amount = 1000") !== 1) throw new Error("daily login claim should write chip wallet transaction");
 const liveDailyResult = localRepeatMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "daily_bonus_result") as
   | { profile_snapshot?: { wallet?: { chips?: number; gems?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; daily_bonus?: { already_claimed_today?: boolean } }; daily_bonus_status?: { already_claimed_today?: boolean } }
   | undefined;
-if (liveDailyResult?.profile_snapshot?.wallet?.chips !== 10500) throw new Error("daily bonus result should include updated profile_snapshot wallet");
+if (liveDailyResult?.profile_snapshot?.wallet?.chips !== STARTER_CHIPS + 1000) throw new Error("daily bonus result should include updated profile_snapshot wallet");
 if (liveDailyResult.profile_snapshot.progression?.total_xp !== 25 || liveDailyResult.profile_snapshot.progression.level !== 1) throw new Error("daily bonus result should include updated XP and level in profile_snapshot");
 if (!liveDailyResult.profile_snapshot.daily_bonus?.already_claimed_today || !liveDailyResult.daily_bonus_status?.already_claimed_today) throw new Error("daily bonus result should include updated claim status");
 manager.handle("db_smoke_player", { type: "claim_daily_bonus" });
-if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 10500) throw new Error("claim_daily_bonus should not award twice on the same day");
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== STARTER_CHIPS + 1000) throw new Error("claim_daily_bonus should not award twice on the same day");
 const progressionAfterRepeatedDailyClaim = db.prepare("SELECT total_xp, level FROM player_progression WHERE player_id = ?").get("db_smoke_player") as { total_xp: number; level: number };
 if (progressionAfterRepeatedDailyClaim.total_xp !== 25 || progressionAfterRepeatedDailyClaim.level !== 1) throw new Error("repeated daily bonus claim should not award XP twice");
 
@@ -89,7 +125,7 @@ if (!manager.getClient("db_smoke_player")) throw new Error("same local_dev exter
 
 manager.handle("db_smoke_player", { type: "buy_avatar", avatar_id: "1_01" });
 const afterAvatarWallet = db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("db_smoke_player") as { chips: number };
-if (afterAvatarWallet.chips !== 9000) throw new Error("buy_avatar should deduct chips from wallet");
+if (afterAvatarWallet.chips !== STARTER_CHIPS + 1000 - 1500) throw new Error("buy_avatar should deduct chips from wallet");
 if (countRows("avatar_unlocks", "player_id = 'db_smoke_player'") !== 2) throw new Error("buy_avatar should write avatar unlock");
 if (countRows("wallet_transactions", "reason = 'avatar_purchase' AND amount = -1500") !== 1) throw new Error("avatar purchase should write negative wallet transaction");
 expectThrows("already_unlocked", () => manager.handle("db_smoke_player", { type: "buy_avatar", avatar_id: "1_01" }));
@@ -100,17 +136,17 @@ if (manager.getClient("db_smoke_player")?.avatarId !== "1_01") throw new Error("
 manager.handle("db_smoke_player", { type: "hello", player_id: "db_smoke_player", name: "DB Smoke", avatar_id: "default" });
 const secondProfile = manager.adminSnapshot(false);
 if (Number(secondProfile.player_count) !== 1) throw new Error("second hello should not create another player");
-if (Number(secondProfile.total_wallet_chips) !== 9000) throw new Error("daily login should not award twice on the same day");
+if (Number(secondProfile.total_wallet_chips) !== STARTER_CHIPS + 1000 - 1500) throw new Error("daily login should not award twice on the same day");
 
 const room = manager.createRoom();
 manager.handle("db_smoke_player", { type: "join_room", room_id: room.id });
 manager.handle("db_smoke_player", { type: "sit_down", room_id: room.id, seat_index: 0, buy_in: 999999 });
 const afterBuyIn = manager.adminSnapshot(false);
-if (Number(afterBuyIn.total_wallet_chips) !== 4000) throw new Error("sit_down should deduct room buy-in from wallet");
+if (Number(afterBuyIn.total_wallet_chips) !== STARTER_CHIPS + 1000 - 1500 - 5000) throw new Error("sit_down should deduct room buy-in from wallet");
 if (room.table.getSeat(0)?.chips !== 5000) throw new Error("sit_down should put room buy-in table chips on the seat");
 if (countRows("table_balances", "room_id = '" + room.id + "' AND player_id = 'db_smoke_player' AND amount = 5000") !== 1) throw new Error("sit_down should persist outstanding table balance");
 manager.handle("db_smoke_player", { type: "sit_down", room_id: room.id, seat_index: 0 });
-if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 4000) throw new Error("repeated sit_down should be idempotent and not deduct wallet twice");
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== STARTER_CHIPS + 1000 - 1500 - 5000) throw new Error("repeated sit_down should be idempotent and not deduct wallet twice");
 if (countRows("wallet_transactions", "reason = 'table_buy_in' AND related_room_id = '" + room.id + "'") !== 1) throw new Error("repeated sit_down should not write another buy-in transaction");
 const creatorSeatSnapshot = room.table.publicSnapshot().seats[0];
 if (!creatorSeatSnapshot.occupied) throw new Error("authoritative snapshot should mark creator seat occupied");
@@ -128,29 +164,29 @@ if (countRows("wallet_transactions", "reason = 'table_buy_in' AND amount = -5000
 
 manager.handle("db_smoke_player", { type: "add_table_chips", room_id: room.id, amount: 500 });
 const afterAdd = manager.adminSnapshot(false);
-if (Number(afterAdd.total_wallet_chips) !== 3500) throw new Error("add_table_chips should deduct wallet chips");
+if (Number(afterAdd.total_wallet_chips) !== STARTER_CHIPS + 1000 - 1500 - 5000 - 500) throw new Error("add_table_chips should deduct wallet chips");
 if (room.table.getSeat(0)?.chips !== 5500) throw new Error("add_table_chips should increase table chips");
 if (countRows("table_balances", "room_id = '" + room.id + "' AND player_id = 'db_smoke_player' AND amount = 5500") !== 1) throw new Error("add_table_chips should increase persisted outstanding table balance");
 if (countRows("wallet_transactions", "reason = 'add_table_chips' AND amount = -500") !== 1) throw new Error("add_table_chips should write negative wallet transaction");
 
 expectThrows("insufficient_chips", () => manager.handle("db_smoke_player", { type: "add_table_chips", room_id: room.id, amount: 999999 }));
-if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 3500) throw new Error("failed add_table_chips should not change wallet");
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== STARTER_CHIPS + 1000 - 1500 - 5000 - 500) throw new Error("failed add_table_chips should not change wallet");
 
 manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id });
 const afterCashOut = manager.adminSnapshot(false);
-if (Number(afterCashOut.total_wallet_chips) !== 9000) throw new Error("cash_out should refund remaining table chips");
+if (Number(afterCashOut.total_wallet_chips) !== STARTER_CHIPS + 1000 - 1500) throw new Error("cash_out should refund remaining table chips");
 if (room.table.getSeat(0)?.playerId !== "") throw new Error("cash_out should clear the seat");
 if (countRows("table_balances", "room_id = '" + room.id + "' AND player_id = 'db_smoke_player'") !== 0) throw new Error("cash_out should clear persisted outstanding table balance");
 if (countRows("wallet_transactions", "reason = 'left_before_official_hand' AND amount = 5500") !== 1) throw new Error("pre-hand cash out should write left_before_official_hand wallet transaction");
 manager.handle("db_smoke_player", { type: "cash_out", room_id: room.id });
-if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 9000) throw new Error("repeat cash_out should not double refund");
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== STARTER_CHIPS + 1000 - 1500) throw new Error("repeat cash_out should not double refund");
 
 const disconnectRoom = manager.createRoom();
 manager.handle("db_smoke_player", { type: "join_room", room_id: disconnectRoom.id });
 manager.handle("db_smoke_player", { type: "sit_down", room_id: disconnectRoom.id, seat_index: 0 });
-if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 4000) throw new Error("pre-hand disconnect setup should deduct buy-in");
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== STARTER_CHIPS + 1000 - 1500 - 5000) throw new Error("pre-hand disconnect setup should deduct buy-in");
 manager.disconnect("db_smoke_player");
-if (Number(manager.adminSnapshot(false).total_wallet_chips) !== 9000) throw new Error("pre-hand disconnect should refund the full table stack");
+if (Number(manager.adminSnapshot(false).total_wallet_chips) !== STARTER_CHIPS + 1000 - 1500) throw new Error("pre-hand disconnect should refund the full table stack");
 if (disconnectRoom.table.getSeat(0)?.playerId !== "") throw new Error("pre-hand disconnect should clear the exited seat");
 if (countRows("table_balances", "room_id = '" + disconnectRoom.id + "' AND player_id = 'db_smoke_player'") !== 0) throw new Error("pre-hand disconnect should clear persisted outstanding table balance");
 if (countRows("wallet_transactions", "reason = 'left_before_official_hand' AND amount = 5000") < 1) throw new Error("pre-hand disconnect should write left_before_official_hand wallet transaction");
@@ -161,11 +197,11 @@ const restartRecoveryRoom = manager.createRoom();
 manager.handle("restart_recovery_player", { type: "join_room", room_id: restartRecoveryRoom.id });
 manager.handle("restart_recovery_player", { type: "sit_down", room_id: restartRecoveryRoom.id, seat_index: 0 });
 const restartRecoveryWalletAfterBuyIn = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("restart_recovery_player") as { chips: number }).chips;
-if (restartRecoveryWalletAfterBuyIn !== 5000) throw new Error("restart recovery setup should deduct buy-in before simulated restart");
+if (restartRecoveryWalletAfterBuyIn !== STARTER_CHIPS - 5000) throw new Error("restart recovery setup should deduct buy-in before simulated restart");
 if (countRows("table_balances", "room_id = '" + restartRecoveryRoom.id + "' AND player_id = 'restart_recovery_player' AND amount = 5000") !== 1) throw new Error("restart recovery setup should persist outstanding table balance");
 new RoomManager();
 const restartRecoveryWalletAfterRecover = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("restart_recovery_player") as { chips: number }).chips;
-if (restartRecoveryWalletAfterRecover !== 10000) throw new Error("server restart recovery should refund outstanding table balance");
+if (restartRecoveryWalletAfterRecover !== STARTER_CHIPS) throw new Error("server restart recovery should refund outstanding table balance");
 if (countRows("table_balances", "room_id = '" + restartRecoveryRoom.id + "' AND player_id = 'restart_recovery_player'") !== 0) throw new Error("server restart recovery should clear outstanding table balance");
 if (countRows("wallet_transactions", "reason = 'server_restart_recovery' AND player_id = 'restart_recovery_player' AND amount = 5000") !== 1) throw new Error("server restart recovery should write wallet transaction");
 
@@ -204,6 +240,9 @@ if (!graceReconnectSeat || !graceReconnectSeat.disconnected) throw new Error("ac
 if ((db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("grace_reconnect_a") as { chips: number }).chips !== graceReconnectWalletAfterBuyIn) throw new Error("active hand disconnect should not immediately refund wallet");
 const graceReconnectBalance = db.prepare("SELECT amount FROM table_balances WHERE room_id = ? AND player_id = ?").get(graceReconnectRoom.id, "grace_reconnect_a") as { amount: number } | undefined;
 if (!graceReconnectBalance || graceReconnectBalance.amount !== graceReconnectSeat.chips + graceReconnectSeat.contribution) throw new Error("active hand disconnect should preserve outstanding table balance");
+(graceReconnectRoom as unknown as { emptySince: string }).emptySince = new Date(Date.now() - 301000).toISOString();
+(manager as unknown as DisconnectGraceTestAccess).cleanupRooms();
+if (!manager.getRoom(graceReconnectRoom.id)) throw new Error("room cleanup must not remove a room while reconnect grace is active");
 const graceReconnectMessages: unknown[] = [];
 const graceReconnectWs = { OPEN: 1, readyState: 1, send: (data: string) => graceReconnectMessages.push(JSON.parse(data)) };
 const graceReconnectClient = manager.connect(graceReconnectWs as any);
@@ -296,8 +335,48 @@ if (!configTable) throw new Error("create_table should add a public table");
 if (Number(configTable.buy_in) !== 10000) throw new Error("create_table should preserve selected buy-in");
 if (Number(configTable.small_blind) !== 50 || Number(configTable.big_blind) !== 100) throw new Error("create_table should preserve selected blinds");
 if (Number(configTable.hand_count) !== 20) throw new Error("create_table should preserve selected hand count");
+for (const beginnerBuyIn of [1000, 2000, 5000]) {
+  manager.handle("db_smoke_config", {
+    type: "create_table",
+    table_name: `Beginner ${beginnerBuyIn}`,
+    buy_in: beginnerBuyIn,
+    small_blind: 25,
+    big_blind: 50,
+    hand_count: 10,
+  });
+  const beginnerTable = (manager.adminSnapshot(false).table_list as Array<Record<string, unknown>>).find((table) => table.table_name === `Beginner ${beginnerBuyIn}`);
+  if (!beginnerTable || Number(beginnerTable.buy_in) !== beginnerBuyIn) throw new Error("Browser create should support beginner buy-ins");
+}
 expectThrows("invalid_table_config", () => manager.handle("db_smoke_config", { type: "create_table", buy_in: 12345, small_blind: 25, big_blind: 50, hand_count: 10 }));
 expectThrows("invalid_table_config", () => manager.handle("db_smoke_config", { type: "create_table", buy_in: 10000, small_blind: 10, big_blind: 20, hand_count: 10 }));
+
+const poorBrowserCreator = manager.connect();
+manager.handle(poorBrowserCreator.id, { type: "hello", player_id: "poor_browser_creator", name: "Poor Browser Creator" });
+const poorBrowserCreateRoomCount = manager.roomCount();
+const poorBrowserCreateWallet = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("poor_browser_creator") as { chips: number }).chips;
+expectThrows("insufficient_chips", () => manager.handle("poor_browser_creator", { type: "create_table", request_id: "poor-browser-create", buy_in: 50000, small_blind: 100, big_blind: 200, hand_count: 5 }));
+if (manager.roomCount() !== poorBrowserCreateRoomCount) throw new Error("insufficient browser create should not create a public room");
+if ((db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("poor_browser_creator") as { chips: number }).chips !== poorBrowserCreateWallet) throw new Error("insufficient browser create should not change wallet");
+if (countRows("table_balances", "player_id = 'poor_browser_creator'") !== 0) throw new Error("insufficient browser create should not write table balance");
+
+const richBrowserCreatorMessages: unknown[] = [];
+const richBrowserCreatorWs = { OPEN: 1, readyState: 1, send: (data: string) => richBrowserCreatorMessages.push(JSON.parse(data)) };
+const richBrowserCreator = manager.connect(richBrowserCreatorWs as any);
+manager.handle(richBrowserCreator.id, { type: "hello", player_id: "rich_browser_creator", name: "Rich Browser Creator" });
+manager.handle("rich_browser_creator", { type: "mock_purchase", currency: "chips", amount: 50000, source: "store_mock" });
+richBrowserCreatorMessages.length = 0;
+manager.handle("rich_browser_creator", { type: "create_table", request_id: "rich-browser-create", buy_in: 50000, small_blind: 100, big_blind: 200, hand_count: 5 });
+const richBrowserCreated = richBrowserCreatorMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "table_created") as
+  | { type: string; request_id?: string; room_id?: string }
+  | undefined;
+if (!richBrowserCreated?.room_id || richBrowserCreated.request_id !== "rich-browser-create") throw new Error("funded browser create should create a public room and echo request_id");
+const poorBrowserJoiner = manager.connect();
+manager.handle(poorBrowserJoiner.id, { type: "hello", player_id: "poor_browser_joiner", name: "Poor Browser Joiner" });
+const poorBrowserJoinWallet = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("poor_browser_joiner") as { chips: number }).chips;
+expectThrows("insufficient_chips", () => manager.handle("poor_browser_joiner", { type: "join_table", request_id: "poor-browser-join", room_id: String(richBrowserCreated.room_id) }));
+if (manager.getClient("poor_browser_joiner")?.roomId) throw new Error("insufficient browser join should not attach a room_id to the client");
+if ((db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("poor_browser_joiner") as { chips: number }).chips !== poorBrowserJoinWallet) throw new Error("insufficient browser join should not change wallet");
+if (countRows("table_balances", "player_id = 'poor_browser_joiner'") !== 0) throw new Error("insufficient browser join should not write table balance");
 
 const quickOne = manager.createRoom({ buyIn: 10000, smallBlind: 50, bigBlind: 100, handCount: 10, maxPlayers: 6 });
 const quickThree = manager.createRoom({ buyIn: 10000, smallBlind: 50, bigBlind: 100, handCount: 10, maxPlayers: 6 });
@@ -319,6 +398,26 @@ manager.handle(quickNoPlaying.id, { type: "hello", player_id: "quick_no_playing"
 manager.handle("quick_no_playing", { type: "quick_join_table", buy_in: 10000, small_blind: 25, big_blind: 50, hand_count: 5, max_players: 6 });
 if (manager.getClient("quick_no_playing")?.roomId === playingRoom.id) throw new Error("quick_join_table should not join a playing table");
 
+for (const beginnerBuyIn of [1000, 2000, 5000]) {
+  const beginnerQuick = manager.connect();
+  const beginnerPlayerId = `quick_beginner_${beginnerBuyIn}`;
+  manager.handle(beginnerQuick.id, { type: "hello", player_id: beginnerPlayerId, name: `Quick Beginner ${beginnerBuyIn}` });
+  manager.handle(beginnerPlayerId, { type: "quick_join_table", buy_in: beginnerBuyIn, small_blind: 25, big_blind: 50, hand_count: 10, max_players: 6 });
+  const beginnerRoomId = manager.getClient(beginnerPlayerId)?.roomId || "";
+  const beginnerRoom = manager.getRoom(beginnerRoomId);
+  if (!beginnerRoom || beginnerRoom.buyIn !== beginnerBuyIn) throw new Error("Quick should support beginner buy-ins");
+}
+
+const poorQuick = manager.connect();
+manager.handle(poorQuick.id, { type: "hello", player_id: "poor_quick", name: "Poor Quick" });
+const poorQuickRoomCount = manager.roomCount();
+const poorQuickWallet = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("poor_quick") as { chips: number }).chips;
+expectThrows("insufficient_chips", () => manager.handle("poor_quick", { type: "quick_join_table", request_id: "poor-quick", buy_in: 50000, small_blind: 100, big_blind: 200, hand_count: 5, max_players: 6 }));
+if (manager.roomCount() !== poorQuickRoomCount) throw new Error("insufficient Quick should not create a room");
+if (manager.getClient("poor_quick")?.roomId) throw new Error("insufficient Quick should not attach a room_id to the client");
+if ((db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("poor_quick") as { chips: number }).chips !== poorQuickWallet) throw new Error("insufficient Quick should not change wallet");
+if (countRows("table_balances", "player_id = 'poor_quick'") !== 0) throw new Error("insufficient Quick should not write table balance");
+
 const staleHandOverRoom = manager.createRoom({ buyIn: 20000, smallBlind: 50, bigBlind: 100, handCount: 10, maxPlayers: 6 });
 staleHandOverRoom.table.phase = "hand_over";
 staleHandOverRoom.officialHandStarted = true;
@@ -326,6 +425,7 @@ const staleQuickMessages: unknown[] = [];
 const staleQuickWs = { OPEN: 1, readyState: 1, send: (data: string) => staleQuickMessages.push(JSON.parse(data)) };
 const staleQuickClient = manager.connect(staleQuickWs as any);
 manager.handle(staleQuickClient.id, { type: "hello", player_id: "quick_stale_hand_over", name: "Quick Stale Hand Over" });
+manager.handle("quick_stale_hand_over", { type: "mock_purchase", currency: "chips", amount: 15000, source: "store_mock" });
 manager.handle("quick_stale_hand_over", { type: "quick_join_table", request_id: "quick-timeout-smoke", buy_in: 20000, small_blind: 50, big_blind: 100, hand_count: 10, max_players: 6 });
 const staleQuickRoomId = manager.getClient("quick_stale_hand_over")?.roomId || "";
 if (staleQuickRoomId === staleHandOverRoom.id) throw new Error("quick_join_table should not return stale empty hand_over rooms");
@@ -344,9 +444,43 @@ expectThrows("room_not_available", () => manager.handle("quick_stale_hand_over",
 const staleSitDownWalletAfter = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("quick_stale_hand_over") as { chips: number }).chips;
 if (staleSitDownWalletAfter !== staleSitDownWalletBefore) throw new Error("repeated failed stale sit_down should not deduct wallet");
 if (countRows("wallet_transactions", "reason = 'table_buy_in' AND player_id = 'quick_stale_hand_over'") !== 0) throw new Error("failed stale sit_down should not write buy-in transaction");
+const lifecycleAccess = manager as unknown as DisconnectGraceTestAccess;
+(staleHandOverRoom as unknown as { emptySince: string }).emptySince = new Date(Date.now() - 61000).toISOString();
+lifecycleAccess.cleanupRooms();
+if (manager.getRoom(staleHandOverRoom.id)) throw new Error("stale empty hand_over room should be removed after empty TTL");
+const quickAfterStaleCleanup = manager.connect();
+manager.handle(quickAfterStaleCleanup.id, { type: "hello", player_id: "quick_after_stale_cleanup", name: "Quick After Stale Cleanup" });
+manager.handle("quick_after_stale_cleanup", { type: "mock_purchase", currency: "chips", amount: 15000, source: "store_mock" });
+manager.handle("quick_after_stale_cleanup", { type: "quick_join_table", buy_in: 20000, small_blind: 50, big_blind: 100, hand_count: 10, max_players: 6 });
+const quickAfterStaleCleanupRoomId = manager.getClient("quick_after_stale_cleanup")?.roomId || "";
+if (quickAfterStaleCleanupRoomId === staleHandOverRoom.id) throw new Error("quick_join_table must not reuse a closed stale room id");
+const quickAfterStaleCleanupRoom = manager.getRoom(quickAfterStaleCleanupRoomId);
+if (!quickAfterStaleCleanupRoom || quickAfterStaleCleanupRoom.table.phase !== "waiting") throw new Error("quick after stale cleanup should create a clean waiting room");
+
+const sessionCompleteEmptyRoom = manager.createRoom({ buyIn: 5000, smallBlind: 25, bigBlind: 50, handCount: 5 });
+sessionCompleteEmptyRoom.sessionComplete = true;
+sessionCompleteEmptyRoom.table.phase = "session_complete";
+(sessionCompleteEmptyRoom as unknown as { emptySince: string; sessionCompletedAt: string }).emptySince = new Date(Date.now() - 1000).toISOString();
+(sessionCompleteEmptyRoom as unknown as { emptySince: string; sessionCompletedAt: string }).sessionCompletedAt = new Date(Date.now() - 1000).toISOString();
+lifecycleAccess.cleanupRooms();
+if (manager.getRoom(sessionCompleteEmptyRoom.id)) throw new Error("empty session_complete room should be removed");
+const sessionCompleteJoiner = manager.connect();
+manager.handle(sessionCompleteJoiner.id, { type: "hello", player_id: "session_complete_joiner", name: "Session Complete Joiner" });
+expectThrows("room_not_found", () => manager.handle("session_complete_joiner", { type: "join_table", room_id: sessionCompleteEmptyRoom.id }));
+
+const waitingTtlRoom = manager.createRoom({ buyIn: 10000, smallBlind: 50, bigBlind: 100, handCount: 10 });
+(waitingTtlRoom as unknown as { emptySince: string }).emptySince = new Date(Date.now() - 301000).toISOString();
+lifecycleAccess.cleanupRooms();
+if (manager.getRoom(waitingTtlRoom.id)) throw new Error("unseated waiting room should be removed after waiting TTL");
+const waitingOccupiedRoom = manager.createRoom({ buyIn: 10000, smallBlind: 50, bigBlind: 100, handCount: 10 });
+seatPlayer("waiting_ttl_seated", "Waiting TTL Seated", waitingOccupiedRoom.id, 5);
+(waitingOccupiedRoom as unknown as { emptySince: string }).emptySince = new Date(Date.now() - 301000).toISOString();
+lifecycleAccess.cleanupRooms();
+if (!manager.getRoom(waitingOccupiedRoom.id)) throw new Error("waiting room with a seated player should not be removed by waiting TTL");
 
 const quickCreate = manager.connect();
 manager.handle(quickCreate.id, { type: "hello", player_id: "quick_create", name: "Quick Create" });
+manager.handle("quick_create", { type: "mock_purchase", currency: "chips", amount: 50000, source: "store_mock" });
 manager.handle("quick_create", { type: "quick_join_table", buy_in: 50000, small_blind: 100, big_blind: 200, hand_count: 5, max_players: 6 });
 const quickCreatedRoomId = manager.getClient("quick_create")?.roomId || "";
 const quickCreatedTable = (manager.adminSnapshot(false).table_list as Array<Record<string, unknown>>).find((table) => table.room_id === quickCreatedRoomId);
@@ -374,7 +508,22 @@ if (countRows("wallet_transactions", "reason = 'gem_table_buy_in' AND currency =
 if (countRows("wallet_transactions", "reason = 'gem_left_before_official_hand' AND currency = 'gems' AND amount = 50") !== 1) throw new Error("Gem Quick pre-hand cash out should write gem_left_before_official_hand transaction");
 const noGemQuick = manager.connect();
 manager.handle(noGemQuick.id, { type: "hello", player_id: "no_gem_quick", name: "No Gem Quick" });
+db.prepare("UPDATE wallets SET gems = 0 WHERE player_id = ?").run("no_gem_quick");
+const noGemQuickRoomCount = manager.roomCount();
+const noGemQuickWallet = (db.prepare("SELECT gems FROM wallets WHERE player_id = ?").get("no_gem_quick") as { gems: number }).gems;
 expectThrows("insufficient_gems", () => manager.handle("no_gem_quick", { type: "quick_join_table", table_type: "public_gem", currency: "gems", buy_in: 50, small_blind: 2, big_blind: 5, hand_count: 10, max_players: 6 }));
+if (manager.roomCount() !== noGemQuickRoomCount) throw new Error("insufficient Gem Quick should not create a room");
+if (manager.getClient("no_gem_quick")?.roomId) throw new Error("insufficient Gem Quick should not attach a room_id to the client");
+if ((db.prepare("SELECT gems FROM wallets WHERE player_id = ?").get("no_gem_quick") as { gems: number }).gems !== noGemQuickWallet) throw new Error("insufficient Gem Quick should not change gems");
+if (countRows("table_balances", "player_id = 'no_gem_quick'") !== 0) throw new Error("insufficient Gem Quick should not write table balance");
+
+const poorPrivateCreator = manager.connect();
+manager.handle(poorPrivateCreator.id, { type: "hello", player_id: "poor_private_creator", name: "Poor Private Creator" });
+const poorPrivateCreateRoomCount = manager.roomCount();
+expectThrows("insufficient_chips", () => manager.handle("poor_private_creator", { type: "create_private_table", request_id: "poor-private-create", buy_in: 50000, small_blind: 100, big_blind: 200, hand_count: 5, max_players: 6 }));
+if (manager.roomCount() !== poorPrivateCreateRoomCount) throw new Error("insufficient private create should not create a room");
+if (manager.getClient("poor_private_creator")?.roomId) throw new Error("insufficient private create should not attach a room_id to the client");
+if (countRows("table_balances", "player_id = 'poor_private_creator'") !== 0) throw new Error("insufficient private create should not write table balance");
 
 const privateCreatorMessages: unknown[] = [];
 const privateCreatorWs = { OPEN: 1, readyState: 1, send: (data: string) => privateCreatorMessages.push(JSON.parse(data)) };
@@ -404,6 +553,20 @@ if (!privateRoom) throw new Error("private room should exist after create_privat
 manager.handle("private_creator", { type: "sit_down", room_id: privateCreated.room_id, seat_index: -1 });
 if (privateRoom.table.getSeatByPlayer("private_creator")?.seatIndex !== 5) throw new Error("private creator should sit at objective seat 5");
 
+for (const beginnerBuyIn of [1000, 2000, 5000]) {
+  const beginnerPlayerId = `private_beginner_${beginnerBuyIn}`;
+  const beginnerMessages: unknown[] = [];
+  const beginnerWs = { OPEN: 1, readyState: 1, send: (data: string) => beginnerMessages.push(JSON.parse(data)) };
+  const beginnerClient = manager.connect(beginnerWs as any);
+  manager.handle(beginnerClient.id, { type: "hello", player_id: beginnerPlayerId, name: `Private Beginner ${beginnerBuyIn}` });
+  manager.handle(beginnerPlayerId, { type: "create_private_table", buy_in: beginnerBuyIn, small_blind: 25, big_blind: 50, hand_count: 5, max_players: 6 });
+  const beginnerCreated = beginnerMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "private_table_created") as
+    | { room_id?: string; table?: { buy_in?: number } }
+    | undefined;
+  if (!beginnerCreated?.room_id || Number(beginnerCreated.table?.buy_in) !== beginnerBuyIn) throw new Error("Friends Room create should support beginner buy-ins");
+  manager.disconnect(beginnerPlayerId);
+}
+
 const privateJoinerMessages: unknown[] = [];
 const privateJoinerWs = { OPEN: 1, readyState: 1, send: (data: string) => privateJoinerMessages.push(JSON.parse(data)) };
 const privateJoiner = manager.connect(privateJoinerWs as any);
@@ -420,7 +583,27 @@ manager.handle("private_creator", { type: "ready", room_id: privateCreated.room_
 manager.handle("private_joiner", { type: "ready", room_id: privateCreated.room_id, ready: true });
 manager.handle("private_creator", { type: "start_hand", room_id: privateCreated.room_id });
 if (privateRoom.table.phase === "waiting") throw new Error("private room should reuse ready/start hand flow");
-expectThrows("room_not_found", () => manager.handle("private_joiner", { type: "join_private_table", room_code: "ZZZZ" }));
+expectThrows("invalid_room_code", () => manager.handle("private_joiner", { type: "join_private_table", room_code: "ZZZZ" }));
+
+const richPrivateCreatorMessages: unknown[] = [];
+const richPrivateCreatorWs = { OPEN: 1, readyState: 1, send: (data: string) => richPrivateCreatorMessages.push(JSON.parse(data)) };
+const richPrivateCreator = manager.connect(richPrivateCreatorWs as any);
+manager.handle(richPrivateCreator.id, { type: "hello", player_id: "rich_private_creator", name: "Rich Private Creator" });
+manager.handle("rich_private_creator", { type: "mock_purchase", currency: "chips", amount: 50000, source: "store_mock" });
+manager.handle("rich_private_creator", { type: "create_private_table", request_id: "rich-private-create", buy_in: 50000, small_blind: 100, big_blind: 200, hand_count: 5, max_players: 6 });
+const richPrivateCreated = richPrivateCreatorMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "private_table_created") as
+  | { type: string; room_id?: string; table?: { room_code?: string } }
+  | undefined;
+if (!richPrivateCreated?.room_id || !richPrivateCreated.table?.room_code) throw new Error("funded private create should create a room code");
+const richPrivateRoomCode = richPrivateCreated.table.room_code;
+const poorPrivateJoiner = manager.connect();
+manager.handle(poorPrivateJoiner.id, { type: "hello", player_id: "poor_private_joiner", name: "Poor Private Joiner" });
+const poorPrivateJoinWallet = (db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("poor_private_joiner") as { chips: number }).chips;
+expectThrows("insufficient_chips", () => manager.handle("poor_private_joiner", { type: "join_private_table", request_id: "poor-private-join", room_code: richPrivateRoomCode }));
+if (manager.getClient("poor_private_joiner")?.roomId) throw new Error("insufficient private join should not attach a room_id to the client");
+if (!manager.getRoom(richPrivateCreated.room_id)) throw new Error("insufficient private join should keep room_code valid for other players");
+if ((db.prepare("SELECT chips FROM wallets WHERE player_id = ?").get("poor_private_joiner") as { chips: number }).chips !== poorPrivateJoinWallet) throw new Error("insufficient private join should not change wallet");
+if (countRows("table_balances", "player_id = 'poor_private_joiner'") !== 0) throw new Error("insufficient private join should not write table balance");
 
 const privateGemCreatorMessages: unknown[] = [];
 const privateGemCreatorWs = { OPEN: 1, readyState: 1, send: (data: string) => privateGemCreatorMessages.push(JSON.parse(data)) };
@@ -440,7 +623,10 @@ manager.handle("private_gem_creator", { type: "sit_down", room_id: privateGemCre
 if (privateGemRoom.table.getSeatByPlayer("private_gem_creator")?.chips !== 50) throw new Error("private_gem creator should sit with gem buy-in stack");
 const privateGemPoor = manager.connect();
 manager.handle(privateGemPoor.id, { type: "hello", player_id: "private_gem_poor", name: "Private Gem Poor" });
+db.prepare("UPDATE wallets SET gems = 0 WHERE player_id = ?").run("private_gem_poor");
 expectThrows("insufficient_gems", () => manager.handle("private_gem_poor", { type: "join_private_table", room_code: privateGemCreated.table?.room_code || "" }));
+if (manager.getClient("private_gem_poor")?.roomId) throw new Error("insufficient private gem join should not attach a room_id to the client");
+if (countRows("table_balances", "player_id = 'private_gem_poor'") !== 0) throw new Error("insufficient private gem join should not write table balance");
 const privateGemJoiner = manager.connect();
 manager.handle(privateGemJoiner.id, { type: "hello", player_id: "private_gem_joiner", name: "Private Gem Joiner" });
 manager.handle("private_gem_joiner", { type: "mock_purchase", currency: "gems", amount: 100, source: "store_mock" });
@@ -449,6 +635,22 @@ manager.handle("private_gem_joiner", { type: "sit_down", room_id: privateGemCrea
 if (privateGemRoom.table.getSeatByPlayer("private_gem_joiner")?.seatIndex !== 8) throw new Error("private_gem room joiner should sit at objective seat 8");
 manager.handle("private_gem_creator", { type: "cash_out", room_id: privateGemCreated.room_id });
 if (countRows("wallet_transactions", "reason = 'gem_left_before_official_hand' AND related_room_id = '" + privateGemCreated.room_id + "'") !== 1) throw new Error("private_gem pre-hand exit should refund Gems with gem reason");
+
+const privateCleanupMessages: unknown[] = [];
+const privateCleanupWs = { OPEN: 1, readyState: 1, send: (data: string) => privateCleanupMessages.push(JSON.parse(data)) };
+const privateCleanupCreator = manager.connect(privateCleanupWs as any);
+manager.handle(privateCleanupCreator.id, { type: "hello", player_id: "private_cleanup_creator", name: "Private Cleanup Creator" });
+manager.handle("private_cleanup_creator", { type: "create_private_table", buy_in: 5000, small_blind: 25, big_blind: 50, hand_count: 5, max_players: 2 });
+const privateCleanupCreated = privateCleanupMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "private_table_created") as
+  | { type: string; room_id?: string; table?: { room_code?: string } }
+  | undefined;
+if (!privateCleanupCreated?.room_id || !privateCleanupCreated.table?.room_code) throw new Error("private cleanup fixture should create a room code");
+manager.handle("private_cleanup_creator", { type: "sit_down", room_id: privateCleanupCreated.room_id, seat_index: -1 });
+manager.handle("private_cleanup_creator", { type: "cash_out", room_id: privateCleanupCreated.room_id });
+if (manager.getRoom(privateCleanupCreated.room_id)) throw new Error("private room should close after the host cashes out and all players leave");
+const privateCleanupJoiner = manager.connect();
+manager.handle(privateCleanupJoiner.id, { type: "hello", player_id: "private_cleanup_joiner", name: "Private Cleanup Joiner" });
+expectThrows("invalid_room_code", () => manager.handle("private_cleanup_joiner", { type: "join_private_table", room_code: privateCleanupCreated.table?.room_code || "" }));
 
 const quickPrivateMatcher = manager.connect();
 manager.handle(quickPrivateMatcher.id, { type: "hello", player_id: "quick_private_matcher", name: "Quick Private Matcher" });
@@ -625,32 +827,127 @@ if (!String(replayDelivery.encrypted_private_blob || "").includes("AES-256-CBC-H
 if (!String(replayDelivery.encrypted_private_blob || "").includes("ciphertext")) throw new Error("encrypted replay delivery should include encrypted private blob envelope");
 const replayId = String(replayDelivery.replay_id || "");
 if (replayId === "") throw new Error("encrypted replay delivery should include replay_id");
+if (!/^replay_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(replayId)) throw new Error("official replay_id should be a UUID v4 independent of room and hand ids");
+const generatedReplayIds = new Set(Array.from({ length: 500 }, () => replayIdFor()));
+if (generatedReplayIds.size !== 500) throw new Error("replay UUID generation should not repeat across a large sample");
+const restartTableA = new TableState("room_1");
+const restartTableB = new TableState("room_1");
+restartTableA.handId = 1;
+restartTableB.handId = 1;
+if (replayIdFor(restartTableA) === replayIdFor(restartTableB)) throw new Error("server restart with reused room/hand ids must still generate distinct replay ids");
 if (countRows("replay_index", "replay_id = '" + replayId + "'") !== 1) throw new Error("replay_index should persist encrypted replay metadata");
 if (countRows("replay_participants", "replay_id = '" + replayId + "'") < 2) throw new Error("replay_participants should persist hand participants");
 if (countRows("replay_keys", "replay_id = '" + replayId + "'") !== 1) throw new Error("replay_keys should persist replay key material");
-expectThrows("insufficient_gems", () => manager.handle("ready_host", { type: "unlock_replay", replay_id: replayId }));
+const replayRepository = new ReplayRepository(db);
+const persistedReplay = replayRepository.getReplayIndex(replayId);
+const persistedReplayKey = replayRepository.getReplayKey(replayId);
+if (!persistedReplay || !persistedReplayKey || persistedReplay.integrity_status !== "valid" || persistedReplay.algorithm !== "AES-256-CBC-HMAC-SHA256") throw new Error("new replay index should persist valid integrity metadata and algorithm");
+expectThrows("UNIQUE constraint failed: replay_index.replay_id", () =>
+  replayRepository.createOfficialReplay(
+    { ...persistedReplay, checksum: "forced-collision-checksum" },
+    { ...persistedReplayKey, key_material: "forced-collision-key" },
+    [{ player_id: "forced_collision_participant", seat_index: 7 }],
+  ),
+);
+if (replayRepository.getReplayIndex(replayId)?.checksum !== persistedReplay.checksum) throw new Error("duplicate replay transaction must not overwrite the original index");
+if (replayRepository.getReplayKey(replayId)?.key_material !== persistedReplayKey.key_material) throw new Error("duplicate replay transaction must not overwrite the original key");
+if (replayRepository.isParticipant(replayId, "forced_collision_participant")) throw new Error("duplicate replay transaction must roll back participant inserts");
+const replayManagerAccess = manager as unknown as {
+  replayIdFactory: () => string;
+  encryptedReplayDelivery(room: ReturnType<RoomManager["createRoom"]>): unknown;
+};
+const originalReplayIdFactory = replayManagerAccess.replayIdFactory;
+replayManagerAccess.replayIdFactory = () => replayId;
+const forcedCollisionRoom = manager.createRoom();
+forcedCollisionRoom.table.handId = 1;
+forcedCollisionRoom.table.phase = "hand_over";
+const collisionDelivery = replayManagerAccess.encryptedReplayDelivery(forcedCollisionRoom);
+replayManagerAccess.replayIdFactory = originalReplayIdFactory;
+if (collisionDelivery !== undefined || forcedCollisionRoom.replayDeliveries.size !== 0) throw new Error("failed replay persistence must not cache or send a replay delivery");
+if (replayRepository.getReplayIndex(replayId)?.checksum !== persistedReplay.checksum || replayRepository.getReplayKey(replayId)?.key_material !== persistedReplayKey.key_material) throw new Error("failed delivery persistence must preserve original replay metadata and key");
+const officialReplayIdentity = {
+  replay_id: replayId,
+  replay_type: "official_human" as const,
+  checksum: String(replayDelivery.checksum || ""),
+  key_version: Number(replayDelivery.key_version || 0),
+  algorithm: "AES-256-CBC-HMAC-SHA256",
+  storage_mode: "official_encrypted",
+};
+readyHostMessages.length = 0;
+manager.handle("ready_host", { type: "get_replay_access", ...officialReplayIdentity });
+const initialReplayAccess = readyHostMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "replay_access") as
+  | { supported?: boolean; unlocked?: boolean; checksum?: string; key_version?: number; price_gems?: number }
+  | undefined;
+if (!initialReplayAccess?.supported || initialReplayAccess.unlocked || initialReplayAccess.checksum !== officialReplayIdentity.checksum || initialReplayAccess.key_version !== officialReplayIdentity.key_version || initialReplayAccess.price_gems !== 20) throw new Error("server replay access should be authoritative before unlock");
+readyHostMessages.length = 0;
+const gemsBeforeMismatchAccess = Number(manager.adminSnapshot(false).total_wallet_gems);
+manager.handle("ready_host", { type: "get_replay_access", ...officialReplayIdentity, checksum: "wrong-checksum" });
+const mismatchReplayAccess = readyHostMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "replay_access") as
+  | { supported?: boolean; unlocked?: boolean; legacy_reason?: string }
+  | undefined;
+if (mismatchReplayAccess?.supported !== false || mismatchReplayAccess.unlocked !== false || mismatchReplayAccess.legacy_reason !== "checksum_mismatch") throw new Error("mismatched local replay identity should be unsupported without charging");
+if (Number(manager.adminSnapshot(false).total_wallet_gems) !== gemsBeforeMismatchAccess) throw new Error("replay access query must never charge gems");
+expectThrows("replay_checksum_mismatch", () => manager.handle("ready_host", { type: "unlock_replay", ...officialReplayIdentity, checksum: "wrong-checksum" }));
+if (Number(manager.adminSnapshot(false).total_wallet_gems) !== gemsBeforeMismatchAccess) throw new Error("mismatched replay unlock must not charge or return a key");
+db.prepare("UPDATE wallets SET gems = 0 WHERE player_id = ?").run("ready_host");
+expectThrows("insufficient_gems", () => manager.handle("ready_host", { type: "unlock_replay", ...officialReplayIdentity }));
 const replayUnlockNonParticipant = manager.connect();
 manager.handle(replayUnlockNonParticipant.id, { type: "hello", player_id: "replay_unlock_spectator", name: "Replay Unlock Spectator" });
-expectThrows("replay_access_denied", () => manager.handle("replay_unlock_spectator", { type: "unlock_replay", replay_id: replayId }));
-manager.handle("ready_host", { type: "mock_purchase", currency: "gems", amount: 10, source: "store_mock" });
+expectThrows("replay_access_denied", () => manager.handle("replay_unlock_spectator", { type: "unlock_replay", ...officialReplayIdentity }));
+manager.handle("ready_host", { type: "mock_purchase", currency: "gems", amount: 25, source: "store_mock" });
 readyHostMessages.length = 0;
 const gemsBeforeReplayUnlock = Number(manager.adminSnapshot(false).total_wallet_gems);
-manager.handle("ready_host", { type: "unlock_replay", replay_id: replayId });
+manager.handle("ready_host", { type: "unlock_replay", ...officialReplayIdentity });
 const replayUnlockMessage = readyHostMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "replay_unlocked") as
-  | { type: string; replay_id?: string; replay_key?: string; key_version?: number; checksum?: string; already_unlocked?: boolean; wallet?: { gems?: number } }
+  | { type: string; replay_id?: string; replay_type?: string; price_gems?: number; replay_key?: string; key_version?: number; checksum?: string; already_unlocked?: boolean; wallet?: { gems?: number }; profile_snapshot?: { wallet?: { gems?: number }; replay_economy?: { prices?: { official_human?: number; ai?: number; training?: number } } } }
   | undefined;
 if (!replayUnlockMessage || replayUnlockMessage.replay_id !== replayId || !replayUnlockMessage.replay_key || replayUnlockMessage.already_unlocked !== false) throw new Error("participant replay unlock should return replay key");
-if (Number(manager.adminSnapshot(false).total_wallet_gems) !== gemsBeforeReplayUnlock - 5) throw new Error("participant replay unlock should deduct gems once");
-if (countRows("replay_unlocks", "replay_id = '" + replayId + "' AND player_id = 'ready_host' AND currency = 'gems' AND cost = 5") !== 1) throw new Error("replay unlock should write replay_unlocks record");
-if (countRows("wallet_transactions", "reason = 'replay_unlock' AND currency = 'gems' AND amount = -5 AND related_room_id = '" + readyRoom.id + "'") !== 1) throw new Error("replay unlock should write wallet transaction");
+if (replayUnlockMessage.replay_type !== "official_human" || replayUnlockMessage.price_gems !== 20) throw new Error("official replay unlock should use authoritative 20 gem price");
+if (replayUnlockMessage.profile_snapshot?.wallet?.gems !== replayUnlockMessage.wallet?.gems) throw new Error("replay unlock should return refreshed authoritative profile wallet");
+if (replayUnlockMessage.profile_snapshot?.replay_economy?.prices?.official_human !== 20 || replayUnlockMessage.profile_snapshot?.replay_economy?.prices?.ai !== 10 || replayUnlockMessage.profile_snapshot?.replay_economy?.prices?.training !== 10) throw new Error("profile snapshot should publish authoritative replay economy config");
+if (Number(manager.adminSnapshot(false).total_wallet_gems) !== gemsBeforeReplayUnlock - 20) throw new Error("participant replay unlock should deduct gems once");
+if (countRows("replay_unlocks", "replay_id = '" + replayId + "' AND player_id = 'ready_host' AND currency = 'gems' AND cost = 20") !== 1) throw new Error("replay unlock should write replay_unlocks record");
+if (countRows("wallet_transactions", "reason = 'official_replay_unlock' AND currency = 'gems' AND amount = -20 AND related_room_id = '" + readyRoom.id + "'") !== 1) throw new Error("official replay unlock should write typed wallet transaction");
 readyHostMessages.length = 0;
-manager.handle("ready_host", { type: "unlock_replay", replay_id: replayId });
+manager.handle("ready_host", { type: "unlock_replay", ...officialReplayIdentity });
 const repeatedReplayUnlock = readyHostMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "replay_unlocked") as
   | { type: string; replay_key?: string; already_unlocked?: boolean }
   | undefined;
 if (!repeatedReplayUnlock || repeatedReplayUnlock.already_unlocked !== true || repeatedReplayUnlock.replay_key !== replayUnlockMessage.replay_key) throw new Error("repeated replay unlock should return same key without charging");
-if (Number(manager.adminSnapshot(false).total_wallet_gems) !== gemsBeforeReplayUnlock - 5) throw new Error("repeated replay unlock should not deduct gems twice");
-if (countRows("wallet_transactions", "reason = 'replay_unlock' AND currency = 'gems' AND amount = -5 AND related_room_id = '" + readyRoom.id + "'") !== 1) throw new Error("repeated replay unlock should not write another wallet transaction");
+if (Number(manager.adminSnapshot(false).total_wallet_gems) !== gemsBeforeReplayUnlock - 20) throw new Error("repeated replay unlock should not deduct gems twice");
+if (countRows("wallet_transactions", "reason = 'official_replay_unlock' AND currency = 'gems' AND amount = -20 AND related_room_id = '" + readyRoom.id + "'") !== 1) throw new Error("repeated replay unlock should not write another wallet transaction");
+
+for (const localReplayType of ["ai", "training"] as const) {
+  const playerId = `${localReplayType}_replay_owner`;
+  const messages: unknown[] = [];
+  const ws = { OPEN: 1, readyState: 1, send: (data: string) => messages.push(JSON.parse(data)) };
+  const client = manager.connect(ws as any);
+  manager.handle(client.id, { type: "hello", player_id: playerId, name: `${localReplayType} Replay Owner` });
+  const localReplayId = `local_${localReplayType}_replay_001`;
+  const gemsBefore = Number((db.prepare("SELECT gems FROM wallets WHERE player_id = ?").get(playerId) as { gems: number }).gems);
+  messages.length = 0;
+  manager.handle(playerId, { type: "unlock_replay", replay_id: localReplayId, replay_type: localReplayType });
+  const unlocked = messages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "replay_unlocked") as
+    | { replay_type?: string; price_gems?: number; replay_key?: string; already_unlocked?: boolean; wallet?: { gems?: number }; profile_snapshot?: { wallet?: { gems?: number } } }
+    | undefined;
+  if (!unlocked || unlocked.replay_type !== localReplayType || unlocked.price_gems !== 10 || unlocked.replay_key) throw new Error(`${localReplayType} replay should unlock for 10 gems without a replay key`);
+  if (unlocked.wallet?.gems !== gemsBefore - 10 || unlocked.profile_snapshot?.wallet?.gems !== gemsBefore - 10) throw new Error(`${localReplayType} replay unlock should refresh wallet and profile snapshot`);
+  if (countRows("replay_unlocks", `replay_id = '${localReplayId}' AND player_id = '${playerId}' AND cost = 10`) !== 1) throw new Error(`${localReplayType} replay should record one unlock`);
+  if (countRows("wallet_transactions", `player_id = '${playerId}' AND reason = '${localReplayType}_replay_unlock' AND amount = -10`) !== 1) throw new Error(`${localReplayType} replay should write typed wallet transaction`);
+  messages.length = 0;
+  manager.handle(playerId, { type: "unlock_replay", replay_id: localReplayId, replay_type: localReplayType });
+  const repeated = messages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "replay_unlocked") as { already_unlocked?: boolean } | undefined;
+  if (!repeated?.already_unlocked) throw new Error(`${localReplayType} replay repeated unlock should be idempotent`);
+  const gemsAfterRepeat = Number((db.prepare("SELECT gems FROM wallets WHERE player_id = ?").get(playerId) as { gems: number }).gems);
+  if (gemsAfterRepeat !== gemsBefore - 10) throw new Error(`${localReplayType} replay repeated unlock should not deduct twice`);
+}
+
+const poorTraining = manager.connect();
+manager.handle(poorTraining.id, { type: "hello", player_id: "poor_training_replay", name: "Poor Training Replay" });
+db.prepare("UPDATE wallets SET gems = 5 WHERE player_id = ?").run("poor_training_replay");
+expectThrows("insufficient_gems", () => manager.handle("poor_training_replay", { type: "unlock_replay", replay_id: "local_training_insufficient", replay_type: "training" }));
+if (countRows("replay_unlocks", "replay_id = 'local_training_insufficient'") !== 0) throw new Error("insufficient replay unlock must not create entitlement");
+if (countRows("wallet_transactions", "player_id = 'poor_training_replay' AND reason = 'training_replay_unlock'") !== 0) throw new Error("insufficient replay unlock must not write wallet transaction");
 readyRoom.table.phase = "preflop";
 const midJoiner = manager.connect();
 manager.handle(midJoiner.id, { type: "hello", player_id: "mid_joiner", name: "Mid Joiner" });
@@ -708,8 +1005,8 @@ manager.handle("mock_purchase_player", { type: "mock_purchase", currency: "gems"
 const afterMockPurchase = manager.adminSnapshot(false);
 if (Number(afterMockPurchase.total_wallet_chips) !== Number(beforeMockPurchase.total_wallet_chips) + 50000) throw new Error("mock chip purchase should update server wallet");
 if (Number(afterMockPurchase.total_wallet_gems) !== Number(beforeMockPurchase.total_wallet_gems) + 500) throw new Error("mock gem purchase should update server wallet");
-if (countRows("wallet_transactions", "reason = 'store_mock_purchase' AND currency = 'chips' AND amount = 50000") !== 1) throw new Error("mock chip purchase should write wallet transaction");
-if (countRows("wallet_transactions", "reason = 'store_mock_purchase' AND currency = 'gems' AND amount = 500") !== 1) throw new Error("mock gem purchase should write wallet transaction");
+if (countRows("wallet_transactions", "reason = 'store_mock_purchase' AND player_id = 'mock_purchase_player' AND currency = 'chips' AND amount = 50000") !== 1) throw new Error("mock chip purchase should write wallet transaction");
+if (countRows("wallet_transactions", "reason = 'store_mock_purchase' AND player_id = 'mock_purchase_player' AND currency = 'gems' AND amount = 500") !== 1) throw new Error("mock gem purchase should write wallet transaction");
 const purchaseResult = mockPurchaseMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "mock_purchase_result") as
   | { type: string; ok?: boolean; currency?: string; amount?: number; wallet?: { chips?: number; gems?: number } }
   | undefined;
@@ -826,6 +1123,8 @@ const steamHello = steamHelloMessages.find((message) => typeof message === "obje
       profile_snapshot?: {
         player_id?: string;
         display_name?: string;
+        steam_persona_name?: string;
+        steam_id?: string;
         is_new_player?: boolean;
         avatar_id?: string;
         wallet?: { chips?: number; gems?: number };
@@ -842,7 +1141,8 @@ const steamPlayerId = String(steamHello?.player_id || "");
 if (steamPlayerId === "" || steamPlayerId === "76561198000000006") throw new Error("new Steam identity should receive a distinct internal player_id");
 if (steamHello?.profile_snapshot?.player_id !== steamPlayerId) throw new Error("hello should return a unified profile_snapshot");
 if (steamHello.profile_snapshot.display_name !== "Steam Bootstrap" || steamHello.profile_snapshot.avatar_id !== "default") throw new Error("profile_snapshot should include player identity fields");
-if (steamHello.profile_snapshot.wallet?.chips !== 10000 || steamHello.profile_snapshot.wallet?.gems !== 0) throw new Error("new Steam profile_snapshot should include initial wallet");
+if (steamHello.profile_snapshot.steam_persona_name !== "Steam Bootstrap" || steamHello.profile_snapshot.steam_id !== "76561198000000006") throw new Error("new Steam profile should separate Steam identity fields");
+if (steamHello.profile_snapshot.wallet?.chips !== STARTER_CHIPS || steamHello.profile_snapshot.wallet?.gems !== STARTER_GEMS) throw new Error("new Steam profile_snapshot should include initial wallet");
 if (steamHello.profile_snapshot.progression?.total_xp !== 0 || steamHello.profile_snapshot.progression?.level !== 1 || steamHello.profile_snapshot.progression?.title_id !== "new_player") throw new Error("new Steam profile_snapshot should include default progression");
 if (steamHello.profile_snapshot.statistics?.hands_played !== 0 || steamHello.profile_snapshot.statistics?.hands_won !== 0 || steamHello.profile_snapshot.statistics?.chips_won !== 0 || steamHello.profile_snapshot.statistics?.gems_won !== 0) throw new Error("new Steam profile_snapshot should include default statistics");
 if (!steamHello.profile_snapshot.unlocked_avatar_ids?.includes("default")) throw new Error("new Steam profile_snapshot should include default avatar unlock");
@@ -862,18 +1162,52 @@ manager.handle(steamRepeatClient.id, {
   name: "Renamed Steam Persona",
 });
 const steamRepeatHello = steamRepeatMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
-  | { player_id?: string; is_new_player?: boolean; profile_snapshot?: { is_new_player?: boolean; display_name?: string; wallet?: { chips?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
+  | { player_id?: string; is_new_player?: boolean; profile_snapshot?: { is_new_player?: boolean; display_name?: string; steam_persona_name?: string; steam_id?: string; wallet?: { chips?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
   | undefined;
 if (steamRepeatHello?.player_id !== steamPlayerId) throw new Error("same Steam external_id should reuse internal player_id");
 if (steamRepeatHello.is_new_player !== false || steamRepeatHello.profile_snapshot?.is_new_player !== false) throw new Error("repeat Steam hello should mark is_new_player false");
-if (steamRepeatHello.profile_snapshot?.display_name !== "Renamed Steam Persona") throw new Error("Steam persona change should update display_name");
+if (steamRepeatHello.profile_snapshot?.display_name !== "Steam Bootstrap") throw new Error("Steam persona change must not overwrite game display_name");
+if (steamRepeatHello.profile_snapshot.steam_persona_name !== "Renamed Steam Persona" || steamRepeatHello.profile_snapshot.steam_id !== "76561198000000006") throw new Error("Steam persona change should update only Steam profile data");
 if (steamRepeatHello.profile_snapshot.wallet?.chips !== 8765) throw new Error("repeat Steam hello should not reset wallet");
 if (steamRepeatHello.profile_snapshot.progression?.total_xp !== 450 || steamRepeatHello.profile_snapshot.progression?.level !== 5 || steamRepeatHello.profile_snapshot.progression?.title_id !== "table_regular") throw new Error("repeat Steam hello should not reset progression");
 if (steamRepeatHello.profile_snapshot.statistics?.hands_played !== 12 || steamRepeatHello.profile_snapshot.statistics?.hands_won !== 4 || steamRepeatHello.profile_snapshot.statistics?.chips_won !== 2300 || steamRepeatHello.profile_snapshot.statistics?.gems_won !== 2) throw new Error("repeat Steam hello should not reset statistics");
-const steamInitialGrants = db.prepare("SELECT COUNT(*) AS count FROM wallet_transactions WHERE player_id = ? AND reason = 'initial_grant'").get(steamPlayerId) as { count: number };
-if (Number(steamInitialGrants.count) !== 1) throw new Error("repeat Steam hello should not repeat initial wallet grant");
+const steamInitialChipGrants = db.prepare("SELECT COUNT(*) AS count FROM wallet_transactions WHERE player_id = ? AND reason = 'initial_grant' AND currency = 'chips'").get(steamPlayerId) as { count: number };
+const steamInitialGemGrants = db.prepare("SELECT COUNT(*) AS count FROM wallet_transactions WHERE player_id = ? AND reason = 'initial_grant' AND currency = 'gems'").get(steamPlayerId) as { count: number };
+if (Number(steamInitialChipGrants.count) !== 1 || Number(steamInitialGemGrants.count) !== 1) throw new Error("repeat Steam hello should not repeat initial wallet grant");
 const steamDefaultUnlocks = db.prepare("SELECT COUNT(*) AS count FROM avatar_unlocks WHERE player_id = ? AND avatar_id = 'default'").get(steamPlayerId) as { count: number };
 if (Number(steamDefaultUnlocks.count) !== 1) throw new Error("repeat Steam hello should not repeat default avatar unlock");
+
+expectThrows("display_name_reserved", () => manager.handle(steamPlayerId, { type: "rename_display_name", display_name: "  Admin  " }));
+expectThrows("display_name_too_short", () => manager.handle(steamPlayerId, { type: "rename_display_name", display_name: "ab" }));
+expectThrows("display_name_too_long", () => manager.handle(steamPlayerId, { type: "rename_display_name", display_name: "12345678901234567" }));
+expectThrows("display_name_control_characters", () => manager.handle(steamPlayerId, { type: "rename_display_name", display_name: "Bad\nName" }));
+steamRepeatMessages.length = 0;
+manager.handle(steamPlayerId, { type: "rename_display_name", request_id: "rename_display_name:1", display_name: "  River   Reader  " });
+const renamedSteamProfile = steamRepeatMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "display_name_renamed") as
+  | { request_id?: string; display_name?: string; display_name_updated_at?: string | null; profile_snapshot?: { player_id?: string; display_name?: string; steam_persona_name?: string; steam_id?: string; display_name_updated_at?: string | null } }
+  | undefined;
+if (renamedSteamProfile?.request_id !== "rename_display_name:1" || renamedSteamProfile.display_name !== "River Reader") throw new Error("rename response should echo request id and authoritative display name");
+if (renamedSteamProfile?.profile_snapshot?.display_name !== "River Reader") throw new Error("first display name rename should trim and collapse whitespace");
+if (!renamedSteamProfile.profile_snapshot.display_name_updated_at) throw new Error("first display name rename should set cooldown timestamp");
+if (renamedSteamProfile.profile_snapshot.steam_persona_name !== "Renamed Steam Persona") throw new Error("display name rename must not change Steam persona");
+if (renamedSteamProfile.profile_snapshot.player_id !== steamPlayerId || renamedSteamProfile.profile_snapshot.steam_id !== "76561198000000006") throw new Error("display name rename must not change player identity");
+try {
+  manager.handle(steamPlayerId, { type: "rename_display_name", display_name: "Second Rename" });
+  throw new Error("expected rename_cooldown_active");
+} catch (error) {
+  const cooldownError = error as Error & { nextRenameAt?: string; cooldownRemainingSeconds?: number };
+  if (cooldownError.message !== "rename_cooldown_active") throw error;
+  if (!cooldownError.nextRenameAt || Number(cooldownError.cooldownRemainingSeconds ?? 0) <= 0) {
+    throw new Error("rename cooldown should include next_rename_at and remaining seconds");
+  }
+}
+db.prepare("UPDATE players SET display_name_updated_at = ? WHERE player_id = ?").run("2026-01-01T00:00:00.000Z", steamPlayerId);
+steamRepeatMessages.length = 0;
+manager.handle(steamPlayerId, { type: "rename_display_name", display_name: "After Cooldown" });
+const afterCooldownProfile = steamRepeatMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "display_name_renamed") as
+  | { profile_snapshot?: { display_name?: string; steam_persona_name?: string } }
+  | undefined;
+if (afterCooldownProfile?.profile_snapshot?.display_name !== "After Cooldown" || afterCooldownProfile.profile_snapshot.steam_persona_name !== "Renamed Steam Persona") throw new Error("rename should succeed after cooldown without changing Steam persona");
 
 db.prepare("DELETE FROM table_balances").run();
 const originalSteamAppId = config.steamAppId;
@@ -970,11 +1304,12 @@ manager.handle(legacyClient.id, {
   name: "Legacy Luna",
 });
 const legacyHello = legacyMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
-  | { player_id?: string; is_new_player?: boolean; profile_snapshot?: { is_new_player?: boolean; display_name?: string; wallet?: { chips?: number; gems?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
+  | { player_id?: string; is_new_player?: boolean; profile_snapshot?: { is_new_player?: boolean; display_name?: string; steam_persona_name?: string; steam_id?: string; wallet?: { chips?: number; gems?: number }; progression?: { total_xp?: number; level?: number; title_id?: string }; statistics?: { hands_played?: number; hands_won?: number; chips_won?: number; gems_won?: number } } }
   | undefined;
 if (legacyHello?.player_id !== "legacy_steam_player") throw new Error("legacy Steam identity should reuse existing internal player_id");
 if (legacyHello.is_new_player !== false || legacyHello.profile_snapshot?.is_new_player !== false) throw new Error("legacy self-healing hello should not mark existing player as new");
-if (legacyHello.profile_snapshot?.display_name !== "Legacy Luna") throw new Error("legacy hello should update display_name");
+if (legacyHello.profile_snapshot?.display_name !== "Legacy Before Bootstrap") throw new Error("legacy Steam hello must preserve historical display_name");
+if (legacyHello.profile_snapshot.steam_persona_name !== "Legacy Luna" || legacyHello.profile_snapshot.steam_id !== "76561198000000007") throw new Error("legacy Steam hello should sync persona and preserve identity mapping");
 if (legacyHello.profile_snapshot.wallet?.chips !== 4321 || legacyHello.profile_snapshot.wallet.gems !== 9) throw new Error("legacy bootstrap must not reset wallet");
 if (legacyHello.profile_snapshot.progression?.total_xp !== 0 || legacyHello.profile_snapshot.progression.level !== 1 || legacyHello.profile_snapshot.progression.title_id !== "new_player") throw new Error("legacy hello should self-heal default progression");
 if (legacyHello.profile_snapshot.statistics?.hands_played !== 0 || legacyHello.profile_snapshot.statistics.hands_won !== 0 || legacyHello.profile_snapshot.statistics.chips_won !== 0 || legacyHello.profile_snapshot.statistics.gems_won !== 0) throw new Error("legacy hello should self-heal default statistics");
@@ -996,6 +1331,38 @@ const legacyRepeatHello = legacyRepeatMessages.find((message) => typeof message 
 if (legacyRepeatHello?.player_id !== "legacy_steam_player") throw new Error("legacy repeat hello should keep same player_id");
 if (legacyRepeatHello.profile_snapshot?.progression?.total_xp !== 900 || legacyRepeatHello.profile_snapshot.progression.level !== 10 || legacyRepeatHello.profile_snapshot.progression.title_id !== "sharp_caller") throw new Error("legacy repeat hello must not reset existing progression");
 if (legacyRepeatHello.profile_snapshot.statistics?.hands_played !== 20 || legacyRepeatHello.profile_snapshot.statistics.hands_won !== 8 || legacyRepeatHello.profile_snapshot.statistics.chips_won !== 3456 || legacyRepeatHello.profile_snapshot.statistics.gems_won !== 11) throw new Error("legacy repeat hello must not reset existing statistics");
+
+const dailyCycleClient = manager.connect();
+manager.handle(dailyCycleClient.id, { type: "hello", player_id: "daily_cycle_player", name: "Daily Cycle" });
+const dailyCycleWalletRepository = new WalletRepository(db);
+const dailyCycleBonusRepository = new LoginBonusRepository(db, dailyCycleWalletRepository);
+const dailyCycleProfileRepository = new ProfileBootstrapRepository(db, dailyCycleBonusRepository);
+dailyCycleBonusRepository.setProgressionRepository(dailyCycleProfileRepository);
+const expectedDailyRewards = [
+  { chips: 1000, xp: 25, gems: 0 },
+  { chips: 1250, xp: 25, gems: 0 },
+  { chips: 1500, xp: 25, gems: 0 },
+  { chips: 2000, xp: 25, gems: 0 },
+  { chips: 2500, xp: 25, gems: 0 },
+  { chips: 3000, xp: 25, gems: 0 },
+  { chips: 6000, xp: 50, gems: 100 },
+];
+let expectedCycleChips = STARTER_CHIPS;
+let expectedCycleGems = STARTER_GEMS;
+let expectedCycleXp = 0;
+for (let index = 0; index < expectedDailyRewards.length; index += 1) {
+  const reward = expectedDailyRewards[index];
+  const result = dailyCycleBonusRepository.claimToday("daily_cycle_player", new Date(`2026-07-0${index + 1}T12:00:00.000Z`));
+  expectedCycleChips += reward.chips;
+  expectedCycleGems += reward.gems;
+  expectedCycleXp += reward.xp;
+  if (!result.daily_login_awarded || result.reward_day !== index + 1) throw new Error("daily bonus cycle should award each day in order");
+  if (result.awarded_chips !== reward.chips || result.awarded_xp !== reward.xp || result.awarded_gems !== reward.gems) throw new Error("daily bonus reward table should match starter economy");
+}
+const dailyCycleWallet = db.prepare("SELECT chips, gems FROM wallets WHERE player_id = ?").get("daily_cycle_player") as { chips: number; gems: number };
+const dailyCycleProgression = db.prepare("SELECT total_xp, level FROM player_progression WHERE player_id = ?").get("daily_cycle_player") as { total_xp: number; level: number };
+if (dailyCycleWallet.chips !== expectedCycleChips || dailyCycleWallet.gems !== expectedCycleGems) throw new Error("daily bonus cycle should grant the balanced chips and Day 7 gems");
+if (dailyCycleProgression.total_xp !== expectedCycleXp || dailyCycleProgression.level !== levelForTotalXp(expectedCycleXp)) throw new Error("daily bonus cycle should persist XP and derived level");
 
 console.log("DB_SMOKE_OK");
 console.log(JSON.stringify({ db_path: process.env.TEXAS_DB_PATH, player_count: manager.adminSnapshot(false).player_count, total_wallet_chips: manager.adminSnapshot(false).total_wallet_chips }, null, 2));
