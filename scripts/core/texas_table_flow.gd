@@ -876,6 +876,7 @@ func _add_visual_event(event_type: String, seat_id: int, action_label: String = 
 	var event: Dictionary = {
 		"id": _visual_event_number,
 		"type": event_type,
+		"phase": table_state,
 		"seat_id": seat_id,
 		"action": action_label,
 		"amount": amount,

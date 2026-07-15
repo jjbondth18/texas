@@ -7,6 +7,7 @@ const MUSIC_BUS := "Music"
 
 static var _player: AudioStreamPlayer
 static var _current_path := ""
+static var _player_attach_pending := false
 
 static func play_home_bgm(owner: Node) -> void:
 	_play_bgm(owner, HOME_BGM_PATH)
@@ -31,6 +32,7 @@ static func reset_for_tests() -> void:
 		_player.queue_free()
 	_player = null
 	_current_path = ""
+	_player_attach_pending = false
 
 static func _play_bgm(owner: Node, path: String) -> void:
 	if owner == null or owner.get_tree() == null:
@@ -47,12 +49,12 @@ static func _play_bgm(owner: Node, path: String) -> void:
 	_player.stream = stream
 	_player.bus = MUSIC_BUS
 	_current_path = path
-	_player.play()
+	_play_when_ready.call_deferred(path)
 
 static func _ensure_player(owner: Node) -> void:
 	if _player != null and is_instance_valid(_player):
 		if _player.get_parent() == null:
-			owner.get_tree().root.add_child(_player)
+			_defer_player_attach(owner)
 		return
 	_player = AudioStreamPlayer.new()
 	_player.name = "GlobalBGMPlayer"
@@ -61,7 +63,31 @@ static func _ensure_player(owner: Node) -> void:
 		if _player != null and is_instance_valid(_player):
 			_player.play()
 	)
-	owner.get_tree().root.add_child(_player)
+	_defer_player_attach(owner)
+
+static func _defer_player_attach(owner: Node) -> void:
+	if _player_attach_pending or owner == null or owner.get_tree() == null:
+		return
+	_player_attach_pending = true
+	_attach_player.call_deferred(owner.get_tree().root)
+
+static func _attach_player(root: Node) -> void:
+	_player_attach_pending = false
+	if _player == null or not is_instance_valid(_player) or root == null:
+		return
+	if _player.get_parent() == null:
+		root.add_child(_player)
+
+static func _play_when_ready(expected_path: String) -> void:
+	if _player == null or not is_instance_valid(_player):
+		return
+	if _current_path != expected_path:
+		return
+	if not _player.is_inside_tree():
+		_play_when_ready.call_deferred(expected_path)
+		return
+	if not _player.playing:
+		_player.play()
 
 static func _load_audio_stream(path: String) -> AudioStream:
 	if ResourceLoader.exists(path):

@@ -53,9 +53,36 @@ static func _objective_rows(record: Dictionary, players: Array) -> Array:
 			"flop": _objective_equity_label(record, players, community, fold_phase_by_seat, "flop", seat_index),
 			"turn": _objective_equity_label(record, players, community, fold_phase_by_seat, "turn", seat_index),
 			"river": _objective_equity_label(record, players, community, fold_phase_by_seat, "river", seat_index),
-			"final": _final_label(player, winner_seats, fold_phase_by_seat),
+			"final": _objective_final_label(record, player, winner_seats, fold_phase_by_seat),
 		})
 	return rows
+
+
+static func build_objective_equity_by_player(record: Dictionary) -> Dictionary:
+	var players: Array = _sorted_players(Array(record.get("players", [])))
+	var community: Dictionary = Dictionary(record.get("community_cards", {}))
+	var results: Dictionary = Dictionary(record.get("results", {}))
+	var winner_seats: Array[int] = _winner_seats(results)
+	var fold_phase_by_seat: Dictionary = _fold_phase_by_seat(Array(record.get("actions", [])))
+	var result := {
+		"preflop": {},
+		"flop": {},
+		"turn": {},
+		"river": {},
+		"final": {},
+	}
+	for player_item in players:
+		var player := Dictionary(player_item)
+		var seat_index := int(player.get("seat_index", -1))
+		var seat_key := _seat_key(seat_index)
+		for phase in PHASES:
+			var phase_values: Dictionary = Dictionary(result.get(phase, {}))
+			phase_values[seat_key] = _objective_equity_value(record, players, community, fold_phase_by_seat, phase, seat_index)
+			result[phase] = phase_values
+		var final_values: Dictionary = Dictionary(result.get("final", {}))
+		final_values[seat_key] = _objective_final_value(player, winner_seats, fold_phase_by_seat)
+		result["final"] = final_values
+	return result
 
 
 static func _perceived_rows(record: Dictionary, players: Array) -> Array:
@@ -81,14 +108,25 @@ static func _perceived_rows(record: Dictionary, players: Array) -> Array:
 
 
 static func _objective_equity_label(record: Dictionary, players: Array, community: Dictionary, fold_phase_by_seat: Dictionary, phase: String, target_seat: int) -> String:
+	var precomputed := Dictionary(record.get("objective_equity_by_player", {}))
+	var phase_values := Dictionary(precomputed.get(phase, {}))
+	var seat_key := _seat_key(target_seat)
+	if phase_values.has(seat_key):
+		return _objective_value_label(phase_values[seat_key])
+	if not _can_rebuild_objective(record, players):
+		return "Not Recorded"
+	return _objective_value_label(_objective_equity_value(record, players, community, fold_phase_by_seat, phase, target_seat))
+
+
+static func _objective_equity_value(record: Dictionary, players: Array, community: Dictionary, fold_phase_by_seat: Dictionary, phase: String, target_seat: int):
 	if _phase_missing(community, phase):
-		return "-"
+		return "not_recorded"
 	if _folded_before_phase(fold_phase_by_seat, target_seat, phase):
-		return "Folded"
+		return "folded"
 	var known_board: Array[String] = _board_for_phase(community, phase)
 	var active_players: Array = _active_players_for_phase(players, fold_phase_by_seat, phase)
 	if active_players.size() < 2:
-		return "N/A"
+		return "not_recorded"
 	var target_has_cards: bool = false
 	for player_item in active_players:
 		var player: Dictionary = Dictionary(player_item)
@@ -96,11 +134,11 @@ static func _objective_equity_label(record: Dictionary, players: Array, communit
 			target_has_cards = _hole_cards(player).size() == 2
 			break
 	if not target_has_cards:
-		return "N/A"
+		return "not_recorded"
 	var equity: float = _deterministic_monte_carlo(record, active_players, known_board, target_seat, phase, MONTE_CARLO_TRIALS)
 	if equity < 0.0:
-		return "N/A"
-	return "%.1f%%" % (equity * 100.0)
+		return "not_recorded"
+	return equity
 
 
 static func _perceived_player_equity_label(record: Dictionary, players: Array, community: Dictionary, fold_phase_by_seat: Dictionary, phase: String, target_seat: int) -> String:
@@ -316,6 +354,66 @@ static func _final_label(player: Dictionary, winner_seats: Array[int], fold_phas
 	if not winner_seats.is_empty():
 		return "Loss"
 	return "-"
+
+
+static func _objective_final_label(record: Dictionary, player: Dictionary, winner_seats: Array[int], fold_phase_by_seat: Dictionary) -> String:
+	var seat_index := int(player.get("seat_index", -1))
+	var precomputed := Dictionary(record.get("objective_equity_by_player", {}))
+	var final_values := Dictionary(precomputed.get("final", {}))
+	var seat_key := _seat_key(seat_index)
+	if final_values.has(seat_key):
+		return _objective_value_label(final_values[seat_key])
+	return _objective_value_label(_objective_final_value(player, winner_seats, fold_phase_by_seat))
+
+
+static func _objective_final_value(player: Dictionary, winner_seats: Array[int], fold_phase_by_seat: Dictionary) -> String:
+	var seat_index := int(player.get("seat_index", -1))
+	var final_status := str(player.get("final_status", "")).to_lower()
+	if winner_seats.has(seat_index):
+		return "split" if winner_seats.size() > 1 else "win"
+	if fold_phase_by_seat.has(seat_index) or final_status.find("fold") != -1:
+		return "folded"
+	if not winner_seats.is_empty():
+		return "loss"
+	return "not_recorded"
+
+
+static func _objective_value_label(value) -> String:
+	if typeof(value) in [TYPE_FLOAT, TYPE_INT]:
+		return "%.1f%%" % (float(value) * 100.0)
+	match str(value).to_lower():
+		"folded":
+			return "Folded"
+		"win":
+			return "Win"
+		"loss":
+			return "Loss"
+		"split":
+			return "Split"
+	return "Not Recorded"
+
+
+static func _can_rebuild_objective(record: Dictionary, players: Array) -> bool:
+	for player_item in players:
+		if _hole_cards(Dictionary(player_item)).size() != 2:
+			return false
+	var folded_seats: Dictionary = {}
+	for action_item in Array(record.get("actions", [])):
+		var action := Dictionary(action_item)
+		if str(action.get("action", "")).to_lower().find("fold") == -1:
+			continue
+		if str(action.get("street", "")).strip_edges() == "":
+			return false
+		folded_seats[int(action.get("actor_seat", action.get("seat_id", -1)))] = true
+	for player_item in players:
+		var player := Dictionary(player_item)
+		if str(player.get("final_status", "")).to_lower().find("fold") != -1 and not folded_seats.has(int(player.get("seat_index", -1))):
+			return false
+	return true
+
+
+static func _seat_key(seat_index: int) -> String:
+	return "seat_%d" % seat_index
 
 
 static func _winner_seats(results: Dictionary) -> Array[int]:

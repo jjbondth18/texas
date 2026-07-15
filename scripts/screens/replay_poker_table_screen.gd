@@ -204,39 +204,11 @@ func _configure_replay_timeline_panel() -> void:
 
 
 func _setup_top_replay_controls() -> void:
-	_top_root.visible = true
-	_top_root.anchor_left = 0.0
-	_top_root.anchor_top = 0.0
-	_top_root.anchor_right = 1.0
-	_top_root.anchor_bottom = 0.0
-	_top_root.offset_left = 0.0
-	_top_root.offset_top = 0.0
-	_top_root.offset_right = 0.0
-	_top_root.offset_bottom = 86.0
-	_top_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-
 	for child in _top_right_action_bar.get_children():
 		_top_right_action_bar.remove_child(child)
 		child.queue_free()
-	_top_right_action_bar.visible = true
-	_top_right_action_bar.anchor_left = 1.0
-	_top_right_action_bar.anchor_top = 0.0
-	_top_right_action_bar.anchor_right = 1.0
-	_top_right_action_bar.anchor_bottom = 0.0
-	_top_right_action_bar.offset_left = -312.0
-	_top_right_action_bar.offset_top = 10.0
-	_top_right_action_bar.offset_right = -20.0
-	_top_right_action_bar.offset_bottom = 52.0
-	_top_right_action_bar.alignment = BoxContainer.ALIGNMENT_END
-	_top_right_action_bar.add_theme_constant_override("separation", 10)
-
-	var back_detail: Button = _make_replay_button("BACK TO DETAIL", Vector2(146, 42))
-	back_detail.pressed.connect(func() -> void: back_to_detail_requested.emit())
-	_top_right_action_bar.add_child(back_detail)
-
-	_timeline_toggle_button = _make_replay_button("HIDE TIMELINE", Vector2(146, 42))
-	_timeline_toggle_button.pressed.connect(func() -> void: timeline_toggle_requested.emit())
-	_top_right_action_bar.add_child(_timeline_toggle_button)
+	_top_right_action_bar.visible = false
+	_top_root.visible = false
 
 
 func _setup_bottom_replay_controls() -> void:
@@ -256,8 +228,8 @@ func _setup_bottom_replay_controls() -> void:
 		return
 	_replay_controls_panel = PanelContainer.new()
 	_replay_controls_panel.name = "ReplayPokerControls"
-	_replay_controls_panel.position = Vector2(52, 100)
-	_replay_controls_panel.size = Vector2(552, 150)
+	_replay_controls_panel.position = Vector2(52, 66)
+	_replay_controls_panel.size = Vector2(552, 202)
 	_replay_controls_panel.custom_minimum_size = _replay_controls_panel.size
 	_replay_controls_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.010, 0.024, 0.72), Color(0.20, 0.80, 1.0, 0.34), 14, 1))
 	control_zone.add_child(_replay_controls_panel)
@@ -330,6 +302,18 @@ func _setup_bottom_replay_controls() -> void:
 	_speed_button = _make_replay_button("SPEED 1x", Vector2(122, 38))
 	_speed_button.pressed.connect(func() -> void: speed_toggle_requested.emit())
 	row.add_child(_speed_button)
+
+	var secondary_row := HBoxContainer.new()
+	secondary_row.name = "ReplaySecondaryActions"
+	secondary_row.alignment = BoxContainer.ALIGNMENT_END
+	secondary_row.add_theme_constant_override("separation", 12)
+	vbox.add_child(secondary_row)
+	var back_detail := _make_replay_button("BACK TO DETAIL", Vector2(146, 36))
+	back_detail.pressed.connect(func() -> void: back_to_detail_requested.emit())
+	secondary_row.add_child(back_detail)
+	_timeline_toggle_button = _make_replay_button("HIDE TIMELINE", Vector2(146, 36))
+	_timeline_toggle_button.pressed.connect(func() -> void: timeline_toggle_requested.emit())
+	secondary_row.add_child(_timeline_toggle_button)
 
 
 func _setup_equity_table_panel() -> void:

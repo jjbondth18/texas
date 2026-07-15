@@ -1188,14 +1188,16 @@ export class RoomManager {
         request_id: message.request_id,
         replay_id: replayId,
         replay_type: isReplayType(requestedType) ? requestedType : "official_human",
+        participant: false,
         unlocked: false,
         price_gems: isReplayType(requestedType) ? replayUnlockCost(requestedType) : replayUnlockCost("official_human"),
         supported: false,
         legacy_reason: "replay_not_found",
+        access_denied_reason: "replay_not_found",
       });
       return;
     }
-    if (!this.replays.isParticipant(replayId, client.id)) throw new Error("replay_access_denied");
+    const participant = this.replays.isParticipant(replayId, client.id);
     const replayType = String(replay.replay_type || "official_human");
     if (!isReplayType(replayType)) throw new Error("invalid_replay_type");
     const key = this.replays.getReplayKey(replayId);
@@ -1225,10 +1227,12 @@ export class RoomManager {
       replay_type: replayType,
       checksum: replay.checksum,
       key_version: key?.key_version ?? 0,
-      unlocked: supported && this.replays.isUnlocked(replayId, client.id),
+      participant,
+      unlocked: participant && supported && this.replays.isUnlocked(replayId, client.id),
       price_gems: replayUnlockCost(replayType),
-      supported,
+      supported: participant && supported,
       legacy_reason: legacyReason,
+      access_denied_reason: participant ? "" : "not_participant",
       algorithm,
       storage_mode: requiresKey ? "official_encrypted" : "local_only_plaintext",
       integrity_status: replay.integrity_status,
@@ -1256,10 +1260,12 @@ export class RoomManager {
       replay_type: replayType,
       checksum: replay.checksum,
       key_version: key?.key_version ?? 0,
+      participant: true,
       unlocked: true,
       price_gems: replayUnlockCost(replayType),
       supported: true,
       legacy_reason: "",
+      access_denied_reason: "",
       algorithm: replay.algorithm || REPLAY_ENCRYPTION_ALGORITHM,
       storage_mode: "official_encrypted",
       integrity_status: replay.integrity_status,

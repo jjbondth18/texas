@@ -179,9 +179,11 @@ export interface ServerMessage {
   already_unlocked?: boolean;
   replay_type?: "official_human" | "room_replay" | "ai" | "training";
   price_gems?: number;
+  participant?: boolean;
   unlocked?: boolean;
   supported?: boolean;
   legacy_reason?: string;
+  access_denied_reason?: string;
   algorithm?: string;
   storage_mode?: string;
   integrity_status?: string;

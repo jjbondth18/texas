@@ -2,6 +2,8 @@ extends RefCounted
 class_name HandReplayRecord
 
 const REPLAY_VERSION := 1
+const OBJECTIVE_EQUITY_DATA_VERSION := 1
+const ReplayEquityTableScript := preload("res://scripts/replay/replay_equity_table.gd")
 
 
 static func from_server_payload(payload: Dictionary) -> Dictionary:
@@ -25,7 +27,7 @@ static func from_local_flow(flow_snapshot: Dictionary, ui_snapshot: Dictionary, 
 	var players: Array = _players_from_local_flow(Array(flow_snapshot.get("seats", [])), settlement)
 	var community: Array = Array(hand.get("community_cards", [])).duplicate(true)
 	var actions: Array = _actions_from_local_events(Array(hand.get("visual_events", [])), Array(flow_snapshot.get("table_log", [])))
-	return {
+	var record := {
 		"replay_version": REPLAY_VERSION,
 		"hand_id": hand_id,
 		"room_id": str(ui_snapshot.get("table_id", "")),
@@ -52,6 +54,9 @@ static func from_local_flow(flow_snapshot: Dictionary, ui_snapshot: Dictionary, 
 		"actions": actions,
 		"results": _results_from_settlement(settlement),
 	}
+	record["objective_equity_data_version"] = OBJECTIVE_EQUITY_DATA_VERSION
+	record["objective_equity_by_player"] = ReplayEquityTableScript.build_objective_equity_by_player(record)
+	return record
 
 
 static func from_ui_snapshot(ui_snapshot: Dictionary, private_snapshot: Dictionary = {}) -> Dictionary:
@@ -143,6 +148,9 @@ static func _players_from_local_flow(seats: Array, settlement: Dictionary) -> Ar
 		if player_id == "":
 			continue
 		var seat_id: int = int(seat.get("seat_id", seat.get("seat_index", -1)))
+		var hole_cards := _card_codes(Array(seat.get("hole_cards", [])))
+		if str(seat.get("status", "")).to_lower() == "empty" and hole_cards.is_empty():
+			continue
 		var is_winner: bool = winner_ids.has(seat_id)
 		players.append({
 			"player_id": player_id,
@@ -154,7 +162,7 @@ static func _players_from_local_flow(seats: Array, settlement: Dictionary) -> Ar
 			"is_local": bool(seat.get("is_local", false)),
 			"starting_stack": int(seat.get("hand_starting_stack", seat.get("chips", 0))),
 			"ending_stack": int(seat.get("chips", 0)),
-			"hole_cards": _card_codes(Array(seat.get("hole_cards", []))),
+			"hole_cards": hole_cards,
 			"final_status": "winner" if is_winner else str(seat.get("status", "")),
 		})
 	return players

@@ -747,8 +747,16 @@ expectThrows("replay_checksum_mismatch", () => manager.handle("ready_host", { ty
 if (Number(manager.adminSnapshot(false).total_wallet_gems) !== gemsBeforeMismatchAccess) throw new Error("mismatched replay unlock must not charge or return a key");
 db.prepare("UPDATE wallets SET gems = 0 WHERE player_id = ?").run("ready_host");
 expectThrows("insufficient_gems", () => manager.handle("ready_host", { type: "unlock_replay", ...officialReplayIdentity }));
-const replayUnlockNonParticipant = manager.connect();
+const replayUnlockNonParticipantMessages: unknown[] = [];
+const replayUnlockNonParticipantWs = { OPEN: 1, readyState: 1, send: (data: string) => replayUnlockNonParticipantMessages.push(JSON.parse(data)) };
+const replayUnlockNonParticipant = manager.connect(replayUnlockNonParticipantWs as any);
 manager.handle(replayUnlockNonParticipant.id, { type: "hello", player_id: "replay_unlock_spectator", name: "Replay Unlock Spectator" });
+replayUnlockNonParticipantMessages.length = 0;
+manager.handle("replay_unlock_spectator", { type: "get_replay_access", ...officialReplayIdentity });
+const spectatorReplayAccess = replayUnlockNonParticipantMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "replay_access") as
+  | { participant?: boolean; supported?: boolean; unlocked?: boolean; access_denied_reason?: string }
+  | undefined;
+if (spectatorReplayAccess?.participant !== false || spectatorReplayAccess.supported !== false || spectatorReplayAccess.unlocked !== false || spectatorReplayAccess.access_denied_reason !== "not_participant") throw new Error("non-participant replay access should return a safe denied state without exposing an unlock action");
 expectThrows("replay_access_denied", () => manager.handle("replay_unlock_spectator", { type: "unlock_replay", ...officialReplayIdentity }));
 manager.handle("ready_host", { type: "mock_purchase", currency: "gems", amount: 25, source: "store_mock" });
 readyHostMessages.length = 0;
