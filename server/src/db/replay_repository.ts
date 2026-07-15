@@ -12,6 +12,8 @@ export interface ReplayIndexRecord {
   checksum: string;
   schema_version: number;
   replay_type: ReplayType;
+  algorithm: string;
+  integrity_status: "valid" | "legacy" | "collision" | "corrupted";
 }
 
 export interface ReplayParticipantRecord {
@@ -42,7 +44,7 @@ export class ReplayRepository {
   saveReplayIndex(record: ReplayIndexRecord): void {
     this.db
       .prepare(
-        "INSERT OR IGNORE INTO replay_index (replay_id, hand_id, room_id, room_code, table_type, currency, created_at, checksum, schema_version, replay_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO replay_index (replay_id, hand_id, room_id, room_code, table_type, currency, created_at, checksum, schema_version, replay_type, algorithm, integrity_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
         record.replay_id,
@@ -55,7 +57,42 @@ export class ReplayRepository {
         record.checksum,
         record.schema_version,
         record.replay_type,
+        record.algorithm,
+        record.integrity_status,
       );
+  }
+
+  createOfficialReplay(
+    index: ReplayIndexRecord,
+    key: ReplayKeyRecord,
+    participants: Array<Omit<ReplayParticipantRecord, "replay_id">>,
+  ): void {
+    if (key.replay_id !== index.replay_id) throw new Error("replay_identity_mismatch");
+    const insertIndex = this.db.prepare(
+      "INSERT INTO replay_index (replay_id, hand_id, room_id, room_code, table_type, currency, created_at, checksum, schema_version, replay_type, algorithm, integrity_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    );
+    const insertKey = this.db.prepare("INSERT INTO replay_keys (replay_id, key_material, key_version, created_at) VALUES (?, ?, ?, ?)");
+    const insertParticipant = this.db.prepare("INSERT INTO replay_participants (replay_id, player_id, seat_index) VALUES (?, ?, ?)");
+    this.db.transaction(() => {
+      insertIndex.run(
+        index.replay_id,
+        index.hand_id,
+        index.room_id,
+        index.room_code ?? null,
+        index.table_type,
+        index.currency,
+        index.created_at,
+        index.checksum,
+        index.schema_version,
+        index.replay_type,
+        index.algorithm,
+        index.integrity_status,
+      );
+      insertKey.run(key.replay_id, key.key_material, Math.floor(key.key_version), key.created_at);
+      for (const participant of participants) {
+        insertParticipant.run(index.replay_id, participant.player_id, Math.floor(participant.seat_index));
+      }
+    })();
   }
 
   ensureLocalReplay(replayId: string, playerId: string, replayType: "ai" | "training", now = new Date().toISOString()): ReplayIndexRecord {
@@ -70,6 +107,8 @@ export class ReplayRepository {
       checksum: "",
       schema_version: 1,
       replay_type: replayType,
+      algorithm: "",
+      integrity_status: "valid",
     });
     this.saveParticipants(replayId, [{ player_id: playerId, seat_index: -1 }]);
     const replay = this.getReplayIndex(replayId);
@@ -78,7 +117,9 @@ export class ReplayRepository {
   }
 
   saveParticipants(replayId: string, participants: Array<Omit<ReplayParticipantRecord, "replay_id">>): void {
-    const insert = this.db.prepare("INSERT OR IGNORE INTO replay_participants (replay_id, player_id, seat_index) VALUES (?, ?, ?)");
+    const insert = this.db.prepare(
+      "INSERT INTO replay_participants (replay_id, player_id, seat_index) VALUES (?, ?, ?) ON CONFLICT(replay_id, player_id) DO UPDATE SET seat_index = excluded.seat_index",
+    );
     const transaction = this.db.transaction(() => {
       for (const participant of participants) {
         insert.run(replayId, participant.player_id, Math.floor(participant.seat_index));
@@ -89,7 +130,7 @@ export class ReplayRepository {
 
   saveReplayKey(record: ReplayKeyRecord): void {
     this.db
-      .prepare("INSERT OR IGNORE INTO replay_keys (replay_id, key_material, key_version, created_at) VALUES (?, ?, ?, ?)")
+      .prepare("INSERT INTO replay_keys (replay_id, key_material, key_version, created_at) VALUES (?, ?, ?, ?)")
       .run(record.replay_id, record.key_material, Math.floor(record.key_version), record.created_at);
   }
 
@@ -122,7 +163,7 @@ export class ReplayRepository {
     // TODO: Wire transaction_id to wallet_transactions once WalletRepository returns inserted transaction IDs.
     this.db
       .prepare(
-        "INSERT OR IGNORE INTO replay_unlocks (replay_id, player_id, currency, cost, transaction_id, unlocked_at) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO replay_unlocks (replay_id, player_id, currency, cost, transaction_id, unlocked_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(replay_id, player_id) DO NOTHING",
       )
       .run(replayId, playerId, currency, Math.floor(cost), transactionId ?? null, unlockedAt);
     const unlock = this.getUnlock(replayId, playerId);

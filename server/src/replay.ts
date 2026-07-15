@@ -1,7 +1,9 @@
 import type { ActionLogEntry, Card } from "./protocol.js";
 import type { TableState } from "./table_state.js";
-import { createCipheriv, createHash, createHmac, randomBytes } from "node:crypto";
+import { createCipheriv, createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { replayTypeForOfficialTable, type ReplayType } from "./replay_economy.js";
+
+export const REPLAY_ENCRYPTION_ALGORITHM = "AES-256-CBC-HMAC-SHA256" as const;
 
 export interface ReplayRoomMeta {
   roomCode?: string;
@@ -61,7 +63,7 @@ export interface EncryptedReplayDelivery {
   encrypted_private_blob: string;
   checksum: string;
   key_version: number;
-  algorithm: "AES-256-CBC-HMAC-SHA256";
+  algorithm: typeof REPLAY_ENCRYPTION_ALGORITHM;
 }
 
 function cardCode(card: Card): string {
@@ -164,8 +166,8 @@ export function buildHandReplayRecord(table: TableState, meta: ReplayRoomMeta): 
   };
 }
 
-export function replayIdFor(table: TableState): string {
-  return `${table.roomId}_hand_${String(table.handId).padStart(6, "0")}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+export function replayIdFor(_table?: TableState): string {
+  return `replay_${randomUUID()}`;
 }
 
 export function generateReplayKey(): string {
@@ -186,7 +188,7 @@ export function buildEncryptedReplayDelivery(record: Record<string, unknown>, ke
     encrypted_private_blob: encryptedPrivateBlob,
     checksum,
     key_version: 1,
-    algorithm: "AES-256-CBC-HMAC-SHA256",
+    algorithm: REPLAY_ENCRYPTION_ALGORITHM,
   };
 }
 
@@ -203,7 +205,7 @@ function encryptReplayRecord(record: Record<string, unknown>, keyMaterial: strin
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const mac = createHmac("sha256", macKey).update(Buffer.concat([iv, ciphertext])).digest();
   return JSON.stringify({
-    algorithm: "AES-256-CBC-HMAC-SHA256",
+    algorithm: REPLAY_ENCRYPTION_ALGORITHM,
     iv: iv.toString("base64"),
     ciphertext: ciphertext.toString("base64"),
     mac: mac.toString("base64"),
@@ -275,9 +277,9 @@ function replayTypeFromRecord(record: Record<string, unknown>): ReplayType {
 }
 
 function replayIdFromRecord(record: Record<string, unknown>): string {
-  const roomId = String(record.room_id || "room");
-  const handId = String(record.hand_id || "hand_000000");
-  return `${roomId}_${handId}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const replayId = String(record.replay_id || "").trim();
+  if (replayId !== "") return replayId;
+  return replayIdFor();
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

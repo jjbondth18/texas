@@ -11,12 +11,12 @@ import { PlayerRepository } from "./db/player_repository.js";
 import { IdentityRepository } from "./db/identity_repository.js";
 import { ResultRepository } from "./db/result_repository.js";
 import { WalletRepository } from "./db/wallet_repository.js";
-import { ReplayRepository } from "./db/replay_repository.js";
+import { ReplayRepository, type ReplayIndexRecord } from "./db/replay_repository.js";
 import { TableBalanceRepository, type TableBalanceCurrency } from "./db/table_balance_repository.js";
 import { ProfileBootstrapRepository } from "./db/profile_bootstrap_repository.js";
 import { AVATAR_CATALOG, DEFAULT_AVATAR_PRICE_CHIPS, findAvatarCatalogItem } from "./avatar_catalog.js";
 import { config, type SteamAuthMode } from "./config.js";
-import { buildEncryptedReplayDelivery, buildHandReplayRecord, generateReplayKey, replayIdFor, type EncryptedReplayDelivery } from "./replay.js";
+import { buildEncryptedReplayDelivery, buildHandReplayRecord, generateReplayKey, replayIdFor, REPLAY_ENCRYPTION_ALGORITHM, type EncryptedReplayDelivery } from "./replay.js";
 import { SteamWebApiAuthVerifier, type SteamAuthVerifier } from "./services/steam_auth_verifier.js";
 import {
   REPLAY_ECONOMY_CONFIG,
@@ -144,10 +144,12 @@ export class RoomManager {
   private readonly tableBalances = new TableBalanceRepository(this.db);
   private readonly steamAuthVerifier: SteamAuthVerifier;
   private readonly steamAuthMode: SteamAuthMode;
+  private readonly replayIdFactory: () => string;
 
-  constructor(options: { steamAuthVerifier?: SteamAuthVerifier; steamAuthMode?: SteamAuthMode } = {}) {
+  constructor(options: { steamAuthVerifier?: SteamAuthVerifier; steamAuthMode?: SteamAuthMode; replayIdFactory?: () => string } = {}) {
     this.steamAuthVerifier = options.steamAuthVerifier ?? new SteamWebApiAuthVerifier(config.steamWebApiPublisherKey);
     this.steamAuthMode = options.steamAuthMode ?? config.steamAuthMode;
+    this.replayIdFactory = options.replayIdFactory ?? (() => replayIdFor());
     this.loginBonus.setProgressionRepository(this.profileBootstrap);
     this.recoverOutstandingTableBalances();
   }
@@ -297,6 +299,10 @@ export class RoomManager {
     }
     if (message.type === "unlock_replay") {
       this.unlockReplay(client, message);
+      return;
+    }
+    if (message.type === "get_replay_access") {
+      this.getReplayAccess(client, message);
       return;
     }
     const roomId = message.room_id || client.roomId;
@@ -1106,6 +1112,7 @@ export class RoomManager {
       const requiresKey = replayType === "official_human" || replayType === "room_replay";
       const key = this.replays.getReplayKey(replayId);
       if (requiresKey && !key) throw new Error("replay_key_missing");
+      if (requiresKey) this.validateReplayClientIdentity(message, replay, key?.key_version ?? 0);
       const priceGems = replayUnlockCost(replayType);
       const existing = this.replays.getUnlock(replayId, client.id);
       if (existing) {
@@ -1137,6 +1144,7 @@ export class RoomManager {
       replay_key: result.key?.key_material,
       key_version: result.key?.key_version,
       checksum: result.replay.checksum,
+      algorithm: result.replay.algorithm || REPLAY_ENCRYPTION_ALGORITHM,
       already_unlocked: result.alreadyUnlocked,
       replay_type: result.replayType,
       price_gems: result.priceGems,
@@ -1144,6 +1152,76 @@ export class RoomManager {
       profile_snapshot: this.authoritativeProfileSnapshot(client.id),
     });
     this.send(client, { type: "wallet_snapshot", request_id: message.request_id, player_id: client.id, wallet: result.wallet });
+  }
+
+  private getReplayAccess(client: Client, message: ClientMessage): void {
+    const replayId = String(message.replay_id || "").trim();
+    if (replayId === "") throw new Error("replay_not_found");
+    const requestedType = String(message.replay_type || "").trim();
+    let replay = this.replays.getReplayIndex(replayId);
+    if (!replay && (requestedType === "ai" || requestedType === "training")) {
+      replay = this.replays.ensureLocalReplay(replayId, client.id, requestedType);
+    }
+    if (!replay) {
+      this.send(client, {
+        type: "replay_access",
+        request_id: message.request_id,
+        replay_id: replayId,
+        replay_type: isReplayType(requestedType) ? requestedType : "official_human",
+        unlocked: false,
+        price_gems: isReplayType(requestedType) ? replayUnlockCost(requestedType) : replayUnlockCost("official_human"),
+        supported: false,
+        legacy_reason: "replay_not_found",
+      });
+      return;
+    }
+    if (!this.replays.isParticipant(replayId, client.id)) throw new Error("replay_access_denied");
+    const replayType = String(replay.replay_type || "official_human");
+    if (!isReplayType(replayType)) throw new Error("invalid_replay_type");
+    const key = this.replays.getReplayKey(replayId);
+    const requiresKey = replayType === "official_human" || replayType === "room_replay";
+    let supported = replay.integrity_status !== "collision" && replay.integrity_status !== "corrupted";
+    let legacyReason = supported ? "" : replay.integrity_status;
+    const requestedChecksum = String(message.checksum || "").trim();
+    if (requiresKey && requestedChecksum !== replay.checksum) {
+      supported = false;
+      legacyReason = requestedChecksum === "" ? "missing_checksum" : "checksum_mismatch";
+    }
+    const requestedKeyVersion = Number(message.key_version || 0);
+    if (requiresKey && (!key || requestedKeyVersion !== key.key_version)) {
+      supported = false;
+      legacyReason = !key ? "replay_key_missing" : "key_version_mismatch";
+    }
+    const requestedAlgorithm = String(message.algorithm || "").trim();
+    const algorithm = replay.algorithm || REPLAY_ENCRYPTION_ALGORITHM;
+    if (requiresKey && requestedAlgorithm !== algorithm) {
+      supported = false;
+      legacyReason = requestedAlgorithm === "" ? "missing_algorithm" : "algorithm_mismatch";
+    }
+    this.send(client, {
+      type: "replay_access",
+      request_id: message.request_id,
+      replay_id: replayId,
+      replay_type: replayType,
+      checksum: replay.checksum,
+      key_version: key?.key_version ?? 0,
+      unlocked: supported && this.replays.isUnlocked(replayId, client.id),
+      price_gems: replayUnlockCost(replayType),
+      supported,
+      legacy_reason: legacyReason,
+      algorithm,
+      storage_mode: requiresKey ? "official_encrypted" : "local_only_plaintext",
+      integrity_status: replay.integrity_status,
+    });
+  }
+
+  private validateReplayClientIdentity(message: ClientMessage, replay: ReplayIndexRecord, keyVersion: number): void {
+    if (String(message.checksum || "").trim() !== replay.checksum) throw new Error("replay_checksum_mismatch");
+    if (Number(message.key_version || 0) !== keyVersion) throw new Error("replay_key_version_mismatch");
+    const algorithm = replay.algorithm || REPLAY_ENCRYPTION_ALGORITHM;
+    if (String(message.algorithm || "").trim() !== algorithm) throw new Error("replay_unsupported");
+    if (String(message.storage_mode || "").trim() !== "official_encrypted") throw new Error("replay_unsupported");
+    if (replay.integrity_status === "collision" || replay.integrity_status === "corrupted") throw new Error("replay_unsupported");
   }
 
   private markHostStartedLocalWarmup(room: Room, client: Client): void {
@@ -1769,11 +1847,11 @@ export class RoomManager {
     }
   }
 
-  private encryptedReplayDelivery(room: Room): EncryptedReplayDelivery {
+  private encryptedReplayDelivery(room: Room): EncryptedReplayDelivery | undefined {
     const cached = room.replayDeliveries.get(room.table.handId);
     if (cached) return cached;
-    const replayId = replayIdFor(room.table);
-    const keyMaterial = this.replays.getReplayKey(replayId)?.key_material ?? generateReplayKey();
+    const replayId = this.replayIdFactory();
+    const keyMaterial = generateReplayKey();
     const record = buildHandReplayRecord(room.table, {
       roomCode: room.roomCode,
       mode: room.visibility === "private" ? "private" : "public",
@@ -1785,25 +1863,32 @@ export class RoomManager {
     record.replay_id = replayId;
     const delivery = buildEncryptedReplayDelivery(record, keyMaterial);
     const createdAt = delivery.metadata.created_at;
-    this.replays.saveReplayIndex({
-      replay_id: replayId,
-      hand_id: delivery.metadata.hand_id,
-      room_id: room.id,
-      room_code: room.roomCode,
-      table_type: room.tableType,
-      currency: roomCurrency(room),
-      created_at: createdAt,
-      checksum: delivery.checksum,
-      schema_version: delivery.metadata.schema_version,
-      replay_type: replayTypeForOfficialTable(room.tableType, room.visibility),
-    });
-    this.replays.saveParticipants(
-      replayId,
-      room.table.seats
-        .filter((seat) => seat.playerId !== "")
-        .map((seat) => ({ player_id: seat.playerId, seat_index: seat.seatIndex })),
-    );
-    this.replays.saveReplayKey({ replay_id: replayId, key_material: keyMaterial, key_version: delivery.key_version, created_at: createdAt });
+    try {
+      this.replays.createOfficialReplay(
+        {
+          replay_id: replayId,
+          hand_id: delivery.metadata.hand_id,
+          room_id: room.id,
+          room_code: room.roomCode,
+          table_type: room.tableType,
+          currency: roomCurrency(room),
+          created_at: createdAt,
+          checksum: delivery.checksum,
+          schema_version: delivery.metadata.schema_version,
+          replay_type: replayTypeForOfficialTable(room.tableType, room.visibility),
+          algorithm: delivery.algorithm,
+          integrity_status: "valid",
+        },
+        { replay_id: replayId, key_material: keyMaterial, key_version: delivery.key_version, created_at: createdAt },
+        room.table.seats
+          .filter((seat) => seat.playerId !== "")
+          .map((seat) => ({ player_id: seat.playerId, seat_index: seat.seatIndex })),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown_error";
+      console.error(`[ReplaySecurity] replay persistence failed replay_id=${replayId} error=${message}`);
+      return undefined;
+    }
     room.replayDeliveries.set(room.table.handId, delivery);
     return delivery;
   }

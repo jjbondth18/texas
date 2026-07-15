@@ -12,6 +12,9 @@ import type { SteamAuthVerifier, SteamAuthVerificationResult } from "./services/
 import { settleHand } from "./showdown_engine.js";
 import Database from "better-sqlite3";
 import { migration010PlayerDisplayName } from "./db/migrations/010_player_display_name.js";
+import { ReplayRepository } from "./db/replay_repository.js";
+import { replayIdFor } from "./replay.js";
+import { TableState } from "./table_state.js";
 
 const STARTER_CHIPS = 30000;
 const STARTER_GEMS = 500;
@@ -680,18 +683,77 @@ if (!String(replayDelivery.encrypted_private_blob || "").includes("AES-256-CBC-H
 if (!String(replayDelivery.encrypted_private_blob || "").includes("ciphertext")) throw new Error("encrypted replay delivery should include encrypted private blob envelope");
 const replayId = String(replayDelivery.replay_id || "");
 if (replayId === "") throw new Error("encrypted replay delivery should include replay_id");
+if (!/^replay_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(replayId)) throw new Error("official replay_id should be a UUID v4 independent of room and hand ids");
+const generatedReplayIds = new Set(Array.from({ length: 500 }, () => replayIdFor()));
+if (generatedReplayIds.size !== 500) throw new Error("replay UUID generation should not repeat across a large sample");
+const restartTableA = new TableState("room_1");
+const restartTableB = new TableState("room_1");
+restartTableA.handId = 1;
+restartTableB.handId = 1;
+if (replayIdFor(restartTableA) === replayIdFor(restartTableB)) throw new Error("server restart with reused room/hand ids must still generate distinct replay ids");
 if (countRows("replay_index", "replay_id = '" + replayId + "'") !== 1) throw new Error("replay_index should persist encrypted replay metadata");
 if (countRows("replay_participants", "replay_id = '" + replayId + "'") < 2) throw new Error("replay_participants should persist hand participants");
 if (countRows("replay_keys", "replay_id = '" + replayId + "'") !== 1) throw new Error("replay_keys should persist replay key material");
+const replayRepository = new ReplayRepository(db);
+const persistedReplay = replayRepository.getReplayIndex(replayId);
+const persistedReplayKey = replayRepository.getReplayKey(replayId);
+if (!persistedReplay || !persistedReplayKey || persistedReplay.integrity_status !== "valid" || persistedReplay.algorithm !== "AES-256-CBC-HMAC-SHA256") throw new Error("new replay index should persist valid integrity metadata and algorithm");
+expectThrows("UNIQUE constraint failed: replay_index.replay_id", () =>
+  replayRepository.createOfficialReplay(
+    { ...persistedReplay, checksum: "forced-collision-checksum" },
+    { ...persistedReplayKey, key_material: "forced-collision-key" },
+    [{ player_id: "forced_collision_participant", seat_index: 7 }],
+  ),
+);
+if (replayRepository.getReplayIndex(replayId)?.checksum !== persistedReplay.checksum) throw new Error("duplicate replay transaction must not overwrite the original index");
+if (replayRepository.getReplayKey(replayId)?.key_material !== persistedReplayKey.key_material) throw new Error("duplicate replay transaction must not overwrite the original key");
+if (replayRepository.isParticipant(replayId, "forced_collision_participant")) throw new Error("duplicate replay transaction must roll back participant inserts");
+const replayManagerAccess = manager as unknown as {
+  replayIdFactory: () => string;
+  encryptedReplayDelivery(room: ReturnType<RoomManager["createRoom"]>): unknown;
+};
+const originalReplayIdFactory = replayManagerAccess.replayIdFactory;
+replayManagerAccess.replayIdFactory = () => replayId;
+const forcedCollisionRoom = manager.createRoom();
+forcedCollisionRoom.table.handId = 1;
+forcedCollisionRoom.table.phase = "hand_over";
+const collisionDelivery = replayManagerAccess.encryptedReplayDelivery(forcedCollisionRoom);
+replayManagerAccess.replayIdFactory = originalReplayIdFactory;
+if (collisionDelivery !== undefined || forcedCollisionRoom.replayDeliveries.size !== 0) throw new Error("failed replay persistence must not cache or send a replay delivery");
+if (replayRepository.getReplayIndex(replayId)?.checksum !== persistedReplay.checksum || replayRepository.getReplayKey(replayId)?.key_material !== persistedReplayKey.key_material) throw new Error("failed delivery persistence must preserve original replay metadata and key");
+const officialReplayIdentity = {
+  replay_id: replayId,
+  replay_type: "official_human" as const,
+  checksum: String(replayDelivery.checksum || ""),
+  key_version: Number(replayDelivery.key_version || 0),
+  algorithm: "AES-256-CBC-HMAC-SHA256",
+  storage_mode: "official_encrypted",
+};
+readyHostMessages.length = 0;
+manager.handle("ready_host", { type: "get_replay_access", ...officialReplayIdentity });
+const initialReplayAccess = readyHostMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "replay_access") as
+  | { supported?: boolean; unlocked?: boolean; checksum?: string; key_version?: number; price_gems?: number }
+  | undefined;
+if (!initialReplayAccess?.supported || initialReplayAccess.unlocked || initialReplayAccess.checksum !== officialReplayIdentity.checksum || initialReplayAccess.key_version !== officialReplayIdentity.key_version || initialReplayAccess.price_gems !== 20) throw new Error("server replay access should be authoritative before unlock");
+readyHostMessages.length = 0;
+const gemsBeforeMismatchAccess = Number(manager.adminSnapshot(false).total_wallet_gems);
+manager.handle("ready_host", { type: "get_replay_access", ...officialReplayIdentity, checksum: "wrong-checksum" });
+const mismatchReplayAccess = readyHostMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "replay_access") as
+  | { supported?: boolean; unlocked?: boolean; legacy_reason?: string }
+  | undefined;
+if (mismatchReplayAccess?.supported !== false || mismatchReplayAccess.unlocked !== false || mismatchReplayAccess.legacy_reason !== "checksum_mismatch") throw new Error("mismatched local replay identity should be unsupported without charging");
+if (Number(manager.adminSnapshot(false).total_wallet_gems) !== gemsBeforeMismatchAccess) throw new Error("replay access query must never charge gems");
+expectThrows("replay_checksum_mismatch", () => manager.handle("ready_host", { type: "unlock_replay", ...officialReplayIdentity, checksum: "wrong-checksum" }));
+if (Number(manager.adminSnapshot(false).total_wallet_gems) !== gemsBeforeMismatchAccess) throw new Error("mismatched replay unlock must not charge or return a key");
 db.prepare("UPDATE wallets SET gems = 0 WHERE player_id = ?").run("ready_host");
-expectThrows("insufficient_gems", () => manager.handle("ready_host", { type: "unlock_replay", replay_id: replayId }));
+expectThrows("insufficient_gems", () => manager.handle("ready_host", { type: "unlock_replay", ...officialReplayIdentity }));
 const replayUnlockNonParticipant = manager.connect();
 manager.handle(replayUnlockNonParticipant.id, { type: "hello", player_id: "replay_unlock_spectator", name: "Replay Unlock Spectator" });
-expectThrows("replay_access_denied", () => manager.handle("replay_unlock_spectator", { type: "unlock_replay", replay_id: replayId }));
+expectThrows("replay_access_denied", () => manager.handle("replay_unlock_spectator", { type: "unlock_replay", ...officialReplayIdentity }));
 manager.handle("ready_host", { type: "mock_purchase", currency: "gems", amount: 25, source: "store_mock" });
 readyHostMessages.length = 0;
 const gemsBeforeReplayUnlock = Number(manager.adminSnapshot(false).total_wallet_gems);
-manager.handle("ready_host", { type: "unlock_replay", replay_id: replayId });
+manager.handle("ready_host", { type: "unlock_replay", ...officialReplayIdentity });
 const replayUnlockMessage = readyHostMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "replay_unlocked") as
   | { type: string; replay_id?: string; replay_type?: string; price_gems?: number; replay_key?: string; key_version?: number; checksum?: string; already_unlocked?: boolean; wallet?: { gems?: number }; profile_snapshot?: { wallet?: { gems?: number }; replay_economy?: { prices?: { official_human?: number; ai?: number; training?: number } } } }
   | undefined;
@@ -703,7 +765,7 @@ if (Number(manager.adminSnapshot(false).total_wallet_gems) !== gemsBeforeReplayU
 if (countRows("replay_unlocks", "replay_id = '" + replayId + "' AND player_id = 'ready_host' AND currency = 'gems' AND cost = 20") !== 1) throw new Error("replay unlock should write replay_unlocks record");
 if (countRows("wallet_transactions", "reason = 'official_replay_unlock' AND currency = 'gems' AND amount = -20 AND related_room_id = '" + readyRoom.id + "'") !== 1) throw new Error("official replay unlock should write typed wallet transaction");
 readyHostMessages.length = 0;
-manager.handle("ready_host", { type: "unlock_replay", replay_id: replayId });
+manager.handle("ready_host", { type: "unlock_replay", ...officialReplayIdentity });
 const repeatedReplayUnlock = readyHostMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "replay_unlocked") as
   | { type: string; replay_key?: string; already_unlocked?: boolean }
   | undefined;

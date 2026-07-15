@@ -20,6 +20,7 @@ export type ClientMessageType =
   | "select_avatar"
   | "mock_purchase"
   | "unlock_replay"
+  | "get_replay_access"
   | "list_tables"
   | "quick_join_table"
   | "create_table"
@@ -44,6 +45,7 @@ export type ServerMessageType =
   | "private_table_joined"
   | "mock_purchase_result"
   | "replay_unlocked"
+  | "replay_access"
   | "start_ai_warmup_result"
   | "error";
 export type ErrorCode =
@@ -58,6 +60,9 @@ export type ErrorCode =
   | "replay_access_denied"
   | "replay_key_missing"
   | "replay_unlock_failed"
+  | "replay_checksum_mismatch"
+  | "replay_key_version_mismatch"
+  | "replay_unsupported"
   | "invalid_replay_type"
   | "room_not_found"
   | "room_not_available"
@@ -125,6 +130,10 @@ export interface ClientMessage {
   room_code?: string;
   replay_id?: string;
   replay_type?: "official_human" | "room_replay" | "ai" | "training";
+  checksum?: string;
+  key_version?: number;
+  algorithm?: string;
+  storage_mode?: string;
 }
 
 export interface ServerMessage {
@@ -167,6 +176,12 @@ export interface ServerMessage {
   already_unlocked?: boolean;
   replay_type?: "official_human" | "room_replay" | "ai" | "training";
   price_gems?: number;
+  unlocked?: boolean;
+  supported?: boolean;
+  legacy_reason?: string;
+  algorithm?: string;
+  storage_mode?: string;
+  integrity_status?: string;
   is_ai_warmup?: boolean;
   local_warmup?: boolean;
   host_in_local_warmup?: boolean;

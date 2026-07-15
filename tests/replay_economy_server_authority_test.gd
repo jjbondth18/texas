@@ -10,4 +10,5 @@ func run() -> void:
 	assert(economy_source.find("training_replay_unlock") != -1)
 	assert(room_source.find("replayUnlockCost(replayType)") != -1)
 	assert(room_source.find("profile_snapshot: this.authoritativeProfileSnapshot(client.id)") != -1)
-	assert(protocol_source.find('{"replay_id": replay_id, "replay_type": replay_type}') != -1)
+	assert(protocol_source.find("_replay_identity_payload") != -1)
+	assert(protocol_source.find("checksum") != -1)

@@ -18,7 +18,8 @@ signal table_list_received(tables: Array)
 signal table_created(room_id: String, table_info: Dictionary)
 signal table_joined(room_id: String, table_info: Dictionary)
 signal mock_purchase_result_received(ok: bool, currency: String, amount: int, wallet: Dictionary)
-signal replay_unlocked_received(replay_id: String, replay_type: String, price_gems: int, replay_key: String, key_version: int, checksum: String, already_unlocked: bool, wallet: Dictionary, profile_snapshot: Dictionary)
+signal replay_unlocked_received(replay_id: String, replay_type: String, price_gems: int, replay_key: String, key_version: int, checksum: String, algorithm: String, already_unlocked: bool, wallet: Dictionary, profile_snapshot: Dictionary)
+signal replay_access_received(access: Dictionary)
 signal start_ai_warmup_result_received(ok: bool, room_id: String, reason: String)
 signal sit_down_result_received(ok: bool, room_id: String, seat_index: int, player_id: String, reason: String, wallet_chips: int, required_chips: int)
 signal table_snapshot_received(snapshot: Dictionary)
@@ -147,8 +148,11 @@ func select_avatar(avatar_id: String) -> int:
 func mock_purchase(currency: String, amount: int) -> int:
 	return send_message(PokerProtocolScript.mock_purchase(currency, amount))
 
-func unlock_replay(replay_id: String, replay_type: String) -> int:
-	return send_message(PokerProtocolScript.unlock_replay(replay_id, replay_type))
+func unlock_replay(replay_id: String, replay_type: String, checksum: String = "", key_version: int = 0, algorithm: String = "", storage_mode: String = "") -> int:
+	return send_message(PokerProtocolScript.unlock_replay(replay_id, replay_type, checksum, key_version, algorithm, storage_mode))
+
+func get_replay_access(replay_id: String, replay_type: String, checksum: String = "", key_version: int = 0, algorithm: String = "", storage_mode: String = "") -> int:
+	return send_message(PokerProtocolScript.get_replay_access(replay_id, replay_type, checksum, key_version, algorithm, storage_mode))
 
 func list_tables() -> int:
 	return send_message(PokerProtocolScript.list_tables())
@@ -253,10 +257,13 @@ func _handle_message(message: Dictionary) -> void:
 				str(message.get("replay_key", "")),
 				int(message.get("key_version", 0)),
 				str(message.get("checksum", "")),
+				str(message.get("algorithm", "")),
 				bool(message.get("already_unlocked", false)),
 				unlock_wallet,
 				unlock_profile
 			)
+		PokerProtocolScript.REPLAY_ACCESS:
+			replay_access_received.emit(message.duplicate(true))
 		PokerProtocolScript.START_AI_WARMUP_RESULT:
 			room_id = str(message.get("room_id", room_id))
 			start_ai_warmup_result_received.emit(
