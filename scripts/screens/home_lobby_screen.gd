@@ -86,6 +86,8 @@ var _replay_playback_play_button: Button
 var _replay_playback_speed_button: Button
 var _replay_poker_table_screen: Control
 var _store_panel: PanelContainer
+var _store_dev_label: Label
+var _store_purchase_controls: Array[Dictionary] = []
 var _profile_panel: PanelContainer
 var _settings_panel: PanelContainer
 var _social_panel: PanelContainer
@@ -1640,6 +1642,7 @@ func _refresh_profile_views_from_server() -> void:
 		_top_bar.configure(_player_profile)
 	_refresh_daily_bonus_bar()
 	_refresh_profile_panel()
+	_refresh_store_purchase_access()
 	if _quick_play_setup_panel != null and _quick_play_setup_panel.visible:
 		_update_quick_play_setup_profile()
 		_refresh_quick_play_setup_options()
@@ -5220,6 +5223,7 @@ func _looks_like_replay_debug_text(text: String) -> bool:
 
 
 func _build_store_panel() -> void:
+	_store_purchase_controls.clear()
 	_store_panel = PanelContainer.new()
 	_store_panel.name = "StorePanel"
 	_store_panel.anchor_left = 0.0
@@ -5251,10 +5255,9 @@ func _build_store_panel() -> void:
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	title_box.add_child(sub)
 	
-	var dev_label := Label.new()
-	dev_label.text = _t("store.dev_badge")
-	HomeTheme.make_font_settings(dev_label, 13, HomeTheme.GOLD)
-	main_vbox.add_child(dev_label)
+	_store_dev_label = Label.new()
+	HomeTheme.make_font_settings(_store_dev_label, 13, HomeTheme.GOLD)
+	main_vbox.add_child(_store_dev_label)
 
 	var tabs := HBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 12)
@@ -5275,6 +5278,7 @@ func _build_store_panel() -> void:
 
 	_add_store_currency_column(grid, _t("store.chips").to_upper(), _t("store.chips_desc"), [10000, 50000, 100000], "chips", HomeTheme.GOLD)
 	_add_store_currency_column(grid, _t("store.gems").to_upper(), _t("store.gems_desc"), [100, 500, 1200], "gems", HomeTheme.PINK)
+	_refresh_store_purchase_access()
 
 func _add_store_currency_column(parent: Container, title_text: String, desc_text: String, packs: Array, currency: String, accent: Color) -> void:
 	var card := PanelContainer.new()
@@ -5285,7 +5289,6 @@ func _add_store_currency_column(parent: Container, title_text: String, desc_text
 	vbox.add_theme_constant_override("separation", 14)
 	card.add_child(vbox)
 	var title := Label.new()
-	title.text = _tf("store.mock_purchase_title", {"currency": title_text.capitalize()})
 	HomeTheme.make_font_settings(title, 18, accent)
 	vbox.add_child(title)
 	var desc := Label.new()
@@ -5304,8 +5307,33 @@ func _add_store_currency_column(parent: Container, title_text: String, desc_text
 		button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.035, 0.04, 0.085, 0.86), accent, 18))
 		button.pressed.connect(_show_mock_purchase_confirm.bind(currency, amount))
 		vbox.add_child(button)
+		_store_purchase_controls.append({
+			"title": title,
+			"title_text": title_text,
+			"button": button,
+			"purchase_text": button.text,
+		})
+
+func _refresh_store_purchase_access() -> void:
+	var allowed := bool(_player_profile.get("mock_purchase_allowed", false))
+	if _store_dev_label != null:
+		_store_dev_label.text = _t("store.dev_badge") if allowed else _t("common.coming_soon").to_upper()
+	for control_value in _store_purchase_controls:
+		var control := Dictionary(control_value)
+		var title := control.get("title") as Label
+		var button := control.get("button") as Button
+		var title_text := str(control.get("title_text", ""))
+		if title != null:
+			title.text = _tf("store.mock_purchase_title", {"currency": title_text.capitalize()}) if allowed else title_text
+		if button == null:
+			continue
+		button.disabled = not allowed
+		button.text = str(control.get("purchase_text", "")) if allowed else _t("common.coming_soon").to_upper()
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if allowed else Control.CURSOR_ARROW
 
 func _show_mock_purchase_confirm(currency: String, amount: int) -> void:
+	if not bool(_player_profile.get("mock_purchase_allowed", false)):
+		return
 	var dialog := ConfirmationDialog.new()
 	dialog.title = _t("store.mock_purchase_confirm_title")
 	var target := "server wallet" if server_authoritative_profile and _profile_server_connected else "local wallet"

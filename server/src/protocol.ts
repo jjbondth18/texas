@@ -237,6 +237,7 @@ export interface ServerProfileSnapshot {
   steam_id: string;
   display_name_updated_at: string | null;
   is_new_player?: boolean;
+  mock_purchase_allowed: boolean;
   avatar_id: string;
   wallet: {
     chips: number;

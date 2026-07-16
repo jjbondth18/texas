@@ -863,6 +863,11 @@ const mockPurchaseMessages: unknown[] = [];
 const mockPurchaseWs = { OPEN: 1, readyState: 1, send: (data: string) => mockPurchaseMessages.push(JSON.parse(data)) };
 const mockPurchaseClient = manager.connect(mockPurchaseWs as any);
 manager.handle(mockPurchaseClient.id, { type: "hello", player_id: "mock_purchase_player", name: "Mock Purchase" });
+const localMockHello = mockPurchaseMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
+  | { profile_snapshot?: { mock_purchase_allowed?: boolean; mock_purchase_allowed_steam_ids?: unknown } }
+  | undefined;
+if (localMockHello?.profile_snapshot?.mock_purchase_allowed !== true) throw new Error("dev-enabled local_dev profile should allow mock purchases");
+if ("mock_purchase_allowed_steam_ids" in (localMockHello?.profile_snapshot || {})) throw new Error("profile snapshot must not expose mock purchase allowlist");
 const beforeMockPurchase = manager.adminSnapshot(false);
 manager.handle("mock_purchase_player", { type: "mock_purchase", currency: "chips", amount: 50000, source: "store_mock" });
 manager.handle("mock_purchase_player", { type: "mock_purchase", currency: "gems", amount: 500, source: "store_mock" });
@@ -883,18 +888,35 @@ if (!affordableRoom.table.publicSnapshot().seats[0].occupied) throw new Error("m
 const beforeDisabledTotal = Number(manager.adminSnapshot(false).total_wallet_chips);
 config.allowMockPurchases = false;
 expectThrows("mock_purchase_disabled", () => manager.handle("mock_purchase_player", { type: "mock_purchase", currency: "chips", amount: 10000, source: "store_mock" }));
+mockPurchaseMessages.length = 0;
+manager.handle("mock_purchase_player", { type: "get_profile" });
+const disabledMockProfile = mockPurchaseMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "profile_snapshot") as
+  | { profile_snapshot?: { mock_purchase_allowed?: boolean } }
+  | undefined;
+if (disabledMockProfile?.profile_snapshot?.mock_purchase_allowed !== false) throw new Error("globally disabled mock purchases should report false");
 config.allowMockPurchases = true;
 if (Number(manager.adminSnapshot(false).total_wallet_chips) !== beforeDisabledTotal) throw new Error("disabled mock purchase should not change wallet");
 const originalMockAllowlist = config.mockPurchaseAllowedSteamIds;
 config.mockPurchaseAllowedSteamIds = ["steam_mock_allowed"];
-const deniedSteamMock = manager.connect();
+const deniedSteamMockMessages: unknown[] = [];
+const deniedSteamMockWs = { OPEN: 1, readyState: 1, send: (data: string) => deniedSteamMockMessages.push(JSON.parse(data)) };
+const deniedSteamMock = manager.connect(deniedSteamMockWs as any);
 manager.handle(deniedSteamMock.id, { type: "hello", auth_provider: "steam", external_id: "steam_mock_denied", name: "Denied Mock" });
+const deniedSteamMockHello = deniedSteamMockMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
+  | { profile_snapshot?: { mock_purchase_allowed?: boolean } }
+  | undefined;
+if (deniedSteamMockHello?.profile_snapshot?.mock_purchase_allowed !== false) throw new Error("non-allowlisted Steam profile should report mock_purchase_allowed false");
 expectThrows("mock_purchase_not_allowed", () => manager.handle(deniedSteamMock.id, { type: "mock_purchase", currency: "gems", amount: 50, source: "store_mock" }));
 const allowedSteamMockMessages: unknown[] = [];
 const allowedSteamMockWs = { OPEN: 1, readyState: 1, send: (data: string) => allowedSteamMockMessages.push(JSON.parse(data)) };
 const allowedSteamMock = manager.connect(allowedSteamMockWs as any);
 manager.handle(allowedSteamMock.id, { type: "hello", auth_provider: "steam", external_id: "steam_mock_allowed", name: "Allowed Mock" });
-const allowedSteamMockId = String((allowedSteamMockMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as { player_id?: string } | undefined)?.player_id || "");
+const allowedSteamMockHello = allowedSteamMockMessages.find((message) => typeof message === "object" && message !== null && (message as { type?: string }).type === "hello") as
+  | { player_id?: string; profile_snapshot?: { mock_purchase_allowed?: boolean; mock_purchase_allowed_steam_ids?: unknown } }
+  | undefined;
+const allowedSteamMockId = String(allowedSteamMockHello?.player_id || "");
+if (allowedSteamMockHello?.profile_snapshot?.mock_purchase_allowed !== true) throw new Error("allowlisted Steam profile should report mock_purchase_allowed true");
+if ("mock_purchase_allowed_steam_ids" in (allowedSteamMockHello?.profile_snapshot || {})) throw new Error("Steam profile snapshot must not expose mock purchase allowlist");
 const beforeAllowedSteamGems = manager.adminSnapshot(false).total_wallet_gems;
 manager.handle(allowedSteamMockId, { type: "mock_purchase", currency: "gems", amount: 50, source: "store_mock" });
 if (Number(manager.adminSnapshot(false).total_wallet_gems) !== Number(beforeAllowedSteamGems) + 50) throw new Error("allowlisted Steam mock purchase should add gems");

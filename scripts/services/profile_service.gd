@@ -114,6 +114,7 @@ func apply_server_profile_snapshot(profile_snapshot: Dictionary, wallet_snapshot
 			profile["is_new_player"] = bool(profile_snapshot.get("is_new_player", false))
 		if profile_snapshot.has("replay_economy"):
 			profile["replay_economy"] = Dictionary(profile_snapshot.get("replay_economy", {})).duplicate(true)
+		profile["mock_purchase_allowed"] = bool(profile_snapshot.get("mock_purchase_allowed", false))
 	if not wallet_snapshot.is_empty():
 		profile["total_chips"] = int(wallet_snapshot.get("chips", PlayerProfileScript.get_total_chips(profile)))
 		profile["chips"] = int(profile["total_chips"])

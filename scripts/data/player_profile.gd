@@ -15,7 +15,7 @@ const DEFAULT_XP_MAX := XP_PER_LEVEL
 const DEFAULT_TOTAL_CHIPS := 30000
 const DEFAULT_GEMS := 500
 const DEFAULT_TABLE_BUY_IN := 2000
-const SCHEMA_VERSION := 6
+const SCHEMA_VERSION := 7
 const DAILY_LOGIN_CHIPS := 1000
 const DAILY_LOGIN_XP := 25
 const DAILY_BONUS_REWARDS := [
@@ -74,6 +74,7 @@ var daily_bonus_can_claim_today := true
 var daily_bonus_status_synced := false
 var daily_reward_claimed_today := false
 var replay_economy: Dictionary = {}
+var mock_purchase_allowed := false
 var unlocked_replay_ids: Array[String] = []
 var created_at := ""
 var updated_at := ""
@@ -140,6 +141,7 @@ func _init(
 	daily_bonus_status_synced = bool(profile_stats.get("daily_bonus_status_synced", false))
 	daily_reward_claimed_today = bool(profile_stats.get("daily_reward_claimed_today", false))
 	replay_economy = Dictionary(profile_stats.get("replay_economy", {})).duplicate(true)
+	mock_purchase_allowed = bool(profile_stats.get("mock_purchase_allowed", false))
 	unlocked_replay_ids.clear()
 	for id in Array(profile_stats.get("unlocked_replay_ids", [])):
 		var replay_id := str(id).strip_edges()
@@ -194,6 +196,7 @@ func to_lobby_dict() -> Dictionary:
 		"daily_bonus_status_synced": daily_bonus_status_synced,
 		"daily_reward_claimed_today": daily_reward_claimed_today,
 		"replay_economy": replay_economy.duplicate(true),
+		"mock_purchase_allowed": mock_purchase_allowed,
 		"unlocked_replay_ids": unlocked_replay_ids.duplicate(),
 		"created_at": created_at,
 		"updated_at": updated_at,

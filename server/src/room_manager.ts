@@ -1035,9 +1035,11 @@ export class RoomManager {
   }
 
   private authoritativeProfileSnapshot(playerId: string, isNewPlayer = false) {
+    const client = this.clients.get(playerId);
     return {
       ...this.profileBootstrap.getProfileSnapshot(playerId, isNewPlayer),
       replay_economy: REPLAY_ECONOMY_CONFIG,
+      mock_purchase_allowed: client ? this.canUseMockPurchase(client) : false,
     };
   }
 
