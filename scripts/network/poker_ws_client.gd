@@ -234,6 +234,12 @@ func _handle_message(message: Dictionary) -> void:
 		PokerProtocolScript.AI_CHALLENGE_CREATED:
 			_emit_challenge_catalog(message)
 			var challenge_table := Dictionary(message.get("table", {})).duplicate(true)
+			challenge_table["mode"] = "ai_challenge"
+			challenge_table["challenge_id"] = str(message.get("challenge_id", challenge_table.get("challenge_id", "")))
+			challenge_table["ai_challenge_tier"] = challenge_table["challenge_id"]
+			challenge_table["player_seat_index"] = int(message.get("player_seat_index", 5))
+			challenge_table["already_seated"] = bool(message.get("already_seated", false))
+			challenge_table["entry_fee_charged"] = bool(message.get("entry_fee_charged", true))
 			room_id = str(message.get("room_id", challenge_table.get("room_id", room_id)))
 			table_created.emit(room_id, challenge_table)
 		PokerProtocolScript.QUICK_TABLE_MATCHED:

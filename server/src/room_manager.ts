@@ -274,8 +274,19 @@ export class RoomManager {
     if (message.type === "create_ai_challenge") {
       const room = this.createAiChallengeRoom(client, String(message.challenge_id || ""));
       const table = this.tableSnapshot(room);
-      this.send(client, { type: "ai_challenge_created", request_id: message.request_id, room_id: room.id, table, challenge_id: room.challengeId, wallet: this.wallets.get(client.id), challenge_catalog: challengeCatalog() });
-      this.broadcast(room);
+      const existingSeat = room.table.getSeatByPlayer(client.id);
+      this.send(client, {
+        type: "ai_challenge_created",
+        request_id: message.request_id,
+        room_id: room.id,
+        table,
+        challenge_id: room.challengeId,
+        player_seat_index: existingSeat?.seatIndex ?? 5,
+        already_seated: existingSeat !== undefined,
+        entry_fee_charged: room.entryFeeCharged,
+        wallet: this.wallets.get(client.id),
+        challenge_catalog: challengeCatalog(),
+      });
       return;
     }
     if (message.type === "join_table") {
@@ -372,6 +383,13 @@ export class RoomManager {
     const room = this.mustRoom(roomId);
     switch (message.type) {
       case "join_room":
+        if (room.mode === "ai_challenge") {
+          if (client.id !== room.challengePlayerId) throw new Error("room_not_available");
+          this.joinRoom(client, room.id);
+          this.sitDownAiChallenge(room, client, 5);
+          this.recordLog(`${client.id} activated AI Challenge ${room.id}`);
+          break;
+        }
         this.joinRoom(client, room.id);
         this.recordLog(`${client.id} joined ${room.id}`);
         break;
@@ -673,7 +691,13 @@ export class RoomManager {
 
   private createAiChallengeRoom(client: Client, challengeIdRaw: string): Room {
     if (!isChallengeId(challengeIdRaw)) throw new Error("invalid_challenge_id");
-    const existing = client.roomId ? this.rooms.get(client.roomId) : undefined;
+    const existing = [...this.rooms.values()].find(
+      (candidate) =>
+        candidate.mode === "ai_challenge" &&
+        candidate.challengePlayerId === client.id &&
+        candidate.challengeState !== "completed" &&
+        candidate.challengeState !== "cancelled",
+    );
     if (existing?.mode === "ai_challenge" && existing.challengeState !== "completed" && existing.challengeState !== "cancelled") return existing;
     const config = challengeConfigById(challengeIdRaw);
     this.wallets.ensure(client.id);
@@ -702,7 +726,6 @@ export class RoomManager {
     try {
       this.wallets.deductChips(client.id, config.entryFeeChips, { reason: "ai_challenge_entry_fee", relatedRoomId: room.id });
       room.entryFeeCharged = true;
-      this.joinRoom(client, room.id);
       room.challengeState = "ready";
     } catch (error) {
       this.refundChallengeEntryFee(room, "prestart_failure");
@@ -1505,6 +1528,11 @@ export class RoomManager {
 
   private sitDownAiChallenge(room: Room, client: Client, requestedSeatIndex: number): number {
     if (client.id !== room.challengePlayerId) throw new Error("room_not_available");
+    const existingSeat = room.table.getSeatByPlayer(client.id);
+    if (existingSeat) {
+      this.startChallengeHandIfNeeded(room, "challenge_join_idempotent");
+      return existingSeat.seatIndex;
+    }
     const config = challengeConfigById(room.challengeId);
     const playerSeatIndex = requestedSeatIndex >= 0 ? requestedSeatIndex : 5;
     const playerSeat = room.table.getSeat(playerSeatIndex);

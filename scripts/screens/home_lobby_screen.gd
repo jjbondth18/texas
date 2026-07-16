@@ -1727,8 +1727,10 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 	if launch_mode == "ai_challenge":
 		launch_table_type = "ai_challenge"
 	var challenge_id := str(table_info.get("challenge_id", ""))
+	var ai_challenge_tier := str(table_info.get("ai_challenge_tier", challenge_id))
 	var challenge_difficulty := str(table_info.get("difficulty", ""))
 	var entry_fee_chips := int(table_info.get("entry_fee_chips", 0))
+	var already_seated := bool(table_info.get("already_seated", false))
 	var room_code := str(table_info.get("room_code", ""))
 	if max_hands <= 0:
 		max_hands = 999
@@ -1748,12 +1750,15 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 		"table_type": launch_table_type,
 		"currency": currency,
 		"challenge_id": challenge_id,
+		"ai_challenge_tier": ai_challenge_tier,
 		"difficulty": challenge_difficulty,
 		"entry_fee_chips": entry_fee_chips,
+		"already_seated": already_seated,
+		"reconnected_to_table": false,
 		"uses_practice_chips": launch_mode == "ai_challenge",
 		"affects_account_balance": true,
 		"buy_in_deducted_from_wallet": launch_mode == "ai_challenge",
-		"allow_debug_tools": true,
+		"allow_debug_tools": launch_mode != "ai_challenge",
 		"requested_seat_index": requested_seat_index,
 		"ai_player_count": 0,
 		"max_hands": max_hands,
@@ -1765,6 +1770,7 @@ func _server_table_context(room_id: String, table_info: Dictionary, requested_se
 			"table_type": launch_table_type,
 			"currency": currency,
 			"challenge_id": challenge_id,
+			"ai_challenge_tier": ai_challenge_tier,
 			"difficulty": challenge_difficulty,
 			"entry_fee_chips": entry_fee_chips,
 			"uses_practice_chips": launch_mode == "ai_challenge",

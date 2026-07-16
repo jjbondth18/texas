@@ -28,8 +28,8 @@ function setupChallenge(): TestSetup {
   const playerId = `challenge_lifecycle_${Date.now()}_${nextId++}`;
   manager.handle(connected.id, { type: "hello", player_id: playerId, name: "Lifecycle Tester" });
   manager.handle(playerId, { type: "create_ai_challenge", challenge_id: "rookie" });
-  const roomId = manager.getClient(playerId)?.roomId ?? "";
-  manager.handle(playerId, { type: "sit_down", room_id: roomId, seat_index: 5, buy_in: 1000 });
+  const roomId = String(ws.sent.filter((message) => message.type === "ai_challenge_created").at(-1)?.room_id ?? "");
+  manager.handle(playerId, { type: "join_room", room_id: roomId });
   const room = manager.getRoom(roomId) as any;
   assert(room, "challenge room should exist");
   return { manager, ws, playerId, room };

@@ -2,14 +2,27 @@ import assert from "node:assert/strict";
 import { RoomManager } from "./room_manager.js";
 import { CHALLENGE_SESSION_CONFIGS } from "./ai_challenge/ai_challenge_config.js";
 
+class FakeWs {
+  OPEN = 1;
+  readyState = 1;
+  sent: any[] = [];
+  send(payload: string): void {
+    this.sent.push(JSON.parse(payload));
+  }
+}
+
 const manager = new RoomManager();
-const client = manager.connect();
+const ws = new FakeWs();
+const client = manager.connect(ws as any);
 manager.handle(client.id, { type: "hello", player_id: "challenge_smoke_player", name: "Smoke Tester" });
 const beforeSnapshot = manager.adminSnapshot(false);
 manager.handle("challenge_smoke_player", { type: "create_ai_challenge", challenge_id: "rookie" });
-const roomId = manager.getClient("challenge_smoke_player")?.roomId ?? "";
-assert(roomId !== "", "challenge should assign the player to a room");
-manager.handle("challenge_smoke_player", { type: "sit_down", room_id: roomId, seat_index: 5, buy_in: 1000 });
+const created = ws.sent.filter((message) => message.type === "ai_challenge_created").at(-1);
+const roomId = String(created?.room_id ?? "");
+assert(roomId !== "", "challenge create should return a reserved room");
+assert.equal(created?.already_seated, false, "challenge create should declare that the table connection must activate the reserved room");
+assert.equal(created?.entry_fee_charged, true, "challenge create should declare that the entry fee was already charged");
+manager.handle("challenge_smoke_player", { type: "join_room", room_id: roomId });
 const room = manager.getRoom(roomId);
 assert(room, "challenge room should exist");
 assert.equal(room.table.smallBlind, 10);

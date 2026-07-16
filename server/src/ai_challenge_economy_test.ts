@@ -18,7 +18,11 @@ function wallet(manager: RoomManager, playerId: string) {
   return (manager as any).wallets.get(playerId);
 }
 
-function setup(challengeId: ChallengeId, sit = true) {
+function createdRoomId(ws: FakeWs): string {
+  return String(ws.sent.filter((message) => message.type === "ai_challenge_created").at(-1)?.room_id ?? "");
+}
+
+function setup(challengeId: ChallengeId, activate = true) {
   const manager = new RoomManager();
   const ws = new FakeWs();
   const connected = manager.connect(ws as any);
@@ -26,10 +30,10 @@ function setup(challengeId: ChallengeId, sit = true) {
   manager.handle(connected.id, { type: "hello", player_id: playerId, name: "Economy Tester" });
   const before = wallet(manager, playerId);
   manager.handle(playerId, { type: "create_ai_challenge", challenge_id: challengeId });
-  const roomId = manager.getClient(playerId)?.roomId ?? "";
+  const roomId = createdRoomId(ws);
   const room = manager.getRoom(roomId) as any;
   assert(room, "challenge room should exist");
-  if (sit) manager.handle(playerId, { type: "sit_down", room_id: roomId, seat_index: 5, buy_in: room.buyIn });
+  if (activate) manager.handle(playerId, { type: "join_room", room_id: roomId });
   return { manager, ws, playerId, room, before };
 }
 
@@ -65,6 +69,10 @@ for (const challengeId of ["rookie", "sharp", "boss"] as const) {
   assert.equal(room.handCount, config.maxHands);
   assert.equal(wallet(manager, playerId).chips, before.chips - config.entryFeeChips, `${challengeId} should charge configured entry fee`);
   assert.equal(wallet(manager, playerId).gems, before.gems, `${challengeId} should not touch gems`);
+  const afterActivation = wallet(manager, playerId).chips;
+  manager.handle(playerId, { type: "join_room", room_id: room.id });
+  manager.handle(playerId, { type: "create_ai_challenge", challenge_id: challengeId });
+  assert.equal(wallet(manager, playerId).chips, afterActivation, `${challengeId} repeated create/join must not charge twice`);
 }
 
 {

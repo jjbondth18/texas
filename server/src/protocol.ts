@@ -179,6 +179,9 @@ export interface ServerMessage {
   source?: string;
   replay_id?: string;
   challenge_id?: string;
+  player_seat_index?: number;
+  already_seated?: boolean;
+  entry_fee_charged?: boolean;
   result?: "victory" | "defeat" | "draw";
   player_final_stack?: number;
   bot_final_stack?: number;

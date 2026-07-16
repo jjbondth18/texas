@@ -684,6 +684,10 @@ func _on_server_hello_received(player_id: String, room_id: String, reconnected_t
 	if _server_room_id != "" and room_id == "" and not _server_join_room_requested:
 		_server_join_room_requested = true
 		_send_server_message(_poker_ws_client.join_room(_server_room_id), "join_room %s" % _server_room_id)
+		if _is_ai_challenge_table():
+			_server_setup_done = true
+			_append_session_log("AI Challenge room activation requested. Waiting for authoritative snapshot.")
+			return
 	if _server_room_id == "" and not _server_create_room_requested:
 		_server_create_room_requested = true
 		if _is_private_room_table():
@@ -723,6 +727,12 @@ func _on_server_daily_login_awarded(chips: int) -> void:
 
 func _try_server_sit_down() -> void:
 	if _server_setup_done or _server_room_id == "" or _poker_ws_client == null:
+		return
+	if _is_ai_challenge_table():
+		_server_setup_done = true
+		_server_sit_down_requested = false
+		_server_sit_down_pending = false
+		_append_session_log("AI Challenge seat is managed by the authoritative challenge session.")
 		return
 	_server_setup_done = true
 	_server_sit_down_requested = true
@@ -806,6 +816,9 @@ func _on_server_table_created(room_id: String, table_info: Dictionary) -> void:
 func _on_server_table_joined(room_id: String, table_info: Dictionary) -> void:
 	_apply_server_table_info(room_id, table_info)
 	_try_server_sit_down()
+
+func _is_ai_challenge_table() -> bool:
+	return TableLaunchContext.mode == "ai_challenge" or TableLaunchContext.launch_mode == "ai_challenge" or TableLaunchContext.table_type == "ai_challenge"
 
 func _apply_server_table_info(room_id: String, table_info: Dictionary) -> void:
 	if room_id != "":
@@ -912,6 +925,10 @@ func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
 		_server_table_snapshot = ServerTableSnapshotScript.new()
 	_server_table_snapshot.apply_table_snapshot(server_snapshot)
 	_server_room_id = String(server_snapshot.get("room_id", _server_room_id))
+	if _is_ai_challenge_table():
+		_server_setup_done = true
+		_server_sit_down_requested = false
+		_server_sit_down_pending = false
 	var next_snapshot := _server_snapshot_to_ui_snapshot(server_snapshot, _server_private_snapshot)
 	_update_server_seat_confirmation_from_snapshot(next_snapshot)
 	if _local_public_warmup_active:

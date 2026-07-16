@@ -24,6 +24,9 @@ static var pending_real_joiners: Array[Dictionary] = []
 static var warmup_ai_player_ids: Array[String] = []
 static var allow_debug_tools := false
 static var requested_seat_index := 0
+static var ai_challenge_tier := ""
+static var already_seated := false
+static var reconnected_to_table := false
 static var ai_player_count := 0
 static var max_hands := 10
 static var action_time_seconds := DEFAULT_ACTION_TIME_SECONDS
@@ -64,6 +67,9 @@ static func configure(mode: String = "quick_play", id: String = "mock_table_001"
 	room_code = ""
 	allow_debug_tools = is_training
 	requested_seat_index = int(setup_config.get("requested_seat_index", 0))
+	ai_challenge_tier = String(setup_config.get("ai_challenge_tier", setup_config.get("challenge_id", "")))
+	already_seated = bool(setup_config.get("already_seated", false))
+	reconnected_to_table = bool(setup_config.get("reconnected_to_table", false))
 	ai_player_count = 7 if mode in ["quick_play", "training"] else 0
 	max_hands = 999 if is_training else int(setup_config.get("max_hands", 10))
 	action_time_seconds = DEFAULT_ACTION_TIME_SECONDS
@@ -128,6 +134,9 @@ static func configure_from_context(context: Dictionary) -> void:
 		warmup_ai_player_ids.append(String(ai_id))
 	allow_debug_tools = bool(context.get("allow_debug_tools", is_training))
 	requested_seat_index = int(context.get("requested_seat_index", 0))
+	ai_challenge_tier = String(context.get("ai_challenge_tier", context.get("challenge_id", "")))
+	already_seated = bool(context.get("already_seated", false))
+	reconnected_to_table = bool(context.get("reconnected_to_table", false))
 	ai_player_count = int(context.get("ai_player_count", 0))
 	max_hands = int(context.get("max_hands", 10))
 	action_time_seconds = DEFAULT_ACTION_TIME_SECONDS
@@ -164,6 +173,9 @@ static func get_current_table_context() -> Dictionary:
 		"warmup_ai_player_ids": warmup_ai_player_ids.duplicate(),
 		"allow_debug_tools": allow_debug_tools,
 		"requested_seat_index": requested_seat_index,
+		"ai_challenge_tier": ai_challenge_tier,
+		"already_seated": already_seated,
+		"reconnected_to_table": reconnected_to_table,
 		"ai_player_count": ai_player_count,
 		"max_hands": max_hands,
 		"action_time_seconds": action_time_seconds,
