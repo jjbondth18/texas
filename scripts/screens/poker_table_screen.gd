@@ -33,6 +33,7 @@ const ServerTableSnapshotScript := preload("res://scripts/state/table_snapshot.g
 const HandReplayRecordScript := preload("res://scripts/replay/hand_replay_record.gd")
 const ReplayRepositoryScript := preload("res://scripts/replay/replay_repository.gd")
 const LocalizationManagerScript := preload("res://scripts/services/localization_manager.gd")
+const ConfirmationModalScript := preload("res://scripts/components/confirmation_modal.gd")
 
 const DESIGN_SIZE := Vector2(2560, 1000)
 const SERVER_DEFAULT_BUY_IN := 2000
@@ -142,7 +143,7 @@ var _session_unlock_avatar: TextureRect
 var _session_unlock_label: Label
 var _session_play_again_hint_label: Label
 var _session_play_again_button: Button
-var _exit_confirm_dialog: ConfirmationDialog
+var _exit_confirm_dialog: ConfirmationModal
 var _hand_result_banner: PanelContainer
 var _hand_result_title_label: Label
 var _hand_result_body_label: Label
@@ -235,7 +236,12 @@ func _input(event: InputEvent) -> void:
 			return
 		match event.keycode:
 			KEY_ESCAPE:
+				if _exit_confirm_dialog != null and _exit_confirm_dialog.is_open():
+					_exit_confirm_dialog.request_cancel()
+					get_viewport().set_input_as_handled()
+					return
 				_request_exit_table()
+				get_viewport().set_input_as_handled()
 			KEY_1:
 				_load_phase("preflop")
 			KEY_2:
@@ -321,20 +327,10 @@ func _build_scene() -> void:
 
 
 func _build_exit_confirm_dialog() -> void:
-	_exit_confirm_dialog = ConfirmationDialog.new()
+	_exit_confirm_dialog = ConfirmationModalScript.new()
 	_exit_confirm_dialog.name = "ExitTableConfirmDialog"
-	_exit_confirm_dialog.title = "Exit Table?"
-	_exit_confirm_dialog.dialog_text = "Exit Table?"
-	_exit_confirm_dialog.exclusive = true
-	_exit_confirm_dialog.min_size = Vector2(560, 220)
 	_exit_confirm_dialog.confirmed.connect(_confirm_exit_table)
 	add_child(_exit_confirm_dialog)
-	var ok_button: Button = _exit_confirm_dialog.get_ok_button()
-	if ok_button != null:
-		ok_button.text = "Exit Table"
-	var cancel_button: Button = _exit_confirm_dialog.get_cancel_button()
-	if cancel_button != null:
-		cancel_button.text = "Cancel"
 
 
 func _build_hand_result_banner() -> void:
@@ -980,8 +976,8 @@ func _on_server_error(message: String) -> void:
 		_set_exit_confirm_pending(false)
 		_append_session_log("Exit settlement failed: %s" % message)
 		if _exit_confirm_dialog != null:
-			_exit_confirm_dialog.dialog_text = "Exit settlement failed:\n%s" % message
-			_exit_confirm_dialog.popup_centered()
+			_exit_confirm_dialog.set_error("Settlement failed: %s" % message)
+			_exit_confirm_dialog.open()
 		return
 	_server_cash_out_pending_return = false
 	if _server_sit_down_pending and not _server_seat_confirmed:
@@ -1145,6 +1141,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 			"chips": int(server_seat.get("chips", server_seat.get("table_stack", 0))),
 			"table_stack": int(server_seat.get("table_stack", server_seat.get("chips", 0))),
 			"current_bet": int(server_seat.get("current_bet", 0)),
+			"contribution": int(server_seat.get("contribution", server_seat.get("current_bet", 0))),
 			"status": ui_status,
 			"raw_status": raw_status,
 			"ready": bool(server_seat.get("ready", raw_status == "ready")),
@@ -4166,27 +4163,61 @@ func _request_exit_table() -> void:
 	if _exit_confirm_dialog == null:
 		_confirm_exit_table()
 		return
-	_exit_confirm_dialog.title = "Exit Table?"
-	_exit_confirm_dialog.dialog_text = _exit_confirm_dialog_text()
+	var content := _exit_confirm_modal_content()
+	_exit_confirm_dialog.configure(
+		str(content.get("title", "LEAVE TABLE?")),
+		str(content.get("description", "")),
+		str(content.get("detail", "")),
+		str(content.get("cancel", "CANCEL")),
+		str(content.get("confirm", "LEAVE TABLE"))
+	)
 	_set_exit_confirm_pending(false)
-	_exit_confirm_dialog.popup_centered()
+	_exit_confirm_dialog.open()
 
-func _exit_confirm_dialog_text() -> String:
+func _exit_confirm_modal_content() -> Dictionary:
+	var unit := "Gems" if _exit_currency() == "gems" else "Chips"
+	var stack := _exit_remaining_stack()
+	var committed := _exit_committed_amount()
 	if _local_public_warmup_active:
-		return "This is practice only. Your wallet will not be affected. Leaving will also leave the public room."
+		return {"title": "LEAVE PRACTICE?", "description": "Practice results do not affect your wallet. Leaving will also leave the public room.", "detail": "Practice Stack: %s" % _format_chips(stack), "cancel": "STAY", "confirm": "LEAVE PRACTICE"}
 	if server_authoritative:
 		if not _server_seat_confirmed or _server_local_seat_index < 0:
-			return "Seat is not confirmed yet. Leaving will return to the lobby without table settlement."
+			return {"title": "LEAVE TABLE?", "description": "Your seat is not confirmed. No table settlement is required.", "detail": "If the connection is lost, your seat is protected briefly for reconnection.", "cancel": "CANCEL", "confirm": "LEAVE TABLE"}
 		if _is_server_public_before_official_hand():
-			return "You have not started an official hand. Your table chips will be returned to your wallet."
+			return {"title": "LEAVE TABLE?", "description": "Your full remaining table stack will be returned to your wallet.", "detail": "Table Stack: %s %s" % [_format_chips(stack), unit], "cancel": "CANCEL", "confirm": "LEAVE TABLE"}
 		if _is_authoritative_hand_in_progress():
-			return "You will fold this hand. Chips already committed to the pot stay in the pot. Your remaining table stack will be cashed out."
-		return "Your current table stack will be cashed out to your wallet."
+			return {"title": "LEAVE ACTIVE HAND?", "description": "Your hand will be folded automatically.\nChips already committed to the pot will remain in the pot.\nYour remaining table stack will be returned to your wallet.", "detail": "Remaining Stack: %s %s\nCommitted This Hand: %s %s" % [_format_chips(stack), unit, _format_chips(committed), unit], "cancel": "STAY", "confirm": "LEAVE ANYWAY"}
+		return {"title": "LEAVE TABLE?", "description": "Your full remaining table stack will be returned to your wallet.", "detail": "Table Stack: %s %s" % [_format_chips(stack), unit], "cancel": "CANCEL", "confirm": "LEAVE TABLE"}
 	if _table_session != null and _table_session.is_ai_warmup:
-		return "This is practice only. Your wallet will not be affected."
+		return {"title": "LEAVE PRACTICE?", "description": "Practice results do not affect your wallet.", "detail": "Practice Stack: %s" % _format_chips(stack), "cancel": "STAY", "confirm": "LEAVE PRACTICE"}
+	if _table_session != null and (_table_session.mode == TableSessionScript.MODE_TRAINING or _table_session.uses_practice_chips or not _table_session.affects_account_balance):
+		return {"title": "LEAVE TRAINING?", "description": "Practice results do not affect your wallet.", "detail": "Practice Stack: %s" % _format_chips(stack), "cancel": "STAY", "confirm": "LEAVE TRAINING"}
 	if _table_flow.table_state == TexasTableFlowScript.WAITING or _table_flow.table_state == TexasTableFlowScript.HAND_OVER:
-		return "Your current table stack will be cashed out to your wallet."
-	return "You will fold this hand. Chips already committed to the pot stay in the pot. Your remaining table stack will be cashed out."
+		return {"title": "LEAVE TABLE?", "description": "Your full remaining table stack will be returned to your wallet.", "detail": "Table Stack: %s %s" % [_format_chips(stack), unit], "cancel": "CANCEL", "confirm": "LEAVE TABLE"}
+	return {"title": "LEAVE ACTIVE HAND?", "description": "Your hand will be folded automatically.\nChips already committed to the pot will remain in the pot.\nYour remaining table stack will be returned to your wallet.", "detail": "Remaining Stack: %s %s\nCommitted This Hand: %s %s" % [_format_chips(stack), unit, _format_chips(committed), unit], "cancel": "STAY", "confirm": "LEAVE ANYWAY"}
+
+func _exit_currency() -> String:
+	var currency := str(_server_latest_ui_snapshot.get("currency", _table_session.currency if _table_session != null else TableLaunchContext.currency)).to_lower()
+	return "gems" if currency in ["gem", "gems"] else "chips"
+
+func _exit_local_seat_state() -> Dictionary:
+	var source := _server_latest_ui_snapshot if server_authoritative else snapshot
+	var local_seat := _server_local_seat_index if server_authoritative else int(source.get("local_seat_index", -1))
+	for seat_item in Array(source.get("seats", [])):
+		var seat := Dictionary(seat_item)
+		if bool(seat.get("is_local", false)) or int(seat.get("seat_index", seat.get("seat_id", -1))) == local_seat:
+			return seat
+	return {}
+
+func _exit_remaining_stack() -> int:
+	var seat := _exit_local_seat_state()
+	if not seat.is_empty():
+		return max(0, int(seat.get("table_stack", seat.get("chips", 0))))
+	return max(0, _local_table_chips())
+
+func _exit_committed_amount() -> int:
+	var seat := _exit_local_seat_state()
+	return max(0, int(seat.get("contribution", seat.get("current_bet", 0))))
 
 func _confirm_exit_table() -> void:
 	_cancel_pending_next_hand_timer()
@@ -4225,12 +4256,7 @@ func _is_authoritative_hand_in_progress() -> bool:
 func _set_exit_confirm_pending(pending: bool) -> void:
 	if _exit_confirm_dialog == null:
 		return
-	var ok_button: Button = _exit_confirm_dialog.get_ok_button()
-	if ok_button != null:
-		ok_button.disabled = pending
-	var cancel_button: Button = _exit_confirm_dialog.get_cancel_button()
-	if cancel_button != null:
-		cancel_button.disabled = pending
+	_exit_confirm_dialog.set_pending(pending, "SETTLING...")
 
 func _start_exit_settlement_timeout() -> void:
 	_server_exit_settlement_timeout_token += 1
@@ -4248,14 +4274,16 @@ func _handle_exit_settlement_timeout(token: int) -> void:
 	_set_exit_confirm_pending(false)
 	_append_session_log("Exit settlement timed out. Please retry; wallet was not assumed settled.")
 	if _exit_confirm_dialog != null:
-		_exit_confirm_dialog.dialog_text = "Exit settlement timed out.\nPlease retry so the server can cash out your table stack."
-		_exit_confirm_dialog.popup_centered()
+		_exit_confirm_dialog.set_error("Settlement timed out. Please try again.")
+		_exit_confirm_dialog.open()
 
 func _complete_return_home() -> void:
 	_server_leave_return_pending = false
 	_server_cash_out_pending_return = false
 	_server_exit_settlement_timeout_token += 1
 	_set_exit_confirm_pending(false)
+	if _exit_confirm_dialog != null:
+		_exit_confirm_dialog.close()
 	if _poker_ws_client != null:
 		_poker_ws_client.close()
 	if not server_authoritative:

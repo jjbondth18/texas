@@ -90,6 +90,8 @@ var _profile_panel: PanelContainer
 var _settings_panel: PanelContainer
 var _social_panel: PanelContainer
 var _help_panel: PanelContainer
+var _confirmation_modal: ConfirmationModal
+var _confirmation_action := ""
 var _welcome_pack: PanelContainer
 var _daily_bonus: Control
 var _mode_cards: Array[ModeCard] = []
@@ -119,6 +121,7 @@ const SettingsServiceScript := preload("res://scripts/services/settings_service.
 const LocalizationManagerScript := preload("res://scripts/services/localization_manager.gd")
 const PokerWsClientScript := preload("res://scripts/network/poker_ws_client.gd")
 const NetworkConfigScript := preload("res://scripts/network/network_config.gd")
+const ConfirmationModalScript := preload("res://scripts/components/confirmation_modal.gd")
 const ReplayCardViewScene := preload("res://scenes/components/card_view.tscn")
 const ReplayPokerTableScreenScene := preload("res://scenes/screens/replay_poker_table_screen.tscn")
 const REPLAY_TABLE_BACKGROUND := preload("res://assets/poker_table/backgrounds/table_neon_v1.png")
@@ -266,6 +269,7 @@ func _ready() -> void:
 	_build_help_panel()
 	_build_quick_play_setup_panel()
 	_build_table_creation_setup_panels()
+	_build_confirmation_modal()
 	
 	_fade_overlay = ColorRect.new()
 	_fade_overlay.name = "FadeOverlay"
@@ -337,10 +341,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 	if event.is_action_pressed("ui_cancel"):
-		if current_state != LobbyState.COLLAPSED:
-			set_state(LobbyState.COLLAPSED)
+		if _confirmation_modal != null and _confirmation_modal.is_open():
+			_confirmation_modal.request_cancel()
+		elif _replay_fullscreen_overlay != null and _replay_fullscreen_overlay.visible:
+			_request_exit_replay(false)
 		else:
-			get_tree().quit()
+			_request_exit_game()
 		get_viewport().set_input_as_handled()
 
 func _build_background() -> void:
@@ -417,7 +423,7 @@ func _build_layout() -> void:
 	_top_bar.offset_bottom = 82
 	_top_bar.social_requested.connect(_show_social_panel)
 	_top_bar.help_requested.connect(_show_help_panel)
-	_top_bar.exit_requested.connect(_quit_game)
+	_top_bar.exit_requested.connect(_request_exit_game)
 	_lobby_ui_root.add_child(_top_bar)
 
 	_build_center_brand()
@@ -2104,8 +2110,37 @@ func _normalized_hand_count_for_context(value: int) -> int:
 func set_background_motion_enabled(value: bool) -> void:
 	background_motion_enabled = value
 
-func _quit_game() -> void:
-	get_tree().quit()
+func _build_confirmation_modal() -> void:
+	_confirmation_modal = ConfirmationModalScript.new()
+	_confirmation_modal.name = "LobbyConfirmationModal"
+	_confirmation_modal.confirmed.connect(_on_confirmation_modal_confirmed)
+	_confirmation_modal.cancelled.connect(_on_confirmation_modal_cancelled)
+	_lobby_ui_root.add_child(_confirmation_modal)
+
+func _request_exit_game() -> void:
+	_confirmation_action = "exit_game"
+	_confirmation_modal.configure("EXIT GAME?", "Your progress has been saved.", "", "CANCEL", "EXIT GAME")
+	_confirmation_modal.open()
+
+func _request_exit_replay(return_to_list: bool = false) -> void:
+	_confirmation_action = "exit_replay_list" if return_to_list else "exit_replay_detail"
+	_confirmation_modal.configure("EXIT REPLAY?", "Playback progress will not be saved.", "Replay unlock access and your wallet will not be changed.", "CANCEL", "EXIT REPLAY")
+	_confirmation_modal.open()
+
+func _on_confirmation_modal_confirmed() -> void:
+	var action := _confirmation_action
+	_confirmation_action = ""
+	_confirmation_modal.close()
+	match action:
+		"exit_game":
+			get_tree().quit()
+		"exit_replay_list":
+			_return_to_replay_list_from_playback()
+		"exit_replay_detail":
+			_return_to_replay_detail()
+
+func _on_confirmation_modal_cancelled() -> void:
+	_confirmation_action = ""
 
 func _toggle_window_mode() -> void:
 	var mode := DisplayServer.window_get_mode()
@@ -3820,8 +3855,8 @@ func _render_replay_playback() -> void:
 	_replay_poker_table_screen = ReplayPokerTableScreenScene.instantiate() as Control
 	_replay_poker_table_screen.name = "ReplayPokerTableScreen"
 	_replay_poker_table_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_replay_poker_table_screen.connect("back_to_detail_requested", Callable(self, "_return_to_replay_detail"))
-	_replay_poker_table_screen.connect("back_to_replays_requested", Callable(self, "_return_to_replay_list_from_playback"))
+	_replay_poker_table_screen.connect("back_to_detail_requested", Callable(self, "_request_exit_replay").bind(false))
+	_replay_poker_table_screen.connect("back_to_replays_requested", Callable(self, "_request_exit_replay").bind(true))
 	_replay_poker_table_screen.connect("previous_step_requested", Callable(self, "_replay_playback_prev"))
 	_replay_poker_table_screen.connect("next_step_requested", Callable(self, "_replay_playback_next"))
 	_replay_poker_table_screen.connect("playback_toggle_requested", Callable(self, "_toggle_replay_playback"))
