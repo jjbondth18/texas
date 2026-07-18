@@ -1,0 +1,23 @@
+"DepotBuildConfig"
+{
+	"DepotID" "4969031"
+	"ContentRoot" "..\\build\\steam_release"
+	"FileMapping"
+	{
+		"LocalPath" "*"
+		"DepotPath" "."
+		"recursive" "1"
+	}
+	"FileExclusion" "steam_appid.txt"
+	"FileExclusion" "*.log"
+	"FileExclusion" "*.sqlite"
+	"FileExclusion" "*.sqlite-*"
+	"FileExclusion" "*.db"
+	"FileExclusion" ".env"
+	"FileExclusion" ".env.*"
+	"FileExclusion" "logs/*"
+	"FileExclusion" "cache/*"
+	"FileExclusion" "output/*"
+	"FileExclusion" "steam_build/cache/*"
+	"FileExclusion" "steam_build/output/*"
+}

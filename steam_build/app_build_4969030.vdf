@@ -1,0 +1,14 @@
+"appbuild"
+{
+	"appid" "4969030"
+	"desc" "Texas Hold'em Windows release candidate"
+	"buildoutput" ".\\output"
+	"contentroot" "..\\build\\steam_release"
+	"setlive" ""
+	"preview" "1"
+	"local" ""
+	"depots"
+	{
+		"4969031" "depot_build_4969031.vdf"
+	}
+}
