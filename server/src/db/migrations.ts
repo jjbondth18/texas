@@ -10,6 +10,7 @@ import { migration008PlayerProfileBackfill } from "./migrations/008_player_profi
 import { migration009ReplayEconomy } from "./migrations/009_replay_economy.js";
 import { migration010PlayerDisplayName } from "./migrations/010_player_display_name.js";
 import { migration011ReplayIdentityIntegrity } from "./migrations/011_replay_identity_integrity.js";
+import { migration012SteamCommerce } from "./migrations/012_steam_commerce.js";
 
 interface Migration {
   id: string;
@@ -28,6 +29,7 @@ const migrations: Migration[] = [
   migration009ReplayEconomy,
   migration010PlayerDisplayName,
   migration011ReplayIdentityIntegrity,
+  migration012SteamCommerce,
 ];
 
 export function runMigrations(db: Database.Database): void {

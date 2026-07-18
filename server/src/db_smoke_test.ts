@@ -81,7 +81,11 @@ if (Number(firstProfile.total_wallet_gems) !== STARTER_GEMS) throw new Error("he
 if (Number(firstProfile.avatar_unlock_count) !== 1) throw new Error("new player should unlock the default avatar");
 const db = getDatabase();
 initializeSchema(db);
-if (countRows("schema_migrations") < 9) throw new Error("migrations should be recorded and re-runnable");
+if (countRows("schema_migrations") < 12) throw new Error("all migrations, including Steam commerce, should be recorded and re-runnable");
+if (!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'steam_purchase_orders'").get()) throw new Error("Steam purchase order table should exist");
+const walletTransactionColumns = db.prepare("PRAGMA table_info(wallet_transactions)").all() as Array<{ name: string }>;
+if (!walletTransactionColumns.some((column) => column.name === "reference_id")) throw new Error("wallet transactions should expose purchase reference_id");
+if (!walletTransactionColumns.some((column) => column.name === "display_label")) throw new Error("wallet transactions should expose purchase display_label");
 if (countRows("player_identities", "provider = 'local_dev' AND external_id = 'db_smoke_player'") !== 1) throw new Error("hello should write local_dev identity");
 if (countRows("player_progression", "player_id = 'db_smoke_player' AND total_xp = 0 AND level = 1 AND title_id = 'new_player'") !== 1) throw new Error("local_dev hello should bootstrap default progression");
 if (countRows("player_statistics", "player_id = 'db_smoke_player' AND hands_played = 0 AND hands_won = 0 AND chips_won = 0 AND gems_won = 0") !== 1) throw new Error("local_dev hello should bootstrap default statistics");

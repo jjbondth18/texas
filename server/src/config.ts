@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 export type DatabaseDriver = "sqlite" | "postgres";
 export type SteamAuthMode = "disabled" | "optional" | "required";
+export type SteamCommerceMode = "disabled" | "sandbox" | "production";
 
 export interface ServerConfig {
   nodeEnv: string;
@@ -21,6 +22,8 @@ export interface ServerConfig {
   steamAppId: string;
   steamWebApiPublisherKey: string;
   steamAuthIdentity: string;
+  steamCommerceMode: SteamCommerceMode;
+  steamPublisherWebApiKey: string;
 }
 
 loadDotEnv(resolve(process.cwd(), ".env"));
@@ -42,6 +45,8 @@ export const config: ServerConfig = {
   steamAppId: process.env.STEAM_APP_ID || "",
   steamWebApiPublisherKey: process.env.STEAM_WEB_API_PUBLISHER_KEY || "",
   steamAuthIdentity: process.env.STEAM_AUTH_IDENTITY || "texas-server-v1",
+  steamCommerceMode: steamCommerceModeEnv(process.env.STEAM_COMMERCE_MODE),
+  steamPublisherWebApiKey: process.env.STEAM_PUBLISHER_WEB_API_KEY || process.env.STEAM_WEB_API_PUBLISHER_KEY || "",
 };
 
 export function configWarnings(value: ServerConfig = config): string[] {
@@ -54,6 +59,9 @@ export function configWarnings(value: ServerConfig = config): string[] {
   }
   if (value.steamAuthMode !== "disabled" && (value.steamAppId === "" || value.steamWebApiPublisherKey === "")) {
     warnings.push("STEAM_AUTH_MODE is enabled but STEAM_APP_ID or STEAM_WEB_API_PUBLISHER_KEY is not configured.");
+  }
+  if (value.steamCommerceMode !== "disabled" && (value.steamAppId === "" || value.steamPublisherWebApiKey === "")) {
+    warnings.push("STEAM_COMMERCE_MODE is enabled but STEAM_APP_ID or STEAM_PUBLISHER_WEB_API_KEY is not configured; purchasing is unavailable.");
   }
   return warnings;
 }
@@ -74,6 +82,8 @@ export function publicConfigSummary(value: ServerConfig = config): Record<string
     STEAM_AUTH_MODE: value.steamAuthMode,
     STEAM_APP_ID: value.steamAppId,
     STEAM_AUTH_IDENTITY: value.steamAuthIdentity,
+    STEAM_COMMERCE_MODE: value.steamCommerceMode,
+    STEAM_COMMERCE_CONFIGURED: value.steamCommerceMode !== "disabled" && value.steamAppId !== "" && value.steamPublisherWebApiKey !== "",
   };
 }
 
@@ -104,6 +114,11 @@ function databaseDriverEnv(value: string | undefined): DatabaseDriver {
 
 function steamAuthModeEnv(value: string | undefined): SteamAuthMode {
   if (value === "optional" || value === "required") return value;
+  return "disabled";
+}
+
+function steamCommerceModeEnv(value: string | undefined): SteamCommerceMode {
+  if (value === "sandbox" || value === "production") return value;
   return "disabled";
 }
 

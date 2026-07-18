@@ -21,6 +21,9 @@ signal table_created(room_id: String, table_info: Dictionary)
 signal table_joined(room_id: String, table_info: Dictionary)
 signal ai_challenge_result_received(result: Dictionary)
 signal mock_purchase_result_received(ok: bool, currency: String, amount: int, wallet: Dictionary)
+signal store_catalog_received(catalog: Array, commerce_mode: String, commerce_available: bool)
+signal store_purchase_created(order: Dictionary)
+signal store_purchase_result_received(payload: Dictionary)
 signal replay_unlocked_received(replay_id: String, replay_type: String, price_gems: int, replay_key: String, key_version: int, checksum: String, algorithm: String, already_unlocked: bool, wallet: Dictionary, profile_snapshot: Dictionary)
 signal replay_access_received(access: Dictionary)
 signal start_ai_warmup_result_received(ok: bool, room_id: String, reason: String)
@@ -157,6 +160,18 @@ func select_avatar(avatar_id: String) -> int:
 func mock_purchase(currency: String, amount: int) -> int:
 	return send_message(PokerProtocolScript.mock_purchase(currency, amount))
 
+func get_store_catalog() -> int:
+	return send_message(PokerProtocolScript.get_store_catalog())
+
+func create_store_purchase(package_id: String, idempotency_key: String) -> int:
+	return send_message(PokerProtocolScript.create_store_purchase(package_id, idempotency_key))
+
+func store_purchase_authorization(order_id: String, authorized: bool) -> int:
+	return send_message(PokerProtocolScript.store_purchase_authorization(order_id, authorized))
+
+func get_store_purchase_status(order_id: String = "") -> int:
+	return send_message(PokerProtocolScript.get_store_purchase_status(order_id))
+
 func unlock_replay(replay_id: String, replay_type: String, checksum: String = "", key_version: int = 0, algorithm: String = "", storage_mode: String = "") -> int:
 	return send_message(PokerProtocolScript.unlock_replay(replay_id, replay_type, checksum, key_version, algorithm, storage_mode))
 
@@ -275,6 +290,21 @@ func _handle_message(message: Dictionary) -> void:
 				int(message.get("amount", 0)),
 				purchase_wallet
 			)
+		PokerProtocolScript.STORE_CATALOG:
+			store_catalog_received.emit(
+				Array(message.get("store_catalog", [])).duplicate(true),
+				str(message.get("commerce_mode", "disabled")),
+				bool(message.get("commerce_available", false))
+			)
+		PokerProtocolScript.STORE_PURCHASE_CREATED:
+			store_purchase_created.emit(Dictionary(message.get("order", {})).duplicate(true))
+		PokerProtocolScript.STORE_PURCHASE_RESULT:
+			if message.has("profile_snapshot"):
+				_emit_profile_payload(message)
+			var store_wallet := Dictionary(message.get("wallet", {})).duplicate(true)
+			if not store_wallet.is_empty():
+				wallet_synced.emit(store_wallet)
+			store_purchase_result_received.emit(Dictionary(message).duplicate(true))
 		PokerProtocolScript.REPLAY_UNLOCKED:
 			var unlock_wallet := Dictionary(message.get("wallet", {})).duplicate(true)
 			var unlock_profile := Dictionary(message.get("profile_snapshot", {})).duplicate(true)

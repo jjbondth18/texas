@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "smoke": "tsx src/smoke_test.ts",
     "db:smoke": "tsx src/db_smoke_test.ts",
+    "commerce:test": "tsx src/steam_commerce_test.ts",
     "wallet:exit:smoke": "tsx src/wallet_exit_settlement_smoke_test.ts",
     "bot": "tsx src/bot.ts",
     "ai:challenge:test": "tsx src/ai_challenge_policy_test.ts",

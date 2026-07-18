@@ -26,6 +26,8 @@ export interface WalletTransactionRecord {
   balance_after: number;
   related_room_id?: string | null;
   related_hand_id?: string | null;
+  reference_id?: string | null;
+  display_label?: string | null;
   created_at: string;
 }
 
@@ -105,7 +107,7 @@ export class WalletRepository {
   transactionsForPlayer(playerId: string, limit = 100): WalletTransactionRecord[] {
     return this.db
       .prepare(
-        "SELECT id, player_id, currency, amount, reason, balance_after, related_room_id, related_hand_id, created_at FROM wallet_transactions WHERE player_id = ? ORDER BY created_at DESC LIMIT ?",
+        "SELECT id, player_id, currency, amount, reason, balance_after, related_room_id, related_hand_id, reference_id, display_label, created_at FROM wallet_transactions WHERE player_id = ? ORDER BY created_at DESC LIMIT ?",
       )
       .all(playerId, Math.max(1, Math.floor(limit))) as WalletTransactionRecord[];
   }
@@ -125,7 +127,7 @@ export class WalletRepository {
     }
     const rows = this.db
       .prepare(
-        `SELECT id, player_id, currency, amount, reason, balance_after, related_room_id, related_hand_id, created_at
+        `SELECT id, player_id, currency, amount, reason, balance_after, related_room_id, related_hand_id, reference_id, display_label, created_at
          FROM wallet_transactions
          WHERE ${where.join(" AND ")}
          ORDER BY created_at DESC, id DESC

@@ -21,6 +21,10 @@ export type ClientMessageType =
   | "buy_avatar"
   | "select_avatar"
   | "mock_purchase"
+  | "get_store_catalog"
+  | "create_store_purchase"
+  | "store_purchase_authorization"
+  | "get_store_purchase_status"
   | "unlock_replay"
   | "get_replay_access"
   | "import_legacy_replay_entitlement"
@@ -51,6 +55,9 @@ export type ServerMessageType =
   | "ai_challenge_created"
   | "ai_challenge_result"
   | "mock_purchase_result"
+  | "store_catalog"
+  | "store_purchase_created"
+  | "store_purchase_result"
   | "replay_unlocked"
   | "replay_access"
   | "start_ai_warmup_result"
@@ -87,6 +94,14 @@ export type ErrorCode =
   | "display_name_cooldown"
   | "mock_purchase_disabled"
   | "mock_purchase_not_allowed"
+  | "steam_commerce_unavailable"
+  | "store_package_not_found"
+  | "store_package_disabled"
+  | "steam_purchase_not_found"
+  | "steam_purchase_access_denied"
+  | "steam_purchase_invalid_identity"
+  | "steam_purchase_init_failed"
+  | "steam_purchase_finalize_failed"
   | "legacy_replay_import_disabled"
   | "not_public_table"
   | "not_host"
@@ -147,6 +162,10 @@ export interface ClientMessage {
   algorithm?: string;
   storage_mode?: string;
   challenge_id?: string;
+  package_id?: string;
+  idempotency_key?: string;
+  order_id?: string;
+  authorized?: boolean;
 }
 
 export interface ServerMessage {
@@ -220,6 +239,47 @@ export interface ServerMessage {
   max_hands?: number;
   wallet_history?: WalletHistoryEntrySnapshot[];
   next_cursor?: string;
+  store_catalog?: StoreCatalogItemSnapshot[];
+  commerce_mode?: "disabled" | "sandbox" | "production";
+  commerce_available?: boolean;
+  order?: SteamPurchaseOrderSnapshot;
+  orders?: SteamPurchaseOrderSnapshot[];
+}
+
+export interface StoreCatalogItemSnapshot {
+  package_id: string;
+  category: "chips" | "gems" | "bundle";
+  title: string;
+  subtitle: string;
+  chips_amount: number;
+  gems_amount: number;
+  badge: string;
+  image_key: string;
+  base_price_minor: number;
+  base_currency: string;
+  display_price: string;
+  enabled: boolean;
+  sort_order: number;
+}
+
+export interface SteamPurchaseOrderSnapshot {
+  order_id: string;
+  package_id: string;
+  package_title: string;
+  chips_amount: number;
+  gems_amount: number;
+  price_minor: number;
+  price_currency: string;
+  environment: "sandbox" | "production";
+  status: string;
+  created_at: string;
+  initialized_at?: string | null;
+  authorized_at?: string | null;
+  finalized_at?: string | null;
+  granted_at?: string | null;
+  cancelled_at?: string | null;
+  failed_at?: string | null;
+  failure_code?: string | null;
 }
 
 export interface WalletHistoryEntrySnapshot {

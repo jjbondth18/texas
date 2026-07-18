@@ -23,6 +23,10 @@ const CLAIM_DAILY_BONUS := "claim_daily_bonus"
 const BUY_AVATAR := "buy_avatar"
 const SELECT_AVATAR := "select_avatar"
 const MOCK_PURCHASE := "mock_purchase"
+const GET_STORE_CATALOG := "get_store_catalog"
+const CREATE_STORE_PURCHASE := "create_store_purchase"
+const STORE_PURCHASE_AUTHORIZATION := "store_purchase_authorization"
+const GET_STORE_PURCHASE_STATUS := "get_store_purchase_status"
 const UNLOCK_REPLAY := "unlock_replay"
 const GET_REPLAY_ACCESS := "get_replay_access"
 const IMPORT_LEGACY_REPLAY_ENTITLEMENT := "import_legacy_replay_entitlement"
@@ -50,6 +54,9 @@ const PRIVATE_TABLE_JOINED := "private_table_joined"
 const AI_CHALLENGE_CREATED := "ai_challenge_created"
 const AI_CHALLENGE_RESULT := "ai_challenge_result"
 const MOCK_PURCHASE_RESULT := "mock_purchase_result"
+const STORE_CATALOG := "store_catalog"
+const STORE_PURCHASE_CREATED := "store_purchase_created"
+const STORE_PURCHASE_RESULT := "store_purchase_result"
 const REPLAY_UNLOCKED := "replay_unlocked"
 const REPLAY_ACCESS := "replay_access"
 const START_AI_WARMUP_RESULT := "start_ai_warmup_result"
@@ -162,6 +169,21 @@ static func select_avatar(avatar_id: String) -> Dictionary:
 
 static func mock_purchase(currency: String, amount: int, source: String = "store_mock") -> Dictionary:
 	return _message(MOCK_PURCHASE, {"currency": currency, "amount": amount, "source": source})
+
+static func get_store_catalog() -> Dictionary:
+	return _message(GET_STORE_CATALOG)
+
+static func create_store_purchase(package_id: String, idempotency_key: String) -> Dictionary:
+	return _message(CREATE_STORE_PURCHASE, {"package_id": package_id, "idempotency_key": idempotency_key})
+
+static func store_purchase_authorization(order_id: String, authorized: bool) -> Dictionary:
+	return _message(STORE_PURCHASE_AUTHORIZATION, {"order_id": order_id, "authorized": authorized})
+
+static func get_store_purchase_status(order_id: String = "") -> Dictionary:
+	var data := {}
+	if order_id != "":
+		data["order_id"] = order_id
+	return _message(GET_STORE_PURCHASE_STATUS, data)
 
 static func unlock_replay(replay_id: String, replay_type: String, checksum: String = "", key_version: int = 0, algorithm: String = "", storage_mode: String = "") -> Dictionary:
 	return _message(UNLOCK_REPLAY, _replay_identity_payload(replay_id, replay_type, checksum, key_version, algorithm, storage_mode))

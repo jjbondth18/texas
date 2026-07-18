@@ -32,10 +32,13 @@ import { walletHistoryEntry } from "./wallet_history.js";
 import { ReplayRepository, type ReplayIndexRecord } from "./db/replay_repository.js";
 import { TableBalanceRepository, type TableBalanceCurrency } from "./db/table_balance_repository.js";
 import { ProfileBootstrapRepository } from "./db/profile_bootstrap_repository.js";
+import { SteamPurchaseRepository, type SteamPurchaseOrderRecord } from "./db/steam_purchase_repository.js";
 import { AVATAR_CATALOG, DEFAULT_AVATAR_PRICE_CHIPS, findAvatarCatalogItem } from "./avatar_catalog.js";
-import { config, type SteamAuthMode } from "./config.js";
+import { config, type SteamAuthMode, type SteamCommerceMode } from "./config.js";
 import { buildEncryptedReplayDelivery, buildHandReplayRecord, generateReplayKey, replayIdFor, REPLAY_ENCRYPTION_ALGORITHM, type EncryptedReplayDelivery } from "./replay.js";
 import { SteamWebApiAuthVerifier, type SteamAuthVerifier } from "./services/steam_auth_verifier.js";
+import { SteamWebApiMicroTxnGateway, type SteamMicroTxnGateway } from "./services/steam_microtxn_gateway.js";
+import { findStorePackage, storeCatalog } from "./store_catalog.js";
 import {
   REPLAY_ECONOMY_CONFIG,
   isReplayType,
@@ -178,16 +181,32 @@ export class RoomManager {
   private readonly results = new ResultRepository(this.db);
   private readonly replays = new ReplayRepository(this.db);
   private readonly tableBalances = new TableBalanceRepository(this.db);
+  private readonly steamPurchases = new SteamPurchaseRepository(this.db);
   private readonly steamAuthVerifier: SteamAuthVerifier;
   private readonly steamAuthMode: SteamAuthMode;
   private readonly replayIdFactory: () => string;
+  private readonly steamCommerceGateway: SteamMicroTxnGateway;
+  private readonly steamCommerceMode: SteamCommerceMode;
+  private readonly steamCommerceConfigured: boolean;
+  private readonly pendingSteamInitOrders = new Set<string>();
 
-  constructor(options: { steamAuthVerifier?: SteamAuthVerifier; steamAuthMode?: SteamAuthMode; replayIdFactory?: () => string } = {}) {
+  constructor(options: {
+    steamAuthVerifier?: SteamAuthVerifier;
+    steamAuthMode?: SteamAuthMode;
+    replayIdFactory?: () => string;
+    steamCommerceGateway?: SteamMicroTxnGateway;
+    steamCommerceMode?: SteamCommerceMode;
+    steamCommerceConfigured?: boolean;
+  } = {}) {
     this.steamAuthVerifier = options.steamAuthVerifier ?? new SteamWebApiAuthVerifier(config.steamWebApiPublisherKey);
     this.steamAuthMode = options.steamAuthMode ?? config.steamAuthMode;
     this.replayIdFactory = options.replayIdFactory ?? (() => replayIdFor());
+    this.steamCommerceMode = options.steamCommerceMode ?? config.steamCommerceMode;
+    this.steamCommerceGateway = options.steamCommerceGateway ?? new SteamWebApiMicroTxnGateway(this.steamCommerceMode, config.steamPublisherWebApiKey, config.steamAppId);
+    this.steamCommerceConfigured = options.steamCommerceConfigured ?? (config.steamAppId !== "" && config.steamPublisherWebApiKey !== "");
     this.loginBonus.setProgressionRepository(this.profileBootstrap);
     this.recoverOutstandingTableBalances();
+    this.recoverFinalizedSteamPurchases();
   }
 
   connect(ws?: WebSocket): Client {
@@ -324,6 +343,28 @@ export class RoomManager {
         wallet_history: page.transactions.map(walletHistoryEntry),
         next_cursor: page.next_cursor,
       });
+      return;
+    }
+    if (message.type === "get_store_catalog") {
+      this.send(client, {
+        type: "store_catalog",
+        request_id: message.request_id,
+        store_catalog: storeCatalog(),
+        commerce_mode: this.steamCommerceMode,
+        commerce_available: this.isSteamCommerceAvailable(),
+      });
+      return;
+    }
+    if (message.type === "create_store_purchase") {
+      void this.createStorePurchase(client, message).catch((error) => this.sendCommerceError(client, message.request_id, error));
+      return;
+    }
+    if (message.type === "store_purchase_authorization") {
+      void this.authorizeStorePurchase(client, message).catch((error) => this.sendCommerceError(client, message.request_id, error));
+      return;
+    }
+    if (message.type === "get_store_purchase_status") {
+      this.getStorePurchaseStatus(client, message);
       return;
     }
     if (message.type === "rename_display_name") {
@@ -1197,6 +1238,173 @@ export class RoomManager {
     };
   }
 
+  private isSteamCommerceAvailable(): boolean {
+    if (this.steamCommerceMode === "disabled" || !this.steamCommerceConfigured) return false;
+    if (this.steamCommerceMode === "production" && this.steamAuthMode !== "required") return false;
+    return true;
+  }
+
+  private async createStorePurchase(client: Client, message: ClientMessage): Promise<void> {
+    this.requireSteamCommerceIdentity(client);
+    if (!this.isSteamCommerceAvailable()) throw new Error("steam_commerce_unavailable");
+    const packageId = String(message.package_id || "").trim();
+    const item = findStorePackage(packageId);
+    if (!item) throw new Error("store_package_not_found");
+    if (!item.enabled) throw new Error("store_package_disabled");
+    const idempotencyKey = normalizePurchaseIdempotencyKey(String(message.idempotency_key || message.request_id || ""));
+    const order = this.steamPurchases.createOrder(
+      client.id,
+      String(client.externalId),
+      item,
+      this.steamCommerceMode as Exclude<SteamCommerceMode, "disabled">,
+      idempotencyKey,
+    );
+    if (order.status !== "created" || this.pendingSteamInitOrders.has(order.order_id)) {
+      this.sendPurchaseState(client, "store_purchase_created", order, message.request_id);
+      return;
+    }
+    this.pendingSteamInitOrders.add(order.order_id);
+    try {
+      const result = await this.steamCommerceGateway.initTxn(order);
+      if (!result.ok) {
+        const failed = this.steamPurchases.markFailed(order.order_id, result.error_code || "steam_purchase_init_failed", result.error_message || "Steam InitTxn failed.");
+        this.sendPurchaseState(client, "store_purchase_result", failed, message.request_id);
+        return;
+      }
+      const initialized = this.steamPurchases.markInitialized(order.order_id, result.steam_trans_id || "");
+      this.recordLog(`steam_purchase_initialized player_id=${client.id} order_id=${initialized.order_id} package_id=${initialized.package_id} environment=${initialized.environment}`);
+      this.sendPurchaseState(client, "store_purchase_created", initialized, message.request_id);
+    } finally {
+      this.pendingSteamInitOrders.delete(order.order_id);
+    }
+  }
+
+  private async authorizeStorePurchase(client: Client, message: ClientMessage): Promise<void> {
+    this.requireSteamCommerceIdentity(client);
+    const orderId = String(message.order_id || "").trim();
+    let order = this.steamPurchases.getForPlayer(orderId, client.id);
+    if (!order) throw new Error("steam_purchase_not_found");
+    if (String(order.steam_id) !== String(client.externalId)) throw new Error("steam_purchase_access_denied");
+    if (order.status === "granted" || order.status === "cancelled" || order.status === "failed" || order.status === "refunded") {
+      this.sendPurchaseState(client, "store_purchase_result", order, message.request_id);
+      return;
+    }
+    if (!boolOrFalse(message.authorized)) {
+      order = this.steamPurchases.markCancelled(order.order_id);
+      this.recordLog(`steam_purchase_cancelled player_id=${client.id} order_id=${order.order_id}`);
+      this.sendPurchaseState(client, "store_purchase_result", order, message.request_id);
+      return;
+    }
+    if (!this.isSteamCommerceAvailable()) throw new Error("steam_commerce_unavailable");
+    if (order.status === "initialized") order = this.steamPurchases.markAuthorized(order.order_id);
+    if (order.status === "finalized") {
+      const grant = this.steamPurchases.grantFinalizedOrder(order.order_id);
+      this.sendPurchaseGrant(client, grant.order, message.request_id, grant.already_granted);
+      return;
+    }
+    const finalizing = this.steamPurchases.beginFinalizing(order.order_id);
+    if (!finalizing.acquired) {
+      this.sendPurchaseState(client, "store_purchase_result", finalizing.order, message.request_id);
+      return;
+    }
+    const result = await this.steamCommerceGateway.finalizeTxn(finalizing.order);
+    if (!result.ok) {
+      const failed = this.steamPurchases.markFailed(order.order_id, result.error_code || "steam_purchase_finalize_failed", result.error_message || "Steam FinalizeTxn failed.");
+      this.sendPurchaseState(client, "store_purchase_result", failed, message.request_id);
+      return;
+    }
+    const finalized = this.steamPurchases.markFinalized(order.order_id, result.steam_trans_id || "");
+    const grant = this.steamPurchases.grantFinalizedOrder(finalized.order_id);
+    this.recordLog(`steam_purchase_granted player_id=${client.id} order_id=${grant.order.order_id} package_id=${grant.order.package_id}`);
+    this.sendPurchaseGrant(client, grant.order, message.request_id, grant.already_granted);
+  }
+
+  private getStorePurchaseStatus(client: Client, message: ClientMessage): void {
+    this.requireSteamCommerceIdentity(client);
+    const orderId = String(message.order_id || "").trim();
+    if (orderId === "") {
+      this.send(client, {
+        type: "store_purchase_result",
+        request_id: message.request_id,
+        orders: this.steamPurchases.recentForPlayer(client.id).map((order) => this.storePurchaseOrderSnapshot(order)),
+        commerce_mode: this.steamCommerceMode,
+        commerce_available: this.isSteamCommerceAvailable(),
+      });
+      return;
+    }
+    let order = this.steamPurchases.getForPlayer(orderId, client.id);
+    if (!order) throw new Error("steam_purchase_not_found");
+    if (order.status === "finalized") order = this.steamPurchases.grantFinalizedOrder(order.order_id).order;
+    this.sendPurchaseState(client, "store_purchase_result", order, message.request_id);
+  }
+
+  private sendPurchaseGrant(client: Client, order: SteamPurchaseOrderRecord, requestId?: string, alreadyGranted = false): void {
+    const wallet = this.wallets.get(client.id);
+    this.send(client, {
+      type: "store_purchase_result",
+      request_id: requestId,
+      ok: true,
+      order: this.storePurchaseOrderSnapshot(order),
+      wallet,
+      profile_snapshot: this.authoritativeProfileSnapshot(client.id),
+      reason: alreadyGranted ? "already_granted" : "purchase_completed",
+    });
+    if (wallet) this.send(client, { type: "wallet_snapshot", player_id: client.id, wallet });
+  }
+
+  private sendPurchaseState(client: Client, type: "store_purchase_created" | "store_purchase_result", order: SteamPurchaseOrderRecord, requestId?: string): void {
+    this.send(client, {
+      type,
+      request_id: requestId,
+      ok: order.status === "initialized" || order.status === "authorized" || order.status === "finalizing" || order.status === "finalized" || order.status === "granted",
+      order: this.storePurchaseOrderSnapshot(order),
+      commerce_mode: this.steamCommerceMode,
+      commerce_available: this.isSteamCommerceAvailable(),
+    });
+  }
+
+  private storePurchaseOrderSnapshot(order: SteamPurchaseOrderRecord) {
+    return {
+      order_id: order.order_id,
+      package_id: order.package_id,
+      package_title: order.package_title,
+      chips_amount: order.chips_amount,
+      gems_amount: order.gems_amount,
+      price_minor: order.price_minor,
+      price_currency: order.price_currency,
+      environment: order.environment,
+      status: order.status,
+      created_at: order.created_at,
+      initialized_at: order.initialized_at,
+      authorized_at: order.authorized_at,
+      finalized_at: order.finalized_at,
+      granted_at: order.granted_at,
+      cancelled_at: order.cancelled_at,
+      failed_at: order.failed_at,
+      failure_code: order.failure_code,
+    };
+  }
+
+  private requireSteamCommerceIdentity(client: Client): void {
+    if (client.authProvider !== "steam" || !/^\d{15,20}$/.test(String(client.externalId || ""))) throw new Error("steam_purchase_invalid_identity");
+  }
+
+  private sendCommerceError(client: Client, requestId: string | undefined, error: unknown): void {
+    const code = error instanceof Error ? error.message : String(error);
+    this.recordLog(`steam_purchase_error player_id=${client.id} code=${code}`);
+    this.send(client, { type: "error", request_id: requestId, error: code, error_code: code });
+  }
+
+  private recoverFinalizedSteamPurchases(): void {
+    try {
+      const recovered = this.steamPurchases.recoverFinalizedOrders();
+      for (const result of recovered) this.recordLog(`steam_purchase_recovery order_id=${result.order.order_id} player_id=${result.order.player_id}`);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : String(error);
+      this.recordLog(`steam_purchase_recovery_failed code=${code}`);
+    }
+  }
+
   private claimDailyBonus(client: Client, requestId?: string): void {
     const statusBefore = this.loginBonus.status(client.id);
     const walletBefore = this.wallets.get(client.id);
@@ -1465,6 +1673,7 @@ export class RoomManager {
   }
 
   private canUseMockPurchase(client: Client): boolean {
+    if (config.nodeEnv === "production") return false;
     if (!config.allowMockPurchases) return false;
     if (client.authProvider === "local_dev") return true;
     if (client.authProvider !== "steam") return false;
@@ -2676,6 +2885,16 @@ function toPlayer(client: Client): Player {
 
 function numberOr(value: unknown, fallback: number): number {
   return Number.isFinite(Number(value)) ? Number(value) : fallback;
+}
+
+function boolOrFalse(value: unknown): boolean {
+  return value === true;
+}
+
+function normalizePurchaseIdempotencyKey(value: string): string {
+  const normalized = String(value || "").trim();
+  if (!/^[a-zA-Z0-9:_-]{8,128}$/.test(normalized)) throw new Error("invalid_idempotency_key");
+  return normalized;
 }
 
 function normalizeHandCount(value: unknown, fallback: number): number {

@@ -88,6 +88,15 @@ var _replay_poker_table_screen: Control
 var _store_panel: PanelContainer
 var _store_dev_label: Label
 var _store_purchase_controls: Array[Dictionary] = []
+var _store_catalog: Array = []
+var _store_catalog_grid: GridContainer
+var _store_status_label: Label
+var _store_commerce_available := false
+var _store_commerce_mode := "disabled"
+var _store_pending_order_id := ""
+var _store_purchase_in_flight := false
+var _steam_commerce_service: Node
+var _store_result_overlay: Control
 var _profile_panel: PanelContainer
 var _settings_panel: PanelContainer
 var _social_panel: PanelContainer
@@ -113,7 +122,7 @@ const MusicServiceScript := preload("res://scripts/services/music_service.gd")
 const SfxManagerScript := preload("res://scripts/services/sfx_manager.gd")
 const IdentityServiceScript := preload("res://scripts/services/identity_service.gd")
 const LocalMockBackendScript := preload("res://scripts/services/local_mock_backend.gd")
-const StoreMockServiceScript := preload("res://scripts/services/store_mock_service.gd")
+const SteamCommerceServiceScript := preload("res://scripts/services/steam_commerce_service.gd")
 const ReplayServiceScript := preload("res://scripts/services/replay_service.gd")
 const ReplayRepositoryScript := preload("res://scripts/replay/replay_repository.gd")
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
@@ -136,6 +145,12 @@ const MODE_IMAGES := {
 	"private_table": "res://assets/home_lobby/mode_cards/mode_private_table.png",
 	"training": "res://assets/home_lobby/mode_cards/mode_club_games.png",
 	"events": "res://assets/home_lobby/mode_cards/mode_tournaments.png"
+}
+const STORE_BUNDLE_IMAGES := {
+	"starter_pack": "res://assets/store/bundles/starter_pack.png",
+	"club_pack": "res://assets/store/bundles/club_pack.png",
+	"pro_pack": "res://assets/store/bundles/pro_pack.png",
+	"high_roller_pack": "res://assets/store/bundles/high_roller_pack.png",
 }
 
 const LOGO_COLLAPSED_Y := 275.0
@@ -279,6 +294,10 @@ func _ready() -> void:
 	_build_quick_play_setup_panel()
 	_build_table_creation_setup_panels()
 	_build_confirmation_modal()
+	_steam_commerce_service = SteamCommerceServiceScript.new()
+	_steam_commerce_service.name = "SteamCommerceService"
+	_steam_commerce_service.authorization_response.connect(_on_steam_purchase_authorization)
+	add_child(_steam_commerce_service)
 	
 	_fade_overlay = ColorRect.new()
 	_fade_overlay.name = "FadeOverlay"
@@ -325,6 +344,8 @@ func set_state(new_state: LobbyState, animated: bool = true) -> void:
 		_reload_player_profile()
 	if new_state == LobbyState.ROOM_BROWSER:
 		_request_server_table_list()
+	if new_state == LobbyState.STORE:
+		_request_store_catalog()
 	
 	var nav_id := "home"
 	match current_state:
@@ -354,6 +375,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		if _confirmation_modal != null and _confirmation_modal.is_open():
 			_confirmation_modal.request_cancel()
+		elif _store_result_overlay != null and is_instance_valid(_store_result_overlay):
+			_close_store_purchase_success()
 		elif _wallet_history_overlay != null and is_instance_valid(_wallet_history_overlay):
 			_close_wallet_history()
 		elif _replay_fullscreen_overlay != null and _replay_fullscreen_overlay.visible:
@@ -1508,6 +1531,9 @@ func _connect_profile_server() -> void:
 	_profile_ws_client.table_created.connect(_on_server_table_created)
 	_profile_ws_client.table_joined.connect(_on_server_table_joined)
 	_profile_ws_client.mock_purchase_result_received.connect(_on_server_mock_purchase_result)
+	_profile_ws_client.store_catalog_received.connect(_on_store_catalog_received)
+	_profile_ws_client.store_purchase_created.connect(_on_store_purchase_created)
+	_profile_ws_client.store_purchase_result_received.connect(_on_store_purchase_result)
 	_profile_ws_client.replay_unlocked_received.connect(_on_replay_server_unlocked)
 	_profile_ws_client.replay_access_received.connect(_on_replay_access_received)
 	_profile_ws_client.server_error.connect(_on_profile_server_error)
@@ -1528,6 +1554,8 @@ func _on_profile_server_connected() -> void:
 	_profile_ws_client.get_avatar_catalog()
 	_profile_ws_client.get_profile()
 	_profile_ws_client.list_tables()
+	_profile_ws_client.get_store_catalog()
+	_profile_ws_client.get_store_purchase_status()
 
 func _on_profile_server_disconnected() -> void:
 	_profile_server_connected = false
@@ -1537,6 +1565,10 @@ func _on_profile_server_disconnected() -> void:
 	if _wallet_history_overlay != null and is_instance_valid(_wallet_history_overlay):
 		_wallet_history_pending = false
 		_render_wallet_history_error("Wallet history is temporarily unavailable.")
+	_store_commerce_available = false
+	_store_purchase_in_flight = false
+	_store_pending_order_id = ""
+	_refresh_store_purchase_access()
 	if current_state == LobbyState.ROOM_BROWSER:
 		_refresh_room_browser_rows()
 
@@ -1632,6 +1664,10 @@ func _on_profile_server_error(message: String) -> void:
 	if _wallet_history_pending:
 		_wallet_history_pending = false
 		_render_wallet_history_error("Wallet history is temporarily unavailable.")
+	if message in ["steam_commerce_unavailable", "steam_identity_required", "store_package_not_found", "store_package_disabled", "invalid_store_purchase", "steam_purchase_not_found", "steam_purchase_access_denied", "steam_purchase_failed", "steam_purchase_init_failed", "steam_purchase_finalize_failed"]:
+		_store_purchase_in_flight = false
+		_store_pending_order_id = ""
+		_refresh_store_purchase_access()
 
 func _server_lobby_error_text(message: String) -> String:
 	match message:
@@ -1661,6 +1697,16 @@ func _server_lobby_error_text(message: String) -> String:
 			return "Legacy replay restore is not enabled for this account."
 		"mock_purchase_not_allowed":
 			return "Test purchases are not enabled for this account."
+		"steam_commerce_unavailable":
+			return "Steam checkout is temporarily unavailable."
+		"steam_identity_required":
+			return "Steam is required to use this store."
+		"store_package_not_found", "store_package_disabled":
+			return "This pack is not currently available."
+		"steam_purchase_not_found", "steam_purchase_access_denied":
+			return "Purchase order is unavailable."
+		"steam_purchase_failed", "steam_purchase_init_failed", "steam_purchase_finalize_failed":
+			return "Steam purchase could not be completed."
 		"invalid_display_name":
 			return "Display name must be 3-16 characters."
 		"display_name_reserved", "display_name_prohibited":
@@ -5364,143 +5410,348 @@ func _build_store_panel() -> void:
 	_store_panel = PanelContainer.new()
 	_store_panel.name = "StorePanel"
 	_store_panel.anchor_left = 0.0
-	_store_panel.anchor_top = 0.32
+	_store_panel.anchor_top = 0.14
 	_store_panel.anchor_right = 1.0
-	_store_panel.anchor_bottom = 0.91
+	_store_panel.anchor_bottom = 0.97
 	_store_panel.offset_left = MAIN_LEFT
 	_store_panel.offset_right = -MAIN_RIGHT
 	_store_panel.mouse_filter = Control.MOUSE_FILTER_PASS
-	_store_panel.custom_minimum_size = Vector2(0, 580)
+	_store_panel.custom_minimum_size = Vector2(0, 600)
 	_store_panel.visible = false
 	_store_panel.modulate.a = 0.0
 	_store_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.006, 0.008, 0.016, 0.72), Color(0.52, 0.78, 1.0, 0.28), 8, 1))
 	_lobby_ui_root.add_child(_store_panel)
 	
+	var page_margin := MarginContainer.new()
+	page_margin.add_theme_constant_override("margin_left", 24)
+	page_margin.add_theme_constant_override("margin_right", 24)
+	page_margin.add_theme_constant_override("margin_top", 20)
+	page_margin.add_theme_constant_override("margin_bottom", 22)
+	_store_panel.add_child(page_margin)
 	var main_vbox := VBoxContainer.new()
-	main_vbox.add_theme_constant_override("separation", 20)
-	_store_panel.add_child(main_vbox)
+	main_vbox.add_theme_constant_override("separation", 14)
+	page_margin.add_child(main_vbox)
 	
 	# Header
 	var title_box := VBoxContainer.new()
 	main_vbox.add_child(title_box)
 	var title := Label.new()
-	title.text = _t("store.title")
+	title.text = "STORE"
 	HomeTheme.make_font_settings(title, 20, Color(1, 1, 1, 0.95))
 	title_box.add_child(title)
 	var sub := Label.new()
-	sub.text = _t("store.subtitle")
+	sub.text = "Power your tables. Unlock premium features."
 	HomeTheme.make_font_settings(sub, 12, HomeTheme.MUTED)
 	title_box.add_child(sub)
 	
-	_store_dev_label = Label.new()
-	HomeTheme.make_font_settings(_store_dev_label, 13, HomeTheme.GOLD)
-	main_vbox.add_child(_store_dev_label)
-
 	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 12)
+	tabs.add_theme_constant_override("separation", 8)
 	main_vbox.add_child(tabs)
-	for tab_name in [_t("store.chips").to_upper(), _t("store.gems").to_upper()]:
-		var tab := Button.new()
-		tab.text = tab_name
-		tab.custom_minimum_size = Vector2(140, 36)
-		tab.focus_mode = Control.FOCUS_NONE
-		tab.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.66), Color(0.52, 0.78, 1.0, 0.34), 18))
-		tab.add_theme_color_override("font_color", Color(0.90, 0.94, 1.0, 0.94))
-		tabs.add_child(tab)
+	var packs_tab := Button.new()
+	packs_tab.text = "PACKS"
+	packs_tab.custom_minimum_size = Vector2(132, 34)
+	packs_tab.focus_mode = Control.FOCUS_NONE
+	packs_tab.disabled = true
+	packs_tab.add_theme_stylebox_override("disabled", HomeTheme.make_button_style(Color(0.035, 0.028, 0.075, 0.84), Color(0.66, 0.34, 1.0, 0.64), 18))
+	packs_tab.add_theme_color_override("font_disabled_color", Color(0.96, 0.92, 1.0, 0.96))
+	tabs.add_child(packs_tab)
 
-	var grid := HBoxContainer.new()
-	grid.add_theme_constant_override("separation", 24)
-	grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	main_vbox.add_child(grid)
+	_store_status_label = Label.new()
+	_store_status_label.text = "Loading store..."
+	_store_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HomeTheme.make_font_settings(_store_status_label, 13, HomeTheme.MUTED)
+	main_vbox.add_child(_store_status_label)
+	_store_catalog_grid = GridContainer.new()
+	_store_catalog_grid.name = "StorePackGrid"
+	_store_catalog_grid.columns = 2
+	_store_catalog_grid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_store_catalog_grid.add_theme_constant_override("h_separation", 16)
+	_store_catalog_grid.add_theme_constant_override("v_separation", 14)
+	main_vbox.add_child(_store_catalog_grid)
+	_render_store_catalog()
 
-	_add_store_currency_column(grid, _t("store.chips").to_upper(), _t("store.chips_desc"), [10000, 50000, 100000], "chips", HomeTheme.GOLD)
-	_add_store_currency_column(grid, _t("store.gems").to_upper(), _t("store.gems_desc"), [100, 500, 1200], "gems", HomeTheme.PINK)
+func _render_store_catalog() -> void:
+	if _store_catalog_grid == null:
+		return
+	for child in _store_catalog_grid.get_children():
+		child.queue_free()
+	_store_purchase_controls.clear()
+	for item_value in _store_catalog:
+		_add_store_pack_card(Dictionary(item_value))
+	if _store_catalog.is_empty():
+		_store_status_label.text = "Store is temporarily unavailable." if _profile_server_connected else "Connect to the server to view packs."
+	elif not _store_commerce_available:
+		_store_status_label.text = "Store is temporarily unavailable."
+	elif _steam_commerce_service == null or not _steam_commerce_service.is_available():
+		_store_status_label.text = "Steam checkout is unavailable."
+	else:
+		_store_status_label.text = "Steam Sandbox" if _store_commerce_mode == "sandbox" else ""
 	_refresh_store_purchase_access()
 
-func _add_store_currency_column(parent: Container, title_text: String, desc_text: String, packs: Array, currency: String, accent: Color) -> void:
+
+func _add_store_pack_card(item: Dictionary) -> void:
+	var package_id := str(item.get("package_id", ""))
+	var accent := _store_pack_accent(package_id)
 	var card := PanelContainer.new()
+	card.name = "StorePack_%s" % package_id
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	card.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.012, 0.016, 0.035, 0.70), accent.darkened(0.25), 8, 1))
-	parent.add_child(card)
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 14)
-	card.add_child(vbox)
+	card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	card.custom_minimum_size = Vector2(420, 190)
+	card.mouse_filter = Control.MOUSE_FILTER_PASS
+	card.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.010, 0.013, 0.030, 0.92), accent, 8, 1))
+	card.mouse_entered.connect(_set_store_pack_hover.bind(card, true))
+	card.mouse_exited.connect(_set_store_pack_hover.bind(card, false))
+	_store_catalog_grid.add_child(card)
+	var card_margin := MarginContainer.new()
+	card_margin.add_theme_constant_override("margin_left", 14)
+	card_margin.add_theme_constant_override("margin_right", 14)
+	card_margin.add_theme_constant_override("margin_top", 12)
+	card_margin.add_theme_constant_override("margin_bottom", 12)
+	card.add_child(card_margin)
+	var card_row := HBoxContainer.new()
+	card_row.add_theme_constant_override("separation", 16)
+	card_margin.add_child(card_row)
+
+	var art_frame := PanelContainer.new()
+	art_frame.custom_minimum_size = Vector2(160, 160)
+	art_frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	art_frame.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.004, 0.005, 0.018, 0.96), accent.darkened(0.35), 6, 1))
+	card_row.add_child(art_frame)
+	var image_key := str(item.get("image_key", ""))
+	var image_path := str(STORE_BUNDLE_IMAGES.get(image_key, ""))
+	if image_path != "" and ResourceLoader.exists(image_path):
+		var art := TextureRect.new()
+		art.texture = ResourceLoader.load(image_path) as Texture2D
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		art_frame.add_child(art)
+	else:
+		var fallback := Label.new()
+		fallback.text = "Bundle artwork\nunavailable"
+		fallback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		fallback.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		fallback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		HomeTheme.make_font_settings(fallback, 12, HomeTheme.MUTED)
+		art_frame.add_child(fallback)
+
+	var details := VBoxContainer.new()
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.add_theme_constant_override("separation", 5)
+	card_row.add_child(details)
+	var badge := Label.new()
+	badge.text = str(item.get("badge", ""))
+	badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	HomeTheme.make_font_settings(badge, 10, accent)
+	details.add_child(badge)
 	var title := Label.new()
-	HomeTheme.make_font_settings(title, 18, accent)
-	vbox.add_child(title)
-	var desc := Label.new()
-	desc.text = desc_text
-	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	HomeTheme.make_font_settings(desc, 12, HomeTheme.MUTED)
-	vbox.add_child(desc)
-	for pack_item in packs:
-		var amount: int = int(pack_item)
-		var button := Button.new()
-		button.text = _tf("store.mock_buy", {"amount": _format_number(amount), "currency": title_text.capitalize()})
-		button.custom_minimum_size = Vector2(220, 42)
-		button.focus_mode = Control.FOCUS_NONE
-		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.70), accent.darkened(0.10), 18))
-		button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.035, 0.04, 0.085, 0.86), accent, 18))
-		button.pressed.connect(_show_mock_purchase_confirm.bind(currency, amount))
-		vbox.add_child(button)
-		_store_purchase_controls.append({
-			"title": title,
-			"title_text": title_text,
-			"button": button,
-			"purchase_text": button.text,
-		})
+	title.text = str(item.get("title", "Pack")).to_upper()
+	HomeTheme.make_font_settings(title, 18, Color(1, 1, 1, 0.96))
+	details.add_child(title)
+	var chips := Label.new()
+	chips.text = "%s CHIPS" % _format_number(int(item.get("chips_amount", 0)))
+	HomeTheme.make_font_settings(chips, 14, HomeTheme.GOLD)
+	details.add_child(chips)
+	var gems := Label.new()
+	gems.text = "%s GEMS" % _format_number(int(item.get("gems_amount", 0)))
+	HomeTheme.make_font_settings(gems, 14, HomeTheme.PINK)
+	details.add_child(gems)
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	details.add_child(spacer)
+	var price := Label.new()
+	price.text = str(item.get("display_price", ""))
+	HomeTheme.make_font_settings(price, 14, HomeTheme.GOLD)
+	details.add_child(price)
+	var button := Button.new()
+	button.text = "BUY WITH STEAM"
+	button.custom_minimum_size = Vector2(190, 36)
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.add_theme_stylebox_override("normal", HomeTheme.make_button_style(Color(0.018, 0.022, 0.052, 0.70), accent.darkened(0.10), 18))
+	button.add_theme_stylebox_override("hover", HomeTheme.make_button_style(Color(0.035, 0.04, 0.085, 0.86), accent, 18))
+	button.pressed.connect(_begin_store_purchase.bind(package_id))
+	details.add_child(button)
+	_store_purchase_controls.append({"button": button, "purchase_text": "BUY WITH STEAM", "package_id": package_id})
+
+
+func _store_pack_accent(package_id: String) -> Color:
+	match package_id:
+		"starter_pack":
+			return Color(0.72, 0.53, 0.20, 0.62)
+		"club_pack":
+			return Color(0.55, 0.48, 0.92, 0.72)
+		"pro_pack":
+			return Color(0.79, 0.32, 0.92, 0.82)
+		"high_roller_pack":
+			return Color(0.94, 0.42, 0.88, 0.94)
+		_:
+			return Color(0.52, 0.78, 1.0, 0.52)
+
+
+func _set_store_pack_hover(card: PanelContainer, hovered: bool) -> void:
+	if card == null or not is_instance_valid(card):
+		return
+	var tween := create_tween()
+	tween.tween_property(card, "modulate", Color(1.06, 1.04, 1.08, 1.0) if hovered else Color.WHITE, 0.12)
 
 func _refresh_store_purchase_access() -> void:
-	var allowed := bool(_player_profile.get("mock_purchase_allowed", false))
-	if _store_dev_label != null:
-		_store_dev_label.text = _t("store.dev_badge") if allowed else _t("common.coming_soon").to_upper()
+	var allowed: bool = bool(_profile_server_connected and _store_commerce_available and _steam_commerce_service != null and _steam_commerce_service.is_available() and not _store_purchase_in_flight)
 	for control_value in _store_purchase_controls:
 		var control := Dictionary(control_value)
-		var title := control.get("title") as Label
 		var button := control.get("button") as Button
-		var title_text := str(control.get("title_text", ""))
-		if title != null:
-			title.text = _tf("store.mock_purchase_title", {"currency": title_text.capitalize()}) if allowed else title_text
 		if button == null:
 			continue
 		button.disabled = not allowed
-		button.text = str(control.get("purchase_text", "")) if allowed else _t("common.coming_soon").to_upper()
+		button.text = "PROCESSING..." if _store_purchase_in_flight else str(control.get("purchase_text", "BUY WITH STEAM"))
 		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if allowed else Control.CURSOR_ARROW
 
-func _show_mock_purchase_confirm(currency: String, amount: int) -> void:
-	if not bool(_player_profile.get("mock_purchase_allowed", false)):
-		return
-	var dialog := ConfirmationDialog.new()
-	dialog.title = _t("store.mock_purchase_confirm_title")
-	var target := "server wallet" if server_authoritative_profile and _profile_server_connected else "local wallet"
-	dialog.dialog_text = _tf("store.mock_purchase_confirm_text", {"amount": _format_number(amount), "currency": currency.to_upper(), "target": target})
-	dialog.confirmed.connect(_confirm_mock_purchase.bind(currency, amount, dialog))
-	dialog.canceled.connect(dialog.queue_free)
-	add_child(dialog)
-	dialog.popup_centered(Vector2(360, 180))
 
-func _confirm_mock_purchase(currency: String, amount: int, dialog: ConfirmationDialog) -> void:
-	if server_authoritative_profile and _profile_server_connected and _profile_ws_client != null:
-		var err := _profile_ws_client.mock_purchase(currency, amount)
-		if err == OK:
-			_show_toast(_t("store.mock_purchase_sent"), [], 1.4)
-		else:
-			_show_toast(_t("store.mock_purchase_server_failed"), [], 2.4)
-		if dialog != null:
-			dialog.queue_free()
+func _request_store_catalog() -> void:
+	if _profile_ws_client == null or not _profile_server_connected:
+		_render_store_catalog()
 		return
-	var store := StoreMockServiceScript.new()
-	if currency == "gems":
-		_player_profile = store.mock_purchase_gems(amount)
-	else:
-		_player_profile = store.mock_purchase_chips(amount)
-	_play_currency_sfx(currency, "mock_purchase:local:%s:%d" % [currency, amount])
-	if _top_bar != null:
-		_top_bar.configure(_player_profile)
-	_refresh_profile_panel()
-	if dialog != null:
-		dialog.queue_free()
+	_profile_ws_client.get_store_catalog()
+	_profile_ws_client.get_store_purchase_status()
+
+
+func _on_store_catalog_received(catalog: Array, commerce_mode: String, commerce_available: bool) -> void:
+	_store_catalog = catalog.duplicate(true)
+	_store_commerce_mode = commerce_mode
+	_store_commerce_available = commerce_available
+	_render_store_catalog()
+
+
+func _begin_store_purchase(package_id: String) -> void:
+	if package_id == "" or not _store_commerce_available or _store_purchase_in_flight or _profile_ws_client == null:
+		return
+	_store_purchase_in_flight = true
+	_store_status_label.text = "Opening Steam checkout..."
+	_refresh_store_purchase_access()
+	var idempotency_key := "%s:%d:%d" % [package_id, int(Time.get_unix_time_from_system()), randi()]
+	if _profile_ws_client.create_store_purchase(package_id, idempotency_key) != OK:
+		_store_purchase_in_flight = false
+		_store_status_label.text = "Store is temporarily unavailable."
+		_refresh_store_purchase_access()
+
+
+func _on_store_purchase_created(order: Dictionary) -> void:
+	_store_pending_order_id = str(order.get("order_id", ""))
+	if _store_pending_order_id == "":
+		_store_purchase_in_flight = false
+		_refresh_store_purchase_access()
+		return
+	_steam_commerce_service.register_pending_order(_store_pending_order_id)
+	_store_status_label.text = "Waiting for Steam authorization..."
+
+
+func _on_steam_purchase_authorization(order_id: String, authorized: bool) -> void:
+	if _profile_ws_client == null or not _profile_server_connected:
+		return
+	_profile_ws_client.store_purchase_authorization(order_id, authorized)
+	_store_status_label.text = "Finalizing purchase..." if authorized else "Purchase cancelled."
+
+
+func _on_store_purchase_result(payload: Dictionary) -> void:
+	var recent_orders: Array = Array(payload.get("orders", []))
+	if not recent_orders.is_empty():
+		for recent_value in recent_orders:
+			var recent := Dictionary(recent_value)
+			if str(recent.get("status", "")) in ["created", "initialized", "authorized", "finalizing", "finalized"]:
+				_store_purchase_in_flight = true
+				_store_pending_order_id = str(recent.get("order_id", ""))
+				_steam_commerce_service.register_pending_order(_store_pending_order_id)
+				_store_status_label.text = "Purchase pending..."
+				_refresh_store_purchase_access()
+				return
+	var order := Dictionary(payload.get("order", {}))
+	var status := str(order.get("status", ""))
+	var order_id := str(order.get("order_id", ""))
+	if order_id != "" and status in ["granted", "cancelled", "failed", "refunded"]:
+		_steam_commerce_service.clear_pending_order(order_id)
+	if status in ["granted", "cancelled", "failed", "refunded"]:
+		_store_purchase_in_flight = false
+		_store_pending_order_id = ""
+	if status == "granted":
+		_store_status_label.text = "Purchase complete."
+		_show_store_purchase_success(order)
+	elif status == "cancelled":
+		_store_status_label.text = "Purchase cancelled."
+	elif status in ["failed", "refunded"]:
+		_store_status_label.text = "Purchase could not be completed."
+	elif status != "":
+		_store_purchase_in_flight = true
+		_store_pending_order_id = order_id
+		_steam_commerce_service.register_pending_order(order_id)
+		_store_status_label.text = "Purchase pending..."
+	_refresh_store_purchase_access()
+
+
+func _show_store_purchase_success(order: Dictionary) -> void:
+	_close_store_purchase_success()
+	_store_result_overlay = Control.new()
+	_store_result_overlay.name = "StorePurchaseSuccessModal"
+	_store_result_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_store_result_overlay.z_index = 950
+	_lobby_ui_root.add_child(_store_result_overlay)
+	var shade := ColorRect.new()
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.004, 0.003, 0.014, 0.82)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	_store_result_overlay.add_child(shade)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_store_result_overlay.add_child(center)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(520, 300)
+	panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.015, 0.010, 0.04, 0.99), Color(0.58, 0.30, 0.92, 0.86), 8, 1))
+	center.add_child(panel)
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 24)
+	margin.add_theme_constant_override("margin_right", 24)
+	margin.add_theme_constant_override("margin_top", 24)
+	margin.add_theme_constant_override("margin_bottom", 24)
+	panel.add_child(margin)
+	var content := VBoxContainer.new()
+	content.alignment = BoxContainer.ALIGNMENT_CENTER
+	content.add_theme_constant_override("separation", 16)
+	margin.add_child(content)
+	var title := Label.new()
+	title.text = "PURCHASE COMPLETE"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HomeTheme.make_font_settings(title, 22, HomeTheme.CYAN)
+	content.add_child(title)
+	var details := Label.new()
+	details.text = "%s\n+%s Chips   +%s Gems" % [str(order.get("package_title", "Pack")), _format_number(int(order.get("chips_amount", 0))), _format_number(int(order.get("gems_amount", 0)))]
+	details.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HomeTheme.make_font_settings(details, 16, HomeTheme.TEXT)
+	content.add_child(details)
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_CENTER
+	actions.add_theme_constant_override("separation", 12)
+	content.add_child(actions)
+	var wallet_button := Button.new()
+	wallet_button.text = "VIEW WALLET"
+	wallet_button.custom_minimum_size = Vector2(170, 42)
+	wallet_button.pressed.connect(_view_wallet_after_purchase)
+	actions.add_child(wallet_button)
+	var close_button := Button.new()
+	close_button.text = "CLOSE"
+	close_button.custom_minimum_size = Vector2(130, 42)
+	close_button.pressed.connect(_close_store_purchase_success)
+	actions.add_child(close_button)
+
+
+func _close_store_purchase_success() -> void:
+	if _store_result_overlay != null and is_instance_valid(_store_result_overlay):
+		_store_result_overlay.queue_free()
+	_store_result_overlay = null
+
+
+func _view_wallet_after_purchase() -> void:
+	_close_store_purchase_success()
+	_open_wallet_history("all")
 
 func _on_server_mock_purchase_result(ok: bool, currency: String, amount: int, wallet: Dictionary) -> void:
 	if not ok:

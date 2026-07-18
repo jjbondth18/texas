@@ -42,6 +42,8 @@ const REASON_LABELS: Record<string, string> = {
   ai_challenge_reward: "AI Challenge Victory",
   ai_challenge_payout: "AI Challenge Reward",
   ai_challenge_entry_refund: "AI Challenge Refund",
+  steam_purchase_chips: "Steam Purchase",
+  steam_purchase_gems: "Steam Purchase",
   wallet_adjustment: "Wallet Adjustment",
 };
 
@@ -53,10 +55,10 @@ export function walletHistoryEntry(transaction: WalletTransactionRecord): Wallet
     balance_after: transaction.balance_after,
     reason: transaction.reason,
     created_at: transaction.created_at,
-    reference_id: transaction.related_hand_id || transaction.related_room_id || "",
+    reference_id: transaction.reference_id || transaction.related_hand_id || transaction.related_room_id || "",
     room_id: transaction.related_room_id || "",
     hand_id: transaction.related_hand_id || "",
-    display_label: REASON_LABELS[transaction.reason] || humanizeReason(transaction.reason),
+    display_label: transaction.display_label || REASON_LABELS[transaction.reason] || humanizeReason(transaction.reason),
   };
 }
 
