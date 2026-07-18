@@ -29,6 +29,11 @@ export interface WalletTransactionRecord {
   created_at: string;
 }
 
+export interface WalletHistoryPage {
+  transactions: WalletTransactionRecord[];
+  next_cursor: string;
+}
+
 export class WalletRepository {
   constructor(private readonly db: Database.Database) {}
 
@@ -105,6 +110,37 @@ export class WalletRepository {
       .all(playerId, Math.max(1, Math.floor(limit))) as WalletTransactionRecord[];
   }
 
+  walletHistory(playerId: string, currency: WalletCurrency | "all" = "all", limit = 50, cursor = ""): WalletHistoryPage {
+    const normalizedLimit = Math.min(100, Math.max(1, Math.floor(limit)));
+    const decodedCursor = decodeWalletHistoryCursor(cursor);
+    const where = ["player_id = ?"];
+    const params: Array<string | number> = [playerId];
+    if (currency !== "all") {
+      where.push("currency = ?");
+      params.push(currency);
+    }
+    if (decodedCursor) {
+      where.push("(created_at < ? OR (created_at = ? AND id < ?))");
+      params.push(decodedCursor.created_at, decodedCursor.created_at, decodedCursor.id);
+    }
+    const rows = this.db
+      .prepare(
+        `SELECT id, player_id, currency, amount, reason, balance_after, related_room_id, related_hand_id, created_at
+         FROM wallet_transactions
+         WHERE ${where.join(" AND ")}
+         ORDER BY created_at DESC, id DESC
+         LIMIT ?`,
+      )
+      .all(...params, normalizedLimit + 1) as WalletTransactionRecord[];
+    const hasMore = rows.length > normalizedLimit;
+    const transactions = rows.slice(0, normalizedLimit);
+    const last = transactions.at(-1);
+    return {
+      transactions,
+      next_cursor: hasMore && last ? encodeWalletHistoryCursor(last.created_at, last.id) : "",
+    };
+  }
+
   auditWalletTransactions(playerId: string): { unmatchedBuyIns: WalletTransactionRecord[] } {
     const transactions = this.transactionsForPlayer(playerId, 500).slice().reverse();
     const exits = new Set(["left_before_official_hand", "table_cash_out", "session_complete_cash_out", "disconnected_cash_out", "refunded_sit_down_failed"]);
@@ -154,6 +190,21 @@ export class WalletRepository {
         relatedHandId ?? null,
         createdAt,
       );
+  }
+}
+
+function encodeWalletHistoryCursor(createdAt: string, id: string): string {
+  return Buffer.from(JSON.stringify({ created_at: createdAt, id }), "utf8").toString("base64url");
+}
+
+function decodeWalletHistoryCursor(cursor: string): { created_at: string; id: string } | null {
+  if (!cursor) return null;
+  try {
+    const value = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as { created_at?: unknown; id?: unknown };
+    if (typeof value.created_at !== "string" || typeof value.id !== "string" || value.created_at === "" || value.id === "") return null;
+    return { created_at: value.created_at, id: value.id };
+  } catch {
+    throw new Error("invalid_wallet_history_cursor");
   }
 }
 

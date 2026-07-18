@@ -9,12 +9,14 @@ const LEAVE_SEAT := "leave_seat"
 const CASH_OUT := "cash_out"
 const READY := "ready"
 const RESTART_SESSION := "restart_session"
+const CONTINUE_AI_CHALLENGE := "continue_ai_challenge"
 const START_HAND := "start_hand"
 const START_AI_WARMUP := "start_ai_warmup"
 const DEV_SIMULATE_REAL_JOIN := "dev_simulate_real_join"
 const PLAYER_ACTION := "player_action"
 const ADD_TABLE_CHIPS := "add_table_chips"
 const GET_PROFILE := "get_profile"
+const GET_WALLET_HISTORY := "get_wallet_history"
 const RENAME_DISPLAY_NAME := "rename_display_name"
 const GET_AVATAR_CATALOG := "get_avatar_catalog"
 const CLAIM_DAILY_BONUS := "claim_daily_bonus"
@@ -36,6 +38,7 @@ const PRIVATE_SNAPSHOT := "private_snapshot"
 const SIT_DOWN_RESULT := "sit_down_result"
 const PROFILE_SNAPSHOT := "profile_snapshot"
 const WALLET_SNAPSHOT := "wallet_snapshot"
+const WALLET_HISTORY := "wallet_history"
 const DAILY_BONUS_RESULT := "daily_bonus_result"
 const AVATAR_CATALOG := "avatar_catalog"
 const TABLE_LIST := "table_list"
@@ -109,6 +112,9 @@ static func ready(is_ready: bool = true) -> Dictionary:
 static func restart_session() -> Dictionary:
 	return _message(RESTART_SESSION)
 
+static func continue_ai_challenge() -> Dictionary:
+	return _message(CONTINUE_AI_CHALLENGE)
+
 static func start_hand() -> Dictionary:
 	return _message(START_HAND)
 
@@ -129,6 +135,15 @@ static func add_table_chips(amount: int) -> Dictionary:
 
 static func get_profile() -> Dictionary:
 	return _message(GET_PROFILE)
+
+static func get_wallet_history(currency: String = "all", limit: int = 50, before: String = "") -> Dictionary:
+	var data := {
+		"currency": currency if currency in ["chips", "gems"] else "all",
+		"limit": clampi(limit, 1, 100),
+	}
+	if before != "":
+		data["before"] = before
+	return _message(GET_WALLET_HISTORY, data)
 
 static func rename_display_name(display_name: String) -> Dictionary:
 	return _message(RENAME_DISPLAY_NAME, {"display_name": display_name})

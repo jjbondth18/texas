@@ -38,6 +38,7 @@ var ready_count := 0
 var ready_required_count := 0
 var ready_countdown_deadline_at := ""
 var hand_result_deadline_at := ""
+var hand_result: Dictionary = {}
 var action_time_seconds := 60
 var action_timeout_ms := 0
 var action_deadline_at := ""
@@ -85,6 +86,7 @@ func apply_table_snapshot(data: Dictionary) -> void:
 	ready_required_count = int(data.get("ready_required_count", table_info.get("ready_required_count", ready_required_count)))
 	ready_countdown_deadline_at = String(data.get("ready_countdown_deadline_at", table_info.get("ready_countdown_deadline_at", ready_countdown_deadline_at)))
 	hand_result_deadline_at = String(data.get("hand_result_deadline_at", table_info.get("hand_result_deadline_at", hand_result_deadline_at)))
+	hand_result = Dictionary(data.get("hand_result", hand_result)).duplicate(true)
 	action_time_seconds = int(data.get("action_time_seconds", table_info.get("action_time_seconds", action_time_seconds)))
 	action_timeout_ms = int(data.get("action_timeout_ms", table_info.get("action_timeout_ms", action_timeout_ms)))
 	action_deadline_at = String(data.get("action_deadline_at", table_info.get("action_deadline_at", action_deadline_at)))
@@ -145,6 +147,7 @@ func to_dict() -> Dictionary:
 		"ready_required_count": ready_required_count,
 		"ready_countdown_deadline_at": ready_countdown_deadline_at,
 		"hand_result_deadline_at": hand_result_deadline_at,
+		"hand_result": hand_result.duplicate(true),
 		"action_time_seconds": action_time_seconds,
 		"action_timeout_ms": action_timeout_ms,
 		"action_deadline_at": action_deadline_at,

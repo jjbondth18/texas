@@ -7,12 +7,14 @@ export type ClientMessageType =
   | "cash_out"
   | "ready"
   | "restart_session"
+  | "continue_ai_challenge"
   | "start_hand"
   | "start_ai_warmup"
   | "dev_simulate_real_join"
   | "add_table_chips"
   | "player_action"
   | "get_profile"
+  | "get_wallet_history"
   | "rename_display_name"
   | "get_avatar_catalog"
   | "claim_daily_bonus"
@@ -37,6 +39,7 @@ export type ServerMessageType =
   | "private_snapshot"
   | "profile_snapshot"
   | "wallet_snapshot"
+  | "wallet_history"
   | "daily_bonus_result"
   | "avatar_catalog"
   | "table_list"
@@ -132,7 +135,9 @@ export interface ClientMessage {
   amount?: number;
   table_name?: string;
   table_type?: string;
-  currency?: "chips" | "gems";
+  currency?: "chips" | "gems" | "all";
+  limit?: number;
+  before?: string;
   source?: string;
   room_code?: string;
   replay_id?: string;
@@ -174,7 +179,7 @@ export interface ServerMessage {
   avatar_catalog?: AvatarCatalogItemSnapshot[];
   tables?: PublicTableSnapshot[];
   table?: PublicTableSnapshot;
-  currency?: "chips" | "gems";
+  currency?: "chips" | "gems" | "all";
   amount?: number;
   source?: string;
   replay_id?: string;
@@ -213,6 +218,21 @@ export interface ServerMessage {
   wallet_payout_chips?: number;
   net_result_chips?: number;
   max_hands?: number;
+  wallet_history?: WalletHistoryEntrySnapshot[];
+  next_cursor?: string;
+}
+
+export interface WalletHistoryEntrySnapshot {
+  transaction_id: string;
+  currency: "chips" | "gems";
+  amount: number;
+  balance_after: number;
+  reason: string;
+  created_at: string;
+  reference_id: string;
+  room_id: string;
+  hand_id: string;
+  display_label: string;
 }
 
 export interface ChallengeCatalogItemSnapshot {
@@ -453,6 +473,25 @@ export interface TableSnapshot {
   action_log: ActionLogEntry[];
   replay_record?: Record<string, unknown>;
   replay_delivery?: Record<string, unknown>;
+  hand_result?: ChallengeHandResultSnapshot;
+}
+
+export interface ChallengeHandResultSnapshot {
+  hand_id: number;
+  ended_by_fold: boolean;
+  showdown: boolean;
+  revealed_hole_cards: Array<{ seat_index: number; player_id: string; player_name: string; cards: Card[] }>;
+  winner_player_id: string;
+  winner_seat: number;
+  winner_seats: number[];
+  hand_rank_by_seat: Array<{ seat_index: number; player_id: string; player_name: string; hand_rank: string; best_cards: string[] }>;
+  pot_awarded: number;
+  player_net_delta: number;
+  challenge_hands: number;
+  player_stack: number;
+  opponent_stack: number;
+  win_reason: string;
+  split_pot: boolean;
 }
 
 export interface PrivateSnapshot {

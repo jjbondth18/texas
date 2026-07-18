@@ -1253,6 +1253,35 @@ const dailyCycleProgression = db.prepare("SELECT total_xp, level FROM player_pro
 if (dailyCycleWallet.chips !== expectedCycleChips || dailyCycleWallet.gems !== expectedCycleGems) throw new Error("daily bonus cycle should grant balanced chips and Day 7 gems");
 if (dailyCycleProgression.total_xp !== expectedCycleXp || dailyCycleProgression.level !== levelForTotalXp(expectedCycleXp)) throw new Error("daily bonus cycle should persist XP and derived level");
 
+const walletHistoryMessages: any[] = [];
+const walletHistoryWs = { OPEN: 1, readyState: 1, send: (payload: string) => walletHistoryMessages.push(JSON.parse(payload)) };
+const walletHistoryClient = manager.connect(walletHistoryWs as any);
+manager.handle(walletHistoryClient.id, { type: "hello", player_id: "wallet_history_owner", name: "Wallet History Owner" });
+const walletHistoryRepository = new WalletRepository(db);
+walletHistoryRepository.addChips("wallet_history_owner", 11, { reason: "daily_bonus", now: "2099-01-01T00:00:01.000Z" });
+walletHistoryRepository.addGems("wallet_history_owner", 22, { reason: "official_replay_unlock", now: "2099-01-01T00:00:02.000Z" });
+const walletHistoryOtherClient = manager.connect();
+manager.handle(walletHistoryOtherClient.id, { type: "hello", player_id: "wallet_history_other", name: "Wallet History Other" });
+walletHistoryRepository.addChips("wallet_history_other", 7777, { reason: "wallet_adjustment", now: "2099-01-01T00:00:03.000Z" });
+
+manager.handle("wallet_history_owner", { type: "get_wallet_history", currency: "all", limit: 2, player_id: "wallet_history_other" });
+const historyPageOne = walletHistoryMessages.filter((message) => message.type === "wallet_history").at(-1);
+if (historyPageOne.wallet_history.length !== 2 || historyPageOne.wallet_history.some((entry: any) => entry.amount === 7777)) throw new Error("wallet history must be isolated to the authenticated player");
+if (historyPageOne.wallet_history[0].amount !== 22 || historyPageOne.wallet_history[1].amount !== 11) throw new Error("wallet history should be newest first");
+if (!historyPageOne.next_cursor) throw new Error("limited wallet history should return a pagination cursor");
+if (historyPageOne.wallet_history[0].display_label !== "Official Replay Unlock") throw new Error("wallet history should return player-facing reason labels");
+
+manager.handle("wallet_history_owner", { type: "get_wallet_history", currency: "all", limit: 2, before: historyPageOne.next_cursor });
+const historyPageTwo = walletHistoryMessages.filter((message) => message.type === "wallet_history").at(-1);
+if (historyPageTwo.wallet_history.some((entry: any) => historyPageOne.wallet_history.some((first: any) => first.transaction_id === entry.transaction_id))) throw new Error("wallet history cursor should not repeat rows");
+
+manager.handle("wallet_history_owner", { type: "get_wallet_history", currency: "gems", limit: 50 });
+const gemsHistory = walletHistoryMessages.filter((message) => message.type === "wallet_history").at(-1);
+if (gemsHistory.wallet_history.length === 0 || gemsHistory.wallet_history.some((entry: any) => entry.currency !== "gems")) throw new Error("wallet history gems filter should only return gems");
+manager.handle("wallet_history_owner", { type: "get_wallet_history", currency: "chips", limit: 50 });
+const chipsHistory = walletHistoryMessages.filter((message) => message.type === "wallet_history").at(-1);
+if (chipsHistory.wallet_history.length === 0 || chipsHistory.wallet_history.some((entry: any) => entry.currency !== "chips")) throw new Error("wallet history chips filter should only return chips");
+
 console.log("DB_SMOKE_OK");
 console.log(JSON.stringify({ db_path: process.env.TEXAS_DB_PATH, player_count: manager.adminSnapshot(false).player_count, total_wallet_chips: manager.adminSnapshot(false).total_wallet_chips }, null, 2));
 

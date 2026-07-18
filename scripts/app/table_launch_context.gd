@@ -38,6 +38,7 @@ static var seats: Array[Dictionary] = []
 static var table_session: Dictionary = {}
 static var player_profile: Dictionary = PlayerProfileScript.default_profile()
 static var pending_launch_error := ""
+static var return_to_events := false
 
 static func configure(mode: String = "quick_play", id: String = "mock_table_001", profile: Dictionary = {}, setup_config: Dictionary = {}) -> void:
 	launch_mode = mode
@@ -107,6 +108,14 @@ static func consume_pending_launch_error() -> String:
 	var message := pending_launch_error
 	pending_launch_error = ""
 	return message
+
+static func request_events_return() -> void:
+	return_to_events = true
+
+static func consume_events_return() -> bool:
+	var requested := return_to_events
+	return_to_events = false
+	return requested
 
 static func configure_from_context(context: Dictionary) -> void:
 	if context.is_empty():

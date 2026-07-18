@@ -244,6 +244,12 @@ var _profile_rename_input: LineEdit
 var _profile_rename_counter_label: Label
 var _profile_rename_error_label: Label
 var _profile_rename_confirm_button: Button
+var _wallet_history_overlay: Control
+var _wallet_history_list: VBoxContainer
+var _wallet_history_status_label: Label
+var _wallet_history_tab_buttons: Dictionary = {}
+var _wallet_history_currency := "all"
+var _wallet_history_pending := false
 var _welcome_shown_for_player_id := ""
 var _avatar_catalog: Array = []
 var _avatar_catalog_by_id: Dictionary = {}
@@ -305,6 +311,8 @@ func _ready() -> void:
 	_top_bar.configure(_player_profile)
 	_refresh_daily_bonus_bar()
 	set_state(LobbyState.COLLAPSED, false)
+	if TableLaunchContext.consume_events_return():
+		set_state(LobbyState.EVENTS, false)
 	call_deferred("_show_pending_launch_error")
 	_handle_runtime_capture_args()
 
@@ -346,6 +354,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		if _confirmation_modal != null and _confirmation_modal.is_open():
 			_confirmation_modal.request_cancel()
+		elif _wallet_history_overlay != null and is_instance_valid(_wallet_history_overlay):
+			_close_wallet_history()
 		elif _replay_fullscreen_overlay != null and _replay_fullscreen_overlay.visible:
 			_request_exit_replay(false)
 		else:
@@ -427,6 +437,7 @@ func _build_layout() -> void:
 	_top_bar.social_requested.connect(_show_social_panel)
 	_top_bar.help_requested.connect(_show_help_panel)
 	_top_bar.exit_requested.connect(_request_exit_game)
+	_top_bar.wallet_history_requested.connect(_open_wallet_history)
 	_lobby_ui_root.add_child(_top_bar)
 
 	_build_center_brand()
@@ -1488,6 +1499,7 @@ func _connect_profile_server() -> void:
 	_profile_ws_client.disconnected.connect(_on_profile_server_disconnected)
 	_profile_ws_client.profile_synced.connect(_on_profile_server_profile_synced)
 	_profile_ws_client.wallet_synced.connect(_on_profile_server_wallet_synced)
+	_profile_ws_client.wallet_history_received.connect(_on_wallet_history_received)
 	_profile_ws_client.daily_bonus_awarded.connect(_on_profile_server_daily_login_awarded)
 	_profile_ws_client.daily_bonus_claim_failed.connect(_on_profile_server_daily_bonus_claim_failed)
 	_profile_ws_client.challenge_catalog_received.connect(_on_challenge_catalog_received)
@@ -1522,6 +1534,9 @@ func _on_profile_server_disconnected() -> void:
 	_profile_server_wallet_synced = false
 	_replay_access_pending.clear()
 	_legacy_replay_import_pending.clear()
+	if _wallet_history_overlay != null and is_instance_valid(_wallet_history_overlay):
+		_wallet_history_pending = false
+		_render_wallet_history_error("Wallet history is temporarily unavailable.")
 	if current_state == LobbyState.ROOM_BROWSER:
 		_refresh_room_browser_rows()
 
@@ -1614,6 +1629,9 @@ func _on_profile_server_error(message: String) -> void:
 		_legacy_replay_import_pending.clear()
 	if _is_launching_table:
 		_finish_table_launch_transition()
+	if _wallet_history_pending:
+		_wallet_history_pending = false
+		_render_wallet_history_error("Wallet history is temporarily unavailable.")
 
 func _server_lobby_error_text(message: String) -> String:
 	match message:
@@ -5828,6 +5846,184 @@ func _rename_available_unix() -> float:
 	if updated_unix <= 0:
 		return 0.0
 	return float(updated_unix) + 30.0 * 86400.0
+
+
+func _open_wallet_history(currency: String = "all") -> void:
+	_wallet_history_currency = currency if currency in ["chips", "gems"] else "all"
+	if _wallet_history_overlay == null or not is_instance_valid(_wallet_history_overlay):
+		_build_wallet_history_modal()
+	_select_wallet_history_tab(_wallet_history_currency)
+
+
+func _build_wallet_history_modal() -> void:
+	_wallet_history_overlay = Control.new()
+	_wallet_history_overlay.name = "WalletHistoryModal"
+	_wallet_history_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_wallet_history_overlay.z_index = 900
+	_lobby_ui_root.add_child(_wallet_history_overlay)
+
+	var shade := ColorRect.new()
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.004, 0.003, 0.014, 0.80)
+	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	_wallet_history_overlay.add_child(shade)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_wallet_history_overlay.add_child(center)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(780, 590)
+	panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.015, 0.010, 0.04, 0.99), Color(0.58, 0.30, 0.92, 0.86), 8, 1))
+	center.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 26)
+	margin.add_theme_constant_override("margin_right", 26)
+	margin.add_theme_constant_override("margin_top", 20)
+	margin.add_theme_constant_override("margin_bottom", 22)
+	panel.add_child(margin)
+	var content := VBoxContainer.new()
+	content.add_theme_constant_override("separation", 14)
+	margin.add_child(content)
+
+	var title_row := HBoxContainer.new()
+	content.add_child(title_row)
+	var title := Label.new()
+	title.text = "WALLET HISTORY"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	HomeTheme.make_font_settings(title, 20, HomeTheme.CYAN)
+	title_row.add_child(title)
+	var close_button := Button.new()
+	close_button.text = "X"
+	close_button.custom_minimum_size = Vector2(34, 30)
+	close_button.focus_mode = Control.FOCUS_NONE
+	close_button.pressed.connect(_close_wallet_history)
+	title_row.add_child(close_button)
+
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 8)
+	content.add_child(tabs)
+	_wallet_history_tab_buttons.clear()
+	for tab_currency in ["all", "chips", "gems"]:
+		var tab := Button.new()
+		tab.text = str(tab_currency).to_upper()
+		tab.toggle_mode = true
+		tab.custom_minimum_size = Vector2(112, 36)
+		tab.pressed.connect(_select_wallet_history_tab.bind(str(tab_currency)))
+		tabs.add_child(tab)
+		_wallet_history_tab_buttons[tab_currency] = tab
+
+	_wallet_history_status_label = Label.new()
+	_wallet_history_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	HomeTheme.make_font_settings(_wallet_history_status_label, 13, HomeTheme.MUTED)
+	content.add_child(_wallet_history_status_label)
+	var scroll := ScrollContainer.new()
+	scroll.name = "WalletHistoryScroll"
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	content.add_child(scroll)
+	_wallet_history_list = VBoxContainer.new()
+	_wallet_history_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_wallet_history_list.add_theme_constant_override("separation", 6)
+	scroll.add_child(_wallet_history_list)
+
+
+func _select_wallet_history_tab(currency: String) -> void:
+	_wallet_history_currency = currency if currency in ["chips", "gems"] else "all"
+	for tab_currency in _wallet_history_tab_buttons:
+		var tab := _wallet_history_tab_buttons[tab_currency] as Button
+		if tab != null:
+			tab.button_pressed = str(tab_currency) == _wallet_history_currency
+	_request_wallet_history()
+
+
+func _request_wallet_history() -> void:
+	_clear_wallet_history_rows()
+	_wallet_history_pending = true
+	if _wallet_history_status_label != null:
+		_wallet_history_status_label.text = "Loading wallet activity..."
+	if _profile_ws_client == null or not _profile_server_connected:
+		_wallet_history_pending = false
+		_render_wallet_history_error("Wallet history is temporarily unavailable.")
+		return
+	var error := _profile_ws_client.get_wallet_history(_wallet_history_currency, 50)
+	if error != OK:
+		_wallet_history_pending = false
+		_render_wallet_history_error("Wallet history is temporarily unavailable.")
+
+
+func _on_wallet_history_received(payload: Dictionary) -> void:
+	if _wallet_history_overlay == null or not is_instance_valid(_wallet_history_overlay):
+		return
+	var response_currency := str(payload.get("currency", "all"))
+	if response_currency != _wallet_history_currency:
+		return
+	_wallet_history_pending = false
+	var entries := Array(payload.get("wallet_history", []))
+	_clear_wallet_history_rows()
+	if entries.is_empty():
+		_wallet_history_status_label.text = "No wallet activity yet."
+		return
+	_wallet_history_status_label.text = ""
+	for entry_value in entries:
+		_add_wallet_history_row(Dictionary(entry_value))
+
+
+func _add_wallet_history_row(entry: Dictionary) -> void:
+	var row_panel := PanelContainer.new()
+	row_panel.add_theme_stylebox_override("panel", HomeTheme.make_panel_style(Color(0.025, 0.022, 0.065, 0.72), Color(0.30, 0.34, 0.62, 0.34), 6, 1))
+	row_panel.custom_minimum_size = Vector2(0, 54)
+	_wallet_history_list.add_child(row_panel)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	row_panel.add_child(row)
+	var created_at := str(entry.get("created_at", ""))
+	var time_label := Label.new()
+	time_label.custom_minimum_size = Vector2(170, 0)
+	time_label.text = _wallet_history_time(created_at)
+	HomeTheme.make_font_settings(time_label, 12, HomeTheme.MUTED)
+	row.add_child(time_label)
+	var description := Label.new()
+	description.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	description.text = str(entry.get("display_label", "Wallet Activity"))
+	HomeTheme.make_font_settings(description, 14, HomeTheme.TEXT)
+	row.add_child(description)
+	var amount := int(entry.get("amount", 0))
+	var currency := str(entry.get("currency", "chips"))
+	var amount_label := Label.new()
+	amount_label.custom_minimum_size = Vector2(190, 0)
+	amount_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	amount_label.text = "%s%s %s" % ["+" if amount >= 0 else "-", _format_number(abs(amount)), "Gems" if currency == "gems" else "Chips"]
+	HomeTheme.make_font_settings(amount_label, 14, HomeTheme.CYAN if amount >= 0 else HomeTheme.PINK)
+	row.add_child(amount_label)
+
+
+func _wallet_history_time(created_at: String) -> String:
+	if created_at.length() >= 16:
+		return created_at.substr(0, 16).replace("T", " ")
+	return created_at
+
+
+func _clear_wallet_history_rows() -> void:
+	if _wallet_history_list == null:
+		return
+	for child in _wallet_history_list.get_children():
+		child.queue_free()
+
+
+func _render_wallet_history_error(message: String) -> void:
+	_clear_wallet_history_rows()
+	if _wallet_history_status_label != null:
+		_wallet_history_status_label.text = message
+
+
+func _close_wallet_history() -> void:
+	_wallet_history_pending = false
+	if _wallet_history_overlay != null and is_instance_valid(_wallet_history_overlay):
+		_wallet_history_overlay.queue_free()
+	_wallet_history_overlay = null
+	_wallet_history_list = null
+	_wallet_history_status_label = null
+	_wallet_history_tab_buttons.clear()
 
 
 func _open_rename_display_name_dialog() -> void:

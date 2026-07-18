@@ -147,6 +147,8 @@ var _exit_confirm_dialog: ConfirmationModal
 var _hand_result_banner: PanelContainer
 var _hand_result_title_label: Label
 var _hand_result_body_label: Label
+var _hand_result_next_button: Button
+var _challenge_hand_result_hand_id := -1
 var _public_waiting_panel: PanelContainer
 var _public_waiting_title_label: Label
 var _public_waiting_body_label: Label
@@ -336,11 +338,11 @@ func _build_exit_confirm_dialog() -> void:
 func _build_hand_result_banner() -> void:
 	_hand_result_banner = PanelContainer.new()
 	_hand_result_banner.name = "HandEndResultBanner"
-	_hand_result_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hand_result_banner.mouse_filter = Control.MOUSE_FILTER_PASS
 	_hand_result_banner.visible = false
 	_hand_result_banner.z_index = 260
-	_hand_result_banner.size = Vector2(640, 124)
-	_hand_result_banner.position = Vector2((DESIGN_SIZE.x - _hand_result_banner.size.x) * 0.5, 286.0)
+	_hand_result_banner.size = Vector2(720, 330)
+	_hand_result_banner.position = Vector2((DESIGN_SIZE.x - _hand_result_banner.size.x) * 0.5, 244.0)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.018, 0.008, 0.045, 0.88)
 	style.border_color = Color(1.0, 0.0, 0.58, 0.82)
@@ -368,9 +370,17 @@ func _build_hand_result_banner() -> void:
 	_hand_result_body_label = Label.new()
 	_hand_result_body_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_hand_result_body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_hand_result_body_label.custom_minimum_size = Vector2(0, 205)
 	_hand_result_body_label.add_theme_font_size_override("font_size", 17)
 	_hand_result_body_label.add_theme_color_override("font_color", Color(0.88, 0.91, 1.0, 0.96))
 	box.add_child(_hand_result_body_label)
+	_hand_result_next_button = Button.new()
+	_hand_result_next_button.name = "ChallengeNextHandButton"
+	_hand_result_next_button.text = "NEXT HAND"
+	_hand_result_next_button.custom_minimum_size = Vector2(180, 42)
+	_hand_result_next_button.visible = false
+	_hand_result_next_button.pressed.connect(_continue_ai_challenge_hand)
+	box.add_child(_hand_result_next_button)
 
 	_content_root.add_child(_hand_result_banner)
 
@@ -943,6 +953,7 @@ func _on_server_table_snapshot_received(server_snapshot: Dictionary) -> void:
 	snapshot = _server_apply_playback_projection(_server_latest_ui_snapshot)
 	_apply_launch_context(snapshot)
 	_refresh()
+	_handle_server_ai_challenge_hand_result(snapshot)
 	_handle_server_session_complete_state(snapshot)
 	_warn_if_server_ui_slow("server snapshot apply", apply_start, SERVER_UI_SLOW_APPLY_WARNING_MS)
 	_start_server_action_playback()
@@ -986,6 +997,8 @@ func _on_server_private_snapshot_received(private_snapshot: Dictionary) -> void:
 func _on_server_error(message: String) -> void:
 	_server_last_error = message
 	_server_waiting_for_action_ack = false
+	if _hand_result_next_button != null and _hand_result_next_button.visible:
+		_hand_result_next_button.disabled = false
 	if _server_leave_return_pending:
 		_server_leave_return_pending = false
 		_server_cash_out_pending_return = false
@@ -1221,6 +1234,24 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"hands_played": server_hands_played,
 		"current_hand_number": server_current_hand_number,
 		"session_complete": server_session_complete,
+		"mode": String(server_snapshot.get("mode", "")),
+		"challenge_id": String(server_snapshot.get("challenge_id", "")),
+		"challenge_state": String(server_snapshot.get("challenge_state", "")),
+		"challenge_result": String(server_snapshot.get("challenge_result", "")),
+		"display_result": String(server_snapshot.get("display_result", server_snapshot.get("result", ""))),
+		"settlement_result": String(server_snapshot.get("settlement_result", "")),
+		"settlement_reason": String(server_snapshot.get("settlement_reason", "")),
+		"settlement_reason_text": String(server_snapshot.get("settlement_reason_text", "")),
+		"win_reason": String(server_snapshot.get("win_reason", server_snapshot.get("settlement_reason_text", ""))),
+		"difficulty": String(server_snapshot.get("difficulty", "")),
+		"entry_fee": int(server_snapshot.get("entry_fee", server_snapshot.get("entry_fee_chips", 0))),
+		"entry_fee_chips": int(server_snapshot.get("entry_fee_chips", server_snapshot.get("entry_fee", 0))),
+		"reward": int(server_snapshot.get("reward", server_snapshot.get("wallet_payout_chips", 0))),
+		"wallet_payout_chips": int(server_snapshot.get("wallet_payout_chips", server_snapshot.get("reward", 0))),
+		"wallet_net_delta": int(server_snapshot.get("wallet_net_delta", server_snapshot.get("net_result_chips", 0))),
+		"net_result_chips": int(server_snapshot.get("net_result_chips", server_snapshot.get("wallet_net_delta", 0))),
+		"player_final_stack": int(server_snapshot.get("player_final_stack", 0)),
+		"bot_final_stack": int(server_snapshot.get("bot_final_stack", 0)),
 		"host_player_id": String(server_snapshot.get("host_player_id", table_info.get("host_player_id", ""))),
 		"dev_simulated_player_present": bool(server_snapshot.get("dev_simulated_player_present", table_info.get("dev_simulated_player_present", false))),
 		"ready_count": int(server_snapshot.get("ready_count", table_info.get("ready_count", 0))),
@@ -1247,6 +1278,7 @@ func _server_snapshot_to_ui_snapshot(server_snapshot: Dictionary, private_snapsh
 		"server_hand_id": server_hand_id,
 		"server_winners": Array(server_snapshot.get("winners", [])).duplicate(true),
 		"server_last_hand_results": Array(server_snapshot.get("last_hand_results", [])).duplicate(true),
+		"hand_result": Dictionary(server_snapshot.get("hand_result", {})).duplicate(true),
 		"rule_debug_log": history,
 		"table_session": {},
 	}
@@ -2859,6 +2891,106 @@ func _show_hand_result_banner(title: String, body: String) -> void:
 func _hide_hand_result_banner() -> void:
 	if _hand_result_banner != null:
 		_hand_result_banner.visible = false
+	if _hand_result_next_button != null:
+		_hand_result_next_button.visible = false
+
+
+func _handle_server_ai_challenge_hand_result(source_snapshot: Dictionary) -> void:
+	if not server_authoritative or not _is_ai_challenge_table():
+		return
+	if bool(source_snapshot.get("session_complete", false)):
+		_hide_hand_result_banner()
+		return
+	var phase := String(source_snapshot.get("phase", ""))
+	if phase != "hand_over":
+		if _challenge_hand_result_hand_id >= 0:
+			_challenge_hand_result_hand_id = -1
+			_hide_hand_result_banner()
+		return
+	var result := Dictionary(source_snapshot.get("hand_result", {}))
+	if result.is_empty():
+		return
+	var hand_id := int(result.get("hand_id", -1))
+	if hand_id == _challenge_hand_result_hand_id:
+		return
+	_challenge_hand_result_hand_id = hand_id
+	var winner_seats := Array(result.get("winner_seats", []))
+	var winner_name := _challenge_result_winner_names(source_snapshot, winner_seats)
+	var net_delta := int(result.get("player_net_delta", 0))
+	var lines: Array[String] = [
+		"%s: %s" % ["Winners" if bool(result.get("split_pot", false)) else "Winner", winner_name],
+		"Win reason: %s" % String(result.get("win_reason", "Showdown")),
+		"Pot: %s Chips" % _format_chips(int(result.get("pot_awarded", 0))),
+		"Your Net: %s%s Chips" % ["+" if net_delta >= 0 else "-", _format_chips(abs(net_delta))],
+		"Challenge Hands: %d" % int(result.get("challenge_hands", hand_id)),
+		"Your Stack: %s    Opponent Stack: %s" % [
+			_format_chips(int(result.get("player_stack", 0))),
+			_format_chips(int(result.get("opponent_stack", 0))),
+		],
+	]
+	if bool(result.get("showdown", false)):
+		lines.append("")
+		var winning_rank := _challenge_hand_rank_entry_for_seat(Array(result.get("hand_rank_by_seat", [])), int(result.get("winner_seat", -1)))
+		if not winning_rank.is_empty():
+			lines.append("Winning Hand: %s (%s)" % [
+				_challenge_card_codes_text(Array(winning_rank.get("best_cards", []))),
+				String(winning_rank.get("hand_rank", "")).replace("_", " ").capitalize(),
+			])
+		for reveal_value in Array(result.get("revealed_hole_cards", [])):
+			var reveal := Dictionary(reveal_value)
+			var seat_index := int(reveal.get("seat_index", -1))
+			var rank := _challenge_hand_rank_entry_for_seat(Array(result.get("hand_rank_by_seat", [])), seat_index)
+			lines.append("%s | Hole Cards: %s | Best Hand: %s | Hand Rank: %s" % [
+				("%s - %s" % ["WINNER", reveal.get("player_name", "Player")]) if winner_seats.has(seat_index) else String(reveal.get("player_name", "Player")),
+				_challenge_cards_text(Array(reveal.get("cards", []))),
+				_challenge_card_codes_text(Array(rank.get("best_cards", []))),
+				String(rank.get("hand_rank", "")).replace("_", " ").capitalize(),
+			])
+	_show_hand_result_banner("SHOWDOWN - SPLIT POT" if bool(result.get("split_pot", false)) else "HAND RESULT", "\n".join(lines))
+	if _hand_result_next_button != null:
+		_hand_result_next_button.visible = true
+		_hand_result_next_button.disabled = false
+
+
+func _challenge_result_winner_names(source_snapshot: Dictionary, winner_seats: Array) -> String:
+	var names: Array[String] = []
+	for seat_value in Array(source_snapshot.get("seats", [])):
+		var seat := Dictionary(seat_value)
+		if winner_seats.has(int(seat.get("seat_index", seat.get("seat_id", -1)))):
+			names.append(String(seat.get("player_name", seat.get("name", "Winner"))))
+	return ", ".join(names) if not names.is_empty() else "Winner"
+
+
+func _challenge_hand_rank_entry_for_seat(ranks: Array, seat_index: int) -> Dictionary:
+	for rank_value in ranks:
+		var rank := Dictionary(rank_value)
+		if int(rank.get("seat_index", -1)) == seat_index:
+			return rank
+	return {}
+
+
+func _challenge_cards_text(cards: Array) -> String:
+	var values: Array[String] = []
+	for card_value in cards:
+		var card := Dictionary(card_value)
+		values.append(String(card.get("code", "%s%s" % [card.get("rank", ""), card.get("suit", "")])))
+	return " ".join(values)
+
+
+func _challenge_card_codes_text(cards: Array) -> String:
+	var values: Array[String] = []
+	for card_value in cards:
+		values.append(String(card_value))
+	return " ".join(values)
+
+
+func _continue_ai_challenge_hand() -> void:
+	if _hand_result_next_button != null:
+		_hand_result_next_button.disabled = true
+	if _poker_ws_client == null or not _server_connected:
+		_on_server_error("Cannot continue: authoritative server is not connected.")
+		return
+	_send_server_message(_poker_ws_client.continue_ai_challenge(), "continue_ai_challenge")
 
 
 func _schedule_next_hand_after_result(delay_seconds: float) -> void:
@@ -3027,14 +3159,14 @@ func _handle_server_session_complete_state(source_snapshot: Dictionary) -> void:
 		_table_session.session_end_chips = int(source_snapshot.get("player_final_stack", _table_session.session_end_chips))
 		_table_session.current_table_chips = _table_session.session_end_chips
 		_table_session.session_profit = _table_session.session_end_chips - _table_session.session_start_chips
-		_table_session.end_reason = String(source_snapshot.get("display_result", source_snapshot.get("result", "draw"))).to_upper()
+		_table_session.end_reason = String(source_snapshot.get("challenge_result", source_snapshot.get("display_result", source_snapshot.get("result", "draw")))).to_upper()
 		_table_session.challenge_difficulty = String(source_snapshot.get("difficulty", _table_session.challenge_difficulty))
-		_table_session.challenge_entry_fee_chips = int(source_snapshot.get("entry_fee_chips", _table_session.challenge_entry_fee_chips))
-		_table_session.challenge_wallet_payout_chips = int(source_snapshot.get("wallet_payout_chips", 0))
-		_table_session.challenge_net_result_chips = int(source_snapshot.get("net_result_chips", _table_session.challenge_wallet_payout_chips - _table_session.challenge_entry_fee_chips))
+		_table_session.challenge_entry_fee_chips = int(source_snapshot.get("entry_fee", source_snapshot.get("entry_fee_chips", _table_session.challenge_entry_fee_chips)))
+		_table_session.challenge_wallet_payout_chips = int(source_snapshot.get("reward", source_snapshot.get("wallet_payout_chips", 0)))
+		_table_session.challenge_net_result_chips = int(source_snapshot.get("wallet_net_delta", source_snapshot.get("net_result_chips", _table_session.challenge_wallet_payout_chips - _table_session.challenge_entry_fee_chips)))
 		_table_session.challenge_settlement_result = String(source_snapshot.get("settlement_result", ""))
 		_table_session.challenge_settlement_reason = String(source_snapshot.get("settlement_reason", ""))
-		_table_session.challenge_settlement_reason_text = String(source_snapshot.get("settlement_reason_text", ""))
+		_table_session.challenge_settlement_reason_text = String(source_snapshot.get("win_reason", source_snapshot.get("settlement_reason_text", "")))
 		_table_session.challenge_opponent_final_stack = int(source_snapshot.get("bot_final_stack", 0))
 	_table_session.is_session_over = true
 	if _table_session.end_reason == "":
@@ -3669,7 +3801,7 @@ func _build_session_result_panel() -> void:
 		home_button.name = "BackHomeButton"
 		home_button.text = _t("table.exit_table")
 		home_button.custom_minimum_size = Vector2(190, 48)
-		home_button.pressed.connect(_request_exit_table)
+		home_button.pressed.connect(_leave_session_result)
 		row.add_child(home_button)
 	else:
 		_session_result_text = _session_result_panel.find_child("SessionResultText", true, false) as RichTextLabel
@@ -3693,7 +3825,7 @@ func _show_session_result_panel() -> void:
 		_apply_session_button_style(_session_play_again_button, "primary", not can_play_again)
 	var back_button: Button = _session_result_panel.find_child("BackHomeButton", true, false) as Button
 	if back_button != null:
-		back_button.text = _t("table.exit_table")
+		back_button.text = "BACK TO EVENTS" if _table_session.mode == "ai_challenge" else _t("table.exit_table")
 		_apply_session_button_style(back_button, "secondary", false)
 	if _session_play_again_hint_label != null:
 		_session_play_again_hint_label.text = "" if can_play_again else _t("table.not_enough_buyin_chips")
@@ -3720,14 +3852,14 @@ func _show_session_result_panel() -> void:
 	if _table_session.mode == "ai_challenge":
 		var challenge_result := String(_table_session.end_reason if _table_session.end_reason != "" else snapshot.get("display_result", snapshot.get("result", reason))).to_upper()
 		var result_color := "#35f5c8" if challenge_result == "VICTORY" else ("#ff4f9a" if challenge_result == "DEFEAT" else "#8fa8ff")
-		var payout_label := "Refund" if challenge_result == "DRAW" else "Payout"
+		var payout_label := "Challenge Refund" if challenge_result == "DRAW" else "Challenge Reward"
 		var net_value := _table_session.challenge_net_result_chips
 		var net_text := "%+d Chips" % net_value
 		_session_result_text.text = "\n".join([
 			"[center][font_size=34][color=%s][b]%s[/b][/color][/font_size][/center]" % [result_color, challenge_result],
 			"[center][color=#8fa8ff]%s[/color][/center]" % _table_session.challenge_settlement_reason_text,
 			"",
-			"[table=2][cell][color=#9aa8d8]Difficulty[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Settlement Reason[/color]\n[b]%s[/b][/cell]" % [
+			"[table=2][cell][color=#9aa8d8]Tier[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Win Reason[/color]\n[b]%s[/b][/cell]" % [
 				_table_session.challenge_difficulty,
 				_table_session.challenge_settlement_reason,
 			],
@@ -3736,11 +3868,11 @@ func _show_session_result_panel() -> void:
 				payout_label,
 				_format_chips(_table_session.challenge_wallet_payout_chips),
 			],
-			"[cell][color=#9aa8d8]Net Result[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Hands Played[/color]\n[b]%d[/b][/cell]" % [
+			"[cell][color=#9aa8d8]Net Wallet Change[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Hands Played[/color]\n[b]%d[/b][/cell]" % [
 				net_text,
 				int(snapshot.get("hands_played", _table_session.hands_played)),
 			],
-			"[cell][color=#9aa8d8]Final Event Stack[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Opponent Event Stack[/color]\n[b]%s[/b][/cell][/table]" % [
+			"[cell][color=#9aa8d8]Final Stack[/color]\n[b]%s[/b][/cell][cell][color=#9aa8d8]Opponent Final Stack[/color]\n[b]%s[/b][/cell][/table]" % [
 				_format_chips(int(snapshot.get("player_final_stack", _table_session.session_end_chips))),
 				_format_chips(_table_session.challenge_opponent_final_stack),
 			],
@@ -3836,6 +3968,12 @@ func _restart_session() -> void:
 	_refresh()
 	_session_started = false
 	_auto_start_session_if_ready()
+
+
+func _leave_session_result() -> void:
+	if _table_session != null and _table_session.mode == "ai_challenge":
+		TableLaunchContext.request_events_return()
+	_request_exit_table()
 
 
 func _apply_session_profit_to_profile() -> void:

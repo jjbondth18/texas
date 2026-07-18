@@ -10,6 +10,7 @@ signal disconnected()
 signal hello_received(player_id: String, room_id: String, reconnected_to_table: bool)
 signal profile_synced(profile: Dictionary, wallet: Dictionary, unlocked_avatar_ids: Array)
 signal wallet_synced(wallet: Dictionary)
+signal wallet_history_received(payload: Dictionary)
 signal daily_login_awarded(chips: int)
 signal daily_bonus_awarded(chips: int, xp: int, gems: int)
 signal daily_bonus_claim_failed(reason: String)
@@ -114,6 +115,9 @@ func ready(is_ready: bool = true) -> int:
 func restart_session() -> int:
 	return send_message(PokerProtocolScript.restart_session())
 
+func continue_ai_challenge() -> int:
+	return send_message(PokerProtocolScript.continue_ai_challenge())
+
 func start_hand() -> int:
 	return send_message(PokerProtocolScript.start_hand())
 
@@ -131,6 +135,9 @@ func add_table_chips(amount: int) -> int:
 
 func get_profile() -> int:
 	return send_message(PokerProtocolScript.get_profile())
+
+func get_wallet_history(currency: String = "all", limit: int = 50, before: String = "") -> int:
+	return send_message(PokerProtocolScript.get_wallet_history(currency, limit, before))
 
 func rename_display_name(display_name: String) -> int:
 	return send_message(PokerProtocolScript.rename_display_name(display_name))
@@ -202,6 +209,8 @@ func _handle_message(message: Dictionary) -> void:
 			var wallet := Dictionary(message.get("wallet", {})).duplicate(true)
 			if not wallet.is_empty():
 				wallet_synced.emit(wallet)
+		PokerProtocolScript.WALLET_HISTORY:
+			wallet_history_received.emit(Dictionary(message).duplicate(true))
 		PokerProtocolScript.DAILY_BONUS_RESULT:
 			_emit_profile_payload(message)
 			var result_wallet := Dictionary(message.get("wallet", {}))

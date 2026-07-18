@@ -91,11 +91,53 @@ for (const [playerChips, botChips, expected] of [
 }
 
 {
-  const { manager, room } = setupChallenge();
+  const { manager, playerId, room } = setupChallenge();
   forceChallengeEnd(room, 1000, 1000, 1);
   (manager as any).updatePublicRoomProgress(room);
   assert.equal(room.sessionComplete, false, "early split/equal stacks should not be challenge draw");
-  assert.equal(room.table.handId, 2, "early split/equal stacks should continue to next hand");
+  assert.equal(room.challengeState, "hand_result", "completed hand should wait for player review");
+  assert.equal(room.table.handId, 1, "challenge must not auto-start the next hand");
+  manager.handle(playerId, { type: "continue_ai_challenge", room_id: room.id });
+  assert.equal(room.table.handId, 2, "NEXT HAND should start the next challenge hand");
+  assert.equal(room.challengeState, "started", "NEXT HAND should return challenge to started state");
+}
+
+{
+  const { manager, room } = setupChallenge();
+  const playerSeat = room.table.getSeatByPlayer(room.challengePlayerId);
+  const botSeat = room.table.getSeatByPlayer(room.challengeBotPlayerId);
+  room.table.phase = "hand_over";
+  room.table.showdownRevealedSeatIds = [];
+  room.table.winners = [{ seat_index: playerSeat.seatIndex, amount: 30 }];
+  room.table.lastHandResults = [
+    { seat_index: playerSeat.seatIndex, player_name: playerSeat.name, before_chips: 1000, after_chips: 1010, delta: 10, award: 30 },
+    { seat_index: botSeat.seatIndex, player_name: botSeat.name, before_chips: 1000, after_chips: 990, delta: -10, award: 0 },
+  ];
+  const result = (manager as any).challengeHandResultPayload(room);
+  assert.equal(result.ended_by_fold, true, "fold result should be marked explicitly");
+  assert.equal(result.showdown, false, "fold result must not be treated as showdown");
+  assert.deepEqual(result.revealed_hole_cards, [], "fold result must not reveal folded hole cards");
+  assert.equal(result.win_reason, "Opponent Folded");
+  assert.equal(result.player_net_delta, 10);
+}
+
+{
+  const { manager, room } = setupChallenge();
+  const playerSeat = room.table.getSeatByPlayer(room.challengePlayerId);
+  const botSeat = room.table.getSeatByPlayer(room.challengeBotPlayerId);
+  room.table.communityCards = room.table.deck.splice(0, 5);
+  room.table.phase = "hand_over";
+  room.table.showdownRevealedSeatIds = [playerSeat.seatIndex, botSeat.seatIndex];
+  room.table.winners = [{ seat_index: playerSeat.seatIndex, amount: 30 }];
+  room.table.lastHandResults = [
+    { seat_index: playerSeat.seatIndex, player_name: playerSeat.name, before_chips: 1000, after_chips: 1010, delta: 10, award: 30 },
+    { seat_index: botSeat.seatIndex, player_name: botSeat.name, before_chips: 1000, after_chips: 990, delta: -10, award: 0 },
+  ];
+  const result = (manager as any).challengeHandResultPayload(room);
+  assert.equal(result.showdown, true, "showdown should be marked explicitly");
+  assert.equal(result.revealed_hole_cards.length, 2, "showdown should reveal both eligible hands");
+  assert.equal(result.hand_rank_by_seat.length, 2, "showdown should include authoritative rank for each eligible hand");
+  assert.equal(result.pot_awarded, 30);
 }
 
 {

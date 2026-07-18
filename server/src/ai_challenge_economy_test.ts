@@ -69,6 +69,7 @@ for (const challengeId of ["rookie", "sharp", "boss"] as const) {
   assert.equal(room.handCount, config.maxHands);
   assert.equal(wallet(manager, playerId).chips, before.chips - config.entryFeeChips, `${challengeId} should charge configured entry fee`);
   assert.equal(wallet(manager, playerId).gems, before.gems, `${challengeId} should not touch gems`);
+  assert.equal((manager as any).wallets.transactionsForPlayer(playerId, 20).filter((item: any) => item.reason === "ai_challenge_entry").length, 1, `${challengeId} entry should be audited once`);
   const afterActivation = wallet(manager, playerId).chips;
   manager.handle(playerId, { type: "join_room", room_id: room.id });
   manager.handle(playerId, { type: "create_ai_challenge", challenge_id: challengeId });
@@ -115,6 +116,8 @@ for (const [challengeId, resultKind, playerChips, botChips, handId, expectedPayo
   assert.equal(result?.wallet_payout_chips, expectedPayout, `${challengeId} payout`);
   assert.equal(result?.net_result_chips, expectedPayout - config.entryFeeChips, `${challengeId} net result`);
   assert.equal(wallet(manager, playerId).chips, before.chips - config.entryFeeChips + expectedPayout, `${challengeId} wallet final`);
+  const rewardTransactions = (manager as any).wallets.transactionsForPlayer(playerId, 20).filter((item: any) => item.reason === "ai_challenge_reward");
+  assert.equal(rewardTransactions.length, expectedPayout > 0 ? 1 : 0, `${challengeId} reward should be audited exactly once`);
   const afterFirst = wallet(manager, playerId).chips;
   (manager as any).updatePublicRoomProgress(room);
   (manager as any).sendChallengeResult(room);
@@ -142,6 +145,7 @@ for (const [challengeId, resultKind, playerChips, botChips, handId, expectedPayo
   (manager as any).updatePublicRoomProgress(room);
   manager.handle(playerId, { type: "restart_session", room_id: room.id });
   assert.equal(wallet(manager, playerId).chips, before.chips - 200 + 400 - 200, "Play Again should charge a new entry fee");
+  assert.equal((manager as any).wallets.transactionsForPlayer(playerId, 20).filter((item: any) => item.reason === "ai_challenge_entry").length, 2, "Play Again should create a second entry transaction");
   assert.equal(room.settlementApplied, false, "Play Again should clear old settlement state");
 }
 

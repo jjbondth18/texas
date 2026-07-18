@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { ClientMessage, PrivateSnapshot, PublicTableSnapshot, ServerMessage } from "./protocol.js";
 import { applyPlayerAction, legalActions, processAutomaticTurns } from "./betting_engine.js";
 import { settleHand } from "./showdown_engine.js";
+import { evaluateBestHand } from "./hand_evaluator.js";
 import { TableState, type Player, type Seat } from "./table_state.js";
 import {
   challengeCatalog,
@@ -27,6 +28,7 @@ import { PlayerRepository } from "./db/player_repository.js";
 import { IdentityRepository } from "./db/identity_repository.js";
 import { ResultRepository } from "./db/result_repository.js";
 import { WalletRepository } from "./db/wallet_repository.js";
+import { walletHistoryEntry } from "./wallet_history.js";
 import { ReplayRepository, type ReplayIndexRecord } from "./db/replay_repository.js";
 import { TableBalanceRepository, type TableBalanceCurrency } from "./db/table_balance_repository.js";
 import { ProfileBootstrapRepository } from "./db/profile_bootstrap_repository.js";
@@ -312,6 +314,18 @@ export class RoomManager {
       this.send(client, { type: "profile_snapshot", request_id: message.request_id, ...this.profilePayload(client.id) });
       return;
     }
+    if (message.type === "get_wallet_history") {
+      const currency = message.currency === "chips" || message.currency === "gems" ? message.currency : "all";
+      const page = this.wallets.walletHistory(client.id, currency, numberOr(message.limit, 50), String(message.before || ""));
+      this.send(client, {
+        type: "wallet_history",
+        request_id: message.request_id,
+        currency,
+        wallet_history: page.transactions.map(walletHistoryEntry),
+        next_cursor: page.next_cursor,
+      });
+      return;
+    }
     if (message.type === "rename_display_name") {
       const profile = this.players.renameDisplayName(client.id, String(message.display_name || ""));
       client.name = profile.display_name;
@@ -447,6 +461,10 @@ export class RoomManager {
         this.requireSeated(room, client, message, "restart_session");
         this.restartPublicSession(room, client);
         this.recordLog(`${client.id} restarted session in ${room.id}`);
+        break;
+      case "continue_ai_challenge":
+        this.continueAiChallenge(room, client);
+        this.recordLog(`${client.id} continued AI Challenge ${room.id} after hand=${room.table.handId}`);
         break;
       case "start_hand":
         this.requireSeated(room, client, message, "start_hand");
@@ -724,7 +742,7 @@ export class RoomManager {
     room.officialHandStarted = false;
     room.challengeState = "creating";
     try {
-      this.wallets.deductChips(client.id, config.entryFeeChips, { reason: "ai_challenge_entry_fee", relatedRoomId: room.id });
+      this.wallets.deductChips(client.id, config.entryFeeChips, { reason: "ai_challenge_entry", relatedRoomId: room.id });
       room.entryFeeCharged = true;
       room.challengeState = "ready";
     } catch (error) {
@@ -1797,7 +1815,11 @@ export class RoomManager {
     if (room.sessionComplete) return;
     if (room.table.phase === "hand_over") {
       if (this.challengeShouldEnd(room)) this.completeChallengeSession(room);
-      else this.startChallengeHandIfNeeded(room, "challenge_auto_next_hand");
+      else {
+        room.challengeState = "hand_result";
+        this.clearActionTimer(room);
+        this.clearChallengeBotTimer(room);
+      }
       return;
     }
     if (room.table.phase === "waiting" && this.challengeSeatsReady(room)) {
@@ -1817,6 +1839,13 @@ export class RoomManager {
     room.challengeState = "started";
     this.recordLog(`ai_challenge_hand_started room_id=${room.id} reason=${reason} hand_id=${room.table.handId}`);
     this.scheduleChallengeBotIfNeeded(room);
+  }
+
+  private continueAiChallenge(room: Room, client: Client): void {
+    if (room.mode !== "ai_challenge" || client.id !== room.challengePlayerId) throw new Error("room_not_available");
+    if (room.sessionComplete || room.table.phase === "session_complete") throw new Error("session_complete");
+    if (room.table.phase !== "hand_over" || room.challengeState !== "hand_result") throw new Error("not_waiting");
+    this.startChallengeHandIfNeeded(room, "challenge_player_continue");
   }
 
   private challengeSeatsReady(room: Room): boolean {
@@ -1875,7 +1904,7 @@ export class RoomManager {
     this.wallets.ensure(client.id);
     const wallet = this.wallets.get(client.id);
     if (!wallet || wallet.chips < config.entryFeeChips) throw new Error("insufficient_chips");
-    this.wallets.deductChips(client.id, config.entryFeeChips, { reason: "ai_challenge_entry_fee", relatedRoomId: room.id });
+    this.wallets.deductChips(client.id, config.entryFeeChips, { reason: "ai_challenge_entry", relatedRoomId: room.id });
     room.sessionComplete = false;
     room.officialHandStarted = false;
     room.challengeState = "ready";
@@ -1951,7 +1980,7 @@ export class RoomManager {
     const config = challengeConfigById(room.challengeId);
     const payout = challengePayout(config, settlement.result);
     if (payout.walletPayoutChips > 0) {
-      this.wallets.addChips(room.challengePlayerId, payout.walletPayoutChips, { reason: "ai_challenge_payout", relatedRoomId: room.id, relatedHandId: String(room.table.handId) });
+      this.wallets.addChips(room.challengePlayerId, payout.walletPayoutChips, { reason: "ai_challenge_reward", relatedRoomId: room.id, relatedHandId: String(room.table.handId) });
     }
     room.settlementApplied = true;
     room.settlementResult = settlement.result;
@@ -2234,6 +2263,9 @@ export class RoomManager {
       mode: room.mode === "ai_challenge" ? "ai_challenge" : undefined,
       challenge_id: room.challengeId || undefined,
       wallet_impact: room.walletImpact,
+      ...(room.mode === "ai_challenge" && ["hand_over", "session_complete"].includes(room.table.phase)
+        ? { hand_result: this.challengeHandResultPayload(room) }
+        : {}),
       ...(room.mode === "ai_challenge" && room.sessionComplete ? this.challengeResultPayload(room) : {}),
       seats: this.publicSeatsWithDisconnectGrace(room),
       ...(replayDelivery ? { replay_delivery: replayDelivery } : {}),
@@ -2379,20 +2411,76 @@ export class RoomManager {
       : this.challengeSettlementResult(room);
     const payout = challengePayout(config, settlement.result);
     const displayResult = displayResultForSettlement(settlement.result);
+    const reward = room.settlementApplied ? room.walletPayoutChips : payout.walletPayoutChips;
     return {
       result: displayResult,
+      challenge_result: displayResult,
       display_result: displayResult,
       settlement_result: settlement.result,
       settlement_reason: settlement.reason,
       settlement_reason_text: settlementReasonText(settlement.reason),
       difficulty: config.displayName,
+      entry_fee: config.entryFeeChips,
       entry_fee_chips: config.entryFeeChips,
-      wallet_payout_chips: room.settlementApplied ? room.walletPayoutChips : payout.walletPayoutChips,
-      net_result_chips: (room.settlementApplied ? room.walletPayoutChips : payout.walletPayoutChips) - config.entryFeeChips,
+      reward,
+      wallet_payout_chips: reward,
+      wallet_net_delta: reward - config.entryFeeChips,
+      net_result_chips: reward - config.entryFeeChips,
       player_final_stack: playerStack,
       bot_final_stack: botStack,
       hands_played: this.handsPlayed(room),
       max_hands: config.maxHands,
+      win_reason: settlementReasonText(settlement.reason),
+    };
+  }
+
+  private challengeHandResultPayload(room: Room) {
+    const revealedSeatIds = room.table.showdownRevealedSeatIds.slice();
+    const showdown = revealedSeatIds.length > 1;
+    const winnerSeats = room.table.winners.map((winner) => winner.seat_index);
+    const winnerSeat = winnerSeats[0] ?? -1;
+    const winner = room.table.getSeat(winnerSeat);
+    const playerSeat = room.table.getSeatByPlayer(room.challengePlayerId);
+    const opponentSeat = room.table.getSeatByPlayer(room.challengeBotPlayerId);
+    const playerResult = room.table.lastHandResults.find((result) => result.seat_index === playerSeat?.seatIndex);
+    const handRanks = revealedSeatIds.flatMap((seatIndex) => {
+      const seat = room.table.getSeat(seatIndex);
+      if (!seat || seat.holeCards.length !== 2 || room.table.communityCards.length !== 5) return [];
+      const evaluation = evaluateBestHand([...seat.holeCards, ...room.table.communityCards]);
+      return [{
+        seat_index: seat.seatIndex,
+        player_id: seat.playerId,
+        player_name: seat.name,
+        hand_rank: evaluation.rank,
+        best_cards: evaluation.cards,
+      }];
+    });
+    return {
+      hand_id: room.table.handId,
+      ended_by_fold: !showdown,
+      showdown,
+      revealed_hole_cards: revealedSeatIds.flatMap((seatIndex) => {
+        const seat = room.table.getSeat(seatIndex);
+        if (!seat) return [];
+        return [{ seat_index: seat.seatIndex, player_id: seat.playerId, player_name: seat.name, cards: seat.holeCards.slice() }];
+      }),
+      winner_player_id: winner?.playerId ?? "",
+      winner_seat: winnerSeat,
+      winner_seats: winnerSeats,
+      hand_rank_by_seat: handRanks,
+      pot_awarded: room.table.winners.reduce((sum, item) => sum + item.amount, 0),
+      player_net_delta: playerResult?.delta ?? 0,
+      challenge_hands: this.handsPlayed(room),
+      player_stack: Math.max(0, playerSeat?.chips ?? 0),
+      opponent_stack: Math.max(0, opponentSeat?.chips ?? 0),
+      win_reason: winnerSeats.length > 1
+        ? "Split Pot"
+        : showdown
+          ? "Showdown"
+          : winner?.playerId === room.challengePlayerId
+            ? "Opponent Folded"
+            : "You Folded",
+      split_pot: winnerSeats.length > 1,
     };
   }
 

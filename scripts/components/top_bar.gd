@@ -4,6 +4,7 @@ class_name TopBar
 signal exit_requested
 signal social_requested
 signal help_requested
+signal wallet_history_requested(currency: String)
 
 const AvatarLibraryScript := preload("res://scripts/data/avatar_library.gd")
 const LocalizationManagerScript := preload("res://scripts/services/localization_manager.gd")
@@ -138,20 +139,26 @@ func _currency_pill(parent: Container, title_key: String, color: Color) -> Label
 	var pill := PanelContainer.new()
 	pill.custom_minimum_size = Vector2(132, 40)
 	pill.mouse_filter = Control.MOUSE_FILTER_PASS
+	pill.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	pill.add_theme_stylebox_override("panel", _currency_style(color, false))
 	pill.mouse_entered.connect(func() -> void: pill.add_theme_stylebox_override("panel", _currency_style(color, true)))
 	pill.mouse_exited.connect(func() -> void: pill.add_theme_stylebox_override("panel", _currency_style(color, false)))
+	pill.gui_input.connect(_on_currency_pill_input.bind("chips" if title_key == "topbar.chips" else "gems"))
 	parent.add_child(pill)
 	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", 8)
 	pill.add_child(row)
 	var dot := ColorRect.new()
+	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	dot.color = color
 	dot.custom_minimum_size = Vector2(8, 8)
 	row.add_child(dot)
 	var text_box := VBoxContainer.new()
+	text_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(text_box)
 	var label := Label.new()
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.text = LocalizationManagerScript.tr_key(title_key)
 	HomeTheme.make_font_settings(label, 9, HomeTheme.MUTED)
 	text_box.add_child(label)
@@ -160,9 +167,16 @@ func _currency_pill(parent: Container, title_key: String, color: Color) -> Label
 	elif title_key == "topbar.gems":
 		_gems_title_label = label
 	var value := Label.new()
+	value.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	HomeTheme.make_font_settings(value, 15, HomeTheme.TEXT)
 	text_box.add_child(value)
 	return value
+
+func _on_currency_pill_input(event: InputEvent, currency: String) -> void:
+	var mouse_event := event as InputEventMouseButton
+	if mouse_event != null and mouse_event.button_index == MOUSE_BUTTON_LEFT and mouse_event.pressed:
+		wallet_history_requested.emit(currency)
+		accept_event()
 
 func _currency_style(color: Color, hovered: bool) -> StyleBoxFlat:
 	var bg := Color(0.02, 0.023, 0.052, 0.72 if not hovered else 0.86)
