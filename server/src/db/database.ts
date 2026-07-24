@@ -21,8 +21,14 @@ export function openDatabase(path = databasePath()): Database.Database {
   const db = new Database(path);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
+  db.pragma(`busy_timeout = ${positiveBusyTimeout()}`);
   initializeSchema(db);
   return db;
+}
+
+function positiveBusyTimeout(): number {
+  const value = Number(process.env.SQLITE_BUSY_TIMEOUT_MS);
+  return Number.isInteger(value) && value >= 1000 && value <= 60000 ? value : 5000;
 }
 
 export function getDatabase(): Database.Database {

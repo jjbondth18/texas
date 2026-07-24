@@ -11,6 +11,7 @@ import { migration009ReplayEconomy } from "./migrations/009_replay_economy.js";
 import { migration010PlayerDisplayName } from "./migrations/010_player_display_name.js";
 import { migration011ReplayIdentityIntegrity } from "./migrations/011_replay_identity_integrity.js";
 import { migration012SteamCommerce } from "./migrations/012_steam_commerce.js";
+import { migration013LocalAdmin } from "./migrations/013_local_admin.js";
 
 interface Migration {
   id: string;
@@ -30,6 +31,7 @@ const migrations: Migration[] = [
   migration010PlayerDisplayName,
   migration011ReplayIdentityIntegrity,
   migration012SteamCommerce,
+  migration013LocalAdmin,
 ];
 
 export function runMigrations(db: Database.Database): void {

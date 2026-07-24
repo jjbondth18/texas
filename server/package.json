@@ -18,7 +18,11 @@
     "ai:challenge:economy": "tsx src/ai_challenge_economy_test.ts",
     "ai:challenge:balance": "tsx src/ai_challenge_balance_test.ts",
     "ai:challenge:performance": "tsx src/ai_challenge_performance_test.ts",
-    "ai:challenge:isolation": "tsx src/ai_challenge_isolation_test.ts"
+    "ai:challenge:isolation": "tsx src/ai_challenge_isolation_test.ts",
+    "admin:start": "node dist/admin/index.js",
+    "admin:smoke": "tsx src/admin/admin_smoke_test.ts",
+    "admin:phase2:smoke": "tsx src/admin/admin_phase2_smoke_test.ts",
+    "admin:http:smoke": "tsx src/admin/admin_http_smoke_test.ts"
   },
   "dependencies": {
     "@types/better-sqlite3": "^7.6.13",

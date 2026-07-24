@@ -4,4 +4,9 @@
 /server/dist/
 /server/node_modules/
 /server/data/
+/server/backups/
+/tools/admin/.env
+/tools/admin/.env.server
+/tools/admin/.env.client
+/tools/admin/backups/
 /build/

@@ -1181,6 +1181,7 @@ export class RoomManager {
       client.id = requestedId;
       this.clients.set(client.id, client);
     }
+    if (this.players.isBanned(client.id)) throw new Error("player_banned");
     const existingProfile = this.players.find(client.id);
     const fallbackIdentityName = identity.provider === "steam" ? existingProfile?.steam_persona_name || existingProfile?.display_name : existingProfile?.display_name;
     const displayName = String(message.player_name || message.name || fallbackIdentityName || client.name || client.id).trim() || client.id;

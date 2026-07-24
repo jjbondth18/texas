@@ -47,6 +47,11 @@ export class PlayerRepository {
     return this.db.prepare("SELECT * FROM players WHERE player_id = ?").get(playerId) as PlayerProfileRecord | undefined;
   }
 
+  isBanned(playerId: string): boolean {
+    const row = this.db.prepare("SELECT is_banned FROM player_admin_state WHERE player_id = ?").get(playerId) as { is_banned: number } | undefined;
+    return Number(row?.is_banned ?? 0) === 1;
+  }
+
   upsert(playerId: string, identityName: string, avatarId: string, provider = "local_dev", now = new Date().toISOString()): PlayerProfileRecord {
     const existing = this.find(playerId);
     if (!existing) {
