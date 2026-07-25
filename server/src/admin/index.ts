@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import { AdminRepository } from "./admin_repository.js";
 import { openAdminDatabase, validateBackupDirectory } from "./admin_startup.js";
 import { serverStatus } from "./server_status.js";
+import { proxyVirtualRequest } from "./virtual_proxy.js";
 
 const host = process.env.ADMIN_HOST || "127.0.0.1";
 if (host !== "127.0.0.1") throw new Error("ADMIN_HOST must be exactly 127.0.0.1");
@@ -44,6 +45,26 @@ const server = createServer(async (req, res) => {
       if (req.method === "GET" && url.pathname === "/api/dashboard") {
         return json(res, 200, { ...repository.dashboard(), game_server: await gameStatus() });
       }
+      if (req.method === "GET" && url.pathname === "/api/virtual") {
+        const result = await proxyVirtualRequest("state");
+        return json(res, result.status, result.body);
+      }
+      if (req.method === "POST" && url.pathname === "/api/virtual/enabled") {
+        const result = await proxyVirtualRequest("enabled", await jsonBody(req));
+        return json(res, result.status, result.body);
+      }
+      if (req.method === "POST" && url.pathname === "/api/virtual/config") {
+        const result = await proxyVirtualRequest("config", await jsonBody(req));
+        return json(res, result.status, result.body);
+      }
+      if (req.method === "POST" && url.pathname === "/api/virtual/profile") {
+        const result = await proxyVirtualRequest("profile", await jsonBody(req));
+        return json(res, result.status, result.body);
+      }
+      if (req.method === "POST" && url.pathname === "/api/virtual/offline") {
+        const result = await proxyVirtualRequest("offline", await jsonBody(req));
+        return json(res, result.status, result.body);
+      }
       const page = positiveInt(url.searchParams.get("page") || undefined, 1);
       if (req.method === "GET" && url.pathname === "/api/players") return json(res, 200, repository.players(url.searchParams.get("q") || "", page));
       const playerMatch = url.pathname.match(/^\/api\/players\/([^/]+)$/);
@@ -74,7 +95,8 @@ const server = createServer(async (req, res) => {
     }
     serveStatic(url.pathname, res);
   } catch (error) {
-    json(res, 400, { error: error instanceof Error ? error.message : "请求失败" });
+    const status = typeof error === "object" && error && "statusCode" in error && Number((error as { statusCode: unknown }).statusCode) === 502 ? 502 : 400;
+    json(res, status, { error: error instanceof Error ? error.message : "请求失败" });
   }
 });
 

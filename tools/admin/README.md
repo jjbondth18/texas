@@ -28,6 +28,7 @@ nano .env.server
 - `SQLITE_PATH`：现有生产 SQLite 的绝对路径
 - `ADMIN_BACKUP_DIR`：预迁移及手动备份的绝对目录
 - `ADMIN_WEB_ROOT`：仓库内 `tools/admin/web` 的绝对路径
+- `GAME_SERVER_ADMIN_URL=http://127.0.0.1:8080`：固定的本机游戏服务 Admin 地址
 
 游戏服务与 Admin 的 `SQLITE_PATH` 必须解析到完全相同的文件。两者都启用 WAL、foreign keys 和默认 5000ms `busy_timeout`。Admin 启动时拒绝相对路径、缺失文件、临时目录及明显的 test/smoke/tmp 数据库；不会自动创建生产数据库。每次启动会先通过 SQLite 在线 backup API 创建 `pre-migration-*.sqlite`，迁移失败则停止启动。
 
@@ -83,6 +84,15 @@ notepad .\tools\admin\.env.client
 ```
 
 它不会转发 SQLite、不会启动本地 Admin Node 服务，也不会修改云防火墙。
+
+## Virtual Players 管理
+
+浏览器只访问 `texas-admin` 的 `/api/virtual*`。这些接口继续受 Admin PIN session 保护，并仅代理到
+`GAME_SERVER_ADMIN_URL` 下固定的 `/admin/virtual*` 路由；浏览器不能提交任意 URL 或 HTTP method，也不会获得游戏服务认证信息。
+
+Disable profile 表示停止后续调度，并为已运行实例请求安全离桌。Safe Offline 只请求当前实例在
+`waiting`、`hand_over` 或 `session_complete` 等安全节点离桌，不会从正在进行的手牌中强制移除 Virtual。
+调度配置只开放 target、maximum、per-room、join delay 和 session hand 范围；action delay 与 chat 状态只读展示。
 
 ## 网络与数据库安全
 
