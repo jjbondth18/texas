@@ -22,7 +22,16 @@
     "admin:start": "node dist/admin/index.js",
     "admin:smoke": "tsx src/admin/admin_smoke_test.ts",
     "admin:phase2:smoke": "tsx src/admin/admin_phase2_smoke_test.ts",
-    "admin:http:smoke": "tsx src/admin/admin_http_smoke_test.ts"
+    "admin:http:smoke": "tsx src/admin/admin_http_smoke_test.ts",
+    "virtual:players:test": "tsx src/public_virtual_players_test.ts",
+    "virtual:lifecycle:test": "tsx src/virtual_player_lifecycle_test.ts",
+    "virtual:integration:test": "tsx src/virtual_player_ai_integration_test.ts",
+    "virtual:ai:test": "tsx src/virtual_player_ai_test.ts",
+    "virtual:ai:fuzz": "tsx src/virtual_player_ai_fuzz_test.ts",
+    "virtual:ai:performance": "tsx src/virtual_player_ai_performance_test.ts",
+    "virtual:ai:distribution": "tsx src/virtual_player_ai_distribution_test.ts",
+    "virtual:ai:canonical": "tsx src/virtual_player_ai_canonical_test.ts",
+    "virtual:ai:postflop-distribution": "tsx src/virtual_player_ai_postflop_distribution_test.ts"
   },
   "dependencies": {
     "@types/better-sqlite3": "^7.6.13",

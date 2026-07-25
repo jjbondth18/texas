@@ -48,6 +48,14 @@ server.listen(port, host, () => {
   if (config.adminEnabled) console.log(`Local admin debug dashboard available at http://${host}:${port}/admin`);
 });
 
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    manager.shutdown();
+    wss.close();
+    server.close(() => process.exit(0));
+  });
+}
+
 function send(ws: { send(data: string): void }, message: ServerMessage): void {
   ws.send(JSON.stringify(message));
 }
@@ -74,6 +82,45 @@ function routeHttp(req: IncomingMessage, res: ServerResponse): void {
     sendJson(res, adminState());
     return;
   }
+  if (req.method === "POST" && url.pathname === "/admin/virtual/enabled") {
+    manager.setVirtualPlayersEnabled(["1", "true", "yes", "on"].includes(String(url.searchParams.get("value") || "").toLowerCase()));
+    sendJson(res, { ok: true });
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/admin/virtual/config") {
+    const numeric = (name: string): number | undefined => {
+      const raw = url.searchParams.get(name);
+      return raw === null || raw.trim() === "" ? undefined : Number(raw);
+    };
+    const patch = Object.fromEntries(
+      [
+        ["targetOnline", numeric("target_online")],
+        ["maximumOnline", numeric("maximum_online")],
+        ["maximumPerRoom", numeric("maximum_per_room")],
+        ["joinDelayMinMs", numeric("join_delay_min_ms")],
+        ["joinDelayMaxMs", numeric("join_delay_max_ms")],
+        ["sessionHandMin", numeric("session_hand_min")],
+        ["sessionHandMax", numeric("session_hand_max")],
+      ].filter((entry) => entry[1] !== undefined),
+    );
+    sendJson(res, { ok: true, config: manager.updateVirtualPlayerConfig(patch) });
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/admin/virtual/profile") {
+    manager.setVirtualProfileEnabled(
+      String(url.searchParams.get("player_id") || ""),
+      ["1", "true", "yes", "on"].includes(String(url.searchParams.get("enabled") || "").toLowerCase()),
+    );
+    sendJson(res, { ok: true });
+    return;
+  }
+  if (req.method === "POST" && url.pathname === "/admin/virtual/offline") {
+    const playerId = String(url.searchParams.get("player_id") || "");
+    if (playerId === "") manager.requestAllVirtualPlayersOffline();
+    else manager.requestVirtualPlayerOffline(playerId);
+    sendJson(res, { ok: true });
+    return;
+  }
   sendText(res, 404, "Not found");
 }
 
@@ -83,6 +130,7 @@ function healthz(): unknown {
     uptime: Math.floor((Date.now() - startedAt) / 1000),
     version: String(packageJson.version || "0.0.0"),
     env: config.nodeEnv,
+    virtual_players: manager.virtualPlayerHealth(),
   };
 }
 

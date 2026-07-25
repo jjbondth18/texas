@@ -47,6 +47,14 @@ import {
   replayUnlockReason,
   type ReplayType,
 } from "./replay_economy.js";
+import {
+  PUBLIC_VIRTUAL_PLAYER_PROFILES,
+  type PublicVirtualPlayerConfig,
+} from "./public_virtual_players.js";
+import { decideVirtualPlayerAction } from "./virtual_player_decision_gateway.js";
+import { buildVirtualBotContext } from "./virtual_player_context_builder.js";
+import { VirtualPlayerManager } from "./virtual_player_manager.js";
+import { VirtualPlayerRepository } from "./db/virtual_player_repository.js";
 
 interface Client {
   id: string;
@@ -99,6 +107,13 @@ interface Room {
   settlementReason: ChallengeSettlementReason | null;
   walletPayoutChips: number;
   challengeBotTimer?: ReturnType<typeof setTimeout>;
+  virtualJoinTimer?: ReturnType<typeof setTimeout>;
+  virtualJoinToken: number;
+  virtualJoiningPlayerId: string;
+  virtualActionTimer?: ReturnType<typeof setTimeout>;
+  virtualActionToken: number;
+  virtualDecisionIndex: Map<string, number>;
+  virtualSessionSeeds: Map<string, string>;
   readyCountdownTimer?: ReturnType<typeof setTimeout>;
   readyCountdownToken: number;
   readyCountdownDeadlineAt?: string;
@@ -188,6 +203,9 @@ export class RoomManager {
   private readonly steamCommerceGateway: SteamMicroTxnGateway;
   private readonly steamCommerceMode: SteamCommerceMode;
   private readonly steamCommerceConfigured: boolean;
+  private readonly publicVirtualPlayers: PublicVirtualPlayerConfig;
+  private readonly virtualPlayers: VirtualPlayerManager;
+  private virtualSchedulerTimer?: ReturnType<typeof setInterval>;
   private readonly pendingSteamInitOrders = new Set<string>();
 
   constructor(options: {
@@ -197,6 +215,7 @@ export class RoomManager {
     steamCommerceGateway?: SteamMicroTxnGateway;
     steamCommerceMode?: SteamCommerceMode;
     steamCommerceConfigured?: boolean;
+    publicVirtualPlayers?: Partial<PublicVirtualPlayerConfig>;
   } = {}) {
     this.steamAuthVerifier = options.steamAuthVerifier ?? new SteamWebApiAuthVerifier(config.steamWebApiPublisherKey);
     this.steamAuthMode = options.steamAuthMode ?? config.steamAuthMode;
@@ -204,9 +223,13 @@ export class RoomManager {
     this.steamCommerceMode = options.steamCommerceMode ?? config.steamCommerceMode;
     this.steamCommerceGateway = options.steamCommerceGateway ?? new SteamWebApiMicroTxnGateway(this.steamCommerceMode, config.steamPublisherWebApiKey, config.steamAppId);
     this.steamCommerceConfigured = options.steamCommerceConfigured ?? (config.steamAppId !== "" && config.steamPublisherWebApiKey !== "");
+    this.publicVirtualPlayers = { ...config.virtualPlayers, ...options.publicVirtualPlayers };
+    this.virtualPlayers = new VirtualPlayerManager(this.publicVirtualPlayers, new VirtualPlayerRepository(this.db));
+    Object.assign(this.publicVirtualPlayers, this.virtualPlayers.config());
     this.loginBonus.setProgressionRepository(this.profileBootstrap);
     this.recoverOutstandingTableBalances();
     this.recoverFinalizedSteamPurchases();
+    this.startVirtualScheduler();
   }
 
   connect(ws?: WebSocket): Client {
@@ -237,6 +260,8 @@ export class RoomManager {
       this.rescheduleActionTimer(room);
       this.recordHandResults(room);
       this.updatePublicRoomProgress(room);
+      this.reconcilePublicVirtualPlayers(room);
+      this.schedulePublicVirtualActionIfNeeded(room);
       this.broadcast(room);
     }
     client.ws = undefined;
@@ -250,7 +275,9 @@ export class RoomManager {
       this.send(client, { type: "hello", request_id: message.request_id, player_id: client.id, server_player_id: client.id, challenge_catalog: challengeCatalog(), ...hello });
       if (hello.reconnected_to_table && hello.room_id) {
         const room = this.rooms.get(hello.room_id);
-        if (room) this.broadcast(room);
+        if (room) {
+          this.broadcast(room);
+        }
       }
       return;
     }
@@ -545,6 +572,8 @@ export class RoomManager {
     this.clearSettledExitedSeats(room);
     this.rescheduleActionTimer(room);
     this.updatePublicRoomProgress(room);
+    this.reconcilePublicVirtualPlayers(room);
+    this.schedulePublicVirtualActionIfNeeded(room);
     this.scheduleChallengeBotIfNeeded(room);
     this.broadcast(room);
   }
@@ -591,6 +620,11 @@ export class RoomManager {
       settlementResult: null,
       settlementReason: null,
       walletPayoutChips: 0,
+      virtualJoinToken: 0,
+      virtualJoiningPlayerId: "",
+      virtualActionToken: 0,
+      virtualDecisionIndex: new Map(),
+      virtualSessionSeeds: new Map(),
       readyCountdownToken: 0,
       handResultToken: 0,
       handResultShownHandId: 0,
@@ -622,6 +656,32 @@ export class RoomManager {
     return this.rooms.size;
   }
 
+  destroyRoom(roomId: string, reason = "room_destroyed"): boolean {
+    const room = this.rooms.get(roomId);
+    if (!room) return false;
+    this.clearVirtualJoinTimer(room);
+    if (room.virtualActionTimer) clearTimeout(room.virtualActionTimer);
+    room.virtualActionTimer = undefined;
+    room.virtualActionToken += 1;
+    this.clearReadyCountdown(room);
+    this.clearHandResultTimer(room);
+    this.clearActionTimer(room);
+    this.clearChallengeBotTimer(room);
+    for (const seat of this.virtualPlayerSeats(room)) {
+      const playerId = seat.playerId;
+      room.table.leaveSeat(playerId);
+      this.virtualPlayers.markOffline(playerId, reason);
+    }
+    for (const playerId of room.clients) {
+      const client = this.clients.get(playerId);
+      if (client?.roomId === roomId) client.roomId = undefined;
+    }
+    room.clients.clear();
+    this.rooms.delete(roomId);
+    this.recordLog(`room_destroyed room_id=${roomId} reason=${reason}`);
+    return true;
+  }
+
   recordLog(message: string): void {
     const timestamp = new Date().toISOString();
     this.serverLogs.push(`[${timestamp}] ${message}`);
@@ -631,6 +691,15 @@ export class RoomManager {
   adminSnapshot(showPrivateCards: boolean): Record<string, unknown> {
     return {
       active_websocket_connections: this.activeConnectionCount(),
+      human_connections: this.activeConnectionCount(),
+      virtual_agents: this.virtualPlayers.onlineCount(),
+      human_online: this.realOnlineCount(),
+      virtual_online: this.virtualPlayers.onlineCount(),
+      virtual_player_health: this.virtualPlayers.health(),
+      virtual_player_recent_events: this.virtualPlayers.logs(100),
+      human_active_rooms: [...this.rooms.values()].filter((room) => this.realConnectedSeatedCount(room) > 0).length,
+      virtual_filled_rooms: [...this.rooms.values()].filter((room) => this.virtualPlayerSeats(room).length > 0).length,
+      virtual_players: this.virtualAdminSnapshot(),
       player_count: this.players.count(),
       identity_count: this.identities.count(),
       total_wallet_chips: this.wallets.totalChips(),
@@ -672,6 +741,7 @@ export class RoomManager {
           action_deadline_at: room.actionDeadlineAt,
           dev_simulated_player_present: this.hasUncontrolledDevSimulatedPlayer(room),
           connected_player_ids: [...room.clients],
+          virtual_player_count: this.virtualPlayerSeats(room).length,
           hand_state: snapshot.phase,
           betting_round: snapshot.phase,
           pot: snapshot.pot,
@@ -695,6 +765,8 @@ export class RoomManager {
             ready: seat.ready,
             is_ai: seat.isAi,
             warmup_ai: seat.warmupAi,
+            player_kind: seat.serverManagedVirtual ? "virtual" : "human",
+            virtual_state: seat.serverManagedVirtual ? (seat.status === "playing" || seat.status === "all_in" ? "playing" : "seated") : undefined,
             last_action: seat.lastAction,
             hole_card_count: seat.holeCards.length,
             ...(showPrivateCards ? { hole_cards: seat.holeCards.map((card) => card.code) } : {}),
@@ -710,8 +782,71 @@ export class RoomManager {
     return this.wallets.auditWalletTransactions(playerId);
   }
 
+  setVirtualPlayersEnabled(enabled: boolean): void {
+    Object.assign(this.publicVirtualPlayers, this.virtualPlayers.updateConfig({ enabled }));
+    for (const room of this.rooms.values()) {
+      this.reconcilePublicVirtualPlayers(room);
+      this.broadcast(room);
+    }
+  }
+
+  updateVirtualPlayerConfig(patch: Partial<PublicVirtualPlayerConfig>): PublicVirtualPlayerConfig {
+    const updated = this.virtualPlayers.updateConfig(patch);
+    Object.assign(this.publicVirtualPlayers, updated);
+    this.runVirtualScheduler();
+    return updated;
+  }
+
+  setVirtualProfileEnabled(playerId: string, enabled: boolean): void {
+    this.virtualPlayers.setProfileEnabled(playerId, enabled);
+    if (!enabled) this.requestVirtualPlayerOffline(playerId);
+  }
+
+  requestVirtualPlayerOffline(playerId: string): void {
+    const entry = [...this.rooms.values()].find((room) => room.table.getSeatByPlayer(playerId)?.serverManagedVirtual);
+    if (!entry) return;
+    this.virtualPlayers.markPendingLeave(playerId, "admin_safe_offline");
+    this.removeOneSafeVirtualPlayer(entry);
+    this.broadcast(entry);
+  }
+
+  requestAllVirtualPlayersOffline(): void {
+    for (const room of this.rooms.values()) {
+      this.markRoomVirtualPlayersForLeave(room);
+      this.removeOneSafeVirtualPlayer(room);
+      this.broadcast(room);
+    }
+  }
+
+  shutdown(): void {
+    if (this.virtualSchedulerTimer) clearInterval(this.virtualSchedulerTimer);
+    this.virtualSchedulerTimer = undefined;
+    for (const room of this.rooms.values()) {
+      this.clearVirtualJoinTimer(room);
+      if (room.virtualActionTimer) clearTimeout(room.virtualActionTimer);
+      room.virtualActionTimer = undefined;
+      room.virtualActionToken += 1;
+      this.clearReadyCountdown(room);
+      this.clearHandResultTimer(room);
+      this.clearActionTimer(room);
+      this.clearChallengeBotTimer(room);
+    }
+    this.virtualPlayers.shutdown();
+  }
+
+  virtualPlayerHealth(): Record<string, unknown> {
+    return this.virtualPlayers.health();
+  }
+
+  virtualPlayerLogs(limit = 100): Array<Record<string, unknown>> {
+    return this.virtualPlayers.logs(limit);
+  }
+
   private joinRoom(client: Client, roomId: string): void {
     const room = this.mustRoom(roomId);
+    if (client.roomId && client.roomId !== roomId) {
+      this.rooms.get(client.roomId)?.clients.delete(client.id);
+    }
     client.roomId = roomId;
     room.clients.add(client.id);
     this.restoreDisconnectGrace(room, client);
@@ -788,7 +923,7 @@ export class RoomManager {
       room.challengeState = "ready";
     } catch (error) {
       this.refundChallengeEntryFee(room, "prestart_failure");
-      this.rooms.delete(room.id);
+      this.destroyRoom(room.id, "ai_challenge_create_failed");
       throw error;
     }
     this.sendWalletSnapshot(client, room.id);
@@ -1161,7 +1296,7 @@ export class RoomManager {
   }
 
   private realConnectedSeatedCount(room: Room): number {
-    return room.table.seats.filter((seat) => seat.playerId && !seat.isAi && !seat.warmupAi && !seat.disconnected).length;
+    return room.table.seats.filter((seat) => seat.playerId && !seat.isAi && !seat.warmupAi && !seat.serverManagedVirtual && !seat.disconnected).length;
   }
 
   private publicSeatedCount(room: Room): number {
@@ -1722,6 +1857,14 @@ export class RoomManager {
     }
     this.ensureRoomCanAcceptSitDown(room);
     if (room.mode === "ai_challenge") return this.sitDownAiChallenge(room, client, requestedSeatIndex);
+    if (this.publicVirtualPlayers.humanPriority && ["waiting", "hand_over"].includes(room.table.phase)) {
+      const requestedVirtual = requestedSeatIndex >= 0 ? room.table.getSeat(requestedSeatIndex) : undefined;
+      const virtualToRelease = requestedVirtual?.serverManagedVirtual ? requestedVirtual : this.virtualPlayerSeats(room)[0];
+      if (virtualToRelease && (this.occupiedSeatCount(room) >= room.maxPlayers || requestedVirtual?.serverManagedVirtual)) {
+        this.virtualPlayers.markPendingLeave(virtualToRelease.playerId, "human_priority");
+        this.removeOneSafeVirtualPlayer(room);
+      }
+    }
     if (this.occupiedSeatCount(room) >= room.maxPlayers) throw new Error("table_full");
     const seat = requestedSeatIndex < 0 ? this.firstAvailablePublicSeat(room) : room.table.getSeat(requestedSeatIndex);
     if (!seat || seat.playerId) throw new Error("seat is not available");
@@ -1818,7 +1961,7 @@ export class RoomManager {
   }
 
   private publicReadySeats(room: Room) {
-    return room.table.seats.filter((seat) => seat.playerId && !seat.isAi && !seat.warmupAi && !seat.disconnected && seat.chips > 0 && !["empty", "sit_out"].includes(seat.status));
+    return room.table.seats.filter((seat) => seat.playerId && (!seat.isAi || seat.serverManagedVirtual) && !seat.warmupAi && !seat.disconnected && seat.chips > 0 && !["empty", "sit_out"].includes(seat.status));
   }
 
   private publicReadyCandidates(room: Room) {
@@ -1956,6 +2099,7 @@ export class RoomManager {
     room.table.startHand(Date.now(), this.isManagedChipRoom(room));
     room.officialHandStarted = true;
     processAutomaticTurns(room.table);
+    this.schedulePublicVirtualActionIfNeeded(room);
     this.recordLog(`chip_hand_started room_id=${room.id} reason=${reason} hand_id=${room.table.handId}`);
     return true;
   }
@@ -2002,6 +2146,8 @@ export class RoomManager {
     } else {
       this.clearReadyCountdown(room);
     }
+    this.reconcilePublicVirtualPlayers(room);
+    this.schedulePublicVirtualActionIfNeeded(room);
     this.broadcast(room);
   }
 
@@ -2409,18 +2555,24 @@ export class RoomManager {
     this.db.transaction(() => {
       for (const result of room.table.lastHandResults) {
         const seat = room.table.getSeat(result.seat_index);
-        if (!seat?.playerId || seat.isAi || seat.warmupAi) continue;
+        if (!seat?.playerId || seat.isAi || seat.warmupAi || seat.serverManagedVirtual) continue;
         this.results.recordHandResult(room.id, room.table.handId, seat.playerId, result.delta, JSON.stringify(result));
         if (officialHand) {
           this.profileBootstrap.recordHandResult(seat.playerId, currency, result.delta, winnerSeats.has(result.seat_index), key);
         }
       }
     })();
+    for (const result of room.table.lastHandResults) {
+      const seat = room.table.getSeat(result.seat_index);
+      if (seat?.serverManagedVirtual) {
+        this.virtualPlayers.markHandCompleted(seat.playerId, room.table.handId, seat.chips);
+      }
+    }
     this.recordedHandResults.add(key);
     if (officialHand) {
       for (const result of room.table.lastHandResults) {
         const seat = room.table.getSeat(result.seat_index);
-        if (!seat?.playerId || seat.isAi || seat.warmupAi) continue;
+        if (!seat?.playerId || seat.isAi || seat.warmupAi || seat.serverManagedVirtual) continue;
         const client = this.clients.get(seat.playerId);
         if (client) this.send(client, { type: "profile_snapshot", player_id: seat.playerId, room_id: room.id, ...this.profilePayload(seat.playerId) });
       }
@@ -2527,7 +2679,7 @@ export class RoomManager {
         },
         { replay_id: replayId, key_material: keyMaterial, key_version: delivery.key_version, created_at: createdAt },
         room.table.seats
-          .filter((seat) => seat.playerId !== "")
+          .filter((seat) => seat.playerId !== "" && !seat.serverManagedVirtual)
           .map((seat) => ({ player_id: seat.playerId, seat_index: seat.seatIndex })),
       );
     } catch (error) {
@@ -2537,6 +2689,301 @@ export class RoomManager {
     }
     room.replayDeliveries.set(room.table.handId, delivery);
     return delivery;
+  }
+
+  private reconcilePublicVirtualPlayers(room: Room): void {
+    void room;
+    this.runVirtualScheduler();
+  }
+
+  private startVirtualScheduler(): void {
+    if (this.virtualSchedulerTimer) return;
+    this.virtualSchedulerTimer = setInterval(() => this.runVirtualScheduler(), 1_000);
+    (this.virtualSchedulerTimer as { unref?: () => void }).unref?.();
+  }
+
+  private runVirtualScheduler(): void {
+    try {
+      for (const candidateRoom of this.rooms.values()) {
+        if (candidateRoom.virtualJoinTimer && (
+          !this.publicVirtualPlayers.enabled
+          || !this.isVirtualEligiblePublicRoom(candidateRoom)
+          || this.realConnectedSeatedCount(candidateRoom) === 0
+          || this.waitingHumanCount(candidateRoom) > 0
+          || this.virtualPlayerSeats(candidateRoom).length >= this.desiredVirtualCount(candidateRoom)
+        )) {
+          this.clearVirtualJoinTimer(candidateRoom);
+        }
+        this.reconcileVirtualExits(candidateRoom);
+      }
+      if (!this.publicVirtualPlayers.enabled) {
+        this.virtualPlayers.recordSchedulerIdle("global_disabled");
+        return;
+      }
+      if (this.virtualPlayers.onlineCount() >= this.publicVirtualPlayers.maximumOnline) {
+        this.virtualPlayers.recordSchedulerIdle("maximum_online_reached");
+        return;
+      }
+      const candidates = [...this.rooms.values()].map((candidateRoom) => this.virtualRoomCandidate(candidateRoom));
+      const selected = this.virtualPlayers.selectRoom(candidates);
+      if (!selected) {
+        this.virtualPlayers.recordSchedulerIdle("no_eligible_public_room");
+        return;
+      }
+      const room = this.rooms.get(selected.roomId);
+      if (!room || room.virtualJoinTimer || !["waiting", "hand_over"].includes(room.table.phase)) return;
+      this.scheduleVirtualJoin(room);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.virtualPlayers.recordSchedulerError(reason);
+      this.recordLog(`virtual_scheduler_error error=${reason}`);
+    }
+  }
+
+  private reconcileVirtualExits(room: Room): void {
+    const virtualSeats = this.virtualPlayerSeats(room);
+    if (virtualSeats.length === 0) return;
+    const humanSeats = this.realConnectedSeatedCount(room);
+    const waitingHumans = this.waitingHumanCount(room);
+    const desired = this.desiredVirtualCount(room);
+    if (!this.isVirtualEligiblePublicRoom(room) || !this.publicVirtualPlayers.enabled || humanSeats === 0 || waitingHumans > 0) {
+      const reason = !this.publicVirtualPlayers.enabled ? "disabled" : humanSeats === 0 ? "no_humans" : waitingHumans > 0 ? "waiting_human" : "ineligible";
+      for (const seat of virtualSeats) this.virtualPlayers.markPendingLeave(seat.playerId, reason);
+    } else if (virtualSeats.length > desired) {
+      const victim = this.selectVirtualPlayerForLeave(room);
+      if (victim) this.virtualPlayers.markPendingLeave(victim.playerId, "above_desired");
+    }
+    this.removeOneSafeVirtualPlayer(room);
+  }
+
+  private scheduleVirtualJoin(room: Room): void {
+    const profile = this.virtualPlayers.reserveAgent(room.id);
+    if (!profile) return;
+    const minimum = Math.min(this.publicVirtualPlayers.joinDelayMinMs, this.publicVirtualPlayers.joinDelayMaxMs);
+    const maximum = Math.max(this.publicVirtualPlayers.joinDelayMinMs, this.publicVirtualPlayers.joinDelayMaxMs);
+    const delay = minimum + Math.floor(Math.random() * (maximum - minimum + 1));
+    const token = ++room.virtualJoinToken;
+    room.virtualJoiningPlayerId = profile.id;
+    room.virtualJoinTimer = setTimeout(() => this.handleVirtualJoin(room.id, token), delay);
+    (room.virtualJoinTimer as { unref?: () => void }).unref?.();
+  }
+
+  private handleVirtualJoin(roomId: string, token: number): void {
+    const room = this.rooms.get(roomId);
+    if (!room || token !== room.virtualJoinToken) return;
+    room.virtualJoinTimer = undefined;
+    const reservedPlayerId = room.virtualJoiningPlayerId;
+    room.virtualJoiningPlayerId = "";
+    const profile = PUBLIC_VIRTUAL_PLAYER_PROFILES.find((candidate) => candidate.id === reservedPlayerId);
+    const blockedReason = !profile
+      ? "reservation_missing"
+      : !this.publicVirtualPlayers.enabled
+        ? "disabled"
+        : !this.isVirtualEligiblePublicRoom(room)
+          ? "room_ineligible"
+          : this.realConnectedSeatedCount(room) === 0
+            ? "no_humans"
+            : this.waitingHumanCount(room) > 0
+              ? "waiting_human"
+              : this.virtualPlayerSeats(room).length >= this.desiredVirtualCount(room)
+                ? "target_satisfied"
+                : "";
+    if (blockedReason !== "") {
+      if (reservedPlayerId) this.virtualPlayers.releaseReservation(reservedPlayerId, blockedReason);
+      this.recordLog(`virtual_join_cancelled player_id=${reservedPlayerId || "-"} room_id=${room.id} reason=${blockedReason}`);
+      return;
+    }
+    const seat = this.firstAvailablePublicSeat(room);
+    if (!profile || !seat || this.occupiedSeatCount(room) >= room.maxPlayers) {
+      this.virtualPlayers.releaseReservation(reservedPlayerId, "seat_unavailable");
+      return;
+    }
+    room.table.sitDown(
+      {
+        id: profile.id,
+        name: profile.displayName,
+        avatarId: profile.avatarId,
+        connected: true,
+        serverManagedVirtual: true,
+      },
+      seat.seatIndex,
+      room.buyIn,
+    );
+    room.table.setReady(profile.id, true);
+    this.virtualPlayers.markSeated(profile.id, room.id, seat.seatIndex, room.buyIn);
+    room.virtualSessionSeeds.set(profile.id, profile.id + ":" + room.id + ":" + randomUUID());
+    room.virtualDecisionIndex.set(profile.id, 0);
+    this.recordLog(`virtual_player_joined player_id=${profile.id} room_id=${room.id} seat=${seat.seatIndex}`);
+    this.updatePublicRoomProgress(room);
+    this.schedulePublicVirtualActionIfNeeded(room);
+    this.broadcast(room);
+    this.reconcilePublicVirtualPlayers(room);
+  }
+
+  private schedulePublicVirtualActionIfNeeded(room: Room): void {
+    if (room.virtualActionTimer || !isActionPhase(room.table.phase)) return;
+    const seat = room.table.getSeat(room.table.currentTurnSeat);
+    if (!seat?.serverManagedVirtual || seat.status !== "playing") return;
+    const profile = PUBLIC_VIRTUAL_PLAYER_PROFILES.find((candidate) => candidate.id === seat.playerId);
+    const minimum = Math.max(this.publicVirtualPlayers.actionDelayMinMs, profile?.actionDelayMinMs ?? 0);
+    const maximum = Math.max(minimum, Math.min(this.publicVirtualPlayers.actionDelayMaxMs, profile?.actionDelayMaxMs ?? this.publicVirtualPlayers.actionDelayMaxMs));
+    const delay = minimum + Math.floor(Math.random() * (maximum - minimum + 1));
+    const token = ++room.virtualActionToken;
+    const handId = room.table.handId;
+    const turnSeat = room.table.currentTurnSeat;
+    room.virtualActionTimer = setTimeout(() => this.performPublicVirtualAction(room.id, seat.playerId, handId, turnSeat, token), delay);
+    (room.virtualActionTimer as { unref?: () => void }).unref?.();
+  }
+
+  private performPublicVirtualAction(roomId: string, playerId: string, handId: number, turnSeat: number, token: number): void {
+    const room = this.rooms.get(roomId);
+    if (!room || token !== room.virtualActionToken) return;
+    room.virtualActionTimer = undefined;
+    if (room.table.handId !== handId || room.table.currentTurnSeat !== turnSeat) return;
+    const seat = room.table.getSeat(room.table.currentTurnSeat);
+    if (!seat?.serverManagedVirtual || seat.playerId !== playerId || seat.status !== "playing" || !this.virtualPlayers.canAct(playerId, roomId)) return;
+    try {
+      const profile = PUBLIC_VIRTUAL_PLAYER_PROFILES.find((candidate) => candidate.id === playerId);
+      if (!profile) throw new Error("virtual_profile_not_found");
+      const legal = legalActions(room.table, playerId);
+      this.virtualPlayers.markPlaying(playerId, room.table.handId, seat.chips);
+      const decisionIndex = (room.virtualDecisionIndex.get(playerId) ?? 0) + 1;
+      room.virtualDecisionIndex.set(playerId, decisionIndex);
+      const sessionSeed = room.virtualSessionSeeds.get(playerId) ?? `${playerId}:${room.id}:${randomUUID()}`;
+      room.virtualSessionSeeds.set(playerId, sessionSeed);
+      const context = buildVirtualBotContext({ botPlayerId: playerId, table: room.table, seatCount: room.maxPlayers, legalActions: legal, handIndex: room.table.handId, decisionIndex, sessionSeed });
+      const startedAt = Date.now();
+      const decision = decideVirtualPlayerAction(context, profile);
+      if (!legalActions(room.table, playerId).some((item) => item.action === decision.action)) throw new Error("virtual_action_no_longer_legal");
+      applyPlayerAction(room.table, playerId, decision.action, decision.amount ?? 0);
+      processAutomaticTurns(room.table);
+      this.virtualPlayers.markAction(playerId, room.table.handId, seat.chips, decision.action);
+      this.recordLog(`virtual_player_decision player_id=${playerId} room_id=${room.id} hand_id=${handId} street=${context.street} personality=${decision.personality} decision=${decision.action} raise_to=${decision.raiseTo ?? "-"} internal_reason=${decision.internalReason} internal_strength=${decision.internalStrength} decision_elapsed_ms=${Date.now() - startedAt}`);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.virtualPlayers.markError(playerId, reason);
+      this.recordLog(`virtual_player_action_error player_id=${playerId} room_id=${room.id} error=${reason}`);
+    }
+    this.recordHandResults(room);
+    this.updatePublicRoomProgress(room);
+    this.reconcilePublicVirtualPlayers(room);
+    this.schedulePublicVirtualActionIfNeeded(room);
+    this.broadcast(room);
+  }
+  private isVirtualEligiblePublicRoom(room: Room): boolean {
+    return room.mode === "public"
+      && room.isPublic
+      && room.visibility === "public"
+      && (room.tableType === "public_chip" || room.tableType === "public_gem")
+      && !room.isAiWarmup
+      && room.hostInLocalWarmup === ""
+      && !room.sessionComplete;
+  }
+
+  private waitingHumanCount(room: Room): number {
+    return [...room.clients].filter((playerId) => {
+      const client = this.clients.get(playerId);
+      return client && !client.devSimulated && !room.table.getSeatByPlayer(playerId);
+    }).length;
+  }
+
+  private desiredVirtualCount(room: Room): number {
+    const humanSeats = this.realConnectedSeatedCount(room);
+    return Math.min(
+      this.publicVirtualPlayers.maximumPerRoom,
+      Math.max(0, 2 - humanSeats),
+      Math.max(0, room.maxPlayers - humanSeats),
+      Math.max(0, this.publicVirtualPlayers.targetOnline - this.virtualPlayers.onlineCount() + this.virtualPlayerSeats(room).length),
+    );
+  }
+
+  private virtualRoomCandidate(room: Room) {
+    const virtualCount = this.virtualPlayerSeats(room).length;
+    return {
+      roomId: room.id,
+      humanCount: this.realConnectedSeatedCount(room),
+      virtualCount,
+      waitingHumanCount: this.waitingHumanCount(room),
+      availableSeats: Math.max(0, room.maxPlayers - this.occupiedSeatCount(room)),
+      waitingSinceMs: Math.max(0, Date.now() - Date.parse(room.createdAt)),
+      eligible: this.isVirtualEligiblePublicRoom(room)
+        && ["waiting", "hand_over"].includes(room.table.phase)
+        && !room.virtualJoinTimer
+        && virtualCount < this.desiredVirtualCount(room),
+    };
+  }
+
+  private selectVirtualPlayerForLeave(room: Room): Seat | undefined {
+    const snapshots = new Map(this.virtualPlayers.snapshots().map((snapshot) => [snapshot.playerId, snapshot]));
+    return this.virtualPlayerSeats(room).slice().sort((left, right) => {
+      const leftState = snapshots.get(left.playerId);
+      const rightState = snapshots.get(right.playerId);
+      const leftPending = leftState?.state === "pending_leave" ? 1 : 0;
+      const rightPending = rightState?.state === "pending_leave" ? 1 : 0;
+      if (leftPending !== rightPending) return rightPending - leftPending;
+      if ((leftState?.sessionHandsPlayed ?? 0) !== (rightState?.sessionHandsPlayed ?? 0)) {
+        return (rightState?.sessionHandsPlayed ?? 0) - (leftState?.sessionHandsPlayed ?? 0);
+      }
+      return String(leftState?.onlineSince ?? "").localeCompare(String(rightState?.onlineSince ?? ""));
+    })[0];
+  }
+
+  private virtualPlayerSeats(room: Room): Seat[] {
+    return room.table.seats.filter((seat) => seat.serverManagedVirtual && seat.playerId !== "");
+  }
+
+  private markRoomVirtualPlayersForLeave(room: Room): void {
+    for (const seat of this.virtualPlayerSeats(room)) this.virtualPlayers.markPendingLeave(seat.playerId, "room_shutdown");
+    this.clearVirtualJoinTimer(room);
+  }
+
+  private removeOneSafeVirtualPlayer(room: Room): void {
+    if (!["waiting", "hand_over", "session_complete"].includes(room.table.phase)) return;
+    const seat = this.selectVirtualPlayerForLeave(room);
+    if (seat && !this.virtualPlayers.isPendingLeave(seat.playerId)) return;
+    if (!seat) return;
+    const playerId = seat.playerId;
+    this.virtualPlayers.markLeaving(playerId);
+    room.table.leaveSeat(playerId);
+    room.virtualSessionSeeds.delete(playerId);
+    room.virtualDecisionIndex.delete(playerId);
+    room.virtualActionToken += 1;
+    this.virtualPlayers.markOffline(playerId, "safe_leave");
+    this.recordLog(`virtual_player_left player_id=${playerId} room_id=${room.id} reason=safe_leave`);
+  }
+
+  private clearVirtualJoinTimer(room: Room): void {
+    if (room.virtualJoinTimer) clearTimeout(room.virtualJoinTimer);
+    room.virtualJoinTimer = undefined;
+    if (room.virtualJoiningPlayerId) this.virtualPlayers.releaseReservation(room.virtualJoiningPlayerId, "join_timer_cleared");
+    room.virtualJoiningPlayerId = "";
+    room.virtualJoinToken += 1;
+  }
+
+  private realOnlineCount(): number {
+    return [...this.clients.values()].filter((client) => client.ws && client.ws.readyState === client.ws.OPEN).length;
+  }
+
+  private virtualAdminSnapshot(): Array<Record<string, unknown>> {
+    return this.virtualPlayers.snapshots().map((agent) => ({
+      player_kind: agent.playerKind,
+      virtual_player_id: agent.playerId,
+      display_name: agent.displayName,
+      avatar_id: agent.avatarId,
+      skill_profile: agent.skillProfile,
+      enabled: agent.enabled,
+      virtual_state: agent.state,
+      room_id: agent.roomId,
+      seat: agent.seatIndex,
+      chips: agent.chips,
+      hand_id: agent.handId,
+      session_hands_played: agent.sessionHandsPlayed,
+      online_since: agent.onlineSince,
+      last_action_at: agent.lastActionAt,
+      recent_error: agent.recentError,
+      join_block_reason: agent.joinBlockReason,
+      pending_leave_reason: agent.pendingLeaveReason,
+    }));
   }
 
   private scheduleChallengeBotIfNeeded(room: Room): void {
@@ -2714,7 +3161,7 @@ export class RoomManager {
     if (!isActionPhase(room.table.phase)) return;
     const seat = room.table.getSeat(room.table.currentTurnSeat);
     if (!seat || !seat.playerId || seat.status !== "playing") return;
-    if (seat.isAi || seat.warmupAi || seat.disconnected) return;
+    if (seat.isAi || seat.warmupAi || seat.serverManagedVirtual || seat.disconnected) return;
     room.actionTimerToken += 1;
     const token = room.actionTimerToken;
     const timeoutMs = this.actionTimeoutMs(room);

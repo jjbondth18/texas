@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { publicVirtualPlayerConfigFromEnv, type PublicVirtualPlayerConfig } from "./public_virtual_players.js";
 
 export type DatabaseDriver = "sqlite" | "postgres";
 export type SteamAuthMode = "disabled" | "optional" | "required";
@@ -24,6 +25,7 @@ export interface ServerConfig {
   steamAuthIdentity: string;
   steamCommerceMode: SteamCommerceMode;
   steamPublisherWebApiKey: string;
+  virtualPlayers: PublicVirtualPlayerConfig;
 }
 
 loadDotEnv(resolve(process.cwd(), ".env"));
@@ -47,6 +49,7 @@ export const config: ServerConfig = {
   steamAuthIdentity: process.env.STEAM_AUTH_IDENTITY || "texas-server-v1",
   steamCommerceMode: steamCommerceModeEnv(process.env.STEAM_COMMERCE_MODE),
   steamPublisherWebApiKey: process.env.STEAM_PUBLISHER_WEB_API_KEY || process.env.STEAM_WEB_API_PUBLISHER_KEY || "",
+  virtualPlayers: publicVirtualPlayerConfigFromEnv(),
 };
 
 export function configWarnings(value: ServerConfig = config): string[] {
@@ -84,6 +87,10 @@ export function publicConfigSummary(value: ServerConfig = config): Record<string
     STEAM_AUTH_IDENTITY: value.steamAuthIdentity,
     STEAM_COMMERCE_MODE: value.steamCommerceMode,
     STEAM_COMMERCE_CONFIGURED: value.steamCommerceMode !== "disabled" && value.steamAppId !== "" && value.steamPublisherWebApiKey !== "",
+    VIRTUAL_PLAYERS_ENABLED: value.virtualPlayers.enabled,
+    VIRTUAL_PLAYER_TARGET_ONLINE: value.virtualPlayers.targetOnline,
+    VIRTUAL_PLAYER_MAX_ONLINE: value.virtualPlayers.maximumOnline,
+    VIRTUAL_PLAYER_MAX_PER_ROOM: value.virtualPlayers.maximumPerRoom,
   };
 }
 

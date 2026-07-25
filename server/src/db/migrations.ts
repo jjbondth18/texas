@@ -12,6 +12,7 @@ import { migration010PlayerDisplayName } from "./migrations/010_player_display_n
 import { migration011ReplayIdentityIntegrity } from "./migrations/011_replay_identity_integrity.js";
 import { migration012SteamCommerce } from "./migrations/012_steam_commerce.js";
 import { migration013LocalAdmin } from "./migrations/013_local_admin.js";
+import { migration014VirtualPlayerRuntime } from "./migrations/014_virtual_player_runtime.js";
 
 interface Migration {
   id: string;
@@ -32,6 +33,7 @@ const migrations: Migration[] = [
   migration011ReplayIdentityIntegrity,
   migration012SteamCommerce,
   migration013LocalAdmin,
+  migration014VirtualPlayerRuntime,
 ];
 
 export function runMigrations(db: Database.Database): void {

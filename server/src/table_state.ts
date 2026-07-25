@@ -9,6 +9,7 @@ export interface Player {
   avatarId?: string;
   isAi?: boolean;
   warmupAi?: boolean;
+  serverManagedVirtual?: boolean;
 }
 
 export interface Seat {
@@ -18,6 +19,7 @@ export interface Seat {
   avatarId: string;
   isAi: boolean;
   warmupAi: boolean;
+  serverManagedVirtual: boolean;
   chips: number;
   status: SeatStatus;
   ready: boolean;
@@ -125,6 +127,7 @@ export class TableState {
       avatarId: player.avatarId ?? "default",
       isAi: Boolean(player.isAi),
       warmupAi: Boolean(player.warmupAi),
+      serverManagedVirtual: Boolean(player.serverManagedVirtual),
       chips: Math.max(1, Math.floor(buyIn)),
       status: (joinsNextHand ? "waiting_next_hand" : "sitting") satisfies SeatStatus,
       ready: false,
@@ -477,6 +480,7 @@ export class TableState {
       avatarId: "",
       isAi: false,
       warmupAi: false,
+      serverManagedVirtual: false,
       chips: 0,
       status: "empty",
       ready: false,
