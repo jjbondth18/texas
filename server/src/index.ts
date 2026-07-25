@@ -78,8 +78,12 @@ function routeHttp(req: IncomingMessage, res: ServerResponse): void {
     sendHtml(res, renderDatabaseAdminPage());
     return;
   }
-  if (url.pathname === "/admin/state") {
+  if (req.method === "GET" && url.pathname === "/admin/state") {
     sendJson(res, adminState());
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/admin/virtual") {
+    sendJson(res, manager.virtualAdminState());
     return;
   }
   if (req.method === "POST" && url.pathname === "/admin/virtual/enabled") {
@@ -88,22 +92,28 @@ function routeHttp(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
   if (req.method === "POST" && url.pathname === "/admin/virtual/config") {
-    const numeric = (name: string): number | undefined => {
-      const raw = url.searchParams.get(name);
-      return raw === null || raw.trim() === "" ? undefined : Number(raw);
-    };
-    const patch = Object.fromEntries(
-      [
-        ["targetOnline", numeric("target_online")],
-        ["maximumOnline", numeric("maximum_online")],
-        ["maximumPerRoom", numeric("maximum_per_room")],
-        ["joinDelayMinMs", numeric("join_delay_min_ms")],
-        ["joinDelayMaxMs", numeric("join_delay_max_ms")],
-        ["sessionHandMin", numeric("session_hand_min")],
-        ["sessionHandMax", numeric("session_hand_max")],
-      ].filter((entry) => entry[1] !== undefined),
-    );
-    sendJson(res, { ok: true, config: manager.updateVirtualPlayerConfig(patch) });
+    try {
+      const numeric = (name: string): number | undefined => {
+        const raw = url.searchParams.get(name);
+        if (raw === null) return undefined;
+        if (raw.trim() === "" || !/^\d+$/.test(raw.trim())) throw new Error(`${name} must be a non-negative integer`);
+        return Number(raw);
+      };
+      const patch = Object.fromEntries(
+        [
+          ["targetOnline", numeric("target_online")],
+          ["maximumOnline", numeric("maximum_online")],
+          ["maximumPerRoom", numeric("maximum_per_room")],
+          ["joinDelayMinMs", numeric("join_delay_min_ms")],
+          ["joinDelayMaxMs", numeric("join_delay_max_ms")],
+          ["sessionHandMin", numeric("session_hand_min")],
+          ["sessionHandMax", numeric("session_hand_max")],
+        ].filter((entry) => entry[1] !== undefined),
+      );
+      sendJson(res, { ok: true, config: manager.updateVirtualPlayerConfig(patch) });
+    } catch (error) {
+      sendJsonStatus(res, 400, { error: error instanceof Error ? error.message : "invalid virtual config" });
+    }
     return;
   }
   if (req.method === "POST" && url.pathname === "/admin/virtual/profile") {
@@ -384,7 +394,11 @@ function sendHtml(res: ServerResponse, body: string): void {
 }
 
 function sendJson(res: ServerResponse, body: unknown): void {
-  res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+  sendJsonStatus(res, 200, body);
+}
+
+function sendJsonStatus(res: ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   res.end(JSON.stringify(body, null, 2));
 }
 

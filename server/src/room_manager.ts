@@ -795,7 +795,8 @@ export class RoomManager {
   }
 
   updateVirtualPlayerConfig(patch: Partial<PublicVirtualPlayerConfig>): PublicVirtualPlayerConfig {
-    const updated = this.virtualPlayers.updateConfig(patch);
+    const validated = validateVirtualPlayerConfigUpdate(this.virtualPlayers.config(), patch);
+    const updated = this.virtualPlayers.updateConfig(validated);
     Object.assign(this.publicVirtualPlayers, updated);
     this.runVirtualScheduler();
     return updated;
@@ -844,6 +845,23 @@ export class RoomManager {
 
   virtualPlayerLogs(limit = 100): Array<Record<string, unknown>> {
     return this.virtualPlayers.logs(limit);
+  }
+
+  virtualAdminState(): Record<string, unknown> {
+    return {
+      health: this.virtualPlayers.health(),
+      config: virtualConfigSnapshot(this.virtualPlayers.config()),
+      profiles: this.virtualAdminSnapshot(),
+      recent_events: this.virtualPlayers.logs(100),
+      filled_rooms: [...this.rooms.values()]
+        .filter((room) => this.virtualPlayerSeats(room).length > 0)
+        .map((room) => ({
+          room_id: room.id,
+          virtual_player_count: this.virtualPlayerSeats(room).length,
+          human_player_count: this.realConnectedSeatedCount(room),
+          phase: room.table.phase,
+        })),
+    };
   }
 
   private joinRoom(client: Client, roomId: string): void {
@@ -2977,6 +2995,7 @@ export class RoomManager {
       chips: agent.chips,
       hand_id: agent.handId,
       session_hands_played: agent.sessionHandsPlayed,
+      session_hand_target: agent.sessionHandTarget,
       online_since: agent.onlineSince,
       last_action_at: agent.lastActionAt,
       recent_error: agent.recentError,
@@ -3402,4 +3421,46 @@ function normalizeAvatarId(value: string): string {
 
 function isActionPhase(phase: string): boolean {
   return ["preflop", "flop", "turn", "river"].includes(phase);
+}
+
+function virtualConfigSnapshot(value: PublicVirtualPlayerConfig): Record<string, unknown> {
+  return {
+    enabled: value.enabled,
+    target_online: value.targetOnline,
+    maximum_online: value.maximumOnline,
+    maximum_per_room: value.maximumPerRoom,
+    join_delay_min_ms: value.joinDelayMinMs,
+    join_delay_max_ms: value.joinDelayMaxMs,
+    session_hand_min: value.sessionHandMin,
+    session_hand_max: value.sessionHandMax,
+    action_delay_min_ms: value.actionDelayMinMs,
+    action_delay_max_ms: value.actionDelayMaxMs,
+    chat_enabled: value.chatEnabled,
+  };
+}
+
+export function validateVirtualPlayerConfigUpdate(
+  current: PublicVirtualPlayerConfig,
+  patch: Partial<PublicVirtualPlayerConfig>,
+): Partial<PublicVirtualPlayerConfig> {
+  const editable = [
+    "targetOnline",
+    "maximumOnline",
+    "maximumPerRoom",
+    "joinDelayMinMs",
+    "joinDelayMaxMs",
+    "sessionHandMin",
+    "sessionHandMax",
+  ] as const;
+  for (const key of editable) {
+    if (patch[key] !== undefined && (!Number.isInteger(patch[key]) || Number(patch[key]) < 0)) {
+      throw new Error(`${key} must be a non-negative integer`);
+    }
+  }
+  const next = { ...current, ...patch };
+  if (next.maximumPerRoom < 1) throw new Error("maximumPerRoom must be at least 1");
+  if (next.targetOnline > next.maximumOnline) throw new Error("targetOnline must not exceed maximumOnline");
+  if (next.joinDelayMinMs > next.joinDelayMaxMs) throw new Error("joinDelayMinMs must not exceed joinDelayMaxMs");
+  if (next.sessionHandMin > next.sessionHandMax) throw new Error("sessionHandMin must not exceed sessionHandMax");
+  return Object.fromEntries(editable.filter((key) => patch[key] !== undefined).map((key) => [key, patch[key]]));
 }

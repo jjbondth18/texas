@@ -94,7 +94,14 @@ const admin = enabledManager.adminSnapshot(false) as any;
 assert.equal(admin.virtual_online, 1);
 assert.equal(admin.human_online, 1);
 assert.equal(admin.virtual_players[0].player_kind, "virtual");
+assert.equal(Number.isInteger(admin.virtual_players[0].session_hand_target), true, "admin profile snapshot must expose session_hand_target");
+assert.equal(admin.virtual_players[0].session_hand_target > 0, true, "seated virtual profile must have a positive session hand target");
 assert.equal(admin.player_count >= 1, true, "human profile count remains available");
+const virtualState = enabledManager.virtualAdminState() as any;
+assert.equal(virtualState.config.maximum_per_room, 1);
+assert.equal(virtualState.profiles[0].session_hand_target, admin.virtual_players[0].session_hand_target);
+assert.equal(Array.isArray(virtualState.recent_events), true);
+assert.equal(Array.isArray(virtualState.filled_rooms), true);
 
 enabledManager.handle(human.playerId, { type: "ready", room_id: roomId, ready: true });
 await delay(3_200);

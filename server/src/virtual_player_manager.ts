@@ -20,6 +20,7 @@ export interface VirtualPlayerAgentSnapshot {
   chips: number;
   handId: number;
   sessionHandsPlayed: number;
+  sessionHandTarget: number;
   onlineSince?: string;
   lastActionAt?: string;
   recentError: string;
@@ -38,7 +39,7 @@ export interface VirtualRoomCandidate {
   eligible: boolean;
 }
 
-type MutableAgent = VirtualPlayerAgentSnapshot & { profile: PublicVirtualPlayerProfile; sessionHandTarget: number };
+type MutableAgent = VirtualPlayerAgentSnapshot & { profile: PublicVirtualPlayerProfile };
 
 export class VirtualPlayerManager {
   private configValue: PublicVirtualPlayerConfig;
@@ -263,7 +264,7 @@ export class VirtualPlayerManager {
   }
 
   snapshots(): VirtualPlayerAgentSnapshot[] {
-    return [...this.agents.values()].map(({ profile: _profile, sessionHandTarget: _target, ...agent }) => ({ ...agent }));
+    return [...this.agents.values()].map(({ profile: _profile, ...agent }) => ({ ...agent }));
   }
 
   health(): Record<string, unknown> {
