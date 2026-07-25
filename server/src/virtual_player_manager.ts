@@ -33,7 +33,8 @@ export interface VirtualRoomCandidate {
   virtualCount: number;
   waitingHumanCount: number;
   availableSeats: number;
-  waitingSinceMs: number;
+  effectiveWaitingSinceAt: string;
+  roomCreatedAt: string;
   eligible: boolean;
 }
 
@@ -110,6 +111,22 @@ export class VirtualPlayerManager {
     this.persist(agent);
     this.log("join_reserved", agent.playerId, roomId);
     return agent.profile;
+  }
+
+  hasAvailableAgent(): boolean {
+    return this.configValue.enabled
+      && this.onlineCount() < this.configValue.targetOnline
+      && this.onlineCount() < this.configValue.maximumOnline
+      && [...this.agents.values()].some((candidate) => candidate.enabled && candidate.state === "offline");
+  }
+
+  canCompleteReservation(playerId: string, roomId: string): boolean {
+    const agent = this.agents.get(playerId);
+    return Boolean(agent
+      && this.configValue.enabled
+      && agent.enabled
+      && agent.state === "joining"
+      && agent.roomId === roomId);
   }
 
   releaseReservation(playerId: string, reason: string): void {
@@ -223,13 +240,12 @@ export class VirtualPlayerManager {
     this.lastSchedulerRunAt = this.isoNow();
     this.lastSchedulerError = "";
     return candidates
-      .filter((candidate) => candidate.eligible && candidate.humanCount > 0 && candidate.waitingHumanCount === 0 && candidate.availableSeats > 0)
+      .filter((candidate) => candidate.eligible && candidate.humanCount === 1 && candidate.virtualCount === 0 && candidate.waitingHumanCount === 0 && candidate.availableSeats > 0)
       .sort((left, right) => {
-        const leftOneShort = left.humanCount + left.virtualCount === 1 ? 1 : 0;
-        const rightOneShort = right.humanCount + right.virtualCount === 1 ? 1 : 0;
-        if (leftOneShort !== rightOneShort) return rightOneShort - leftOneShort;
-        if (left.waitingSinceMs !== right.waitingSinceMs) return right.waitingSinceMs - left.waitingSinceMs;
-        if (left.humanCount !== right.humanCount) return right.humanCount - left.humanCount;
+        const waitingOrder = left.effectiveWaitingSinceAt.localeCompare(right.effectiveWaitingSinceAt);
+        if (waitingOrder !== 0) return waitingOrder;
+        const roomAgeOrder = left.roomCreatedAt.localeCompare(right.roomCreatedAt);
+        if (roomAgeOrder !== 0) return roomAgeOrder;
         return left.roomId.localeCompare(right.roomId);
       })[0];
   }

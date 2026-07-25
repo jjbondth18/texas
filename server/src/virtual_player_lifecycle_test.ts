@@ -25,11 +25,23 @@ const defaults = {
 const manager = new VirtualPlayerManager(defaults, repository);
 
 const selected = manager.selectRoom([
-  { roomId: "newer", humanCount: 1, virtualCount: 0, waitingHumanCount: 0, availableSeats: 5, waitingSinceMs: 1_000, eligible: true },
-  { roomId: "older", humanCount: 1, virtualCount: 0, waitingHumanCount: 0, availableSeats: 5, waitingSinceMs: 5_000, eligible: true },
-  { roomId: "blocked", humanCount: 1, virtualCount: 0, waitingHumanCount: 1, availableSeats: 5, waitingSinceMs: 9_000, eligible: true },
+  { roomId: "newer", humanCount: 1, virtualCount: 0, waitingHumanCount: 0, availableSeats: 5, effectiveWaitingSinceAt: "2026-01-02T00:00:00.000Z", roomCreatedAt: "2026-01-01T00:00:00.000Z", eligible: true },
+  { roomId: "older", humanCount: 1, virtualCount: 0, waitingHumanCount: 0, availableSeats: 5, effectiveWaitingSinceAt: "2026-01-01T00:00:00.000Z", roomCreatedAt: "2026-01-02T00:00:00.000Z", eligible: true },
+  { roomId: "blocked", humanCount: 1, virtualCount: 0, waitingHumanCount: 1, availableSeats: 5, effectiveWaitingSinceAt: "2025-01-01T00:00:00.000Z", roomCreatedAt: "2025-01-01T00:00:00.000Z", eligible: true },
 ]);
-assert.equal(selected?.roomId, "older", "global scheduler should prioritize the longest-waiting eligible one-short room");
+assert.equal(selected?.roomId, "older", "global scheduler should prioritize the earliest current waiting period");
+
+const roomAgeFallback = manager.selectRoom([
+  { roomId: "new-room", humanCount: 1, virtualCount: 0, waitingHumanCount: 0, availableSeats: 5, effectiveWaitingSinceAt: "2026-01-03T00:00:00.000Z", roomCreatedAt: "2026-01-02T00:00:00.000Z", eligible: true },
+  { roomId: "old-room", humanCount: 1, virtualCount: 0, waitingHumanCount: 0, availableSeats: 5, effectiveWaitingSinceAt: "2026-01-03T00:00:00.000Z", roomCreatedAt: "2026-01-01T00:00:00.000Z", eligible: true },
+]);
+assert.equal(roomAgeFallback?.roomId, "old-room", "room creation time is only the waiting-time tie-break");
+
+const oneHumanOnly = manager.selectRoom([
+  { roomId: "two-humans", humanCount: 2, virtualCount: 0, waitingHumanCount: 0, availableSeats: 4, effectiveWaitingSinceAt: "2025-01-01T00:00:00.000Z", roomCreatedAt: "2025-01-01T00:00:00.000Z", eligible: true },
+  { roomId: "already-filled", humanCount: 1, virtualCount: 1, waitingHumanCount: 0, availableSeats: 4, effectiveWaitingSinceAt: "2025-01-01T00:00:00.000Z", roomCreatedAt: "2025-01-01T00:00:00.000Z", eligible: true },
+]);
+assert.equal(oneHumanOnly, undefined, "only exactly one human and zero seated virtual players may be selected");
 
 const first = manager.reserveAgent("older");
 const second = manager.reserveAgent("newer");

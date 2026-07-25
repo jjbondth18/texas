@@ -88,6 +88,8 @@ interface Room {
   isPublic: boolean;
   isAiWarmup: boolean;
   hostInLocalWarmup: string;
+  singleHumanWaitingSinceAt?: string;
+  localWarmupStartedAt?: string;
   hostPlayerId: string;
   officialHandStarted: boolean;
   sessionComplete: boolean;
@@ -602,6 +604,8 @@ export class RoomManager {
       isPublic,
       isAiWarmup: false,
       hostInLocalWarmup: "",
+      singleHumanWaitingSinceAt: undefined,
+      localWarmupStartedAt: undefined,
       hostPlayerId: "",
       officialHandStarted: false,
       sessionComplete: false,
@@ -1793,6 +1797,7 @@ export class RoomManager {
     if (room.table.phase !== "waiting") throw new Error("not_waiting");
     if (realCount !== 1) throw new Error("too_many_real_players");
     room.hostInLocalWarmup = client.id;
+    room.localWarmupStartedAt ??= new Date().toISOString();
     room.isAiWarmup = false;
     room.table.addAction({ type: "system", action: "local_warmup", message: `${client.name} started local AI warm-up. Public room remains open for real players.` });
   }
@@ -1857,14 +1862,6 @@ export class RoomManager {
     }
     this.ensureRoomCanAcceptSitDown(room);
     if (room.mode === "ai_challenge") return this.sitDownAiChallenge(room, client, requestedSeatIndex);
-    if (this.publicVirtualPlayers.humanPriority && ["waiting", "hand_over"].includes(room.table.phase)) {
-      const requestedVirtual = requestedSeatIndex >= 0 ? room.table.getSeat(requestedSeatIndex) : undefined;
-      const virtualToRelease = requestedVirtual?.serverManagedVirtual ? requestedVirtual : this.virtualPlayerSeats(room)[0];
-      if (virtualToRelease && (this.occupiedSeatCount(room) >= room.maxPlayers || requestedVirtual?.serverManagedVirtual)) {
-        this.virtualPlayers.markPendingLeave(virtualToRelease.playerId, "human_priority");
-        this.removeOneSafeVirtualPlayer(room);
-      }
-    }
     if (this.occupiedSeatCount(room) >= room.maxPlayers) throw new Error("table_full");
     const seat = requestedSeatIndex < 0 ? this.firstAvailablePublicSeat(room) : room.table.getSeat(requestedSeatIndex);
     if (!seat || seat.playerId) throw new Error("seat is not available");
@@ -2705,12 +2702,10 @@ export class RoomManager {
   private runVirtualScheduler(): void {
     try {
       for (const candidateRoom of this.rooms.values()) {
+        this.refreshSingleHumanWaitingPeriod(candidateRoom);
         if (candidateRoom.virtualJoinTimer && (
           !this.publicVirtualPlayers.enabled
-          || !this.isVirtualEligiblePublicRoom(candidateRoom)
-          || this.realConnectedSeatedCount(candidateRoom) === 0
-          || this.waitingHumanCount(candidateRoom) > 0
-          || this.virtualPlayerSeats(candidateRoom).length >= this.desiredVirtualCount(candidateRoom)
+          || !this.canRoomReceiveNewVirtual(candidateRoom)
         )) {
           this.clearVirtualJoinTimer(candidateRoom);
         }
@@ -2744,14 +2739,9 @@ export class RoomManager {
     const virtualSeats = this.virtualPlayerSeats(room);
     if (virtualSeats.length === 0) return;
     const humanSeats = this.realConnectedSeatedCount(room);
-    const waitingHumans = this.waitingHumanCount(room);
-    const desired = this.desiredVirtualCount(room);
-    if (!this.isVirtualEligiblePublicRoom(room) || !this.publicVirtualPlayers.enabled || humanSeats === 0 || waitingHumans > 0) {
-      const reason = !this.publicVirtualPlayers.enabled ? "disabled" : humanSeats === 0 ? "no_humans" : waitingHumans > 0 ? "waiting_human" : "ineligible";
+    if (!this.isVirtualEligiblePublicRoom(room) || !this.publicVirtualPlayers.enabled || humanSeats === 0) {
+      const reason = !this.publicVirtualPlayers.enabled ? "disabled" : humanSeats === 0 ? "no_humans" : "ineligible";
       for (const seat of virtualSeats) this.virtualPlayers.markPendingLeave(seat.playerId, reason);
-    } else if (virtualSeats.length > desired) {
-      const victim = this.selectVirtualPlayerForLeave(room);
-      if (victim) this.virtualPlayers.markPendingLeave(victim.playerId, "above_desired");
     }
     this.removeOneSafeVirtualPlayer(room);
   }
@@ -2777,17 +2767,21 @@ export class RoomManager {
     const profile = PUBLIC_VIRTUAL_PLAYER_PROFILES.find((candidate) => candidate.id === reservedPlayerId);
     const blockedReason = !profile
       ? "reservation_missing"
+      : !this.virtualPlayers.canCompleteReservation(reservedPlayerId, room.id)
+        ? "reservation_invalid"
       : !this.publicVirtualPlayers.enabled
         ? "disabled"
         : !this.isVirtualEligiblePublicRoom(room)
           ? "room_ineligible"
-          : this.realConnectedSeatedCount(room) === 0
-            ? "no_humans"
+          : this.realConnectedSeatedCount(room) !== 1
+            ? "human_count_changed"
             : this.waitingHumanCount(room) > 0
               ? "waiting_human"
-              : this.virtualPlayerSeats(room).length >= this.desiredVirtualCount(room)
-                ? "target_satisfied"
-                : "";
+              : this.virtualPlayerSeats(room).length > 0
+                ? "virtual_already_seated"
+                : !this.isVirtualMatchWaitingState(room)
+                  ? "room_not_waiting"
+                  : "";
     if (blockedReason !== "") {
       if (reservedPlayerId) this.virtualPlayers.releaseReservation(reservedPlayerId, blockedReason);
       this.recordLog(`virtual_join_cancelled player_id=${reservedPlayerId || "-"} room_id=${room.id} reason=${blockedReason}`);
@@ -2876,8 +2870,32 @@ export class RoomManager {
       && room.visibility === "public"
       && (room.tableType === "public_chip" || room.tableType === "public_gem")
       && !room.isAiWarmup
-      && room.hostInLocalWarmup === ""
       && !room.sessionComplete;
+  }
+
+  private isVirtualMatchWaitingState(room: Room): boolean {
+    return ["waiting", "hand_over"].includes(room.table.phase) && !room.sessionComplete;
+  }
+
+  private refreshSingleHumanWaitingPeriod(room: Room): void {
+    const humanCount = this.realConnectedSeatedCount(room);
+    if (!this.isVirtualEligiblePublicRoom(room) || !this.isVirtualMatchWaitingState(room) || humanCount !== 1) {
+      room.singleHumanWaitingSinceAt = undefined;
+      room.localWarmupStartedAt = undefined;
+      return;
+    }
+    room.singleHumanWaitingSinceAt ??= new Date().toISOString();
+    if (room.hostInLocalWarmup === "") room.localWarmupStartedAt = undefined;
+  }
+
+  private canRoomReceiveNewVirtual(room: Room): boolean {
+    return this.isVirtualEligiblePublicRoom(room)
+      && this.isVirtualMatchWaitingState(room)
+      && this.realConnectedSeatedCount(room) === 1
+      && this.virtualPlayerSeats(room).length === 0
+      && this.waitingHumanCount(room) === 0
+      && this.occupiedSeatCount(room) < room.maxPlayers
+      && this.publicVirtualPlayers.maximumPerRoom > 0;
   }
 
   private waitingHumanCount(room: Room): number {
@@ -2887,45 +2905,26 @@ export class RoomManager {
     }).length;
   }
 
-  private desiredVirtualCount(room: Room): number {
-    const humanSeats = this.realConnectedSeatedCount(room);
-    return Math.min(
-      this.publicVirtualPlayers.maximumPerRoom,
-      Math.max(0, 2 - humanSeats),
-      Math.max(0, room.maxPlayers - humanSeats),
-      Math.max(0, this.publicVirtualPlayers.targetOnline - this.virtualPlayers.onlineCount() + this.virtualPlayerSeats(room).length),
-    );
-  }
-
   private virtualRoomCandidate(room: Room) {
     const virtualCount = this.virtualPlayerSeats(room).length;
+    const effectiveWaitingSinceAt = room.localWarmupStartedAt ?? room.singleHumanWaitingSinceAt ?? room.createdAt;
     return {
       roomId: room.id,
       humanCount: this.realConnectedSeatedCount(room),
       virtualCount,
       waitingHumanCount: this.waitingHumanCount(room),
       availableSeats: Math.max(0, room.maxPlayers - this.occupiedSeatCount(room)),
-      waitingSinceMs: Math.max(0, Date.now() - Date.parse(room.createdAt)),
-      eligible: this.isVirtualEligiblePublicRoom(room)
-        && ["waiting", "hand_over"].includes(room.table.phase)
+      effectiveWaitingSinceAt,
+      roomCreatedAt: room.createdAt,
+      eligible: this.canRoomReceiveNewVirtual(room)
         && !room.virtualJoinTimer
-        && virtualCount < this.desiredVirtualCount(room),
+        && room.virtualJoiningPlayerId === ""
+        && this.virtualPlayers.hasAvailableAgent(),
     };
   }
 
   private selectVirtualPlayerForLeave(room: Room): Seat | undefined {
-    const snapshots = new Map(this.virtualPlayers.snapshots().map((snapshot) => [snapshot.playerId, snapshot]));
-    return this.virtualPlayerSeats(room).slice().sort((left, right) => {
-      const leftState = snapshots.get(left.playerId);
-      const rightState = snapshots.get(right.playerId);
-      const leftPending = leftState?.state === "pending_leave" ? 1 : 0;
-      const rightPending = rightState?.state === "pending_leave" ? 1 : 0;
-      if (leftPending !== rightPending) return rightPending - leftPending;
-      if ((leftState?.sessionHandsPlayed ?? 0) !== (rightState?.sessionHandsPlayed ?? 0)) {
-        return (rightState?.sessionHandsPlayed ?? 0) - (leftState?.sessionHandsPlayed ?? 0);
-      }
-      return String(leftState?.onlineSince ?? "").localeCompare(String(rightState?.onlineSince ?? ""));
-    })[0];
+    return this.virtualPlayerSeats(room).find((seat) => this.virtualPlayers.isPendingLeave(seat.playerId));
   }
 
   private virtualPlayerSeats(room: Room): Seat[] {

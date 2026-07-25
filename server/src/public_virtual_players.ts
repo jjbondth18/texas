@@ -12,7 +12,6 @@ export interface PublicVirtualPlayerConfig {
   actionDelayMaxMs: number;
   sessionHandMin: number;
   sessionHandMax: number;
-  humanPriority: boolean;
   chatEnabled: boolean;
 }
 
@@ -64,7 +63,6 @@ export function publicVirtualPlayerConfigFromEnv(env: NodeJS.ProcessEnv = proces
     actionDelayMaxMs: integerValue(env.VIRTUAL_PLAYER_ACTION_DELAY_MAX_MS, 2_500, 100, 30_000),
     sessionHandMin: integerValue(env.VIRTUAL_PLAYER_SESSION_HAND_MIN, 3, 1, 100),
     sessionHandMax: integerValue(env.VIRTUAL_PLAYER_SESSION_HAND_MAX, 8, 1, 100),
-    humanPriority: booleanValue(env.VIRTUAL_PLAYER_HUMAN_PRIORITY, true),
     chatEnabled: booleanValue(env.VIRTUAL_PLAYER_CHAT_ENABLED, false),
   };
 }
